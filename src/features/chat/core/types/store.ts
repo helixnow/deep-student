@@ -30,6 +30,36 @@ export { createDefaultChatParams, createDefaultPanelStates } from './common';
 // SessionStatus, ChatParams, PanelStates 从 common.ts 导入
 
 // ============================================================================
+// Super 会话收件箱投递结果（与后端 chat_v2_super_deliver_inbox 返回值对应，camelCase）
+// ============================================================================
+
+export type DeliverOutcome =
+  | {
+      status: 'started';
+      userMessage: {
+        id: string;
+        content: string;
+        timestampMs: number;
+        inboundOrigin: unknown;
+      };
+      assistantMessageId: string;
+    }
+  | { status: 'empty' | 'busy' | 'disabled' }
+  | { status: 'paused'; autoTurns: number };
+
+export interface DeliverSuperInboxOptions {
+  /** 跳过连续自动回合上限检查（用户点击「继续处理」时使用） */
+  force?: boolean;
+}
+
+/** 投递回调：store 生成消息 ID，adapter 调后端 chat_v2_super_deliver_inbox */
+export type DeliverInboxCallback = (
+  userMessageId: string,
+  assistantMessageId: string,
+  force: boolean,
+) => Promise<DeliverOutcome>;
+
+// ============================================================================
 // LoadSessionResponse 类型（避免循环引用，此处定义简化版本）
 // ============================================================================
 
@@ -112,6 +142,8 @@ export interface BackendMessageForRestore {
     skillRuntimeBefore?: import('./message').ReplaySkillPayloadSnapshot;
     skillRuntimeAfter?: import('./message').ReplaySkillPayloadSnapshot;
     replaySource?: string;
+    // Super 会话收件箱投递来源（后端 MessageMeta.inbound_origin，serde rename "inboundOrigin"）
+    inboundOrigin?: unknown;
     // 注意：sources/toolResults/ankiCards 等数据现在统一存储在 blocks 表中，
     // 通过 msg.blockIds 引用，无需从 _meta 恢复
   };
@@ -1013,6 +1045,17 @@ export interface ChatStore {
    * 启动一个由系统事件触发的 ephemeral 用户回合。
    */
   wakeSession(content: string): Promise<void>;
+
+  /**
+   * 注入 Super 会话收件箱投递逻辑（chat_v2_super_deliver_inbox）。
+   */
+  setDeliverInboxCallback(callback: DeliverInboxCallback | null): void;
+
+  /**
+   * Super 会话：把后端收件箱投递成一条持久化 user 消息并开启流式回合。
+   * started 时插入后端返回的 user 消息；empty/busy/disabled/paused 时撤销占位并恢复 idle，不抛错。
+   */
+  deliverSuperInbox(opts?: DeliverSuperInboxOptions): Promise<DeliverOutcome>;
 
   /**
    * 设置中断流式回调函数

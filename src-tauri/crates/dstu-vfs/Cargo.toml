@@ -1,0 +1,83 @@
+[package]
+name = "dstu-vfs"
+version = "0.0.0"
+description = "Deep Student 虚拟文件系统服务层：VFS 统一资源存储（vfs.db 仓储、索引/检索、PDF 流水线、Lance 向量存储）、DSTU 访达协议层、教材库、pdfstream:// 与 filestream:// 协议"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "service"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-docs = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-platform = { workspace = true }
+# `vfs::database::CURRENT_SCHEMA_VERSION` 无条件引用 `dstu_storage::migration`（拆分前同样
+# 无条件引用 `data_governance::migration`）。app 的三个 profile 都启用 data_governance，
+# 这里直接打开，保证 `cargo check -p dstu-vfs --no-default-features` 也能编译。
+dstu-storage = { workspace = true, features = ["data_governance"] }
+dstu-util = { workspace = true }
+# 仅 `test-util` feature（下游 crate 的 dev-dependency）使用，见 [features]。
+dstu-testkit = { workspace = true, optional = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+hex = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+nanoid = { workspace = true }
+pdfium-render = { workspace = true }
+pulldown-cmark = { workspace = true }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32 → JSON 数字按十进制字符串转换）。
+# 显式声明，保证 `cargo test -p dstu-vfs` 单独编译时与在 app 中的行为一致；
+# 特性本来就已在 app 中合并开启，不改变产品行为。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+sha2 = { workspace = true }
+tauri = { workspace = true }
+# 生产代码也用临时文件（pdf_processing_service / unified_retriever），不能只放 dev。
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+# LanceDB 向量后端（`lance` feature）。
+lancedb = { workspace = true, optional = true }
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
+
+# macOS：pdf/filestream 协议用 fcntl(F_GETPATH) 取已打开文件的真实路径。
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+# 本 crate 单测的迁移夹具（`vfs::database::setup_migrated_test_db` 的 cfg(test) 分支）。
+dstu-testkit = { workspace = true }
+
+[features]
+# 与 app 的默认 profile 一致（app 依赖本 crate 时 default-features = false，并由 app 的
+# `lance` feature 转发）。
+default = ["lance"]
+# LanceDB 向量后端；关闭时 `vfs::lance_store` 换成同名 API 的 no-op stub。
+lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
+# 对下游 crate 的单测公开 `vfs::database::setup_migrated_test_db`（只在 dev-dependency 中打开）。
+test-util = ["dep:dstu-testkit"]

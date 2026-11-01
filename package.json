@@ -75,6 +75,10 @@
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "licenses:check": "node scripts/check-license-compliance.mjs",
     "check:licenses": "npm run licenses:check",
+    "check:crate-layers": "node scripts/check-crate-layers.mjs",
+    "check:frontend-layers": "node scripts/check-frontend-layers.mjs",
+    "check:lint-ratchet": "node scripts/check-lint-ratchet.mjs",
+    "test:compare": "node scripts/compare-vitest-results.mjs",
     "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs",
     "registry:sync": "node scripts/sync-model-registry.mjs",
     "postinstall": "patch-package"

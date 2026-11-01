@@ -1,0 +1,842 @@
+{
+  "schema_version": "1.0",
+  "verified_at": "2026-10-31",
+  "source": "https://opencode.ai/docs/go/",
+  "purpose": "OpenCode Go 各模型在 Go / Go Plus / Go Teams 下的月额度（美元，按标价折算：决定该模型用量占共享的 5 小时 / 周 / 月额度的比例）与官方预估请求数。官方无公开接口提供此表，由 scripts/generate-opencode-go-plans.mjs 从文档页生成，随版本发布。免费型号额度为 null（官方标注 Unlimited，限时）。",
+  "plans": [
+    {
+      "id": "go",
+      "name": "Go",
+      "price_usd_per_month": 10
+    },
+    {
+      "id": "go_plus",
+      "name": "Go Plus",
+      "price_usd_per_month": 40
+    },
+    {
+      "id": "go_teams",
+      "name": "Go Teams",
+      "price_usd_per_month": 20,
+      "per_member": true
+    }
+  ],
+  "models": [
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7",
+      "protocol": "openai_responses",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 169,
+          "week": 423,
+          "month": 845
+        },
+        "go_plus": {
+          "five_hour": 676,
+          "week": 1692,
+          "month": 3380
+        },
+        "go_teams": {
+          "five_hour": 225,
+          "week": 564,
+          "month": 1130
+        }
+      }
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT 6 Luna",
+      "protocol": "openai_responses",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 4230,
+          "week": 10560,
+          "month": 21130
+        },
+        "go_plus": {
+          "five_hour": 16920,
+          "week": 42240,
+          "month": 84520
+        },
+        "go_teams": {
+          "five_hour": 5640,
+          "week": 14080,
+          "month": 28170
+        }
+      }
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT 5.6 Luna",
+      "protocol": "openai_responses",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 2050,
+          "week": 5100,
+          "month": 10250
+        },
+        "go_plus": {
+          "five_hour": 8200,
+          "week": 20400,
+          "month": 41000
+        },
+        "go_teams": {
+          "five_hour": 2733,
+          "week": 6800,
+          "month": 13670
+        }
+      }
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "name": "Claude Haiku 5.5",
+      "protocol": "anthropic_messages",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 3850,
+          "week": 9620,
+          "month": 19230
+        },
+        "go_plus": {
+          "five_hour": 15380,
+          "week": 38460,
+          "month": 76920
+        },
+        "go_teams": {
+          "five_hour": 5133,
+          "week": 12830,
+          "month": 25640
+        }
+      }
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Gemini 4 Argon",
+      "protocol": "google_generate_content",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 30,
+        "go_plus": 120,
+        "go_teams": 35
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 440,
+          "week": 1080,
+          "month": 2120
+        },
+        "go_plus": {
+          "five_hour": 1760,
+          "week": 4320,
+          "month": 8480
+        },
+        "go_teams": {
+          "five_hour": 513,
+          "week": 1260,
+          "month": 2470
+        }
+      }
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 180,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 6320,
+          "week": 15790,
+          "month": 31580
+        },
+        "go_plus": {
+          "five_hour": 18960,
+          "week": 47370,
+          "month": 94740
+        },
+        "go_teams": {
+          "five_hour": 6847,
+          "week": 17110,
+          "month": 34210
+        }
+      }
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM-5.3",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 120,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 220,
+          "week": 540,
+          "month": 1080
+        },
+        "go_plus": {
+          "five_hour": 1760,
+          "week": 4320,
+          "month": 8640
+        },
+        "go_teams": {
+          "five_hour": 293,
+          "week": 720,
+          "month": 1440
+        }
+      }
+    },
+    {
+      "id": "glm-5.2",
+      "name": "GLM-5.2",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 180,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 880,
+          "week": 2150,
+          "month": 4300
+        },
+        "go_plus": {
+          "five_hour": 2640,
+          "week": 6450,
+          "month": 12900
+        },
+        "go_teams": {
+          "five_hour": 953,
+          "week": 2330,
+          "month": 4660
+        }
+      }
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 147,
+          "week": 368,
+          "month": 735
+        },
+        "go_plus": {
+          "five_hour": 588,
+          "week": 1471,
+          "month": 2941
+        },
+        "go_teams": {
+          "five_hour": 196,
+          "week": 491,
+          "month": 980
+        }
+      }
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 110,
+          "week": 250,
+          "month": 490
+        },
+        "go_plus": {
+          "five_hour": 440,
+          "week": 1000,
+          "month": 1960
+        },
+        "go_teams": {
+          "five_hour": 147,
+          "week": 333,
+          "month": 653
+        }
+      }
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 180,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 1350,
+          "week": 3380,
+          "month": 6750
+        },
+        "go_plus": {
+          "five_hour": 4050,
+          "week": 10140,
+          "month": 20250
+        },
+        "go_teams": {
+          "five_hour": 1462,
+          "week": 3660,
+          "month": 7310
+        }
+      }
+    },
+    {
+      "id": "longcat-2.0",
+      "name": "LongCat-2.0",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 240,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 11400,
+          "week": 28600,
+          "month": 57200
+        },
+        "go_plus": {
+          "five_hour": 45600,
+          "week": 114400,
+          "month": 228800
+        },
+        "go_teams": {
+          "five_hour": 12350,
+          "week": 30980,
+          "month": 61970
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 100,
+        "go_plus": 200,
+        "go_teams": 105
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 43330,
+          "week": 108330,
+          "month": 216670
+        },
+        "go_plus": {
+          "five_hour": 86670,
+          "week": 216670,
+          "month": 433330
+        },
+        "go_teams": {
+          "five_hour": 45500,
+          "week": 113750,
+          "month": 227500
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 1050,
+          "week": 2600,
+          "month": 5200
+        },
+        "go_plus": {
+          "five_hour": 4200,
+          "week": 10400,
+          "month": 20800
+        },
+        "go_teams": {
+          "five_hour": 1400,
+          "week": 3470,
+          "month": 6930
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo-V2.6-Flash",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 120,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 30100,
+          "week": 75200,
+          "month": 150400
+        },
+        "go_plus": {
+          "five_hour": 60200,
+          "week": 150400,
+          "month": 300800
+        },
+        "go_teams": {
+          "five_hour": 32608,
+          "week": 81470,
+          "month": 162930
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo-V2.6-Pro",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 3250,
+          "week": 8150,
+          "month": 16300
+        },
+        "go_plus": {
+          "five_hour": 13000,
+          "week": 32600,
+          "month": 65200
+        },
+        "go_teams": {
+          "five_hour": 4333,
+          "week": 10870,
+          "month": 21730
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.5",
+      "name": "MiMo-V2.5",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 120,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 30100,
+          "week": 75200,
+          "month": 150400
+        },
+        "go_plus": {
+          "five_hour": 60200,
+          "week": 150400,
+          "month": 300800
+        },
+        "go_teams": {
+          "five_hour": 32608,
+          "week": 81470,
+          "month": 162930
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.5-pro",
+      "name": "MiMo-V2.5-Pro",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 3250,
+          "week": 8150,
+          "month": 16300
+        },
+        "go_plus": {
+          "five_hour": 13000,
+          "week": 32600,
+          "month": 65200
+        },
+        "go_teams": {
+          "five_hour": 4333,
+          "week": 10870,
+          "month": 21730
+        }
+      }
+    },
+    {
+      "id": "minimax-m3.1-flash",
+      "name": "MiniMax M3.1 Flash",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 20,
+        "go_plus": 80,
+        "go_teams": 25
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 3880,
+          "week": 9690,
+          "month": 19380
+        },
+        "go_plus": {
+          "five_hour": 15500,
+          "week": 38760,
+          "month": 77520
+        },
+        "go_teams": {
+          "five_hour": 4850,
+          "week": 12110,
+          "month": 24230
+        }
+      }
+    },
+    {
+      "id": "minimax-m3",
+      "name": "MiniMax M3",
+      "protocol": "anthropic_messages",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 180,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 3200,
+          "week": 8000,
+          "month": 16000
+        },
+        "go_plus": {
+          "five_hour": 9600,
+          "week": 24000,
+          "month": 48000
+        },
+        "go_teams": {
+          "five_hour": 3467,
+          "week": 8670,
+          "month": 17330
+        }
+      }
+    },
+    {
+      "id": "muse-spark-1.3-contributor",
+      "name": "Muse Spark 1.3 Contributor",
+      "protocol": "openai_responses",
+      "training_permitted": true,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 120,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 45300,
+          "week": 113300,
+          "month": 226600
+        },
+        "go_plus": {
+          "five_hour": 90600,
+          "week": 226600,
+          "month": 453200
+        },
+        "go_teams": {
+          "five_hour": 49075,
+          "week": 122740,
+          "month": 245480
+        }
+      }
+    },
+    {
+      "id": "muse-spark-1.2-contributor",
+      "name": "Muse Spark 1.2 Contributor",
+      "protocol": "openai_responses",
+      "training_permitted": true,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 120,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 45300,
+          "week": 113300,
+          "month": 226600
+        },
+        "go_plus": {
+          "five_hour": 90600,
+          "week": 226600,
+          "month": 453200
+        },
+        "go_teams": {
+          "five_hour": 49075,
+          "week": 122740,
+          "month": 245480
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "protocol": "anthropic_messages",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 160,
+          "week": 400,
+          "month": 810
+        },
+        "go_plus": {
+          "five_hour": 640,
+          "week": 1600,
+          "month": 3240
+        },
+        "go_teams": {
+          "five_hour": 213,
+          "week": 530,
+          "month": 1080
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "protocol": "anthropic_messages",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 30,
+        "go_plus": 90,
+        "go_teams": 35
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 5400,
+          "week": 13500,
+          "month": 27000
+        },
+        "go_plus": {
+          "five_hour": 16200,
+          "week": 40500,
+          "month": 81000
+        },
+        "go_teams": {
+          "five_hour": 6300,
+          "week": 15750,
+          "month": 31500
+        }
+      }
+    },
+    {
+      "id": "qwen3.7-plus",
+      "name": "Qwen3.7 Plus",
+      "protocol": "anthropic_messages",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 180,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 4300,
+          "week": 10800,
+          "month": 21600
+        },
+        "go_plus": {
+          "five_hour": 12900,
+          "week": 32400,
+          "month": 64800
+        },
+        "go_teams": {
+          "five_hour": 4658,
+          "week": 11700,
+          "month": 23400
+        }
+      }
+    },
+    {
+      "id": "hy4-preview",
+      "name": "Hy4 preview",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 30,
+        "go_plus": 120,
+        "go_teams": 35
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 1350,
+          "week": 3380,
+          "month": 6770
+        },
+        "go_plus": {
+          "five_hour": 5400,
+          "week": 13520,
+          "month": 27080
+        },
+        "go_teams": {
+          "five_hour": 1575,
+          "week": 3940,
+          "month": 7900
+        }
+      }
+    },
+    {
+      "id": "hy3",
+      "name": "Hy3",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 60,
+        "go_plus": 240,
+        "go_teams": 65
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 4300,
+          "week": 10750,
+          "month": 21500
+        },
+        "go_plus": {
+          "five_hour": 17200,
+          "week": 43000,
+          "month": 86000
+        },
+        "go_teams": {
+          "five_hour": 4658,
+          "week": 11650,
+          "month": 23290
+        }
+      }
+    },
+    {
+      "id": "step-5-preview",
+      "name": "Step 5 Preview",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": 15,
+        "go_plus": 60,
+        "go_teams": 20
+      },
+      "estimated_requests": {
+        "go": {
+          "five_hour": 430,
+          "week": 1070,
+          "month": 2130
+        },
+        "go_plus": {
+          "five_hour": 1720,
+          "week": 4280,
+          "month": 8520
+        },
+        "go_teams": {
+          "five_hour": 573,
+          "week": 1430,
+          "month": 2840
+        }
+      }
+    },
+    {
+      "id": "beam-free",
+      "name": "Beam Free",
+      "protocol": "openai_chat_completions",
+      "training_permitted": false,
+      "monthly_limit_usd": {
+        "go": null,
+        "go_plus": null,
+        "go_teams": null
+      },
+      "estimated_requests": {
+        "go": null,
+        "go_plus": null,
+        "go_teams": null
+      }
+    },
+    {
+      "id": "iceman-contributor-free",
+      "name": "Iceman Contributor Free",
+      "protocol": "openai_chat_completions",
+      "training_permitted": true,
+      "monthly_limit_usd": {
+        "go": null,
+        "go_plus": null,
+        "go_teams": null
+      },
+      "estimated_requests": {
+        "go": null,
+        "go_plus": null,
+        "go_teams": null
+      }
+    }
+  ]
+}

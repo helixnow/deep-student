@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('pointer cursor preference contract', () => {
   it('surfaces a persisted pointer cursor toggle in appearance settings', () => {
@@ -31,7 +32,7 @@ describe('pointer cursor preference contract', () => {
   });
 
   it('restores the preference at app startup and gates global cursor rules through the root dataset', () => {
-    const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    const appSource = readAppShellSource();
     const cursorStyleSource = readFileSync(
       resolve(process.cwd(), 'src/styles/native-feel/cursors.css'),
       'utf8',

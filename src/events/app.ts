@@ -48,6 +48,8 @@ export const APP_EVENTS = {
   NAVIGATE_TO_ESSAY: 'navigateToEssay',
   NAVIGATE_TO_NOTE: 'navigateToNote',
   WB_PREVIEW_QUICK_LOOK: 'wb-preview:quick-look',
+  /** OpenCode Go 套餐档位已切换（detail = 新档位 id） */
+  OPENCODE_GO_PLAN_CHANGED: 'opencode-go-plan-changed',
 } as const;
 
 export type AppEventName = (typeof APP_EVENTS)[keyof typeof APP_EVENTS];
@@ -232,6 +234,7 @@ export interface AppEventPayloads {
   [APP_EVENTS.NAVIGATE_TO_ESSAY]: NavigateToEssayDetail;
   [APP_EVENTS.NAVIGATE_TO_NOTE]: NavigateToNoteDetail;
   [APP_EVENTS.WB_PREVIEW_QUICK_LOOK]: WbPreviewQuickLookDetail;
+  [APP_EVENTS.OPENCODE_GO_PLAN_CHANGED]: string;
 }
 
 type DetailArgs<K extends AppEventName> = [AppEventPayloads[K]] extends [void]

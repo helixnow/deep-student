@@ -1,0 +1,9040 @@
+//! Chat V2 数据存取层
+//!
+//! 提供 Chat V2 模块的数据库 CRUD 操作。
+//! 支持两种数据库连接方式：
+//! - `ChatV2Database`：Chat V2 独立数据库（推荐）
+//!
+//! 所有方法均提供 `_with_conn` 版本，直接操作 `Connection`。
+
+use crate::database::Database;
+use chrono::{DateTime, Utc};
+use log::{debug, info};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Transaction};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::time::Instant;
+
+use super::database::ChatV2Database;
+use super::error::{ChatV2Error, ChatV2Result};
+use super::pipeline::helpers::MicrocompactAnchor;
+use super::types::{
+    block_types, AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession,
+    CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
+    MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
+    SessionGroup, SessionSkillState, SessionState, SharedContext, ToolFacePrefixSnapshot, Variant,
+    AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY, FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
+    MICROCOMPACT_ANCHOR_METADATA_KEY, TOOL_FACE_PREFIX_GENERATION_METADATA_KEY,
+    TOOL_SCHEMA_DIGEST_METADATA_KEY,
+};
+
+/// 从 session.metadata 解析持久化的 tools 会话冻结基线。
+///
+/// 缺键 / metadata 非对象 / 数组元素非字符串一律容错降级（跳过或返回
+/// 空基线），空基线等同会话首轮语义（由首次 freeze 按字母序建立）。
+fn frozen_tool_schema_order_from_metadata(metadata: Option<&Value>) -> Vec<String> {
+    metadata
+        .and_then(|meta| meta.get(FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 从 session.metadata 解析持久化的 available_skills 目录快照。
+///
+/// 缺键 / metadata 非对象 / 值非字符串一律返回 None（等同该会话从未冻结，
+/// 由前端首次生成时按 live registry 建立并写回）。注意空串是合法快照
+/// （安装前发过消息的会话冻结为无目录），不能与缺键混同。
+fn available_skills_snapshot_from_metadata(metadata: Option<&Value>) -> Option<String> {
+    metadata?
+        .get(AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY)?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// 🆕 R4-#6 available_skills 目录换代：session.metadata 中「当前冻结快照
+/// 所属代号」的键名。
+///
+/// 值为非负整数（JSON number）。缺键视为第 0 代（旧会话兼容：升级前冻结
+/// 的快照等同第 0 代，读路径不报错）。代号只通过显式换代路径推进
+/// （compaction 落盘写待换代标记 → 前端按 live registry 重新生成 → freeze
+/// 作为新代 first write 落盘时 generation := pending 并清除标记）。
+///
+/// 常量定义在 repo 层而非 types.rs：本轮 #6 独占可写面仅 compaction 落盘
+/// 路径与其直接调用的 repo 辅助；前端消费侧（#5/#7 后续轮）对齐字符串
+/// 字面量即可，如需统一可后续迁到 types.rs 并 re-export。
+pub const AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY: &str =
+    "availableSkillsSnapshotGeneration";
+
+/// 🆕 R4-#6 available_skills 目录换代：session.metadata 中「待生效代号」
+/// 的键名。
+///
+/// 由 compaction 落盘事务写入（= 当前代号 + 1），语义为「下一次按 live
+/// registry 生成的目录允许作为新代快照通过 freeze 原语覆盖冻结」。缺键 =
+/// 无待换代（freeze 维持原 first-write-wins，绝不覆盖）。多次 compaction
+/// 在前端消费前折叠为同一个待换代代号（幂等，不重复 +1）。
+pub const AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY: &str =
+    "availableSkillsSnapshotPendingGeneration";
+
+/// 从 session.metadata 解析当前冻结快照所属代号。缺键 / 类型不符视为 0
+/// （旧会话兼容，等同第 0 代）。
+fn available_skills_snapshot_generation_from_metadata(metadata: Option<&Value>) -> u64 {
+    metadata
+        .and_then(|meta| meta.get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY))
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+}
+
+/// 从 session.metadata 解析待生效代号。缺键 / 类型不符返回 None（无待换代）。
+fn available_skills_snapshot_pending_generation_from_metadata(
+    metadata: Option<&Value>,
+) -> Option<u64> {
+    metadata?
+        .get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY)?
+        .as_u64()
+}
+
+/// 从 session.metadata 解析持久化的 microcompact 锚点。
+///
+/// 缺键 / 字段缺失 / 类型不符一律返回 None（等同进程内首次观察，按当前
+/// 历史批量建锚——旧会话升级路径的冷缓存语义）。
+fn microcompact_anchor_from_metadata(metadata: Option<&Value>) -> Option<MicrocompactAnchor> {
+    let anchor = metadata?
+        .get(MICROCOMPACT_ANCHOR_METADATA_KEY)?
+        .as_object()?;
+    let eligible_user_turns = anchor.get("eligibleUserTurns")?.as_u64()? as usize;
+    let lineage = anchor
+        .get("lineage")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Some(MicrocompactAnchor {
+        lineage,
+        eligible_user_turns,
+    })
+}
+
+/// microcompact 锚点的持久化 JSON 形态（camelCase，与前端 metadata 键风格一致）。
+fn microcompact_anchor_to_value(anchor: &MicrocompactAnchor) -> Value {
+    serde_json::json!({
+        "lineage": anchor.lineage,
+        "eligibleUserTurns": anchor.eligible_user_turns,
+    })
+}
+
+/// 从 session.metadata 解析持久化的 tools 前缀代际快照（三键合成）。
+///
+/// 回退语义（旧会话 / 半升级会话兼容，缺什么补什么、绝不报错）：
+/// - 缺 `toolFacePrefixGeneration` 键（或类型不符）→ generation 视为 0；
+/// - order 一律取现有 `frozenToolSchemaOrder` 键（代际键不重复存序，
+///   权威基线仍落旧键，旧读路径 `get_session_frozen_tool_schema_order`
+///   继续可用）；
+/// - 缺 `toolSchemaDigest` 键（或类型不符）→ None。
+///
+/// 三个来源全部缺失（该会话从未冻结过任何 tools 状态）返回 None，
+/// 等同会话首轮语义（由首次 freeze 建立基线）。
+fn tool_face_prefix_from_metadata(metadata: Option<&Value>) -> Option<ToolFacePrefixSnapshot> {
+    let generation = metadata
+        .and_then(|meta| meta.get(TOOL_FACE_PREFIX_GENERATION_METADATA_KEY))
+        .and_then(Value::as_u64);
+    let schema_digest = metadata
+        .and_then(|meta| meta.get(TOOL_SCHEMA_DIGEST_METADATA_KEY))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let order = frozen_tool_schema_order_from_metadata(metadata);
+    if generation.is_none() && schema_digest.is_none() && order.is_empty() {
+        return None;
+    }
+    Some(ToolFacePrefixSnapshot {
+        generation: generation.unwrap_or(0),
+        order,
+        schema_digest,
+    })
+}
+
+/// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
+const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
+/// 变体 JSON 尺寸硬上限（256KB）：超过则从最旧的变体开始截断，避免单条 SQLite 行膨胀。
+const VARIANTS_JSON_LIMIT_BYTES: usize = 256 * 1024;
+
+/// 首屏尾窗的载荷预算（#469）：按数据库原文字节估算，超出即不再向前多取消息，
+/// 其余历史由前端空闲期分页回填。普通文本会话 80 条远低于此值，行为不变。
+pub(crate) const LOAD_SESSION_TAIL_BYTE_BUDGET: u64 = 2 * 1024 * 1024;
+/// 体量预算触发时尾窗至少保留的消息条数（最近一问一答）。
+pub(crate) const LOAD_SESSION_TAIL_MIN_MESSAGES: u32 = 2;
+
+/// `row_to_message` 中 JSON 字段解析失败的累计计数（跨会话，诊断用）。
+///
+/// 解析失败保持「降级为空、不 panic」的容错行为，但通过计数 + warn 日志
+/// （带 message_id 与字段名）暴露数据损坏规模，避免静默丢数据。
+static MESSAGE_JSON_PARSE_FAILURES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// 记录一次消息 JSON 字段解析失败（计数 + warn 日志）。
+fn note_message_json_parse_failure(field: &str, message_id: &str, err: &serde_json::Error) {
+    let total = MESSAGE_JSON_PARSE_FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    log::warn!(
+        "[ChatV2::Repo] {} 解析失败，降级为空 (msg_id={}, total_parse_failures={}): {}",
+        field,
+        message_id,
+        total,
+        err
+    );
+}
+
+/// V20260806 prompt_cache_replay_consistency 旁路数据（三列）
+///
+/// 跨轮重放要与 live 请求字节一致，必须持久化 live 发送时的原始数据：
+/// - `llm_content`：用户 CONTENT 块实际发给 LLM 的完整包装文本
+///   （`<user_query>` + `<injected_context>`/`<runtime_facts>`）
+/// - `tool_call_id`：工具块的 provider 原始 tool-call id（如 `call_...`），
+///   替代重放时派生的 `tc_{block_id}`
+/// - `round_text`：该轮工具调用前助手输出的伴随文本（text-before-tool-use）
+///
+/// `MessageBlock` 结构体故意不加这些字段，读写走独立的旁路 API。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockReplayData {
+    pub llm_content: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub round_text: Option<String>,
+}
+
+impl BlockReplayData {
+    pub fn is_empty(&self) -> bool {
+        self.llm_content.is_none() && self.tool_call_id.is_none() && self.round_text.is_none()
+    }
+}
+
+/// Chat V2 数据存取层
+///
+/// 所有方法均为静态方法，支持事务操作。
+/// 启动收尾时写入被打断块的错误说明（前端直接展示）
+pub const INTERRUPTED_BY_RESTART_ERROR: &str = "应用已重启，这一轮回答被中断，可以重新提问";
+
+pub struct ChatV2Repo;
+
+impl ChatV2Repo {
+    fn append_visible_session_filter(sql: &mut String) {
+        sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1");
+        // Super-agent（实验）的 Router/Worker 内部会话：用户感知的是单一持续对话，
+        // 底层会话不应出现在普通会话列表 / 计数 / 搜索里（见 chat_v2/superagent）。
+        sql.push_str(" AND json_extract(metadata_json, '$.superagent') IS NULL");
+        // Super 会话（chat_v2/super_session）关闭后标记 super_agent.hidden=true：数据保留，
+        // 但不出现在普通会话列表 / 计数 / 搜索里；重新开启时去掉 hidden 即恢复可见。
+        sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.super_agent.hidden'), 0) != 1");
+    }
+
+    /// 检查 variants_json 大小：达到 LIMIT 即从最旧变体起截断；达到 WARN 仅日志。
+    /// 入参 `json` 是 `serde_json::to_string(variants)` 的结果；命中 LIMIT 时会原地修改 `variants` 并重新序列化。
+    /// 单变体即超 LIMIT 的极端情况下记录 error 但不强行截断（避免丢失正在写入的回复）。
+    fn enforce_variants_json_size_limit(
+        json: String,
+        variants: &mut Vec<Variant>,
+        message_id: &str,
+    ) -> String {
+        let size = json.len();
+        if size < VARIANTS_JSON_WARN_BYTES {
+            return json;
+        }
+
+        if size < VARIANTS_JSON_LIMIT_BYTES {
+            log::warn!(
+                "[ChatV2::Repo] variants_json size {} bytes approaching limit (warn={}, limit={}, count={}, message_id={})",
+                size,
+                VARIANTS_JSON_WARN_BYTES,
+                VARIANTS_JSON_LIMIT_BYTES,
+                variants.len(),
+                message_id
+            );
+            return json;
+        }
+
+        log::error!(
+            "[ChatV2::Repo] variants_json size {} bytes exceeded hard limit {} (count={}, message_id={}); truncating oldest variants",
+            size,
+            VARIANTS_JSON_LIMIT_BYTES,
+            variants.len(),
+            message_id
+        );
+
+        if variants.len() <= 1 {
+            log::error!(
+                "[ChatV2::Repo] cannot truncate: single variant already exceeds limit (size={}, message_id={})",
+                size,
+                message_id
+            );
+            return json;
+        }
+
+        let mut current = json;
+        while current.len() >= VARIANTS_JSON_LIMIT_BYTES && variants.len() > 1 {
+            let removed = variants.remove(0);
+            log::warn!(
+                "[ChatV2::Repo] truncated oldest variant {} (model={}, message_id={})",
+                removed.id,
+                removed.model_id,
+                message_id
+            );
+            current = match serde_json::to_string(&*variants) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!(
+                        "[ChatV2::Repo] re-serialize after truncation failed (message_id={}): {}",
+                        message_id,
+                        e
+                    );
+                    return current;
+                }
+            };
+        }
+
+        if current.len() >= VARIANTS_JSON_LIMIT_BYTES {
+            log::error!(
+                "[ChatV2::Repo] variants_json still {} bytes after truncation (message_id={})",
+                current.len(),
+                message_id
+            );
+        }
+
+        current
+    }
+
+    /// 🔧 P1-3 修复（06 报告）：variants_json 的「读出 → 内存改 → 整体写回」序列
+    /// 必须持写锁执行，否则多模型并行变体（连接池 max_size=10）下两个连接
+    /// 交叉读改写同一条消息的 variants_json 会互相覆盖（丢状态、丢 block_ids）。
+    ///
+    /// - 连接处于 autocommit 状态时：用 `BEGIN IMMEDIATE` 先取写锁再读，
+    ///   读到的即最新值，消除丢失更新窗口（WAL + busy_timeout=3000 下等锁而非报错）。
+    /// - 连接已在外层事务中：直接执行，由外层事务保证原子性与互斥。
+    fn with_variants_write_txn<T>(
+        conn: &Connection,
+        f: impl FnOnce(&Connection) -> ChatV2Result<T>,
+    ) -> ChatV2Result<T> {
+        if !conn.is_autocommit() {
+            return f(conn);
+        }
+
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| ChatV2Error::Database(format!("BEGIN IMMEDIATE failed: {}", e)))?;
+        match f(conn) {
+            Ok(value) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| ChatV2Error::Database(format!("COMMIT failed: {}", e)))?;
+                Ok(value)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+    // ========================================================================
+    // 会话 CRUD
+    // ========================================================================
+
+    /// 创建会话
+    pub fn create_session(db: &Database, session: &ChatSession) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_session_with_conn(&conn, session)
+    }
+
+    /// 创建会话（使用现有连接）
+    pub fn create_session_with_conn(conn: &Connection, session: &ChatSession) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Creating session: id={}, mode={}",
+            session.id, session.mode
+        );
+
+        let metadata_json = session
+            .metadata
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let persist_status = match session.persist_status {
+            PersistStatus::Active => "active",
+            PersistStatus::Archived => "archived",
+            PersistStatus::Deleted => "deleted",
+        };
+
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_sessions (
+                id, mode, title, description, summary_hash, title_locked, persist_status,
+                created_at, updated_at, metadata_json, group_id
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            "#,
+            params![
+                session.id,
+                session.mode,
+                session.title,
+                session.description,
+                session.summary_hash,
+                session.title_locked as i64,
+                persist_status,
+                session.created_at.to_rfc3339(),
+                session.updated_at.to_rfc3339(),
+                metadata_json,
+                session.group_id,
+            ],
+        )?;
+
+        info!("[ChatV2::Repo] Session created: {}", session.id);
+        Ok(())
+    }
+
+    /// 获取会话
+    pub fn get_session(db: &Database, session_id: &str) -> ChatV2Result<Option<ChatSession>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_with_conn(&conn, session_id)
+    }
+
+    /// 获取会话（使用现有连接）
+    pub fn get_session_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ChatSession>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+            FROM chat_v2_sessions
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let session = stmt
+            .query_row(params![session_id], Self::row_to_session_full)
+            .optional()?;
+
+        Ok(session)
+    }
+
+    /// 将数据库行转换为 ChatSession（完整字段）
+    fn row_to_session_full(row: &rusqlite::Row) -> rusqlite::Result<ChatSession> {
+        let id: String = row.get(0)?;
+        let mode: String = row.get(1)?;
+        let title: Option<String> = row.get(2)?;
+        let description: Option<String> = row.get(3)?;
+        let summary_hash: Option<String> = row.get(4)?;
+        let persist_status_str: String = row.get(5)?;
+        let created_at_str: String = row.get(6)?;
+        let updated_at_str: String = row.get(7)?;
+        let metadata_json: Option<String> = row.get(8)?;
+        let group_id: Option<String> = row.get(9)?;
+        let tags_hash: Option<String> = row.get::<_, Option<String>>(10).unwrap_or(None);
+        // title_locked 在 V20260516 之后存在；旧库 / 缺列回退到 false
+        let title_locked: bool = row.get::<_, i64>(11).map(|v| v != 0).unwrap_or(false);
+
+        let persist_status = match persist_status_str.as_str() {
+            "active" => PersistStatus::Active,
+            "archived" => PersistStatus::Archived,
+            "deleted" => PersistStatus::Deleted,
+            _ => PersistStatus::Active,
+        };
+
+        // 🔒 审计修复: 时间戳解析失败时使用 UNIX_EPOCH 而非 Utc::now()
+        // 原代码使用 Utc::now() 导致旧数据在解析失败时"变成最新"，破坏排序
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[ChatV2Repo] Failed to parse created_at '{}': {}, using epoch fallback",
+                    created_at_str,
+                    e
+                );
+                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+            });
+
+        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[ChatV2Repo] Failed to parse updated_at '{}': {}, using epoch fallback",
+                    updated_at_str,
+                    e
+                );
+                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+            });
+
+        let metadata: Option<Value> = metadata_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        Ok(ChatSession {
+            id,
+            mode,
+            title,
+            description,
+            summary_hash,
+            title_locked,
+            persist_status,
+            created_at,
+            updated_at,
+            metadata,
+            group_id,
+            tags_hash,
+            tags: None,
+        })
+    }
+
+    /// 更新会话
+    pub fn update_session(db: &Database, session: &ChatSession) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_session_with_conn(&conn, session)
+    }
+
+    /// 更新会话（使用现有连接）
+    pub fn update_session_with_conn(conn: &Connection, session: &ChatSession) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Updating session: {}", session.id);
+
+        let metadata_json = session
+            .metadata
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let persist_status = match session.persist_status {
+            PersistStatus::Active => "active",
+            PersistStatus::Archived => "archived",
+            PersistStatus::Deleted => "deleted",
+        };
+
+        let rows_affected = conn.execute(
+            r#"
+            UPDATE chat_v2_sessions
+            SET mode = ?2, title = ?3, description = ?4, summary_hash = ?5, persist_status = ?6,
+                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10, title_locked = ?11
+            WHERE id = ?1
+            "#,
+            params![
+                session.id,
+                session.mode,
+                session.title,
+                session.description,
+                session.summary_hash,
+                persist_status,
+                session.updated_at.to_rfc3339(),
+                metadata_json,
+                session.group_id,
+                session.tags_hash,
+                session.title_locked as i64,
+            ],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::SessionNotFound(session.id.clone()));
+        }
+
+        info!("[ChatV2::Repo] Session updated: {}", session.id);
+        Ok(())
+    }
+
+    /// 删除会话（级联删除消息和块）
+    pub fn delete_session(db: &Database, session_id: &str) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::delete_session_with_tx(&tx, session_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 删除会话（使用事务）
+    pub fn delete_session_with_tx(tx: &Transaction, session_id: &str) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Deleting session: {}", session_id);
+
+        // 级联删除由外键约束自动处理（ON DELETE CASCADE）
+        let rows_affected = tx.execute(
+            "DELETE FROM chat_v2_sessions WHERE id = ?1",
+            params![session_id],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::SessionNotFound(session_id.to_string()));
+        }
+
+        info!(
+            "[ChatV2::Repo] Session deleted with cascade: {}",
+            session_id
+        );
+        Ok(())
+    }
+
+    /// 列出会话
+    pub fn list_sessions(
+        db: &Database,
+        status: Option<&str>,
+        limit: u32,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let conn = db.get_conn_safe()?;
+        Self::list_sessions_with_conn(&conn, status, None, limit, 0)
+    }
+
+    /// 列出会话（使用现有连接）
+    ///
+    /// ## 参数
+    /// - `conn`: 数据库连接
+    /// - `status`: 可选的状态过滤（active/archived/deleted）
+    /// - `limit`: 数量限制
+    /// - `offset`: 偏移量（用于分页）
+    pub fn list_sessions_with_conn(
+        conn: &Connection,
+        status: Option<&str>,
+        group_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        // 动态构建 SQL 查询
+        // 🔧 2026-01-20: 过滤掉 mode='agent' 的 Worker 会话，它们应该在工作区面板中单独显示
+        let mut sql = String::from(
+            r#"
+                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+                FROM chat_v2_sessions
+                WHERE mode != 'agent'
+            "#,
+        );
+        Self::append_visible_session_filter(&mut sql);
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(s) = status {
+            sql.push_str(" AND persist_status = ?");
+            params_vec.push(Box::new(s.to_string()));
+        }
+
+        if let Some(gid) = group_id {
+            if gid.is_empty() {
+                sql.push_str(" AND group_id IS NULL");
+            } else if gid == "*" {
+                sql.push_str(" AND group_id IS NOT NULL");
+            } else {
+                sql.push_str(" AND group_id = ?");
+                params_vec.push(Box::new(gid.to_string()));
+            }
+        }
+
+        sql.push_str(" ORDER BY updated_at DESC LIMIT ? OFFSET ?");
+        params_vec.push(Box::new(limit));
+        params_vec.push(Box::new(offset));
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_session_full)?;
+
+        let sessions: Vec<ChatSession> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        Ok(sessions)
+    }
+
+    /// 获取会话总数
+    ///
+    /// ## 参数
+    /// - `conn`: 数据库连接
+    /// - `status`: 可选的状态过滤（active/archived/deleted）
+    ///
+    /// 🔧 2026-01-20: 过滤掉 mode='agent' 的 Worker 会话
+    pub fn count_sessions_with_conn(
+        conn: &Connection,
+        status: Option<&str>,
+        group_id: Option<&str>,
+    ) -> ChatV2Result<u32> {
+        let mut sql = String::from("SELECT COUNT(*) FROM chat_v2_sessions WHERE mode != 'agent'");
+        Self::append_visible_session_filter(&mut sql);
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(s) = status {
+            sql.push_str(" AND persist_status = ?");
+            params_vec.push(Box::new(s.to_string()));
+        }
+
+        if let Some(gid) = group_id {
+            if gid.is_empty() {
+                sql.push_str(" AND group_id IS NULL");
+            } else if gid == "*" {
+                sql.push_str(" AND group_id IS NOT NULL");
+            } else {
+                sql.push_str(" AND group_id = ?");
+                params_vec.push(Box::new(gid.to_string()));
+            }
+        }
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let count: u32 = conn.query_row(&sql, params_refs.as_slice(), |row| row.get(0))?;
+        Ok(count)
+    }
+
+    // ========================================================================
+    // 会话分组 CRUD
+    // ========================================================================
+
+    /// 创建分组
+    pub fn create_group_with_conn(conn: &Connection, group: &SessionGroup) -> ChatV2Result<()> {
+        let default_skill_ids_json = serde_json::to_string(&group.default_skill_ids)?;
+        let pinned_resource_ids_json = serde_json::to_string(&group.pinned_resource_ids)?;
+        let persist_status = match group.persist_status {
+            PersistStatus::Active => "active",
+            PersistStatus::Archived => "archived",
+            PersistStatus::Deleted => "deleted",
+        };
+
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_session_groups (
+                id, name, description, icon, color, system_prompt,
+                default_skill_ids_json, workspace_id, sort_order, persist_status,
+                created_at, updated_at, pinned_resource_ids_json,
+                default_runtime_root_id, preferred_project_root_path
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+            params![
+                group.id,
+                group.name,
+                group.description,
+                group.icon,
+                group.color,
+                group.system_prompt,
+                default_skill_ids_json,
+                group.workspace_id,
+                group.sort_order,
+                persist_status,
+                group.created_at.to_rfc3339(),
+                group.updated_at.to_rfc3339(),
+                pinned_resource_ids_json,
+                group.default_runtime_root_id,
+                group.preferred_project_root_path,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 获取分组
+    pub fn get_group_with_conn(
+        conn: &Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Option<SessionGroup>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
+                   workspace_id, sort_order, persist_status, created_at, updated_at,
+                   pinned_resource_ids_json, default_runtime_root_id, preferred_project_root_path
+            FROM chat_v2_session_groups
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let group = stmt
+            .query_row(params![group_id], Self::row_to_group)
+            .optional()?;
+        Ok(group)
+    }
+
+    /// 列出分组
+    pub fn list_groups_with_conn(
+        conn: &Connection,
+        status: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> ChatV2Result<Vec<SessionGroup>> {
+        let mut sql = String::from(
+            r#"
+                SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
+                       workspace_id, sort_order, persist_status, created_at, updated_at,
+                       pinned_resource_ids_json, default_runtime_root_id, preferred_project_root_path
+                FROM chat_v2_session_groups
+                WHERE 1=1
+            "#,
+        );
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(s) = status {
+            sql.push_str(" AND persist_status = ?");
+            params_vec.push(Box::new(s.to_string()));
+        }
+
+        if let Some(wid) = workspace_id {
+            sql.push_str(" AND workspace_id = ?");
+            params_vec.push(Box::new(wid.to_string()));
+        }
+
+        sql.push_str(" ORDER BY sort_order ASC, updated_at DESC");
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_group)?;
+        Ok(rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect())
+    }
+
+    /// 更新分组
+    pub fn update_group_with_conn(conn: &Connection, group: &SessionGroup) -> ChatV2Result<()> {
+        let default_skill_ids_json = serde_json::to_string(&group.default_skill_ids)?;
+        let pinned_resource_ids_json = serde_json::to_string(&group.pinned_resource_ids)?;
+        let persist_status = match group.persist_status {
+            PersistStatus::Active => "active",
+            PersistStatus::Archived => "archived",
+            PersistStatus::Deleted => "deleted",
+        };
+
+        conn.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET name = ?2, description = ?3, icon = ?4, color = ?5, system_prompt = ?6,
+                default_skill_ids_json = ?7, workspace_id = ?8, sort_order = ?9,
+                persist_status = ?10, updated_at = ?11, pinned_resource_ids_json = ?12,
+                default_runtime_root_id = ?13, preferred_project_root_path = ?14
+            WHERE id = ?1
+            "#,
+            params![
+                group.id,
+                group.name,
+                group.description,
+                group.icon,
+                group.color,
+                group.system_prompt,
+                default_skill_ids_json,
+                group.workspace_id,
+                group.sort_order,
+                persist_status,
+                group.updated_at.to_rfc3339(),
+                pinned_resource_ids_json,
+                group.default_runtime_root_id,
+                group.preferred_project_root_path,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 归档分组（同时归档其下活跃会话，保留 group_id 以便恢复课题归属）
+    pub fn archive_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let now = Utc::now().to_rfc3339();
+
+        tx.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET persist_status = 'archived', updated_at = ?2
+            WHERE id = ?1 AND persist_status != 'deleted'
+            "#,
+            params![group_id, now],
+        )?;
+
+        let sessions_to_archive = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT id, metadata_json
+                FROM chat_v2_sessions
+                WHERE group_id = ?1 AND persist_status = 'active'
+                "#,
+            )?;
+            let rows = stmt
+                .query_map(params![group_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        for (session_id, metadata_json) in sessions_to_archive {
+            let mut metadata = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| Value::Object(Default::default()));
+            if !metadata.is_object() {
+                metadata = Value::Object(Default::default());
+            }
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert(
+                    "groupArchivedBy".to_string(),
+                    serde_json::json!({
+                        "groupId": group_id,
+                        "archivedAt": now,
+                    }),
+                );
+            }
+            tx.execute(
+                r#"
+                UPDATE chat_v2_sessions
+                SET persist_status = 'archived', updated_at = ?2, metadata_json = ?3
+                WHERE id = ?1
+                "#,
+                params![session_id, now, metadata.to_string()],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 恢复分组（同时恢复其下被课题归档带走的会话）
+    pub fn restore_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let now = Utc::now().to_rfc3339();
+
+        tx.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET persist_status = 'active', updated_at = ?2
+            WHERE id = ?1 AND persist_status = 'archived'
+            "#,
+            params![group_id, now],
+        )?;
+
+        let archived_sessions = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT id, metadata_json, group_id
+                FROM chat_v2_sessions
+                WHERE persist_status = 'archived'
+                  AND (
+                    group_id = ?1
+                    OR metadata_json LIKE '%"groupArchivedBy"%'
+                  )
+                "#,
+            )?;
+            let rows = stmt
+                .query_map(params![group_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        for (session_id, metadata_json, existing_group_id) in archived_sessions {
+            let mut metadata = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| Value::Object(Default::default()));
+            if !metadata.is_object() {
+                metadata = Value::Object(Default::default());
+            }
+
+            let manually_archived = metadata.get("manuallyArchivedBy").is_some();
+            let marker_group_id = metadata
+                .get("groupArchivedBy")
+                .and_then(|marker| marker.get("groupId"))
+                .and_then(|value| value.as_str());
+            let should_restore = if existing_group_id.as_deref() == Some(group_id) {
+                marker_group_id
+                    .map(|archived_group_id| archived_group_id == group_id)
+                    // Compatibility for older builds/sync repairs that archived a topic and its
+                    // sessions before groupArchivedBy existed. Keep group_id, restore together.
+                    .unwrap_or(!manually_archived)
+            } else {
+                // Compatibility for broken older delete/restore flows that cleared group_id but
+                // left the group archive marker behind. Reattach below before restoring.
+                marker_group_id == Some(group_id)
+            };
+            if !should_restore {
+                continue;
+            }
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.remove("groupArchivedBy");
+            }
+            tx.execute(
+                r#"
+                UPDATE chat_v2_sessions
+                SET persist_status = 'active', updated_at = ?2, metadata_json = ?3, group_id = ?4
+                WHERE id = ?1
+                "#,
+                params![session_id, now, metadata.to_string(), group_id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 获取课题下的所有会话 ID（不区分会话状态）。
+    pub fn list_session_ids_for_group_with_conn(
+        conn: &Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id
+            FROM chat_v2_sessions
+            WHERE group_id = ?1
+            "#,
+        )?;
+        let rows = stmt
+            .query_map(params![group_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// 获取应随课题一起恢复/永久删除的会话 ID。
+    ///
+    /// 覆盖当前仍保留 group_id 的会话，也覆盖旧版本错误清空 group_id、
+    /// 但仍在 metadata 中保留 groupArchivedBy 标记的归档会话。
+    pub fn list_session_ids_owned_by_group_with_conn(
+        conn: &Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, metadata_json, group_id
+            FROM chat_v2_sessions
+            WHERE group_id = ?1
+               OR metadata_json LIKE '%"groupArchivedBy"%'
+            "#,
+        )?;
+        let rows = stmt
+            .query_map(params![group_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut session_ids = Vec::new();
+        for (session_id, metadata_json, existing_group_id) in rows {
+            if existing_group_id.as_deref() == Some(group_id) {
+                session_ids.push(session_id);
+                continue;
+            }
+
+            let marker_group_id = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .and_then(|metadata| {
+                    metadata
+                        .get("groupArchivedBy")
+                        .and_then(|marker| marker.get("groupId"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                });
+            if marker_group_id.as_deref() == Some(group_id) {
+                session_ids.push(session_id);
+            }
+        }
+
+        Ok(session_ids)
+    }
+
+    /// 永久删除已归档课题，并级联永久删除仍归属于该课题的会话。
+    pub fn permanently_delete_group_with_conn(
+        conn: &mut Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+
+        let status: String = tx
+            .query_row(
+                "SELECT persist_status FROM chat_v2_session_groups WHERE id = ?1",
+                params![group_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.to_string()))?;
+
+        if status == "active" {
+            return Err(ChatV2Error::Validation(
+                "Cannot permanently delete an active topic. Archive it first.".to_string(),
+            ));
+        }
+
+        let session_ids = Self::list_session_ids_owned_by_group_with_conn(&tx, group_id)?;
+
+        for session_id in &session_ids {
+            Self::delete_session_with_tx(&tx, session_id)?;
+        }
+
+        let rows_affected = tx.execute(
+            "DELETE FROM chat_v2_session_groups WHERE id = ?1",
+            params![group_id],
+        )?;
+        if rows_affected == 0 {
+            return Err(ChatV2Error::GroupNotFound(group_id.to_string()));
+        }
+
+        tx.commit()?;
+        Ok(session_ids)
+    }
+
+    /// 软删除分组（并将关联会话置为未分组）。普通归档请使用 archive_group_with_conn。
+    pub fn soft_delete_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        tx.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET persist_status = 'deleted', updated_at = ?2
+            WHERE id = ?1
+            "#,
+            params![group_id, Utc::now().to_rfc3339()],
+        )?;
+
+        tx.execute(
+            "UPDATE chat_v2_sessions SET group_id = NULL WHERE group_id = ?1",
+            params![group_id],
+        )?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 批量更新分组排序
+    pub fn reorder_groups_with_conn(
+        conn: &mut Connection,
+        group_ids: &[String],
+    ) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        for (idx, group_id) in group_ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE chat_v2_session_groups SET sort_order = ?2, updated_at = ?3 WHERE id = ?1",
+                params![group_id, idx as i32, Utc::now().to_rfc3339()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 移动会话到分组（group_id 为 None 表示移除分组）
+    pub fn update_session_group_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        group_id: Option<&str>,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET group_id = ?2, updated_at = ?3 WHERE id = ?1",
+            params![session_id, group_id, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// 将数据库行转换为 SessionGroup
+    fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<SessionGroup> {
+        let id: String = row.get(0)?;
+        let name: String = row.get(1)?;
+        let description: Option<String> = row.get(2)?;
+        let icon: Option<String> = row.get(3)?;
+        let color: Option<String> = row.get(4)?;
+        let system_prompt: Option<String> = row.get(5)?;
+        let default_skill_ids_json: Option<String> = row.get(6)?;
+        let workspace_id: Option<String> = row.get(7)?;
+        let sort_order: i32 = row.get(8)?;
+        let persist_status_str: String = row.get(9)?;
+        let created_at_str: String = row.get(10)?;
+        let updated_at_str: String = row.get(11)?;
+        let pinned_resource_ids_json: Option<String> = row.get(12).unwrap_or(None);
+        let default_runtime_root_id: Option<String> = row.get(13).unwrap_or(None);
+        let preferred_project_root_path: Option<String> = row.get(14).unwrap_or(None);
+
+        let persist_status = match persist_status_str.as_str() {
+            "active" => PersistStatus::Active,
+            "archived" => PersistStatus::Archived,
+            "deleted" => PersistStatus::Deleted,
+            _ => PersistStatus::Active,
+        };
+
+        // 🔒 审计修复: row_to_group 也使用 UNIX_EPOCH fallback（与 row_to_session_full 一致）
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|e| {
+                log::warn!("[ChatV2Repo] row_to_group: Failed to parse created_at '{}': {}, using epoch fallback", created_at_str, e);
+                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+            });
+
+        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|e| {
+                log::warn!("[ChatV2Repo] row_to_group: Failed to parse updated_at '{}': {}, using epoch fallback", updated_at_str, e);
+                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+            });
+
+        let default_skill_ids: Vec<String> = default_skill_ids_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
+        let pinned_resource_ids: Vec<String> = pinned_resource_ids_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
+        Ok(SessionGroup {
+            id,
+            name,
+            description,
+            icon,
+            color,
+            system_prompt,
+            default_skill_ids,
+            pinned_resource_ids,
+            workspace_id,
+            default_runtime_root_id,
+            preferred_project_root_path,
+            sort_order,
+            persist_status,
+            created_at,
+            updated_at,
+        })
+    }
+
+    /// 🆕 2026-01-20: 列出 Worker 会话（mode='agent'）
+    ///
+    /// 用于工作区面板显示 Agent 会话列表
+    ///
+    /// ## 参数
+    /// - `conn`: 数据库连接
+    /// - `workspace_id`: 可选的工作区 ID 过滤（从 metadata_json 中提取）
+    /// - `limit`: 数量限制
+    pub fn list_agent_sessions_with_conn(
+        conn: &Connection,
+        workspace_id: Option<&str>,
+        limit: u32,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match workspace_id {
+            Some(wid) => (
+                r#"
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+                    FROM chat_v2_sessions
+                    WHERE mode = 'agent'
+                      AND persist_status = 'active'
+                      AND json_extract(metadata_json, '$.workspace_id') = ?1
+                    ORDER BY updated_at DESC
+                    LIMIT ?2
+                "#.to_string(),
+                vec![Box::new(wid.to_string()), Box::new(limit)]
+            ),
+            None => (
+                r#"
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+                    FROM chat_v2_sessions
+                    WHERE mode = 'agent' AND persist_status = 'active'
+                    ORDER BY updated_at DESC
+                    LIMIT ?1
+                "#.to_string(),
+                vec![Box::new(limit)]
+            ),
+        };
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_session_full)?;
+
+        let sessions: Vec<ChatSession> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        Ok(sessions)
+    }
+
+    /// 🆕 2026-01-20: 列出 Worker 会话（使用 ChatV2Database）
+    pub fn list_agent_sessions_v2(
+        db: &ChatV2Database,
+        workspace_id: Option<&str>,
+        limit: u32,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let conn = db.get_conn_safe()?;
+        Self::list_agent_sessions_with_conn(&conn, workspace_id, limit)
+    }
+
+    // ========================================================================
+    // 消息 CRUD
+    // ========================================================================
+
+    /// 创建消息
+    pub fn create_message(db: &Database, message: &ChatMessage) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_message_with_conn(&conn, message)
+    }
+
+    /// 创建消息（使用现有连接）
+    pub fn create_message_with_conn(conn: &Connection, message: &ChatMessage) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Creating message: id={}, session_id={}",
+            message.id, message.session_id
+        );
+
+        let block_ids_json = serde_json::to_string(&message.block_ids)?;
+        let meta_json = message
+            .meta
+            .as_ref()
+            .map(|v| serde_json::to_string(&v.normalized_for_storage()))
+            .transpose()?;
+        let attachments_json = message
+            .attachments
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::normalized_for_storage).collect();
+                let raw = serde_json::to_string(&sanitized)?;
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut sanitized,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
+        let shared_context_json = message
+            .shared_context
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let role_str = match message.role {
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+        };
+
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            ON CONFLICT(id) DO UPDATE SET
+                session_id = excluded.session_id,
+                role = excluded.role,
+                block_ids_json = excluded.block_ids_json,
+                timestamp = excluded.timestamp,
+                persistent_stable_id = excluded.persistent_stable_id,
+                parent_id = excluded.parent_id,
+                supersedes = excluded.supersedes,
+                meta_json = excluded.meta_json,
+                attachments_json = excluded.attachments_json,
+                active_variant_id = excluded.active_variant_id,
+                variants_json = excluded.variants_json,
+                shared_context_json = excluded.shared_context_json
+            "#,
+            params![
+                message.id,
+                message.session_id,
+                role_str,
+                block_ids_json,
+                message.timestamp,
+                message.persistent_stable_id,
+                message.parent_id,
+                message.supersedes,
+                meta_json,
+                attachments_json,
+                message.active_variant_id,
+                variants_json,
+                shared_context_json,
+            ],
+        )?;
+
+        debug!("[ChatV2::Repo] Message created: {}", message.id);
+        Ok(())
+    }
+
+    /// 获取消息
+    pub fn get_message(db: &Database, message_id: &str) -> ChatV2Result<Option<ChatMessage>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_message_with_conn(&conn, message_id)
+    }
+
+    /// 获取消息（使用现有连接）
+    pub fn get_message_with_conn(
+        conn: &Connection,
+        message_id: &str,
+    ) -> ChatV2Result<Option<ChatMessage>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let message = stmt
+            .query_row(params![message_id], Self::row_to_message)
+            .optional()?;
+
+        Ok(message)
+    }
+
+    /// 获取会话的所有消息
+    pub fn get_session_messages(db: &Database, session_id: &str) -> ChatV2Result<Vec<ChatMessage>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_messages_with_conn(&conn, session_id)
+    }
+
+    /// 获取会话的所有消息（使用现有连接）
+    pub fn get_session_messages_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<ChatMessage>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+            ORDER BY timestamp ASC, rowid ASC
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![session_id], Self::row_to_message)?;
+        let messages: Vec<ChatMessage> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        Ok(messages)
+    }
+
+    /// Lightweight ordered keys for compaction boundary selection. Large metadata,
+    /// attachments and variants are materialized only after choosing the history window.
+    pub(crate) fn get_session_message_ids_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM chat_v2_messages WHERE session_id = ?1 ORDER BY timestamp ASC, rowid ASC",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            match row {
+                Ok(id) => ids.push(id),
+                Err(error) => log::warn!("[ChatV2Repo] Skipping malformed message id: {}", error),
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Hydrate selected messages in the caller's existing (timestamp, rowid) order.
+    pub(crate) fn get_messages_by_ids_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        message_ids: &[String],
+    ) -> ChatV2Result<Vec<ChatMessage>> {
+        let mut messages = std::collections::HashMap::new();
+        // Stay below SQLite's conservative bind-parameter limit.
+        for chunk in message_ids.chunks(400) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id,
+                        parent_id, supersedes, meta_json, attachments_json, active_variant_id,
+                        variants_json, shared_context_json
+                 FROM chat_v2_messages WHERE session_id = ? AND id IN ({placeholders})"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let parameters = std::iter::once(session_id).chain(chunk.iter().map(String::as_str));
+            let rows = stmt.query_map(params_from_iter(parameters), Self::row_to_message)?;
+            for row in rows {
+                match row {
+                    Ok(message) => {
+                        messages.insert(message.id.clone(), message);
+                    }
+                    Err(error) => {
+                        log::warn!("[ChatV2Repo] Skipping malformed history message: {}", error)
+                    }
+                }
+            }
+        }
+        Ok(message_ids
+            .iter()
+            .filter_map(|id| messages.remove(id))
+            .collect())
+    }
+
+    /// Load one page of messages and all blocks belonging to that page.
+    ///
+    /// Pagination is applied by SQLite before message/block materialization so
+    /// callers never have to load an entire long-running session just to read
+    /// a small window. `page` is one-based and `role_filter`, when present,
+    /// uses the persisted `user` / `assistant` role values.
+    pub fn load_session_messages_page_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        page: u32,
+        page_size: u32,
+        role_filter: Option<&str>,
+    ) -> ChatV2Result<(Vec<ChatMessage>, Vec<MessageBlock>, u32)> {
+        let offset = u64::from(page.saturating_sub(1)) * u64::from(page_size);
+        Self::load_session_messages_window_with_conn(
+            conn,
+            session_id,
+            offset,
+            page_size,
+            role_filter,
+        )
+    }
+
+    /// 与 `load_session_messages_page_with_conn` 等价，但接受任意行偏移量
+    /// （offset-based，非页对齐），供 `chat_v2_load_messages_page` 命令做
+    /// 移动端渐进式历史补页。返回 `(messages, blocks, total)`，消息按时间正序。
+    pub fn load_session_messages_window_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        offset: u64,
+        limit: u32,
+        role_filter: Option<&str>,
+    ) -> ChatV2Result<(Vec<ChatMessage>, Vec<MessageBlock>, u32)> {
+        let total: u32 = conn.query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+              AND (?2 IS NULL OR role = ?2)
+            "#,
+            params![session_id, role_filter],
+            |row| row.get(0),
+        )?;
+
+        let page_size = limit;
+        let mut message_stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id,
+                   parent_id, supersedes, meta_json, attachments_json, active_variant_id,
+                   variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+              AND (?2 IS NULL OR role = ?2)
+            ORDER BY timestamp ASC, rowid ASC
+            LIMIT ?3 OFFSET ?4
+            "#,
+        )?;
+        let message_rows = message_stmt.query_map(
+            params![session_id, role_filter, page_size, offset],
+            Self::row_to_message,
+        )?;
+        let messages: Vec<ChatMessage> = message_rows
+            .filter_map(|row| match row {
+                Ok(message) => Some(message),
+                Err(error) => {
+                    log::warn!(
+                        "[ChatV2Repo] Skipping malformed paged message row: {}",
+                        error
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        let mut block_stmt = conn.prepare(
+            r#"
+            SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
+                   b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+            FROM chat_v2_blocks b
+            INNER JOIN (
+                SELECT id, timestamp, rowid AS message_rowid
+                FROM chat_v2_messages
+                WHERE session_id = ?1
+                  AND (?2 IS NULL OR role = ?2)
+                ORDER BY timestamp ASC, rowid ASC
+                LIMIT ?3 OFFSET ?4
+            ) page_messages ON b.message_id = page_messages.id
+            ORDER BY page_messages.timestamp ASC, page_messages.message_rowid ASC,
+                     b.block_index ASC
+            "#,
+        )?;
+        let block_rows = block_stmt.query_map(
+            params![session_id, role_filter, page_size, offset],
+            Self::row_to_block,
+        )?;
+        let blocks: Vec<MessageBlock> = block_rows
+            .filter_map(|row| match row {
+                Ok(block) => Some(block),
+                Err(error) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed paged block row: {}", error);
+                    None
+                }
+            })
+            .collect();
+
+        Ok((messages, blocks, total))
+    }
+
+    /// 更新消息
+    pub fn update_message(db: &Database, message: &ChatMessage) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_with_conn(&conn, message)
+    }
+
+    /// 更新消息（使用现有连接）
+    pub fn update_message_with_conn(conn: &Connection, message: &ChatMessage) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Updating message: {}", message.id);
+
+        let block_ids_json = serde_json::to_string(&message.block_ids)?;
+        let meta_json = message
+            .meta
+            .as_ref()
+            .map(|v| serde_json::to_string(&v.normalized_for_storage()))
+            .transpose()?;
+        let attachments_json = message
+            .attachments
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::normalized_for_storage).collect();
+                let raw = serde_json::to_string(&sanitized)?;
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut sanitized,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
+        let shared_context_json = message
+            .shared_context
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let rows_affected = conn.execute(
+            r#"
+            UPDATE chat_v2_messages
+            SET block_ids_json = ?2, meta_json = ?3, attachments_json = ?4, parent_id = ?5, supersedes = ?6, active_variant_id = ?7, variants_json = ?8, shared_context_json = ?9
+            WHERE id = ?1
+            "#,
+            params![
+                message.id,
+                block_ids_json,
+                meta_json,
+                attachments_json,
+                message.parent_id,
+                message.supersedes,
+                message.active_variant_id,
+                variants_json,
+                shared_context_json,
+            ],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message.id.clone()));
+        }
+
+        debug!("[ChatV2::Repo] Message updated: {}", message.id);
+        Ok(())
+    }
+
+    /// 删除消息（级联删除块）
+    pub fn delete_message(db: &Database, message_id: &str) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_message_with_conn(&conn, message_id)
+    }
+
+    /// 删除消息（使用现有连接）
+    pub fn delete_message_with_conn(conn: &Connection, message_id: &str) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Deleting message: {}", message_id);
+
+        // 级联删除由外键约束自动处理（ON DELETE CASCADE）
+        let rows_affected = conn.execute(
+            "DELETE FROM chat_v2_messages WHERE id = ?1",
+            params![message_id],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message_id.to_string()));
+        }
+
+        debug!(
+            "[ChatV2::Repo] Message deleted with cascade: {}",
+            message_id
+        );
+        Ok(())
+    }
+
+    fn row_to_message(row: &rusqlite::Row) -> rusqlite::Result<ChatMessage> {
+        let id: String = row.get(0)?;
+        let session_id: String = row.get(1)?;
+        let role_str: String = row.get(2)?;
+        let block_ids_json: String = row.get(3)?;
+        let timestamp: i64 = row.get(4)?;
+        let persistent_stable_id: Option<String> = row.get(5)?;
+        let parent_id: Option<String> = row.get(6)?;
+        let supersedes: Option<String> = row.get(7)?;
+        let meta_json: Option<String> = row.get(8)?;
+        let attachments_json: Option<String> = row.get(9)?;
+        let active_variant_id: Option<String> = row.get(10)?;
+        let variants_json: Option<String> = row.get(11)?;
+        let shared_context_json: Option<String> = row.get(12)?;
+
+        let role = match role_str.as_str() {
+            "user" => MessageRole::User,
+            "assistant" => MessageRole::Assistant,
+            _ => MessageRole::User,
+        };
+
+        let block_ids: Vec<String> = serde_json::from_str(&block_ids_json).unwrap_or_else(|e| {
+            note_message_json_parse_failure("block_ids_json", &id, &e);
+            Vec::new()
+        });
+
+        let meta: Option<MessageMeta> = meta_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    note_message_json_parse_failure("meta_json", &id, &e);
+                    e
+                })
+                .ok()
+                .map(|meta: MessageMeta| meta.normalized_for_storage())
+        });
+
+        let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    note_message_json_parse_failure("attachments_json", &id, &e);
+                    e
+                })
+                .ok()
+        });
+
+        let variants: Option<Vec<Variant>> = variants_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    note_message_json_parse_failure("variants_json", &id, &e);
+                    e
+                })
+                .ok()
+                .map(|variants: Vec<Variant>| {
+                    variants
+                        .into_iter()
+                        .map(|variant| variant.normalized_for_storage())
+                        .collect()
+                })
+        });
+
+        let shared_context: Option<SharedContext> = shared_context_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    note_message_json_parse_failure("shared_context_json", &id, &e);
+                    e
+                })
+                .ok()
+        });
+
+        Ok(ChatMessage {
+            id,
+            session_id,
+            role,
+            block_ids,
+            timestamp,
+            persistent_stable_id,
+            parent_id,
+            supersedes,
+            meta,
+            attachments,
+            active_variant_id,
+            variants,
+            shared_context,
+        })
+    }
+
+    // ========================================================================
+    // 块 CRUD
+    // ========================================================================
+
+    /// 创建块
+    pub fn create_block(db: &Database, block: &MessageBlock) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_block_with_conn(&conn, block)
+    }
+
+    /// 创建块（使用现有连接）
+    pub fn create_block_with_conn(conn: &Connection, block: &MessageBlock) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Creating block: id={}, message_id={}, type={}",
+            block.id, block.message_id, block.block_type
+        );
+
+        let tool_input_json = block
+            .tool_input
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let tool_output_json = block
+            .tool_output
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let citations_json = block
+            .citations
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            ON CONFLICT(id) DO UPDATE SET
+                message_id = excluded.message_id,
+                block_type = excluded.block_type,
+                status = excluded.status,
+                block_index = excluded.block_index,
+                content = excluded.content,
+                tool_name = excluded.tool_name,
+                tool_input_json = excluded.tool_input_json,
+                tool_output_json = excluded.tool_output_json,
+                citations_json = excluded.citations_json,
+                error = excluded.error,
+                started_at = excluded.started_at,
+                ended_at = excluded.ended_at,
+                first_chunk_at = excluded.first_chunk_at
+            "#,
+            params![
+                block.id,
+                block.message_id,
+                block.block_type,
+                block.status,
+                block.block_index,
+                block.content,
+                block.tool_name,
+                tool_input_json,
+                tool_output_json,
+                citations_json,
+                block.error,
+                block.started_at,
+                block.ended_at,
+                block.first_chunk_at,
+            ],
+        )?;
+
+        debug!("[ChatV2::Repo] Block created: {}", block.id);
+        Ok(())
+    }
+
+    /// 批量创建/更新块（单事务落盘，供流式管线批量落块）
+    ///
+    /// ## 语义
+    /// - 与 `create_block_with_conn` 相同的 upsert 语义（`ON CONFLICT(id) DO UPDATE`）。
+    /// - 整批以 SAVEPOINT 包裹：中途失败整体回滚，不留半截数据；
+    ///   可安全嵌套在调用方已开启的事务中。
+    /// - 复用同一条预编译语句，避免逐块重新解析 SQL；autocommit 连接上
+    ///   整批只做一次 fsync，显著优于逐块 `create_block_with_conn`。
+    pub fn create_blocks_batch_with_conn(
+        conn: &Connection,
+        blocks: &[MessageBlock],
+    ) -> ChatV2Result<()> {
+        if blocks.is_empty() {
+            return Ok(());
+        }
+        debug!(
+            "[ChatV2::Repo] Creating {} blocks in one batch (first={})",
+            blocks.len(),
+            blocks[0].id
+        );
+
+        conn.execute_batch("SAVEPOINT create_blocks_batch")?;
+        let result = (|| -> ChatV2Result<()> {
+            let mut stmt = conn.prepare(
+                r#"
+                INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                ON CONFLICT(id) DO UPDATE SET
+                    message_id = excluded.message_id,
+                    block_type = excluded.block_type,
+                    status = excluded.status,
+                    block_index = excluded.block_index,
+                    content = excluded.content,
+                    tool_name = excluded.tool_name,
+                    tool_input_json = excluded.tool_input_json,
+                    tool_output_json = excluded.tool_output_json,
+                    citations_json = excluded.citations_json,
+                    error = excluded.error,
+                    started_at = excluded.started_at,
+                    ended_at = excluded.ended_at,
+                    first_chunk_at = excluded.first_chunk_at
+                "#,
+            )?;
+
+            for block in blocks {
+                let tool_input_json = block
+                    .tool_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                let tool_output_json = block
+                    .tool_output
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                let citations_json = block
+                    .citations
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+
+                stmt.execute(params![
+                    block.id,
+                    block.message_id,
+                    block.block_type,
+                    block.status,
+                    block.block_index,
+                    block.content,
+                    block.tool_name,
+                    tool_input_json,
+                    tool_output_json,
+                    citations_json,
+                    block.error,
+                    block.started_at,
+                    block.ended_at,
+                    block.first_chunk_at,
+                ])?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT create_blocks_batch")?;
+                debug!("[ChatV2::Repo] Batch created {} blocks", blocks.len());
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT create_blocks_batch; RELEASE SAVEPOINT create_blocks_batch",
+                );
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量创建/更新块（使用 ChatV2Database）
+    pub fn create_blocks_batch_v2(
+        db: &ChatV2Database,
+        blocks: &[MessageBlock],
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_blocks_batch_with_conn(&conn, blocks)
+    }
+
+    /// 获取块
+    pub fn get_block(db: &Database, block_id: &str) -> ChatV2Result<Option<MessageBlock>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_block_with_conn(&conn, block_id)
+    }
+
+    /// 获取块（使用现有连接）
+    pub fn get_block_with_conn(
+        conn: &Connection,
+        block_id: &str,
+    ) -> ChatV2Result<Option<MessageBlock>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at
+            FROM chat_v2_blocks
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let block = stmt
+            .query_row(params![block_id], Self::row_to_block)
+            .optional()?;
+
+        Ok(block)
+    }
+
+    /// 获取消息的所有块
+    pub fn get_message_blocks(db: &Database, message_id: &str) -> ChatV2Result<Vec<MessageBlock>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_message_blocks_with_conn(&conn, message_id)
+    }
+
+    /// 获取消息的所有块（使用现有连接）
+    pub fn get_message_blocks_with_conn(
+        conn: &Connection,
+        message_id: &str,
+    ) -> ChatV2Result<Vec<MessageBlock>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at
+            FROM chat_v2_blocks
+            WHERE message_id = ?1
+            ORDER BY block_index ASC
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![message_id], Self::row_to_block)?;
+        let blocks: Vec<MessageBlock> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        Ok(blocks)
+    }
+
+    /// Batch the selected history window's blocks and optional replay sidecars.
+    /// Missing replay columns retain the legacy empty-sidecar fallback.
+    pub(crate) fn get_history_blocks_with_replay_with_conn(
+        conn: &Connection,
+        message_ids: &[String],
+    ) -> ChatV2Result<(
+        std::collections::HashMap<String, Vec<MessageBlock>>,
+        std::collections::HashMap<String, BlockReplayData>,
+    )> {
+        let mut blocks_by_message: std::collections::HashMap<String, Vec<MessageBlock>> =
+            std::collections::HashMap::new();
+        let mut replay_map = std::collections::HashMap::new();
+        let mut has_replay_columns = true;
+        for chunk in message_ids.chunks(400) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let base_columns = "id, message_id, block_type, status, block_index, content, tool_name,
+                tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at";
+            let sql = |with_replay: bool| {
+                format!(
+                    "SELECT {base_columns}{} FROM chat_v2_blocks
+                 WHERE message_id IN ({placeholders}) ORDER BY message_id, block_index ASC",
+                    if with_replay {
+                        ", llm_content, tool_call_id, round_text"
+                    } else {
+                        ""
+                    },
+                )
+            };
+            let mut stmt = match conn.prepare(&sql(has_replay_columns)) {
+                Ok(stmt) => stmt,
+                Err(error)
+                    if has_replay_columns && Self::is_missing_replay_column_error(&error) =>
+                {
+                    has_replay_columns = false;
+                    conn.prepare(&sql(false))?
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let rows = stmt.query_map(params_from_iter(chunk.iter()), |row| {
+                let block = Self::row_to_block(row)?;
+                // A malformed sidecar never discards an otherwise valid display block.
+                let replay = if has_replay_columns {
+                    (|| -> rusqlite::Result<BlockReplayData> {
+                        Ok(BlockReplayData {
+                            llm_content: row.get(14)?,
+                            tool_call_id: row.get(15)?,
+                            round_text: row.get(16)?,
+                        })
+                    })()
+                    .ok()
+                } else {
+                    None
+                };
+                Ok((block, replay))
+            })?;
+            for row in rows {
+                match row {
+                    Ok((block, replay)) => {
+                        if let Some(replay) = replay.filter(|data| !data.is_empty()) {
+                            replay_map.insert(block.id.clone(), replay);
+                        }
+                        blocks_by_message
+                            .entry(block.message_id.clone())
+                            .or_default()
+                            .push(block);
+                    }
+                    Err(error) => {
+                        log::warn!("[ChatV2Repo] Skipping malformed history block: {}", error)
+                    }
+                }
+            }
+        }
+        Ok((blocks_by_message, replay_map))
+    }
+
+    // ========================================================================
+    // V20260806 prompt_cache_replay_consistency 旁路三列（llm_content /
+    // tool_call_id / round_text）
+    //
+    // MessageBlock 结构体故意不加字段（避免全量 INSERT/SELECT 迁移面），
+    // 通过 targeted UPDATE / 独立 SELECT 读写。列不存在（迁移未跑的旧库）
+    // 时写入静默跳过、读取返回空——读侧回退旧的 `tc_{block_id}` 重建路径。
+    // ========================================================================
+
+    /// 判断错误是否为「重放三列不存在」（V20260806 迁移未应用的旧库）
+    fn is_missing_replay_column_error(err: &rusqlite::Error) -> bool {
+        err.to_string().contains("no such column")
+    }
+
+    /// 写入块的重放旁路数据（targeted UPDATE，只动三列）
+    ///
+    /// 列不存在时返回 Ok（跨轮重放退化为旧重建，不影响主保存事务）。
+    pub fn update_block_replay_with_conn(
+        conn: &Connection,
+        block_id: &str,
+        replay: &BlockReplayData,
+    ) -> ChatV2Result<()> {
+        if replay.is_empty() {
+            return Ok(());
+        }
+        let result = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET llm_content = ?2, tool_call_id = ?3, round_text = ?4
+            WHERE id = ?1
+            "#,
+            params![
+                block_id,
+                replay.llm_content,
+                replay.tool_call_id,
+                replay.round_text,
+            ],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => {
+                debug!(
+                    "[ChatV2::Repo] Replay columns missing (V20260806 not applied), skipping sidecar write for block {}",
+                    block_id
+                );
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// 读取一条消息全部块的重放旁路数据（block_id -> BlockReplayData）
+    ///
+    /// 列不存在时返回空表（调用方回退旧重建）；三列全 NULL 的块不进表。
+    pub fn get_block_replay_map_with_conn(
+        conn: &Connection,
+        message_id: &str,
+    ) -> ChatV2Result<std::collections::HashMap<String, BlockReplayData>> {
+        let mut stmt = match conn.prepare(
+            r#"
+            SELECT id, llm_content, tool_call_id, round_text
+            FROM chat_v2_blocks
+            WHERE message_id = ?1
+            "#,
+        ) {
+            Ok(stmt) => stmt,
+            Err(e) if Self::is_missing_replay_column_error(&e) => {
+                return Ok(std::collections::HashMap::new());
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let rows = stmt.query_map(params![message_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                BlockReplayData {
+                    llm_content: row.get(1)?,
+                    tool_call_id: row.get(2)?,
+                    round_text: row.get(3)?,
+                },
+            ))
+        })?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows.flatten() {
+            let (block_id, replay) = row;
+            if !replay.is_empty() {
+                map.insert(block_id, replay);
+            }
+        }
+        Ok(map)
+    }
+
+    /// 将源块的重放三列复制到目标块（分支/深拷贝路径专用）
+    ///
+    /// 深拷贝走 `MessageBlock` 结构体重建会静默丢掉三列（结构体没有这些
+    /// 字段），必须在 create 之后调用本方法补齐。列不存在时为 no-op。
+    pub fn copy_block_replay_with_conn(
+        conn: &Connection,
+        source_block_id: &str,
+        target_block_id: &str,
+    ) -> ChatV2Result<()> {
+        let result = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET llm_content = (SELECT s.llm_content FROM chat_v2_blocks s WHERE s.id = ?1),
+                tool_call_id = (SELECT s.tool_call_id FROM chat_v2_blocks s WHERE s.id = ?1),
+                round_text = (SELECT s.round_text FROM chat_v2_blocks s WHERE s.id = ?1)
+            WHERE id = ?2
+            "#,
+            params![source_block_id, target_block_id],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// 清空块的 `llm_content` 重放旁路列（显式失效旧 live 包装）
+    ///
+    /// 编辑重发等「正文语义改写」路径专用：`update_block_replay_with_conn`
+    /// 对全 NULL 载荷是 no-op（is_empty 早退），无法用来置 NULL。
+    /// 列不存在（V20260806 未迁移的旧库）时静默跳过。
+    pub fn clear_block_llm_content_with_conn(
+        conn: &Connection,
+        block_id: &str,
+    ) -> ChatV2Result<()> {
+        let result = conn.execute(
+            "UPDATE chat_v2_blocks SET llm_content = NULL WHERE id = ?1",
+            params![block_id],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// 更新块
+    pub fn update_block(db: &Database, block: &MessageBlock) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_block_with_conn(&conn, block)
+    }
+
+    /// 更新块（使用现有连接）
+    ///
+    /// V20260806 审视结论：`content` 变更会使 `llm_content`（该块 live 发送
+    /// 的完整包装文本）语义过期，本方法在同一条 UPDATE 中将其失效
+    /// （`content` 不变时保留）——覆盖编辑重发、`chat_v2_update_block_content`
+    /// 等所有正文改写路径。`tool_call_id` / `round_text` 不随本块 content
+    /// 派生（provider 工具身份 / 工具前助手正文），保持不动。
+    pub fn update_block_with_conn(conn: &Connection, block: &MessageBlock) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating block: id={}, status={}",
+            block.id, block.status
+        );
+
+        let tool_input_json = block
+            .tool_input
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let tool_output_json = block
+            .tool_output
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let citations_json = block
+            .citations
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let update_params = params![
+            block.id,
+            block.status,
+            block.content,
+            tool_input_json,
+            tool_output_json,
+            citations_json,
+            block.error,
+            block.started_at,
+            block.ended_at,
+            block.first_chunk_at,
+        ];
+
+        // SET 表达式引用的列取更新前的旧值：`content IS ?3` 即「旧正文 == 新正文」，
+        // 相等时保留 llm_content，变更时置 NULL（读侧回退裸文本/新编译包装）
+        let result = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET llm_content = CASE WHEN content IS ?3 THEN llm_content ELSE NULL END,
+                status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+            WHERE id = ?1
+            "#,
+            update_params,
+        );
+
+        let rows_affected = match result {
+            Ok(n) => n,
+            // 旧库无 V20260806 三列：回退到不含失效逻辑的原更新语句
+            Err(e) if Self::is_missing_replay_column_error(&e) => conn.execute(
+                r#"
+                UPDATE chat_v2_blocks
+                SET status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+                WHERE id = ?1
+                "#,
+                update_params,
+            )?,
+            Err(e) => return Err(e.into()),
+        };
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::BlockNotFound(block.id.clone()));
+        }
+
+        debug!("[ChatV2::Repo] Block updated: {}", block.id);
+        Ok(())
+    }
+
+    /// 删除块
+    pub fn delete_block(db: &Database, block_id: &str) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_block_with_conn(&conn, block_id)
+    }
+
+    /// 删除块（使用现有连接）
+    pub fn delete_block_with_conn(conn: &Connection, block_id: &str) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Deleting block: {}", block_id);
+
+        let rows_affected = conn.execute(
+            "DELETE FROM chat_v2_blocks WHERE id = ?1",
+            params![block_id],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::BlockNotFound(block_id.to_string()));
+        }
+
+        debug!("[ChatV2::Repo] Block deleted: {}", block_id);
+        Ok(())
+    }
+
+    fn row_to_block(row: &rusqlite::Row) -> rusqlite::Result<MessageBlock> {
+        let id: String = row.get(0)?;
+        let message_id: String = row.get(1)?;
+        let block_type: String = row.get(2)?;
+        let status: String = row.get(3)?;
+        let block_index: u32 = row.get(4)?;
+        let content: Option<String> = row.get(5)?;
+        let tool_name: Option<String> = row.get(6)?;
+        let tool_input_json: Option<String> = row.get(7)?;
+        let tool_output_json: Option<String> = row.get(8)?;
+        let citations_json: Option<String> = row.get(9)?;
+        let error: Option<String> = row.get(10)?;
+        let started_at: Option<i64> = row.get(11)?;
+        let ended_at: Option<i64> = row.get(12)?;
+        let first_chunk_at: Option<i64> = row.get(13)?;
+
+        let tool_input: Option<Value> = tool_input_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        let tool_output: Option<Value> = tool_output_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        let citations = citations_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        Ok(MessageBlock {
+            id,
+            message_id,
+            block_type,
+            status,
+            block_index,
+            content,
+            tool_name,
+            tool_input,
+            tool_output,
+            citations,
+            error,
+            started_at,
+            ended_at,
+            first_chunk_at,
+        })
+    }
+
+    // ========================================================================
+    // 批量加载
+    // ========================================================================
+
+    /// 批量获取会话的所有块（使用 JOIN 查询，一次查询获取所有块）
+    ///
+    /// ## 性能优化
+    /// 替代对每个消息单独查询块的 N 次查询方式，
+    /// 使用 JOIN 一次查询获取会话所有块，将 N+3 次查询降为 4 次。
+    pub fn get_session_blocks_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<MessageBlock>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
+                   b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+            FROM chat_v2_blocks b
+            INNER JOIN chat_v2_messages m ON b.message_id = m.id
+            WHERE m.session_id = ?1
+            ORDER BY m.timestamp ASC, COALESCE(b.first_chunk_at, b.started_at) ASC, b.block_index ASC
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![session_id], Self::row_to_block)?;
+        let blocks: Vec<MessageBlock> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        Ok(blocks)
+    }
+
+    /// 加载完整会话（包含会话、消息、块和状态）
+    pub fn load_session_full(db: &Database, session_id: &str) -> ChatV2Result<LoadSessionResponse> {
+        let conn = db.get_conn_safe()?;
+        Self::load_session_full_with_conn(&conn, session_id)
+    }
+
+    /// 加载完整会话（使用现有连接）
+    ///
+    /// ## 性能优化
+    /// 使用批量查询，将 N+3 次查询（N = 消息数）降为 4 次：
+    /// 1. 获取会话
+    /// 2. 获取所有消息
+    /// 3. 批量获取所有块（使用 JOIN）
+    /// 4. 获取会话状态
+    pub fn load_session_full_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        let t0 = Instant::now();
+        debug!("[ChatV2::Repo] Loading full session: {}", session_id);
+
+        // 1. 获取会话
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let t_session = t0.elapsed().as_millis();
+        debug!(
+            "[ChatV2::Repo] load_session_full_with_conn session fetched: {} ms",
+            t_session
+        );
+
+        // 2. 获取所有消息
+        let messages = Self::get_session_messages_with_conn(conn, session_id)?;
+        let t_messages = t0.elapsed().as_millis();
+        debug!(
+            "[ChatV2::Repo] load_session_full_with_conn messages fetched: {} ms (delta {} ms, count {})",
+            t_messages,
+            t_messages - t_session,
+            messages.len()
+        );
+
+        // 3. 批量获取所有块（性能优化：使用 JOIN 一次查询）
+        let blocks = Self::get_session_blocks_with_conn(conn, session_id)?;
+        let t_blocks = t0.elapsed().as_millis();
+        debug!(
+            "[ChatV2::Repo] load_session_full_with_conn blocks fetched: {} ms (delta {} ms, count {})",
+            t_blocks,
+            t_blocks - t_messages,
+            blocks.len()
+        );
+
+        // 4. 获取会话状态（可选）
+        let state = Self::load_session_state_with_conn(conn, session_id)?;
+        let t_state = t0.elapsed().as_millis();
+        debug!(
+            "[ChatV2::Repo] load_session_full_with_conn state fetched: {} ms (delta {} ms, has_state={})",
+            t_state,
+            t_state - t_blocks,
+            state.is_some()
+        );
+
+        info!(
+            "[ChatV2::Repo] Loaded full session: {} with {} messages and {} blocks (optimized batch query), total {} ms",
+            session_id,
+            messages.len(),
+            blocks.len(),
+            t0.elapsed().as_millis()
+        );
+
+        Ok(LoadSessionResponse {
+            session,
+            messages,
+            blocks,
+            state,
+            total_message_count: None,
+        })
+    }
+
+    /// 加载会话尾部数据（最近 tail_limit 条消息及其块）
+    ///
+    /// 用于首屏快速展示：长会话只回最近 N 条，前端在首帧后再分页补齐历史。
+    /// 尾窗同时受条数（tail_limit）与载荷体量（[`LOAD_SESSION_TAIL_BYTE_BUDGET`]）
+    /// 双重约束；两者都未触发时等价于全量加载（total_message_count 为 None）。
+    pub fn load_session_tail_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        Self::load_session_tail_with_budget(
+            conn,
+            session_id,
+            tail_limit,
+            LOAD_SESSION_TAIL_BYTE_BUDGET,
+        )
+    }
+
+    /// 计算体量预算下的尾窗条数（#469）。
+    ///
+    /// 只按条数截尾时，「消息不多但每条都很重」（Agent 模式：工具输出 + 技能
+    /// 快照）的会话一律落进全量路径，首屏 IPC 仍与会话总体量线性相关。这里
+    /// 从最新消息向前累加行内 JSON 列 + 所属块的持久化字节，超出预算即截断，
+    /// 但至少保留 [`LOAD_SESSION_TAIL_MIN_MESSAGES`] 条，保证最近一轮可见。
+    /// 字节数取自数据库原文（旧库重复行回读后还会再瘦身），只会偏保守。
+    fn tail_window_len_within_budget(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+        byte_budget: u64,
+    ) -> ChatV2Result<u32> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                COALESCE(LENGTH(m.meta_json), 0)
+                + COALESCE(LENGTH(m.variants_json), 0)
+                + COALESCE(LENGTH(m.attachments_json), 0)
+                + COALESCE(LENGTH(m.shared_context_json), 0)
+                + COALESCE((
+                    SELECT SUM(
+                        COALESCE(LENGTH(b.content), 0)
+                        + COALESCE(LENGTH(b.tool_input_json), 0)
+                        + COALESCE(LENGTH(b.tool_output_json), 0)
+                        + COALESCE(LENGTH(b.citations_json), 0)
+                    )
+                    FROM chat_v2_blocks b
+                    WHERE b.message_id = m.id
+                ), 0)
+            FROM chat_v2_messages m
+            WHERE m.session_id = ?1
+            ORDER BY m.timestamp DESC, m.rowid DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let sizes = stmt.query_map(params![session_id, tail_limit], |row| row.get::<_, i64>(0))?;
+
+        let mut taken: u32 = 0;
+        let mut used: u64 = 0;
+        for size in sizes {
+            let size = size?.max(0) as u64;
+            if taken >= LOAD_SESSION_TAIL_MIN_MESSAGES && used.saturating_add(size) > byte_budget {
+                break;
+            }
+            used = used.saturating_add(size);
+            taken += 1;
+        }
+        Ok(taken)
+    }
+
+    /// [`Self::load_session_tail_with_conn`] 的可注入预算版本（测试用小预算覆盖截断路径）。
+    pub(crate) fn load_session_tail_with_budget(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+        byte_budget: u64,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        let t0 = Instant::now();
+
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+
+        let total_count: u32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_v2_messages WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+
+        let tail_limit =
+            Self::tail_window_len_within_budget(conn, session_id, tail_limit, byte_budget)?;
+
+        if total_count <= tail_limit {
+            // 无需分块，走全量路径（total_message_count 留空表示全量）
+            return Self::load_session_full_with_conn(conn, session_id);
+        }
+
+        // 最近 tail_limit 条消息（倒序取，再反转恢复时间正序）
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+            ORDER BY timestamp DESC, rowid DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id, tail_limit], Self::row_to_message)?;
+        let mut messages: Vec<ChatMessage> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        messages.reverse();
+
+        // 仅取尾部消息的块（子查询与消息查询保持同一截断口径）
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
+                   b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+            FROM chat_v2_blocks b
+            INNER JOIN (
+                SELECT id, timestamp, rowid AS message_rowid
+                FROM chat_v2_messages
+                WHERE session_id = ?1
+                ORDER BY timestamp DESC, rowid DESC
+                LIMIT ?2
+            ) m ON b.message_id = m.id
+            ORDER BY m.timestamp ASC, COALESCE(b.first_chunk_at, b.started_at) ASC, b.block_index ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id, tail_limit], Self::row_to_block)?;
+        let blocks: Vec<MessageBlock> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+
+        let state = Self::load_session_state_with_conn(conn, session_id)?;
+
+        info!(
+            "[ChatV2::Repo] Loaded session tail: {} with {}/{} messages and {} blocks, total {} ms",
+            session_id,
+            messages.len(),
+            total_count,
+            blocks.len(),
+            t0.elapsed().as_millis()
+        );
+
+        Ok(LoadSessionResponse {
+            session,
+            messages,
+            blocks,
+            state,
+            total_message_count: Some(total_count),
+        })
+    }
+
+    // ========================================================================
+    // 会话状态
+    // ========================================================================
+
+    /// 保存会话状态
+    pub fn save_session_state(
+        db: &Database,
+        session_id: &str,
+        state: &SessionState,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::save_session_state_with_conn(&conn, session_id, state)
+    }
+
+    /// 保存会话状态（使用现有连接）
+    pub fn save_session_state_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        state: &SessionState,
+    ) -> ChatV2Result<()> {
+        debug!("[ChatV2::Repo] Saving session state: {}", session_id);
+
+        let chat_params_json = state
+            .chat_params
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let features_json = state
+            .features
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let mode_state_json = state
+            .mode_state
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let panel_states_json = state
+            .panel_states
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_session_state (session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, skill_state_json, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(session_id) DO UPDATE SET
+                chat_params_json = excluded.chat_params_json,
+                features_json = excluded.features_json,
+                mode_state_json = excluded.mode_state_json,
+                input_value = excluded.input_value,
+                panel_states_json = excluded.panel_states_json,
+                pending_context_refs_json = excluded.pending_context_refs_json,
+                loaded_skill_ids_json = excluded.loaded_skill_ids_json,
+                active_skill_ids_json = excluded.active_skill_ids_json,
+                skill_state_json = excluded.skill_state_json,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                session_id,
+                chat_params_json,
+                features_json,
+                mode_state_json,
+                state.input_value,
+                panel_states_json,
+                state.pending_context_refs_json,
+                state.loaded_skill_ids_json,
+                state.active_skill_ids_json,
+                state.skill_state_json,
+                state.updated_at,
+            ],
+        )?;
+
+        debug!("[ChatV2::Repo] Session state saved: {}", session_id);
+        Ok(())
+    }
+
+    /// 加载会话状态
+    pub fn load_session_state(
+        db: &Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<SessionState>> {
+        let conn = db.get_conn_safe()?;
+        Self::load_session_state_with_conn(&conn, session_id)
+    }
+
+    /// 加载会话状态（使用现有连接）
+    pub fn load_session_state_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<SessionState>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, skill_state_json, updated_at
+            FROM chat_v2_session_state
+            WHERE session_id = ?1
+            "#,
+        )?;
+
+        let state = stmt
+            .query_row(params![session_id], |row| {
+                let session_id: String = row.get(0)?;
+                let chat_params_json: Option<String> = row.get(1)?;
+                let features_json: Option<String> = row.get(2)?;
+                let mode_state_json: Option<String> = row.get(3)?;
+                let input_value: Option<String> = row.get(4)?;
+                let panel_states_json: Option<String> = row.get(5)?;
+                let pending_context_refs_json: Option<String> = row.get(6)?;
+                let loaded_skill_ids_json: Option<String> = row.get(7)?;
+                let active_skill_ids_json: Option<String> = row.get(8)?;
+                let skill_state_json: Option<String> = row.get(9)?;
+                let updated_at: String = row.get(10)?;
+
+                let chat_params: Option<ChatParams> = chat_params_json
+                    .as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+
+                let features = features_json
+                    .as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+
+                let mode_state: Option<Value> = mode_state_json
+                    .as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+
+                let panel_states: Option<PanelStates> = panel_states_json
+                    .as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+
+                Ok(SessionState {
+                    session_id,
+                    chat_params,
+                    features,
+                    mode_state,
+                    input_value,
+                    panel_states,
+                    pending_context_refs_json,
+                    loaded_skill_ids_json,
+                    active_skill_ids_json,
+                    skill_state_json,
+                    updated_at,
+                })
+            })
+            .optional()?;
+
+        Ok(state)
+    }
+
+    // ========================================================================
+    // 数据库迁移
+    // ========================================================================
+
+    /// 初始化 Chat V2 数据库表
+    /// 在应用启动时调用，确保表结构存在
+    ///
+    /// 注意：生产环境使用 data_governance 模块的 Refinery 迁移系统。
+    /// 此方法仅用于测试和紧急初始化场景。
+    pub fn initialize_schema(conn: &Connection) -> ChatV2Result<()> {
+        info!("[ChatV2::Repo] Initializing Chat V2 schema...");
+
+        // 读取并执行迁移 SQL（使用 Refinery 格式的初始化迁移）
+        let migration_sql = include_str!("../../../../migrations/chat_v2/V20260130__init.sql");
+
+        conn.execute_batch(migration_sql)?;
+
+        info!("[ChatV2::Repo] Chat V2 schema initialized successfully");
+        Ok(())
+    }
+
+    /// 检查 Chat V2 表是否存在
+    pub fn check_schema_exists(conn: &Connection) -> ChatV2Result<bool> {
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chat_v2_sessions'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    // ========================================================================
+    // ChatV2Database 便捷方法（推荐使用）
+    // ========================================================================
+
+    /// 创建会话（使用 ChatV2Database）
+    pub fn create_session_v2(db: &ChatV2Database, session: &ChatSession) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_session_with_conn(&conn, session)
+    }
+
+    /// 获取会话（使用 ChatV2Database）
+    pub fn get_session_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ChatSession>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_with_conn(&conn, session_id)
+    }
+
+    /// 更新会话（使用 ChatV2Database）
+    pub fn update_session_v2(db: &ChatV2Database, session: &ChatSession) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_session_with_conn(&conn, session)
+    }
+
+    /// Read Ask/Plan/Craft authority state from session metadata (defaults to Craft).
+    pub fn get_session_authority_state(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<SessionAuthorityState> {
+        let session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(SessionAuthorityState::from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// Persist authority mode (and clear plan when leaving Plan). Frontend-forged
+    /// mode is ignored — only this backend path updates session metadata.
+    pub fn set_session_authority_mode(
+        db: &ChatV2Database,
+        session_id: &str,
+        mode: AuthorityMode,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.authority_mode = mode;
+        if mode != AuthorityMode::Plan {
+            authority.plan = None;
+        }
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
+    pub fn set_session_permission_preset(
+        db: &ChatV2Database,
+        session_id: &str,
+        preset: crate::chat_v2::types::PermissionPreset,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.permission_preset = preset;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
+    /// Persist an approved/pending plan batch onto session metadata.
+    pub fn set_session_plan_state(
+        db: &ChatV2Database,
+        session_id: &str,
+        plan: Option<PlanAuthorityState>,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.plan = plan;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
+    /// Atomically consume an approved Plan binding. Exactly one concurrent
+    /// caller can transition the matching approval back to no-plan.
+    pub fn consume_session_plan_binding(
+        db: &ChatV2Database,
+        session_id: &str,
+        binding_key: &str,
+        now: DateTime<Utc>,
+    ) -> ChatV2Result<bool> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let mut session = Self::get_session_with_conn(&tx, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        let matches = authority.authority_mode == AuthorityMode::Plan
+            && authority
+                .plan
+                .as_ref()
+                .is_some_and(|plan| plan.is_active_for_binding(binding_key, now));
+        if !matches {
+            tx.commit()?;
+            return Ok(false);
+        }
+        authority.plan = None;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_with_conn(&tx, &session)?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// 🆕 P0 tools 会话冻结：读取 session.metadata 中持久化的基线
+    /// （`frozenToolSchemaOrder`，append-only 首见序工具名数组）。
+    ///
+    /// 桌面 App 重启后进程内存基线丢失，pipeline 内存 miss 时从这里恢复，
+    /// 保证同一 session 复用上一进程已发出的 tools 前缀字节序。
+    pub fn get_session_frozen_tool_schema_order(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_frozen_tool_schema_order_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_frozen_tool_schema_order` 的 `_with_conn` 版本。
+    pub fn get_session_frozen_tool_schema_order_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(frozen_tool_schema_order_from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// 🆕 P0 tools 会话冻结：把内存推进后的基线 append-only 合并进
+    /// session.metadata（IMMEDIATE 事务内读-合并-写，防止并发写回互相丢失）。
+    ///
+    /// merge 语义双重保证：
+    /// - 对 metadata 对象只 upsert `frozenToolSchemaOrder` 一个键，
+    ///   authority/plan/branchedFrom 等其他键原样保留；
+    /// - 对已持久化基线只按 `baseline` 顺序追加缺失名，绝不删除或重排
+    ///   已有条目（与内存合并同语义）。无新增时跳过写库。
+    pub fn merge_session_frozen_tool_schema_order(
+        db: &ChatV2Database,
+        session_id: &str,
+        baseline: &[String],
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::merge_session_frozen_tool_schema_order_with_conn(&tx, session_id, baseline)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `merge_session_frozen_tool_schema_order` 的 `_with_conn` 版本。
+    pub fn merge_session_frozen_tool_schema_order_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        baseline: &[String],
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut persisted = frozen_tool_schema_order_from_metadata(session.metadata.as_ref());
+        let persisted_len_before = persisted.len();
+        super::pipeline::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut persisted,
+            baseline,
+        );
+        // append-only 合并只会追加：长度不变即无新增，跳过写库（发送热路径
+        // 每个稳定窗口都会调用，避免无意义的行重写）。
+        if persisted.len() == persisted_len_before {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY.to_string(),
+                Value::Array(persisted.into_iter().map(Value::String).collect()),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at：该键是发送热路径的内部缓存状态，
+        // 不代表用户可见的会话更新，不应扰动会话列表排序。
+        Self::update_session_with_conn(conn, &session)
+    }
+
+    /// 🆕 P0 available_skills 会话快照：读取 session.metadata 中持久化的
+    /// 目录快照（`availableSkillsSnapshot`，首次生成后冻结的字符串）。
+    ///
+    /// 桌面 App 重启后前端内存快照丢失，session 加载时从这里恢复，保证
+    /// 同一 session 的 system 目录字节跨进程不变（provider prompt cache
+    /// 可能仍存活）。缺键返回 None（从未冻结，由前端首次生成时建立）。
+    pub fn get_session_available_skills_snapshot(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<String>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_available_skills_snapshot_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_available_skills_snapshot` 的 `_with_conn` 版本。
+    pub fn get_session_available_skills_snapshot_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<String>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(available_skills_snapshot_from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// 🆕 P0 available_skills 会话快照：把前端首次生成的目录快照冻结进
+    /// session.metadata（IMMEDIATE 事务内读-判-写，按代 first-write-wins）。
+    ///
+    /// - 已存在快照（含空串）且无待换代标记 → 保持不变并返回已冻结值
+    ///   （多窗口/竞争时持久化权威胜出，调用方应以返回值回灌内存）；
+    /// - 不存在 → 写入 `snapshot` 并返回它（第 0 代 first write，不写代号
+    ///   键，缺键即 0，与升级前字节行为一致）；
+    /// - 🆕 R4-#6 存在待换代标记（compaction 落盘声明，见
+    ///   `mark_session_available_skills_snapshot_stale_with_conn`）→ 本次
+    ///   写入是新代的 first write：覆盖快照、generation := pending 并清除
+    ///   标记。这是唯一允许覆盖已冻结快照的路径（显式换代，非静默覆盖）；
+    ///   新代内的后续竞争写回仍被 first-write-wins 拒绝。
+    ///
+    /// 对 metadata 对象只 upsert 目录快照/代号相关键，authority/plan/
+    /// frozenToolSchemaOrder 等其他键原样保留；故意不推进 updated_at
+    /// （内部缓存状态，不应扰动会话列表排序）。
+    pub fn freeze_session_available_skills_snapshot(
+        db: &ChatV2Database,
+        session_id: &str,
+        snapshot: &str,
+    ) -> ChatV2Result<String> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let effective =
+            Self::freeze_session_available_skills_snapshot_with_conn(&tx, session_id, snapshot)?;
+        tx.commit()?;
+        Ok(effective)
+    }
+
+    /// `freeze_session_available_skills_snapshot` 的 `_with_conn` 版本。
+    pub fn freeze_session_available_skills_snapshot_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        snapshot: &str,
+    ) -> ChatV2Result<String> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let generation =
+            available_skills_snapshot_generation_from_metadata(session.metadata.as_ref());
+        // 待换代代号必须严格大于当前代号才生效；脏数据（pending <= generation）
+        // 按无标记处理，维持 first-write-wins。
+        let effective_pending =
+            available_skills_snapshot_pending_generation_from_metadata(session.metadata.as_ref())
+                .filter(|pending| *pending > generation);
+        if let Some(existing) = available_skills_snapshot_from_metadata(session.metadata.as_ref()) {
+            if effective_pending.is_none() {
+                // first-write-wins（代内）：已冻结（含空串）绝不覆盖，返回持久化权威值。
+                return Ok(existing);
+            }
+            // 显式换代：compaction 已在落盘事务里声明待换代，本次写入
+            // 作为新代 first write 覆盖旧快照（唯一合法覆盖路径）。
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY.to_string(),
+                Value::String(snapshot.to_string()),
+            );
+            if let Some(pending) = effective_pending {
+                obj.insert(
+                    AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY.to_string(),
+                    Value::from(pending),
+                );
+                obj.remove(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY);
+            }
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)?;
+        Ok(snapshot.to_string())
+    }
+
+    /// 🆕 R4-#6：在 compaction 落盘事务内声明 available_skills 目录待换代。
+    ///
+    /// compaction 是零缓存成本的换代时机：摘要伪消息替换掉被压缩历史后，
+    /// provider prompt cache 中 system+tools 之后的前缀本就全部失效，此时
+    /// 让下一轮 system 目录按 live registry 重新生成，增量损失只剩 system
+    /// 段本身，而不换代则永远背着过期目录。
+    ///
+    /// 后端拿不到 live registry 目录字符串（registry 状态、requires 门控、
+    /// disableAutoInvoke 过滤与 `<available_skills>` XML 渲染都在前端
+    /// progressiveDisclosure.ts / skillRegistry），所以本函数**不重写快照
+    /// 本体**，只写显式换代标记 `availableSkillsSnapshotPendingGeneration`
+    /// （= 当前代号 + 1）。快照本体由前端下一次构建 system 时按 live
+    /// registry 重新生成，并经 `freeze_session_available_skills_snapshot`
+    /// 作为新代 first write 冻结（该原语见到有效标记才允许覆盖）。
+    ///
+    /// - 会话从未冻结过快照 → no-op 返回 None（缺键语义本就是「下次按
+    ///   live 建立」，无需换代）；
+    /// - 已有有效待换代标记 → 幂等返回既有 pending（前端消费前的多次
+    ///   compaction 折叠为一次换代，不重复 +1）；
+    /// - 只 merge 换代标记一个键，其他 metadata 键原样保留；故意不推进
+    ///   updated_at（同 freeze 原语）。
+    ///
+    /// 必须与 compaction 记录同事务提交（调用方传入事务连接），保证
+    /// 「压缩已落盘但目录未声明换代」或反之的半提交状态不可能出现。
+    pub fn mark_session_available_skills_snapshot_stale_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<u64>> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        if available_skills_snapshot_from_metadata(session.metadata.as_ref()).is_none() {
+            return Ok(None);
+        }
+        let generation =
+            available_skills_snapshot_generation_from_metadata(session.metadata.as_ref());
+        if let Some(pending) =
+            available_skills_snapshot_pending_generation_from_metadata(session.metadata.as_ref())
+                .filter(|pending| *pending > generation)
+        {
+            return Ok(Some(pending));
+        }
+        let target = generation.saturating_add(1);
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY.to_string(),
+                Value::from(target),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（内部缓存状态，同 freeze 原语）。
+        Self::update_session_with_conn(conn, &session)?;
+        Ok(Some(target))
+    }
+
+    /// 🆕 P0 microcompact 锚点：读取 session.metadata 中持久化的锚点
+    /// （`microcompactAnchor`）。
+    ///
+    /// 桌面 App 重启后进程内存锚点丢失，pipeline 内存 miss 时从这里恢复，
+    /// 保证同一 session 的 `eligible_user_turns` 跨进程不跳变（否则中间轮
+    /// 工具输出突然占位符化，历史头部字节变、prompt cache 前缀失效）。
+    /// 缺键返回 None（进程内首次观察语义，按当前历史批量建锚）。
+    pub(crate) fn get_session_microcompact_anchor(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<MicrocompactAnchor>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_microcompact_anchor_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_microcompact_anchor` 的 `_with_conn` 版本。
+    pub(crate) fn get_session_microcompact_anchor_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<MicrocompactAnchor>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(microcompact_anchor_from_metadata(session.metadata.as_ref()))
+    }
+
+    /// 🆕 P0 microcompact 锚点：把推进后的锚点写进 session.metadata
+    /// （IMMEDIATE 事务内读-比-写）。
+    ///
+    /// 锚点只随 compaction 事件推进，写库频率天然很低；持久化值与入参
+    /// 一致时跳过写库。对 metadata 对象只 upsert `microcompactAnchor`
+    /// 一个键，其他键原样保留；故意不推进 updated_at。
+    pub(crate) fn set_session_microcompact_anchor(
+        db: &ChatV2Database,
+        session_id: &str,
+        anchor: &MicrocompactAnchor,
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::set_session_microcompact_anchor_with_conn(&tx, session_id, anchor)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `set_session_microcompact_anchor` 的 `_with_conn` 版本。
+    pub(crate) fn set_session_microcompact_anchor_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        anchor: &MicrocompactAnchor,
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        if microcompact_anchor_from_metadata(session.metadata.as_ref()).as_ref() == Some(anchor) {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                MICROCOMPACT_ANCHOR_METADATA_KEY.to_string(),
+                microcompact_anchor_to_value(anchor),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)
+    }
+
+    /// 🆕 P1 tools 前缀代际：读取 session.metadata 中持久化的代际快照
+    /// （`toolFacePrefixGeneration` + `frozenToolSchemaOrder` + 可选
+    /// `toolSchemaDigest` 三键合成，见 `tool_face_prefix_from_metadata`）。
+    ///
+    /// 桌面 App 重启后进程内存基线丢失，pipeline 内存 miss 时从这里恢复
+    /// `(g, B_g, digest)`。缺代际键的旧会话降级为 generation=0、order 回退
+    /// `frozenToolSchemaOrder`、digest None；三键全缺返回 None（会话首轮
+    /// 语义，由首次 freeze 建立基线）。
+    pub fn get_session_tool_face_prefix(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ToolFacePrefixSnapshot>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_tool_face_prefix_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_tool_face_prefix` 的 `_with_conn` 版本。
+    pub fn get_session_tool_face_prefix_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ToolFacePrefixSnapshot>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(tool_face_prefix_from_metadata(session.metadata.as_ref()))
+    }
+
+    /// 🆕 P1 tools 前缀代际：把收敛后的代际快照推进到 session.metadata
+    /// （IMMEDIATE 事务内读-合并-写，防止并发写回互相丢失）。
+    ///
+    /// 同事务原子性：`toolFacePrefixGeneration` 与 `frozenToolSchemaOrder`
+    /// （+ 快照携带 digest 时的 `toolSchemaDigest`）在同一个事务内一起
+    /// 落库——旧读路径 `get_session_frozen_tool_schema_order` 继续看到
+    /// 同步推进的序，绝无"代号新、序旧"的半提交窗口。
+    ///
+    /// 合并语义：
+    /// - order 走 append-only 合并（只按快照顺序追加缺失名，绝不删除
+    ///   或重排已持久化条目，与 `merge_session_frozen_tool_schema_order`
+    ///   同原语）；
+    /// - generation 只前进不回退（并发 advance 竞争时以更大代号为准）；
+    /// - digest 仅在快照携带时更新，快照无 digest 不抹掉已持久化值；
+    /// - 三者皆无变化时跳过写库（发送热路径高频调用，避免无意义行重写）。
+    ///
+    /// 对 metadata 对象只 merge 上述键，authority/plan/branchedFrom/
+    /// microcompactAnchor 等其他键原样保留；故意不推进 updated_at
+    /// （内部缓存状态，不应扰动会话列表排序，同 frozenToolSchemaOrder）。
+    pub fn advance_session_tool_face_prefix(
+        db: &ChatV2Database,
+        session_id: &str,
+        snapshot: &ToolFacePrefixSnapshot,
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::advance_session_tool_face_prefix_with_conn(&tx, session_id, snapshot)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `advance_session_tool_face_prefix` 的 `_with_conn` 版本。
+    pub fn advance_session_tool_face_prefix_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        snapshot: &ToolFacePrefixSnapshot,
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let persisted = tool_face_prefix_from_metadata(session.metadata.as_ref());
+        let persisted_generation = persisted.as_ref().map_or(0, |snap| snap.generation);
+        let persisted_digest = persisted
+            .as_ref()
+            .and_then(|snap| snap.schema_digest.clone());
+        let mut merged_order = persisted.map(|snap| snap.order).unwrap_or_default();
+        let merged_len_before = merged_order.len();
+        super::pipeline::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut merged_order,
+            &snapshot.order,
+        );
+        let next_generation = persisted_generation.max(snapshot.generation);
+        let next_digest = snapshot.schema_digest.clone().or(persisted_digest.clone());
+        // append-only 合并只会追加：长度不变即 order 无新增；代号与 digest
+        // 也未变时整体跳过写库。
+        if next_generation == persisted_generation
+            && merged_order.len() == merged_len_before
+            && next_digest == persisted_digest
+        {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                TOOL_FACE_PREFIX_GENERATION_METADATA_KEY.to_string(),
+                Value::from(next_generation),
+            );
+            obj.insert(
+                FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY.to_string(),
+                Value::Array(merged_order.into_iter().map(Value::String).collect()),
+            );
+            if let Some(digest) = next_digest {
+                obj.insert(
+                    TOOL_SCHEMA_DIGEST_METADATA_KEY.to_string(),
+                    Value::String(digest),
+                );
+            }
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)
+    }
+
+    /// 删除会话（使用 ChatV2Database）
+    pub fn delete_session_v2(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::delete_session_with_tx(&tx, session_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    // ========================================================================
+    // 回收站（persist_status 三态语义）
+    // ========================================================================
+    //
+    // 现行三态约定（以代码为准，V20260502 迁移注释中「已无 deleted」的说法已过时）：
+    // - `active`：正常会话，出现在会话列表。
+    // - `archived`：归档，出现在归档 Tab，可无损恢复；
+    //   课题归档会连带归档其下活跃会话（metadata.groupArchivedBy 记录归属）。
+    // - `deleted`：回收站（软删），仅出现在回收站视图；
+    //   `purge_deleted_sessions` 物理清空（级联删消息/块），调用方需先递减 VFS 引用。
+    // V20260502 是一次性历史数据修复：把旧版本遗留的 `deleted` 解释为 `archived`，
+    // 之后回收站语义重新启用 `deleted`，二者不冲突。
+    // 前端需与此三态保持一致（列表过滤 active、归档 Tab 过滤 archived、回收站过滤 deleted）。
+
+    /// 列出所有已删除（回收站中）的会话 ID
+    ///
+    /// 用于清空回收站前收集待删除会话，以便先递减 VFS 资源引用计数。
+    ///
+    /// ## 返回
+    /// - `Ok(Vec<String>)`: 所有已删除会话的 ID 列表
+    pub fn list_deleted_session_ids(db: &ChatV2Database) -> ChatV2Result<Vec<String>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt =
+            conn.prepare("SELECT id FROM chat_v2_sessions WHERE persist_status = 'deleted'")?;
+        let ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(ids)
+    }
+
+    /// 🔧 A1修复：清理用户消息的孤儿 content block
+    ///
+    /// 之前 `build_user_message` 每次生成随机 block_id，导致多次 save 在 DB 中积累
+    /// 大量同 message_id 的 content block。此方法删除用户消息中多余的 content block，
+    /// 每个用户消息只保留最新插入的那个（按 rowid 降序，保留最大 rowid）。
+    ///
+    /// 注意：所有孤儿块的 block_index 都是 0（build_user_message 固定值），
+    /// 因此不能用 block_index 区分，改用 ROW_NUMBER() 窗口函数按 rowid 排序。
+    ///
+    /// ## 返回
+    /// - `Ok(u32)`: 被清理的孤儿 block 数量
+    pub fn cleanup_orphan_user_content_blocks(db: &ChatV2Database) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+
+        // 使用窗口函数按 message_id 分区，按 rowid 降序排列，
+        // 保留 rn=1（最新的），删除 rn>1（旧的孤儿块）
+        let count = conn.execute(
+            r#"
+            DELETE FROM chat_v2_blocks
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT b.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY b.message_id
+                               ORDER BY b.rowid DESC
+                           ) AS rn
+                    FROM chat_v2_blocks b
+                    INNER JOIN chat_v2_messages m ON b.message_id = m.id
+                    WHERE m.role = 'user'
+                      AND b.block_type = 'content'
+                )
+                WHERE rn > 1
+            )
+            "#,
+            [],
+        )?;
+
+        if count > 0 {
+            info!(
+                "[ChatV2::Repo] Cleaned up {} orphan user content blocks",
+                count
+            );
+        }
+
+        Ok(count as u32)
+    }
+
+    /// 启动时收尾上次进程遗留的 `running` / `pending` 块。
+    ///
+    /// 应用启动时不可能有正在进行的生成回合：这些块是上次退出/崩溃时被打断的。
+    /// 不收尾的话前端会把它们当作活跃块恢复——思考块永远显示「正在思考…」、
+    /// 等待回答的提问再也收不到回答，用户看不出这一轮已经中断。
+    /// - 已有内容的思考/正文块：保留内容，标记完成；
+    /// - 其余块（工具调用、空块）：标记为错误并写明中断原因。
+    pub fn reconcile_interrupted_blocks_on_startup_with_conn(
+        conn: &Connection,
+    ) -> ChatV2Result<u32> {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let finished = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET status = 'success',
+                ended_at = COALESCE(ended_at, first_chunk_at, started_at, ?1)
+            WHERE status IN ('running', 'pending')
+              AND block_type IN ('thinking', 'content')
+              AND content IS NOT NULL AND length(trim(content)) > 0
+            "#,
+            rusqlite::params![now_ms],
+        )?;
+        let interrupted = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET status = 'error',
+                error = COALESCE(error, ?2),
+                ended_at = COALESCE(ended_at, ?1)
+            WHERE status IN ('running', 'pending')
+            "#,
+            rusqlite::params![now_ms, INTERRUPTED_BY_RESTART_ERROR],
+        )?;
+        let total = (finished + interrupted) as u32;
+        if total > 0 {
+            info!(
+                "[ChatV2::Repo] Reconciled {} interrupted blocks on startup ({} finished, {} marked interrupted)",
+                total, finished, interrupted
+            );
+        }
+        Ok(total)
+    }
+
+    pub fn reconcile_interrupted_blocks_on_startup(db: &ChatV2Database) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::reconcile_interrupted_blocks_on_startup_with_conn(&conn)
+    }
+
+    /// 清空所有已删除的会话（永久删除）
+    ///
+    /// 一次性删除所有 persist_status = 'deleted' 的会话。
+    /// 依赖数据库的 ON DELETE CASCADE 自动清理关联数据。
+    ///
+    /// # ⚠️ 危险：裸批删，勿直接调用
+    ///
+    /// 本方法**不做**任何前置复查/补偿：不递减 VFS 资源引用计数、不清理
+    /// runtime roots、不清理事件序列计数器、不检查并发恢复。生产路径必须走
+    /// `handlers::manage_session::chat_v2_empty_deleted_sessions`（逐条复查 +
+    /// FS 清理 + VFS 引用递减 + 计数器清理）。当前代码库中本方法无其他调用方，
+    /// 仅保留为底层原语 / 测试辅助。
+    ///
+    /// ## 返回
+    /// - `Ok(u32)`: 被删除的会话数量
+    pub fn purge_deleted_sessions(db: &ChatV2Database) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        let count = conn.execute(
+            "DELETE FROM chat_v2_sessions WHERE persist_status = 'deleted'",
+            [],
+        )?;
+        info!("[ChatV2::Repo] Purged {} deleted sessions", count);
+
+        // P2 修复：批量删除后执行增量 VACUUM 回收空间
+        if count > 0 {
+            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+                log::warn!(
+                    "[ChatV2::Repo] Incremental vacuum failed after purge: {}",
+                    e
+                );
+            }
+        }
+
+        Ok(count as u32)
+    }
+
+    /// 列出会话（使用 ChatV2Database）
+    ///
+    /// ## 参数
+    /// - `db`: ChatV2 数据库
+    /// - `status`: 可选的状态过滤
+    /// - `limit`: 数量限制
+    /// - `offset`: 偏移量（用于分页）
+    pub fn list_sessions_v2(
+        db: &ChatV2Database,
+        status: Option<&str>,
+        group_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let conn = db.get_conn_safe()?;
+        Self::list_sessions_with_conn(&conn, status, group_id, limit, offset)
+    }
+
+    /// 获取会话总数（使用 ChatV2Database）
+    ///
+    /// ## 参数
+    /// - `db`: ChatV2 数据库
+    /// - `status`: 可选的状态过滤
+    pub fn count_sessions_v2(
+        db: &ChatV2Database,
+        status: Option<&str>,
+        group_id: Option<&str>,
+    ) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::count_sessions_with_conn(&conn, status, group_id)
+    }
+
+    /// 创建消息（使用 ChatV2Database）
+    pub fn create_message_v2(db: &ChatV2Database, message: &ChatMessage) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_message_with_conn(&conn, message)
+    }
+
+    /// 获取消息（使用 ChatV2Database）
+    pub fn get_message_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+    ) -> ChatV2Result<Option<ChatMessage>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_message_with_conn(&conn, message_id)
+    }
+
+    /// 获取会话的所有消息（使用 ChatV2Database）
+    pub fn get_session_messages_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<ChatMessage>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_messages_with_conn(&conn, session_id)
+    }
+
+    /// 更新消息（使用 ChatV2Database）
+    pub fn update_message_v2(db: &ChatV2Database, message: &ChatMessage) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_with_conn(&conn, message)
+    }
+
+    /// 删除消息（使用 ChatV2Database）
+    pub fn delete_message_v2(db: &ChatV2Database, message_id: &str) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_message_with_conn(&conn, message_id)
+    }
+
+    /// 创建块（使用 ChatV2Database）
+    pub fn create_block_v2(db: &ChatV2Database, block: &MessageBlock) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_block_with_conn(&conn, block)
+    }
+
+    /// 获取块（使用 ChatV2Database）
+    pub fn get_block_v2(db: &ChatV2Database, block_id: &str) -> ChatV2Result<Option<MessageBlock>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_block_with_conn(&conn, block_id)
+    }
+
+    /// 获取消息的所有块（使用 ChatV2Database）
+    pub fn get_message_blocks_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+    ) -> ChatV2Result<Vec<MessageBlock>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_message_blocks_with_conn(&conn, message_id)
+    }
+
+    /// 批量获取会话的所有块（使用 ChatV2Database）
+    ///
+    /// 性能优化：使用 JOIN 查询，一次获取会话所有块
+    pub fn get_session_blocks_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<MessageBlock>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_blocks_with_conn(&conn, session_id)
+    }
+
+    /// 更新块（使用 ChatV2Database）
+    pub fn update_block_v2(db: &ChatV2Database, block: &MessageBlock) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_block_with_conn(&conn, block)
+    }
+
+    /// 删除块（使用 ChatV2Database）
+    pub fn delete_block_v2(db: &ChatV2Database, block_id: &str) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_block_with_conn(&conn, block_id)
+    }
+
+    /// 加载完整会话（使用 ChatV2Database）
+    pub fn load_session_full_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        let conn = db.get_conn_safe()?;
+        Self::load_session_full_with_conn(&conn, session_id)
+    }
+
+    /// 保存会话状态（使用 ChatV2Database）
+    pub fn save_session_state_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+        state: &SessionState,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::save_session_state_with_conn(&conn, session_id, state)
+    }
+
+    /// 加载会话状态（使用 ChatV2Database）
+    pub fn load_session_state_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<SessionState>> {
+        let conn = db.get_conn_safe()?;
+        Self::load_session_state_with_conn(&conn, session_id)
+    }
+
+    /// 更新结构化 Skill 状态（使用 ChatV2Database）
+    pub fn update_session_skill_state_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+        skill_state: &SessionSkillState,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        let mut state =
+            Self::load_session_state_with_conn(&conn, session_id)?.unwrap_or(SessionState {
+                session_id: session_id.to_string(),
+                chat_params: None,
+                features: None,
+                mode_state: None,
+                input_value: None,
+                panel_states: None,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                pending_context_refs_json: None,
+                loaded_skill_ids_json: None,
+                active_skill_ids_json: None,
+                skill_state_json: None,
+            });
+
+        state
+            .set_skill_state(skill_state)
+            .map_err(|err| ChatV2Error::Serialization(err.to_string()))?;
+        state.updated_at = chrono::Utc::now().to_rfc3339();
+        Self::save_session_state_with_conn(&conn, session_id, &state)
+    }
+
+    // ========================================================================
+    // 消息元数据操作
+    // ========================================================================
+
+    /// 更新消息的元数据（使用现有连接）
+    ///
+    /// 用于在流式完成后更新消息的 `meta` 字段，包含 `model_id` 和 `usage`
+    pub fn update_message_meta_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        meta: &MessageMeta,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating message meta: message_id={}, model_id={:?}",
+            message_id, meta.model_id
+        );
+
+        let meta_json = serde_json::to_string(&meta.normalized_for_storage())?;
+
+        let rows_affected = conn.execute(
+            "UPDATE chat_v2_messages SET meta_json = ?2 WHERE id = ?1",
+            params![message_id, meta_json],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message_id.to_string()));
+        }
+
+        debug!(
+            "[ChatV2::Repo] Message meta updated: message_id={}",
+            message_id
+        );
+        Ok(())
+    }
+
+    // ========================================================================
+    // 变体相关操作（多模型并行执行支持）
+    // ========================================================================
+
+    /// 更新消息的激活变体 ID
+    pub fn update_message_active_variant(
+        db: &Database,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_active_variant_with_conn(&conn, message_id, variant_id)
+    }
+
+    /// 更新消息的激活变体 ID（使用现有连接）
+    pub fn update_message_active_variant_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating active variant: message_id={}, variant_id={}",
+            message_id, variant_id
+        );
+
+        let rows_affected = conn.execute(
+            "UPDATE chat_v2_messages SET active_variant_id = ?2 WHERE id = ?1",
+            params![message_id, variant_id],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message_id.to_string()));
+        }
+
+        debug!(
+            "[ChatV2::Repo] Active variant updated: message_id={}, variant_id={}",
+            message_id, variant_id
+        );
+        Ok(())
+    }
+
+    /// 更新消息的变体列表和激活变体 ID
+    pub fn update_message_variants(
+        db: &Database,
+        message_id: &str,
+        variants: &[Variant],
+        active_variant_id: Option<&str>,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_variants_with_conn(&conn, message_id, variants, active_variant_id)
+    }
+
+    /// 更新消息的变体列表和激活变体 ID（使用现有连接）
+    pub fn update_message_variants_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        variants: &[Variant],
+        active_variant_id: Option<&str>,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating variants: message_id={}, count={}",
+            message_id,
+            variants.len()
+        );
+
+        let raw_json = serde_json::to_string(variants)?;
+        let mut variants_owned = variants.to_vec();
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants_owned, message_id);
+
+        let rows_affected = conn.execute(
+            "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
+            params![message_id, variants_json, active_variant_id],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message_id.to_string()));
+        }
+
+        debug!(
+            "[ChatV2::Repo] Variants updated: message_id={}, count={}",
+            message_id,
+            variants.len()
+        );
+        Ok(())
+    }
+
+    /// 更新变体状态
+    pub fn update_variant_status(
+        db: &Database,
+        message_id: &str,
+        variant_id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_variant_status_with_conn(&conn, message_id, variant_id, status, error)
+    }
+
+    /// 更新变体状态（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，消除并行变体下的丢失更新
+    pub fn update_variant_status_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating variant status: message_id={}, variant_id={}, status={}",
+            message_id, variant_id, status
+        );
+
+        Self::with_variants_write_txn(conn, |conn| {
+            // 获取当前消息（写锁内读取，保证读到最新值）
+            let message = Self::get_message_with_conn(conn, message_id)?
+                .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+
+            // 获取并更新变体
+            let mut variants = message.variants.unwrap_or_default();
+            let variant = variants
+                .iter_mut()
+                .find(|v| v.id == variant_id)
+                .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
+
+            variant.status = status.to_string();
+            variant.error = error.map(|s| s.to_string());
+
+            // 保存更新后的变体列表
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
+                params![message_id, variants_json],
+            )?;
+            Ok(())
+        })?;
+
+        debug!(
+            "[ChatV2::Repo] Variant status updated: variant_id={}, status={}",
+            variant_id, status
+        );
+        Ok(())
+    }
+
+    /// 删除变体
+    ///
+    /// 删除变体时会级联删除其所属的所有块。
+    /// 如果删除的是最后一个变体，则删除整个消息。
+    pub fn delete_variant(
+        db: &Database,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<DeleteVariantResult> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_variant_with_conn(&conn, message_id, variant_id)
+    }
+
+    /// 删除变体（使用现有连接）
+    ///
+    /// P1 修复：使用 SAVEPOINT 保证原子性
+    /// 🔧 P1-3 修复：读取也移入 IMMEDIATE 事务（之前读取发生在 SAVEPOINT 之外，
+    /// 读取与写回之间可被另一连接修改，导致丢失更新）
+    pub fn delete_variant_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<DeleteVariantResult> {
+        debug!(
+            "[ChatV2::Repo] Deleting variant: message_id={}, variant_id={}",
+            message_id, variant_id
+        );
+
+        Self::with_variants_write_txn(conn, |conn| {
+            Self::delete_variant_locked(conn, message_id, variant_id)
+        })
+    }
+
+    /// delete_variant 的事务内实现（调用方必须已持有写锁 / 外层事务）
+    fn delete_variant_locked(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<DeleteVariantResult> {
+        // 获取当前消息
+        let message = Self::get_message_with_conn(conn, message_id)?
+            .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+
+        let mut variants = message.variants.unwrap_or_default();
+        let variant_index = variants
+            .iter()
+            .position(|v| v.id == variant_id)
+            .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
+
+        // 获取要删除的变体的 block_ids
+        let block_ids_to_delete = variants[variant_index].block_ids.clone();
+
+        // 如果只有一个变体，删除整个消息
+        if variants.len() == 1 {
+            // 删除消息（级联删除块）
+            Self::delete_message_with_conn(conn, message_id)?;
+            info!(
+                "[ChatV2::Repo] Last variant deleted, message removed: {}",
+                message_id
+            );
+            return Ok(DeleteVariantResult::MessageDeleted);
+        }
+
+        // P1 修复：使用 SAVEPOINT 保护删块 + 更新消息的原子性
+        conn.execute("SAVEPOINT delete_variant", [])
+            .map_err(|e| ChatV2Error::Database(format!("Failed to create savepoint: {}", e)))?;
+
+        let mut deleted_by_variant_id = 0usize;
+        let delete_result = (|| -> ChatV2Result<()> {
+            // 删除变体所属的块
+            deleted_by_variant_id = conn.execute(
+                "DELETE FROM chat_v2_blocks WHERE variant_id = ?1",
+                params![variant_id],
+            )?;
+
+            if deleted_by_variant_id == 0 && !block_ids_to_delete.is_empty() {
+                for block_id in &block_ids_to_delete {
+                    let _ = Self::delete_block_with_conn(conn, block_id);
+                }
+            }
+            Ok(())
+        })();
+
+        if let Err(e) = delete_result {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_variant", []);
+            let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+            return Err(e);
+        }
+
+        debug!(
+            "[ChatV2::Repo] Deleted {} blocks by variant_id, {} in block_ids list",
+            deleted_by_variant_id,
+            block_ids_to_delete.len()
+        );
+
+        // 从变体列表中移除
+        variants.remove(variant_index);
+
+        // 确定新的激活变体 ID
+        let current_active = message.active_variant_id.as_deref();
+        let new_active_id = if current_active == Some(variant_id) {
+            // 如果删除的是当前激活的变体，选择新的激活变体
+            // 优先级：第一个 success > 第一个 cancelled > 第一个变体
+            Self::determine_active_variant(&variants)
+        } else {
+            // 保持原来的激活变体
+            current_active.map(|s| s.to_string())
+        };
+
+        // 更新消息
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+        let update_result = conn.execute(
+            "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
+            params![message_id, variants_json, &new_active_id],
+        );
+
+        match update_result {
+            Ok(_) => {
+                // 提交 SAVEPOINT
+                let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+                info!(
+                    "[ChatV2::Repo] Variant deleted: variant_id={}, new_active_id={:?}",
+                    variant_id, new_active_id
+                );
+                Ok(DeleteVariantResult::VariantDeleted { new_active_id })
+            }
+            Err(e) => {
+                // 回滚 SAVEPOINT
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_variant", []);
+                let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+                Err(ChatV2Error::Database(e.to_string()))
+            }
+        }
+    }
+
+    /// 确定激活变体 ID
+    ///
+    /// 优先级：
+    /// 1. 第一个 success 状态的变体
+    /// 2. 第一个 cancelled 状态的变体
+    /// 3. 第一个变体（即使是 error）
+    fn determine_active_variant(variants: &[Variant]) -> Option<String> {
+        use super::types::variant_status;
+
+        // 第一优先：第一个 success 变体
+        if let Some(v) = variants
+            .iter()
+            .find(|v| v.status == variant_status::SUCCESS)
+        {
+            return Some(v.id.clone());
+        }
+
+        // 第二优先：第一个 cancelled 变体
+        if let Some(v) = variants
+            .iter()
+            .find(|v| v.status == variant_status::CANCELLED)
+        {
+            return Some(v.id.clone());
+        }
+
+        // 兜底：第一个变体
+        variants.first().map(|v| v.id.clone())
+    }
+
+    /// 将块添加到变体
+    pub fn add_block_to_variant(
+        db: &Database,
+        message_id: &str,
+        variant_id: &str,
+        block_id: &str,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::add_block_to_variant_with_conn(&conn, message_id, variant_id, block_id)
+    }
+
+    /// 将块添加到变体（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，消除并行变体下的丢失更新；
+    /// 同时保证「更新 variants_json」与「更新块表 variant_id」两步原子
+    pub fn add_block_to_variant_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+        block_id: &str,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Adding block to variant: message_id={}, variant_id={}, block_id={}",
+            message_id, variant_id, block_id
+        );
+
+        Self::with_variants_write_txn(conn, |conn| {
+            // 获取当前消息（写锁内读取，保证读到最新值）
+            let message = Self::get_message_with_conn(conn, message_id)?
+                .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+
+            // 更新变体的 block_ids
+            let mut variants = message.variants.unwrap_or_default();
+            let variant = variants
+                .iter_mut()
+                .find(|v| v.id == variant_id)
+                .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
+
+            // 添加 block_id（避免重复）
+            if !variant.block_ids.contains(&block_id.to_string()) {
+                variant.block_ids.push(block_id.to_string());
+            }
+
+            // 保存更新后的变体列表
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
+                params![message_id, variants_json],
+            )?;
+
+            // 同时更新块表的 variant_id 字段
+            conn.execute(
+                "UPDATE chat_v2_blocks SET variant_id = ?2 WHERE id = ?1",
+                params![block_id, variant_id],
+            )?;
+            Ok(())
+        })?;
+
+        debug!(
+            "[ChatV2::Repo] Block added to variant: block_id={}, variant_id={}",
+            block_id, variant_id
+        );
+        Ok(())
+    }
+
+    /// 更新消息的共享上下文
+    pub fn update_message_shared_context(
+        db: &Database,
+        message_id: &str,
+        shared_context: &SharedContext,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_shared_context_with_conn(&conn, message_id, shared_context)
+    }
+
+    /// 更新消息的共享上下文（使用现有连接）
+    pub fn update_message_shared_context_with_conn(
+        conn: &Connection,
+        message_id: &str,
+        shared_context: &SharedContext,
+    ) -> ChatV2Result<()> {
+        debug!(
+            "[ChatV2::Repo] Updating shared context: message_id={}",
+            message_id
+        );
+
+        let shared_context_json = serde_json::to_string(shared_context)?;
+
+        let rows_affected = conn.execute(
+            "UPDATE chat_v2_messages SET shared_context_json = ?2 WHERE id = ?1",
+            params![message_id, shared_context_json],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(ChatV2Error::MessageNotFound(message_id.to_string()));
+        }
+
+        debug!(
+            "[ChatV2::Repo] Shared context updated: message_id={}",
+            message_id
+        );
+        Ok(())
+    }
+
+    /// 修复消息中的变体状态（崩溃恢复）
+    ///
+    /// 将 streaming/pending 状态的变体标记为 error，并修复 active_variant_id。
+    /// 应在会话加载时调用。
+    pub fn repair_message_variant_status(db: &Database, message_id: &str) -> ChatV2Result<bool> {
+        let conn = db.get_conn_safe()?;
+        Self::repair_message_variant_status_with_conn(&conn, message_id)
+    }
+
+    /// 修复消息中的变体状态（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，避免与流式写入交叉覆盖
+    pub fn repair_message_variant_status_with_conn(
+        conn: &Connection,
+        message_id: &str,
+    ) -> ChatV2Result<bool> {
+        use super::types::variant_status;
+
+        Self::with_variants_write_txn(conn, |conn| {
+            let message = match Self::get_message_with_conn(conn, message_id)? {
+                Some(m) => m,
+                None => return Ok(false),
+            };
+
+            let mut variants = match message.variants {
+                Some(v) if !v.is_empty() => v,
+                _ => return Ok(false),
+            };
+
+            let mut repaired = false;
+
+            // 修复 streaming/pending 状态的变体
+            for variant in &mut variants {
+                if variant.status == variant_status::STREAMING
+                    || variant.status == variant_status::PENDING
+                {
+                    variant.status = variant_status::ERROR.to_string();
+                    variant.error = Some("Process interrupted unexpectedly".to_string());
+                    repaired = true;
+                }
+            }
+
+            if !repaired {
+                return Ok(false);
+            }
+
+            // 修复 active_variant_id
+            let current_active = message.active_variant_id.as_deref();
+            let needs_new_active = current_active
+                .and_then(|id| variants.iter().find(|v| v.id == id))
+                .is_none_or(|v| v.status == variant_status::ERROR);
+
+            let new_active_id = if needs_new_active {
+                Self::determine_active_variant(&variants)
+            } else {
+                current_active.map(|s| s.to_string())
+            };
+
+            // 保存更新
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
+                params![message_id, variants_json, &new_active_id],
+            )?;
+
+            info!(
+                "[ChatV2::Repo] Repaired variant status for message: {}, new_active_id={:?}",
+                message_id, new_active_id
+            );
+
+            Ok(true)
+        })
+    }
+
+    /// 修复会话中所有消息的变体状态（崩溃恢复）
+    pub fn repair_session_variant_status(db: &Database, session_id: &str) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::repair_session_variant_status_with_conn(&conn, session_id)
+    }
+
+    /// 修复会话中所有消息的变体状态（使用现有连接）
+    pub fn repair_session_variant_status_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<u32> {
+        let messages = Self::get_session_messages_with_conn(conn, session_id)?;
+        let mut repaired_count = 0;
+
+        for message in &messages {
+            if Self::repair_message_variant_status_with_conn(conn, &message.id)? {
+                repaired_count += 1;
+            }
+        }
+
+        if repaired_count > 0 {
+            info!(
+                "[ChatV2::Repo] Repaired {} messages in session: {}",
+                repaired_count, session_id
+            );
+        }
+
+        Ok(repaired_count)
+    }
+
+    // ========================================================================
+    // 变体相关操作（使用 ChatV2Database）
+    // ========================================================================
+
+    /// 更新消息的激活变体 ID（使用 ChatV2Database）
+    pub fn update_message_active_variant_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_active_variant_with_conn(&conn, message_id, variant_id)
+    }
+
+    /// 更新消息的变体列表和激活变体 ID（使用 ChatV2Database）
+    pub fn update_message_variants_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        variants: &[Variant],
+        active_variant_id: Option<&str>,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_variants_with_conn(&conn, message_id, variants, active_variant_id)
+    }
+
+    /// 更新变体状态（使用 ChatV2Database）
+    pub fn update_variant_status_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        variant_id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_variant_status_with_conn(&conn, message_id, variant_id, status, error)
+    }
+
+    /// 删除变体（使用 ChatV2Database）
+    pub fn delete_variant_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<DeleteVariantResult> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_variant_with_conn(&conn, message_id, variant_id)
+    }
+
+    /// 将块添加到变体（使用 ChatV2Database）
+    pub fn add_block_to_variant_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        variant_id: &str,
+        block_id: &str,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::add_block_to_variant_with_conn(&conn, message_id, variant_id, block_id)
+    }
+
+    /// 更新消息的共享上下文（使用 ChatV2Database）
+    pub fn update_message_shared_context_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+        shared_context: &SharedContext,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_message_shared_context_with_conn(&conn, message_id, shared_context)
+    }
+
+    /// 修复消息中的变体状态（使用 ChatV2Database）
+    pub fn repair_message_variant_status_v2(
+        db: &ChatV2Database,
+        message_id: &str,
+    ) -> ChatV2Result<bool> {
+        let conn = db.get_conn_safe()?;
+        Self::repair_message_variant_status_with_conn(&conn, message_id)
+    }
+
+    /// 修复会话中所有消息的变体状态（使用 ChatV2Database）
+    pub fn repair_session_variant_status_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::repair_session_variant_status_with_conn(&conn, session_id)
+    }
+
+    // ========================================================================
+    // 内容全文搜索
+    // ========================================================================
+
+    /// FTS5 查询转义（防注入）
+    ///
+    /// P0 修复：旧实现只在出现特殊字符时整体加引号，纯词查询中的
+    /// `AND` / `OR` / `NOT` / `NEAR` 仍会被 FTS5 当作运算符解析（例如用户
+    /// 搜索 "cats AND dogs" 会变成布尔查询，搜索裸 "NEAR" 直接语法错误）。
+    /// 现改为 token 级安全转义：按空白切词，每个 token 包双引号（内部引号
+    /// 转义为 ""），token 之间为 FTS5 隐式 AND。多词查询语义（全部命中）
+    /// 与旧实现的常见路径一致，同时彻底屏蔽所有运算符/特殊字符注入。
+    ///
+    /// 注：旧实现并不支持 `*` 前缀通配（`*` 会触发整体加引号变成字面量），
+    /// 因此这里无需保留通配能力。
+    fn escape_fts5_query(keyword: &str) -> String {
+        keyword
+            .split_whitespace()
+            .map(|token| format!("\"{}\"", token.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// 重建消息内容 FTS5 索引：清空后从 chat_v2_blocks 全量回填，返回回填行数。
+    ///
+    /// 供设置页「全局索引维护」修复 FTS 漂移/缺失（例如历史导入、迁移异常或触发器
+    /// 短暂缺失导致的索引与正文不一致）。回填条件与 V20260301/V20260719 迁移的回填、
+    /// 以及 trg_blocks_fts_* 触发器完全一致（content 非空且 block_type ∈ {content, thinking}；
+    /// V20260719 起触发器同时覆盖 content 与 block_type 变更）。
+    pub fn rebuild_content_fts(conn: &Connection) -> ChatV2Result<usize> {
+        // 外部内容 FTS5 表，直接清空即可（无 'delete' 命令的外部内容表负担）
+        conn.execute("DELETE FROM chat_v2_content_fts", [])?;
+        let inserted = conn.execute(
+            r#"
+            INSERT INTO chat_v2_content_fts(rowid, content)
+            SELECT b.rowid, b.content
+            FROM chat_v2_blocks b
+            WHERE b.content IS NOT NULL AND b.content != ''
+              AND b.block_type IN ('content', 'thinking')
+            "#,
+            [],
+        )?;
+        Ok(inserted)
+    }
+
+    /// 搜索消息内容（FTS5 全文搜索）
+    pub fn search_content(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        Self::search_content_with_date_range(conn, query, limit, None, None)
+    }
+
+    /// Search message content with an optional inclusive session update range.
+    ///
+    /// The original `search_content` entry point intentionally remains as a
+    /// compatibility wrapper for existing Tauri/UI callers.
+    pub fn search_content_with_date_range(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        date_from: Option<&str>,
+        date_to: Option<&str>,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        Self::search_content_filtered(conn, query, limit, date_from, date_to, None, false)
+    }
+
+    /// Search message content with the full filter set.
+    ///
+    /// - `date_from` / `date_to`: inclusive session `updated_at` range（RFC3339）
+    /// - `session_id`: 仅搜索指定会话
+    /// - `include_archived`: 为 true 时同时命中 archived 会话（回收站 deleted 永不命中）
+    #[allow(clippy::too_many_arguments)]
+    pub fn search_content_filtered(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        date_from: Option<&str>,
+        date_to: Option<&str>,
+        session_id: Option<&str>,
+        include_archived: bool,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        use super::types::ContentSearchResult;
+
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let fts_query = Self::escape_fts5_query(trimmed);
+
+        let status_filter = if include_archived {
+            "s.persist_status IN ('active', 'archived')"
+        } else {
+            "s.persist_status = 'active'"
+        };
+        let sql = format!(
+            r#"
+            SELECT
+                s.id,
+                s.title,
+                m.id,
+                b.id,
+                m.role,
+                snippet(chat_v2_content_fts, 0, X'02', X'03', '...', 40),
+                s.updated_at
+            FROM chat_v2_content_fts fts
+            JOIN chat_v2_blocks b ON fts.rowid = b.rowid
+            JOIN chat_v2_messages m ON b.message_id = m.id
+            JOIN chat_v2_sessions s ON m.session_id = s.id
+            WHERE chat_v2_content_fts MATCH ?1
+              AND {status_filter}
+              AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
+              AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
+              AND (?4 IS NULL OR s.id = ?4)
+            ORDER BY bm25(chat_v2_content_fts)
+            LIMIT ?5
+            "#
+        );
+        let mut stmt = conn.prepare(&sql)?;
+
+        let rows = stmt.query_map(
+            params![fts_query, date_from, date_to, session_id, limit],
+            |row| {
+                let raw_snippet: String = row.get(5)?;
+                Ok(ContentSearchResult {
+                    session_id: row.get(0)?,
+                    session_title: row.get(1)?,
+                    message_id: row.get(2)?,
+                    block_id: row.get(3)?,
+                    role: row.get(4)?,
+                    snippet: Self::sanitize_fts_snippet(&raw_snippet),
+                    updated_at: row.get(6)?,
+                })
+            },
+        )?;
+
+        // P1 修复：map 失败行不再只逐条 warn —— 额外计数并输出汇总，
+        // 避免大批量损坏行的静默丢失只留下淹没在日志里的零散记录。
+        let mut dropped_rows = 0usize;
+        let results: Vec<ContentSearchResult> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    dropped_rows += 1;
+                    log::warn!("[ChatV2Repo] Search row error: {}", e);
+                    None
+                }
+            })
+            .collect();
+        if dropped_rows > 0 {
+            log::warn!(
+                "[ChatV2Repo] search_content_filtered dropped {} malformed row(s) (query_len={}, returned={})",
+                dropped_rows,
+                trimmed.len(),
+                results.len()
+            );
+        }
+
+        Ok(results)
+    }
+
+    /// 按标题 / 描述 / 标签 LIKE 搜索会话（大小写不敏感，走现有表无需迁移）。
+    ///
+    /// - `%` / `_` / `\` 会被转义为字面量，防止用户输入干扰 LIKE 模式
+    /// - 默认只搜 active 会话；`include_archived` 为 true 时同时命中 archived
+    /// - 与列表页一致：过滤 `mode != 'agent'` 与隐藏草稿会话
+    pub fn search_sessions_with_conn(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        include_archived: bool,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let escaped = trimmed
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let like_pattern = format!("%{}%", escaped);
+
+        let status_filter = if include_archived {
+            "persist_status IN ('active', 'archived')"
+        } else {
+            "persist_status = 'active'"
+        };
+        let mut sql = format!(
+            r#"
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+            FROM chat_v2_sessions
+            WHERE mode != 'agent'
+              AND {status_filter}
+              AND (
+                title LIKE ?1 ESCAPE '\'
+                OR description LIKE ?1 ESCAPE '\'
+                OR EXISTS (
+                    SELECT 1 FROM chat_v2_session_tags t
+                    WHERE t.session_id = chat_v2_sessions.id
+                      AND t.tag LIKE ?1 ESCAPE '\'
+                )
+              )
+            "#
+        );
+        Self::append_visible_session_filter(&mut sql);
+        sql.push_str(" ORDER BY updated_at DESC LIMIT ?2");
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![like_pattern, limit], Self::row_to_session_full)?;
+
+        let sessions: Vec<ChatSession> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!(
+                        "[ChatV2Repo] search_sessions: skipping malformed row: {}",
+                        e
+                    );
+                    None
+                }
+            })
+            .collect();
+        Ok(sessions)
+    }
+
+    /// 对 FTS5 snippet 进行 HTML 转义，防止 XSS
+    ///
+    /// snippet() 使用 \x02/\x03 作为占位标记，先转义所有 HTML 实体，
+    /// 再将占位标记替换为安全的 `<mark>` 标签。
+    fn sanitize_fts_snippet(raw: &str) -> String {
+        let escaped = raw
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;");
+        escaped.replace('\x02', "<mark>").replace('\x03', "</mark>")
+    }
+
+    // ========================================================================
+    // 会话标签 CRUD
+    // ========================================================================
+
+    /// 批量设置会话标签（替换已有自动标签，保留手动标签）
+    ///
+    /// 使用 SAVEPOINT 保证 DELETE + INSERT 的原子性，避免中途失败丢失所有 auto 标签。
+    pub fn upsert_auto_tags(
+        conn: &Connection,
+        session_id: &str,
+        tags: &[String],
+    ) -> ChatV2Result<()> {
+        conn.execute_batch("SAVEPOINT upsert_auto_tags")?;
+
+        let result = (|| -> ChatV2Result<()> {
+            conn.execute(
+                "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag_type = 'auto'",
+                params![session_id],
+            )?;
+
+            let mut stmt = conn.prepare(
+                "INSERT OR IGNORE INTO chat_v2_session_tags (session_id, tag, tag_type, created_at) VALUES (?1, ?2, 'auto', datetime('now'))",
+            )?;
+
+            for tag in tags {
+                let t = tag.trim();
+                if !t.is_empty() {
+                    stmt.execute(params![session_id, t])?;
+                }
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT upsert_auto_tags")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK TO SAVEPOINT upsert_auto_tags");
+                Err(e)
+            }
+        }
+    }
+
+    /// 添加手动标签
+    pub fn add_manual_tag(conn: &Connection, session_id: &str, tag: &str) -> ChatV2Result<()> {
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_v2_session_tags (session_id, tag, tag_type, created_at) VALUES (?1, ?2, 'manual', datetime('now'))",
+            params![session_id, tag.trim()],
+        )?;
+        Ok(())
+    }
+
+    /// 删除标签
+    pub fn remove_tag(conn: &Connection, session_id: &str, tag: &str) -> ChatV2Result<()> {
+        conn.execute(
+            "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag = ?2",
+            params![session_id, tag],
+        )?;
+        Ok(())
+    }
+
+    /// 获取会话的所有标签
+    pub fn get_session_tags(conn: &Connection, session_id: &str) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT tag FROM chat_v2_session_tags WHERE session_id = ?1 ORDER BY tag_type ASC, created_at ASC",
+        )?;
+        let tags: Vec<String> = stmt
+            .query_map(params![session_id], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(tags)
+    }
+
+    /// 批量获取多个会话的标签（用于列表页）
+    ///
+    /// 自动分批查询（每批 500），避免超出 SQLite 参数上限（默认 999）。
+    pub fn get_tags_for_sessions(
+        conn: &Connection,
+        session_ids: &[String],
+    ) -> ChatV2Result<std::collections::HashMap<String, Vec<String>>> {
+        if session_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let mut map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+
+        for chunk in session_ids.chunks(500) {
+            let placeholders: Vec<String> = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect();
+            let sql = format!(
+                "SELECT session_id, tag FROM chat_v2_session_tags WHERE session_id IN ({}) ORDER BY tag_type ASC, created_at ASC",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = conn.prepare(&sql)?;
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+
+            for row in rows.flatten() {
+                map.entry(row.0).or_default().push(row.1);
+            }
+        }
+
+        Ok(map)
+    }
+
+    /// 获取所有标签（去重，带使用次数）
+    pub fn list_all_tags(conn: &Connection) -> ChatV2Result<Vec<(String, u32)>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT t.tag, COUNT(*) as cnt
+            FROM chat_v2_session_tags t
+            JOIN chat_v2_sessions s ON t.session_id = s.id
+            WHERE s.persist_status = 'active'
+            GROUP BY t.tag
+            ORDER BY cnt DESC, t.tag ASC
+            "#,
+        )?;
+        let tags: Vec<(String, u32)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(tags)
+    }
+
+    /// 更新会话的 tags_hash
+    pub fn update_tags_hash(
+        conn: &Connection,
+        session_id: &str,
+        tags_hash: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET tags_hash = ?2 WHERE id = ?1",
+            params![session_id, tags_hash],
+        )?;
+        Ok(())
+    }
+
+    /// 锁定会话标题（用户手动改名后调用）
+    ///
+    /// 锁定后自动摘要 LLM 不再覆盖标题，行为对齐 ChatGPT/Claude。
+    pub fn set_title_locked(conn: &Connection, session_id: &str, locked: bool) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET title_locked = ?2 WHERE id = ?1",
+            params![session_id, locked as i64],
+        )?;
+        Ok(())
+    }
+}
+
+// ============================================================================
+// 单元测试
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chat_v2::{block_status, SourceInfo};
+    use rusqlite::Connection;
+    use std::collections::HashMap;
+
+    fn setup_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // 初始化 schema：依次应用所有迁移，与生产环境保持一致
+        // （单独应用 V20260130 会缺少后续迁移加的列，导致测试 schema 与运行时不一致）
+        let migrations: &[&str] = &[
+            include_str!("../../../../migrations/chat_v2/V20260130__init.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260202__schema_repair.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260204__session_groups.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"
+            ),
+            include_str!("../../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"
+            ),
+            include_str!("../../../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"
+            ),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
+            ),
+        ];
+        for sql in migrations {
+            conn.execute_batch(sql).unwrap();
+        }
+
+        conn
+    }
+
+    #[test]
+    fn startup_reconcile_finishes_streamed_text_and_interrupts_the_rest() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_reconcile".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        let message = ChatMessage::new_assistant("sess_reconcile".into());
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let insert = |id: &str, block_type: &str, status: &str, content: Option<&str>| {
+            conn.execute(
+                "INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, started_at) VALUES (?1, ?2, ?3, ?4, 0, ?5, 1000)",
+                rusqlite::params![id, message.id, block_type, status, content],
+            )
+            .unwrap();
+        };
+        insert("blk_think", "thinking", "running", Some("推理到一半"));
+        insert("blk_text", "content", "running", Some("先说结论"));
+        insert("blk_empty", "content", "pending", None);
+        insert("blk_tool", "mcp_tool", "running", None);
+        insert("blk_done", "content", "success", Some("早已完成"));
+
+        assert_eq!(
+            ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(),
+            4
+        );
+
+        let status_of = |id: &str| -> (String, Option<String>, Option<i64>) {
+            conn.query_row(
+                "SELECT status, error, ended_at FROM chat_v2_blocks WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(status_of("blk_think").0, "success");
+        assert_eq!(status_of("blk_text").0, "success");
+        let (tool_status, tool_error, tool_ended) = status_of("blk_tool");
+        assert_eq!(tool_status, "error");
+        assert_eq!(tool_error.as_deref(), Some(INTERRUPTED_BY_RESTART_ERROR));
+        assert!(tool_ended.is_some());
+        assert_eq!(status_of("blk_empty").0, "error");
+        assert_eq!(status_of("blk_done"), ("success".to_string(), None, None));
+        // 幂等：第二次启动无事可做
+        assert_eq!(
+            ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_session_crud() {
+        let conn = setup_test_db();
+
+        // Create
+        let session = ChatSession::new("sess_test_123".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // Read
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123")
+            .unwrap()
+            .expect("Session should exist");
+        assert_eq!(loaded.id, "sess_test_123");
+        assert_eq!(loaded.mode, "analysis");
+        assert_eq!(loaded.persist_status, PersistStatus::Active);
+
+        // Update
+        let mut updated_session = loaded.clone();
+        updated_session.title = Some("Test Session".to_string());
+        updated_session.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_session_with_conn(&conn, &updated_session).unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123")
+            .unwrap()
+            .expect("Session should exist");
+        assert_eq!(reloaded.title, Some("Test Session".to_string()));
+        assert_eq!(reloaded.persist_status, PersistStatus::Archived);
+
+        // List
+        let sessions =
+            ChatV2Repo::list_sessions_with_conn(&conn, Some("archived"), None, 10, 0).unwrap();
+        assert_eq!(sessions.len(), 1);
+
+        // Delete (using transaction)
+        let tx = conn.unchecked_transaction().unwrap();
+        ChatV2Repo::delete_session_with_tx(&tx, "sess_test_123").unwrap();
+        tx.commit().unwrap();
+
+        let deleted = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123").unwrap();
+        assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn superagent_internal_sessions_are_hidden_from_regular_session_views() {
+        // 回归：Super-agent 的 Router/Worker 内部会话（metadata.superagent）不得出现在
+        // 普通会话列表 / 计数 / 搜索里；普通会话（含 automation 会话）保持可见。
+        let conn = setup_test_db();
+        let mk = |id: &str, mode: &str, title: &str, metadata: Option<serde_json::Value>| {
+            let mut s = ChatSession::new(id.to_string(), mode.to_string());
+            s.title = Some(title.to_string());
+            s.metadata = metadata;
+            ChatV2Repo::create_session_with_conn(&conn, &s).unwrap();
+        };
+        mk("sess_plain", "general_chat", "needle 普通会话", None);
+        mk(
+            "sess_auto",
+            "automation",
+            "needle 自动化会话",
+            Some(serde_json::json!({"headless": true})),
+        );
+        mk(
+            "sess_sa_router",
+            "automation",
+            "needle Super-agent Router",
+            Some(serde_json::json!({"headless": true, "superagent": "router"})),
+        );
+        mk(
+            "sess_sa_worker",
+            "automation",
+            "needle Super-agent Worker",
+            Some(serde_json::json!({"headless": true, "superagent": "worker"})),
+        );
+
+        let listed =
+            ChatV2Repo::list_sessions_with_conn(&conn, Some("active"), None, 50, 0).unwrap();
+        let mut ids: Vec<_> = listed.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["sess_auto", "sess_plain"]);
+
+        assert_eq!(
+            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None).unwrap(),
+            2
+        );
+
+        let found = ChatV2Repo::search_sessions_with_conn(&conn, "needle", 50, false).unwrap();
+        let mut found_ids: Vec<_> = found.iter().map(|s| s.id.as_str()).collect();
+        found_ids.sort();
+        assert_eq!(found_ids, ["sess_auto", "sess_plain"]);
+    }
+
+    #[test]
+    fn hidden_super_session_is_hidden_from_regular_session_views() {
+        // 回归：关闭 Super 会话后 metadata.super_agent.hidden=true，不得出现在普通会话
+        // 列表 / 计数 / 搜索里；未隐藏的 Super 会话、退役 Super 会话与普通会话保持可见。
+        let conn = setup_test_db();
+        let mk = |id: &str, title: &str, metadata: Option<serde_json::Value>| {
+            let mut s = ChatSession::new(id.to_string(), "chat".to_string());
+            s.title = Some(title.to_string());
+            s.metadata = metadata;
+            ChatV2Repo::create_session_with_conn(&conn, &s).unwrap();
+        };
+        mk("sess_plain", "needle 普通会话", None);
+        mk(
+            "sess_super_visible",
+            "needle Super-agent",
+            Some(serde_json::json!({
+                "super_agent": {"active": true, "version": 1, "workspace_id": "ws_a", "hidden": false},
+                "pinned": true
+            })),
+        );
+        mk(
+            "sess_super_hidden",
+            "needle Super-agent hidden",
+            Some(serde_json::json!({
+                "super_agent": {"active": true, "version": 1, "workspace_id": "ws_b", "hidden": true},
+                "pinned": true
+            })),
+        );
+        mk(
+            "sess_super_retired",
+            "needle Super-agent retired",
+            Some(serde_json::json!({
+                "super_agent": {"active": false, "retired_at": "2026-11-01T00:00:00Z"}
+            })),
+        );
+        // 旧 superagent 内部会话过滤仍然生效
+        mk(
+            "sess_legacy_router",
+            "needle legacy router",
+            Some(serde_json::json!({"headless": true, "superagent": "router"})),
+        );
+
+        let expected = ["sess_plain", "sess_super_retired", "sess_super_visible"];
+
+        let listed =
+            ChatV2Repo::list_sessions_with_conn(&conn, Some("active"), None, 50, 0).unwrap();
+        let mut ids: Vec<_> = listed.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, expected);
+
+        assert_eq!(
+            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None).unwrap(),
+            3
+        );
+
+        let found = ChatV2Repo::search_sessions_with_conn(&conn, "needle", 50, false).unwrap();
+        let mut found_ids: Vec<_> = found.iter().map(|s| s.id.as_str()).collect();
+        found_ids.sort();
+        assert_eq!(found_ids, expected);
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_survives_process_restart_via_session_metadata() {
+        // 回归（P0 tools 会话冻结跨进程）：基线写库 → 模拟桌面 App 重启
+        // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复
+        // 得到同一顺序，provider 侧 tools 前缀字节不被字母序冷重建打碎。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_frozen_tools".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 首见序基线（非字母序：zeta 在 alpha 前，还原字节序全靠持久化）
+        let baseline: Vec<String> = vec!["zeta_tool".into(), "alpha_tool".into()];
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_tools",
+            &baseline,
+        )
+        .unwrap();
+
+        // 「重启后」内存 miss 时 pipeline 走这条恢复路径
+        let restored =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_tools")
+                .unwrap();
+        assert_eq!(
+            restored, baseline,
+            "重启恢复的基线必须与上一进程写入的首见序逐字一致"
+        );
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_metadata_merge_is_append_only() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_frozen_append".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["alpha_tool".into(), "zeta_tool".into()],
+        )
+        .unwrap();
+        // 环内出现新工具：metadata 只在末尾追加，已有前缀不重排
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["beta_tool".into(), "alpha_tool".into()],
+        )
+        .unwrap();
+        let after_append =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_append")
+                .unwrap();
+        assert_eq!(
+            after_append,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新工具只追加末尾，绝不按字母序插入中段"
+        );
+
+        // 并行变体写回子集：绝不删除已持久化条目
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+        let after_subset =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_append")
+                .unwrap();
+        assert_eq!(after_subset, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_merge_preserves_other_session_metadata() {
+        // merge 语义：只 upsert frozenToolSchemaOrder 一个键，
+        // authority/plan 等既有 metadata 键必须原样共存。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_frozen_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+            "plan": { "batchId": "batch_1" },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_meta",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_frozen_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "authority metadata 不得被冻结基线写入覆盖"
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+        assert_eq!(
+            metadata
+                .get("plan")
+                .and_then(|plan| plan.get("batchId"))
+                .and_then(Value::as_str),
+            Some("batch_1")
+        );
+        assert_eq!(
+            SessionAuthorityState::from_metadata(Some(metadata)).authority_mode,
+            AuthorityMode::Plan,
+            "authority 状态解析必须不受新键影响"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_meta")
+                .unwrap(),
+            vec!["alpha_tool"]
+        );
+
+        // 反向共存：authority 写路径（apply_to_metadata）也不得丢掉冻结基线
+        let mut authority = SessionAuthorityState::from_metadata(reloaded.metadata.as_ref());
+        authority.authority_mode = AuthorityMode::Craft;
+        let mut updated = reloaded.clone();
+        updated.metadata = Some(authority.apply_to_metadata(updated.metadata.take()));
+        ChatV2Repo::update_session_with_conn(&conn, &updated).unwrap();
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_meta")
+                .unwrap(),
+            vec!["alpha_tool"],
+            "authority 切换后冻结基线必须仍在 metadata 中"
+        );
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_missing_key_defaults_to_fresh_baseline() {
+        // 缺键（旧会话 / 从未发出 tools）降级为空基线 = 首轮语义
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_frozen_empty".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        assert!(ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_empty"
+        )
+        .unwrap()
+        .is_empty());
+    }
+
+    #[test]
+    fn tool_face_prefix_missing_generation_key_falls_back_to_generation_zero() {
+        // 缺键回退（旧会话兼容）：升级前的会话只有 frozenToolSchemaOrder，
+        // 代际键与 digest 键均缺 → generation 视为 0、order 回退旧键、
+        // digest 为 None；三键全缺 → None（首轮语义）。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_face_fallback".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        assert!(
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_fallback")
+                .unwrap()
+                .is_none(),
+            "从未冻结过任何 tools 状态的会话必须返回 None"
+        );
+
+        // 走旧写路径只落 frozenToolSchemaOrder（非字母序，还原全靠持久化）
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_face_fallback",
+            &["zeta_tool".into(), "alpha_tool".into()],
+        )
+        .unwrap();
+        let restored =
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_fallback")
+                .unwrap()
+                .expect("旧键存在即视为第 0 代快照");
+        assert_eq!(restored.generation, 0, "缺代际键必须回退 generation=0");
+        assert_eq!(
+            restored.order,
+            vec!["zeta_tool", "alpha_tool"],
+            "order 必须回退现有 frozenToolSchemaOrder 首见序"
+        );
+        assert!(restored.schema_digest.is_none(), "缺 digest 键必须为 None");
+    }
+
+    #[test]
+    fn tool_face_prefix_advance_does_not_touch_updated_at() {
+        // 纪律回归：代际键属发送热路径内部缓存状态，advance 绝不推
+        // updated_at，否则每次代际切换都会把会话顶到列表首位。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_face_ts".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        let updated_at_before = ChatV2Repo::get_session_with_conn(&conn, "sess_face_ts")
+            .unwrap()
+            .expect("Session should exist")
+            .updated_at;
+
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_ts",
+            &ToolFacePrefixSnapshot {
+                generation: 1,
+                order: vec!["read_file".into(), "search".into()],
+                schema_digest: Some("digest_v1".into()),
+            },
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_face_ts")
+            .unwrap()
+            .expect("Session should exist");
+        assert_eq!(
+            reloaded.updated_at, updated_at_before,
+            "advance 写库不得推进 updated_at"
+        );
+        // 写确实发生了（不是因跳过写库而侥幸不动时间戳）
+        assert_eq!(
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_ts")
+                .unwrap()
+                .expect("快照应已持久化")
+                .generation,
+            1
+        );
+    }
+
+    #[test]
+    fn tool_face_prefix_advance_writes_generation_and_order_atomically() {
+        // 双键同事务：advance 之后新读路径（代际快照）与旧读路径
+        // （frozenToolSchemaOrder）必须看到同一 order；其他 metadata 键
+        // 原样共存；order 合并保持 append-only；generation 只前进不回退。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_face_atomic".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_atomic",
+            &ToolFacePrefixSnapshot {
+                generation: 1,
+                order: vec!["zeta_tool".into(), "alpha_tool".into()],
+                schema_digest: Some("digest_v1".into()),
+            },
+        )
+        .unwrap();
+
+        let snapshot =
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_atomic")
+                .unwrap()
+                .expect("快照应已持久化");
+        assert_eq!(snapshot.generation, 1);
+        assert_eq!(snapshot.order, vec!["zeta_tool", "alpha_tool"]);
+        assert_eq!(snapshot.schema_digest.as_deref(), Some("digest_v1"));
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_face_atomic")
+                .unwrap(),
+            snapshot.order,
+            "旧读路径必须与代际快照看到同一同事务落库的 order"
+        );
+
+        // 后续 advance：子集 order 不删条目、新名只追加；更小代号不回退；
+        // 快照无 digest 不抹掉已持久化 digest。
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_atomic",
+            &ToolFacePrefixSnapshot {
+                generation: 0,
+                order: vec!["beta_tool".into(), "zeta_tool".into()],
+                schema_digest: None,
+            },
+        )
+        .unwrap();
+        let merged = ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_atomic")
+            .unwrap()
+            .expect("快照应已持久化");
+        assert_eq!(merged.generation, 1, "generation 只前进不回退");
+        assert_eq!(
+            merged.order,
+            vec!["zeta_tool", "alpha_tool", "beta_tool"],
+            "order 合并必须 append-only：不删除、不重排、新名追加末尾"
+        );
+        assert_eq!(
+            merged.schema_digest.as_deref(),
+            Some("digest_v1"),
+            "快照无 digest 不得抹掉已持久化值"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_face_atomic")
+                .unwrap(),
+            merged.order
+        );
+
+        // 其他 metadata 键（authority 组）不被三键 merge 覆盖
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_face_atomic")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "authority metadata 不得被代际写入覆盖"
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_survives_process_restart_via_session_metadata() {
+        // 回归（P0 available_skills 快照跨进程）：写快照 → 模拟桌面 App
+        // 重启（前端内存 Map 清空，只剩 DB）→ 从 session.metadata 读回
+        // 同一字节，system 目录不被 live registry 重算打碎。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_snap".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 缺键 = 该会话从未冻结（前端首次生成时建立）
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_snap")
+                .unwrap(),
+            None
+        );
+
+        let snapshot = "<available_skills>\n  <skill id=\"alpha\" tools=\"2\">\n    Alpha skill\n  </skill>\n</available_skills>";
+        let effective = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_snap",
+            snapshot,
+        )
+        .unwrap();
+        assert_eq!(effective, snapshot);
+
+        // 「重启后」session 加载路径从 metadata 恢复同一字节
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_snap")
+                .unwrap()
+                .as_deref(),
+            Some(snapshot),
+            "重启恢复的快照必须与首次冻结的字节逐字一致"
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_freeze_is_first_write_wins() {
+        // first-write-wins：中途 skill_install 后重算的 live 目录（多窗口 /
+        // 竞争写回）绝不覆盖已冻结快照；空串是合法快照，同样不可覆盖。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_fww".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let first = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_fww",
+            "catalog v1",
+        )
+        .unwrap();
+        assert_eq!(first, "catalog v1");
+
+        // 竞争写入返回已冻结值，持久化不变
+        let second = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_fww",
+            "catalog v2 (live regenerated)",
+        )
+        .unwrap();
+        assert_eq!(second, "catalog v1", "已冻结快照绝不覆盖，返回持久化权威值");
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_fww")
+                .unwrap()
+                .as_deref(),
+            Some("catalog v1")
+        );
+
+        // 空目录同样冻结（安装前发过消息的会话保持无目录）
+        let empty_session = ChatSession::new("sess_skills_empty".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &empty_session).unwrap();
+        let frozen_empty = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty",
+            "",
+        )
+        .unwrap();
+        assert_eq!(frozen_empty, "");
+        let after_install = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty",
+            "catalog appeared after install",
+        )
+        .unwrap();
+        assert_eq!(
+            after_install, "",
+            "空串快照是合法冻结态，安装后不得追加目录"
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_freeze_preserves_other_session_metadata() {
+        // merge 语义：只 upsert availableSkillsSnapshot 一个键，
+        // authority / frozenToolSchemaOrder 等既有键必须原样共存。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_skills_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_skills_meta",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_meta",
+            "catalog",
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan")
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_skills_meta")
+                .unwrap(),
+            vec!["alpha_tool"],
+            "tools 冻结基线必须与目录快照共存"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_meta")
+                .unwrap()
+                .as_deref(),
+            Some("catalog")
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_explicit_generation_bump_via_compaction_marker() {
+        // 🆕 R4-#6 显式换代：compaction 落盘事务写待换代标记后，freeze 原语
+        // 允许且仅允许下一次写入作为新代 first write 覆盖旧快照；新代内
+        // first-write-wins 立即恢复生效。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_skills_gen".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({ "authorityMode": "plan" }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 第 0 代冻结（缺代号键 = 第 0 代，与升级前行为一致）
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_gen",
+            "catalog gen0",
+        )
+        .unwrap();
+        // 无标记时的竞争写回仍被拒绝（负例保持）
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog live (no marker)",
+            )
+            .unwrap(),
+            "catalog gen0"
+        );
+
+        // compaction 落盘声明换代：pending = generation + 1 = 1；幂等不重复 +1
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(1),
+            "前端消费前的多次 compaction 必须折叠为同一待换代代号"
+        );
+
+        // 显式换代路径：下一次 freeze 作为第 1 代 first write 覆盖
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog gen1 (live regenerated)",
+            )
+            .unwrap(),
+            "catalog gen1 (live regenerated)"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_gen")
+                .unwrap()
+                .as_deref(),
+            Some("catalog gen1 (live regenerated)")
+        );
+
+        // 换代完成后：generation 推进、pending 清除、其他键原样保留，
+        // 新代内 first-write-wins 立即恢复。
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_gen")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert_eq!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY)
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY)
+                .is_none(),
+            "换代完成必须清除待换代标记"
+        );
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "换代只 merge 目录相关键，其他 metadata 键必须原样保留"
+        );
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog gen1 competitor",
+            )
+            .unwrap(),
+            "catalog gen1 (live regenerated)",
+            "新代内竞争写回仍被 first-write-wins 拒绝"
+        );
+
+        // 再次 compaction：pending 基于新代号继续推进（= 2）
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_stale_marker_is_noop_when_never_frozen() {
+        // 🆕 R4-#6：从未冻结过快照的会话（缺键语义 = 下次按 live 建立）
+        // 无需换代标记；随后的首次 freeze 走普通第 0 代 first write，
+        // 字节行为与升级前完全一致（不写代号键）。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_nofrz".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_nofrz",
+            )
+            .unwrap(),
+            None
+        );
+        let metadata_after_mark = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_nofrz")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata;
+        assert!(
+            metadata_after_mark
+                .as_ref()
+                .and_then(|meta| meta.get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY))
+                .is_none(),
+            "no-op 路径不得留下待换代标记"
+        );
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_nofrz",
+            "first catalog",
+        )
+        .unwrap();
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_nofrz",
+                "second write",
+            )
+            .unwrap(),
+            "first catalog",
+            "第 0 代 first-write-wins 不受换代机制影响"
+        );
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_nofrz")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY)
+                .is_none(),
+            "普通首冻不写代号键（缺键即第 0 代，保持升级前字节形态）"
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_empty_freeze_then_compaction_marker_allows_catalog() {
+        // 🆕 R4-#6：空串快照（安装前发过消息的会话）在 compaction 换代后
+        // 允许出现目录 —— 与「无标记时安装后不得追加目录」的负例互补，
+        // 证明覆盖只能走显式换代键。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_empty_gen".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty_gen",
+            "",
+        )
+        .unwrap();
+        // 无标记：安装后重算的目录仍被拒（既有负例语义不变）
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+                "catalog appeared after install",
+            )
+            .unwrap(),
+            ""
+        );
+        // compaction 声明换代后，live 目录作为新代 first write 生效
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+            )
+            .unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+                "catalog appeared after install",
+            )
+            .unwrap(),
+            "catalog appeared after install"
+        );
+    }
+
+    #[test]
+    fn microcompact_anchor_survives_process_restart_via_session_metadata() {
+        // 回归（P0 microcompact 锚点跨进程）：写锚点 → 模拟桌面 App 重启
+        // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复后
+        // advance 得到同一 eligible_user_turns，不跳变到当前 U - K。
+        use crate::chat_v2::pipeline::helpers::{advance_microcompact_anchor, MicrocompactAnchor};
+
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_mc_anchor".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 缺键 = 进程内首次观察语义
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor").unwrap(),
+            None
+        );
+
+        let anchor = MicrocompactAnchor {
+            lineage: Some("cmp_1".to_string()),
+            eligible_user_turns: 3,
+        };
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor", &anchor)
+            .unwrap();
+
+        // 「重启后」内存 miss 时 pipeline 走这条恢复路径
+        let restored =
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
+                .unwrap()
+                .expect("anchor should be persisted");
+        assert_eq!(restored, anchor, "重启恢复的锚点必须与上一进程写入一致");
+
+        // 恢复后决策：同一 lineage 下即使当前批量值涨到 9（会话又聊了很多轮），
+        // eligible_user_turns 仍冻结在 3 —— 中间轮工具输出不会突然占位符化。
+        let (after_restart, eligible) =
+            advance_microcompact_anchor(Some(&restored), Some("cmp_1"), 9);
+        assert_eq!(
+            eligible, 3,
+            "重启后必须得到同一 eligible_user_turns，不跳到当前 U-K"
+        );
+        assert_eq!(after_restart, anchor, "无 compaction 事件时锚点本身不变");
+
+        // 仍只随 compaction 事件推进：lineage 变化才批量推进并允许覆写持久化
+        let (advanced, eligible) = advance_microcompact_anchor(Some(&restored), Some("cmp_2"), 9);
+        assert_eq!(eligible, 9);
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor", &advanced)
+            .unwrap();
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor").unwrap(),
+            Some(advanced)
+        );
+    }
+
+    #[test]
+    fn microcompact_anchor_lineage_none_roundtrips_and_preserves_metadata() {
+        // lineage=None（无压缩历史）的锚点也要完整往返；只 upsert
+        // microcompactAnchor 一个键，其他 metadata 键原样保留。
+        use crate::chat_v2::pipeline::helpers::MicrocompactAnchor;
+
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_mc_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "ask",
+            "plan": { "batchId": "batch_1" },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let anchor = MicrocompactAnchor {
+            lineage: None,
+            eligible_user_turns: 2,
+        };
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_meta", &anchor)
+            .unwrap();
+
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_meta").unwrap(),
+            Some(anchor),
+            "lineage=None 必须往返为 None，不得与空字符串混同"
+        );
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_mc_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("ask")
+        );
+        assert_eq!(
+            metadata
+                .get("plan")
+                .and_then(|plan| plan.get("batchId"))
+                .and_then(Value::as_str),
+            Some("batch_1")
+        );
+    }
+
+    #[test]
+    fn test_session_title_locked_default_false() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_default".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_default")
+            .unwrap()
+            .expect("Session should exist");
+        assert!(
+            !loaded.title_locked,
+            "新会话默认 title_locked = false，允许 LLM 自动生成标题"
+        );
+    }
+
+    #[test]
+    fn test_session_title_locked_persists_through_update() {
+        let conn = setup_test_db();
+
+        let mut session = ChatSession::new("sess_lock_persist".to_string(), "chat".to_string());
+        session.title_locked = true;
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(loaded.title_locked);
+
+        // 经过 update_session 后仍保留锁定状态
+        let mut updated = loaded.clone();
+        updated.description = Some("changed".to_string());
+        ChatV2Repo::update_session_with_conn(&conn, &updated).unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.title_locked, "update_session 不应清除锁定标志");
+        assert_eq!(reloaded.description.as_deref(), Some("changed"));
+    }
+
+    #[test]
+    fn test_set_title_locked_helper() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_helper".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 初始未锁定
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!loaded.title_locked);
+
+        // 通过 helper 锁定
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", true).unwrap();
+        let after_lock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(after_lock.title_locked);
+
+        // 通过 helper 解锁
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", false).unwrap();
+        let after_unlock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!after_unlock.title_locked);
+    }
+
+    fn test_group(id: &str, name: &str) -> SessionGroup {
+        let now = Utc::now();
+        SessionGroup {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: None,
+            icon: None,
+            color: None,
+            system_prompt: None,
+            default_skill_ids: Vec::new(),
+            pinned_resource_ids: Vec::new(),
+            workspace_id: None,
+            default_runtime_root_id: None,
+            preferred_project_root_path: None,
+            sort_order: 1,
+            persist_status: PersistStatus::Active,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn test_group_preferred_runtime_root_crud() {
+        let conn = setup_test_db();
+        let mut group = test_group("group_pref_root", "Preferred Root");
+        group.default_runtime_root_id = Some("authorized_abc".to_string());
+        group.preferred_project_root_path = Some("/Users/demo/project".to_string());
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let loaded = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.default_runtime_root_id.as_deref(),
+            Some("authorized_abc")
+        );
+        assert_eq!(
+            loaded.preferred_project_root_path.as_deref(),
+            Some("/Users/demo/project")
+        );
+
+        let mut updated = loaded;
+        updated.default_runtime_root_id = Some("workspace".to_string());
+        updated.preferred_project_root_path = Some("/tmp/workspace".to_string());
+        updated.updated_at = Utc::now();
+        ChatV2Repo::update_group_with_conn(&conn, &updated).unwrap();
+
+        let after_update = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after_update.default_runtime_root_id.as_deref(),
+            Some("workspace")
+        );
+        assert_eq!(
+            after_update.preferred_project_root_path.as_deref(),
+            Some("/tmp/workspace")
+        );
+
+        let mut cleared = after_update;
+        cleared.default_runtime_root_id = None;
+        cleared.preferred_project_root_path = None;
+        cleared.updated_at = Utc::now();
+        ChatV2Repo::update_group_with_conn(&conn, &cleared).unwrap();
+
+        let after_clear = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_clear.default_runtime_root_id, None);
+        assert_eq!(after_clear.preferred_project_root_path, None);
+
+        let listed = ChatV2Repo::list_groups_with_conn(&conn, Some("active"), None).unwrap();
+        assert!(listed.iter().any(|g| g.id == group.id));
+    }
+
+    #[test]
+    fn test_archive_group_preserves_group_id_and_restore_marker() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_archive_contract", "Archive Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut grouped_session = ChatSession::new(
+            "sess_group_archive_contract".to_string(),
+            "chat".to_string(),
+        );
+        grouped_session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &grouped_session).unwrap();
+
+        ChatV2Repo::archive_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let archived_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(archived_group.persist_status, PersistStatus::Archived);
+
+        let archived_session = ChatV2Repo::get_session_with_conn(&conn, &grouped_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(archived_session.persist_status, PersistStatus::Archived);
+        assert_eq!(
+            archived_session.group_id.as_deref(),
+            Some(group.id.as_str())
+        );
+        assert_eq!(
+            archived_session
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("groupArchivedBy"))
+                .and_then(|marker| marker.get("groupId"))
+                .and_then(|group_id| group_id.as_str()),
+            Some(group.id.as_str())
+        );
+    }
+
+    #[test]
+    fn test_restore_group_restores_only_group_archived_sessions() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_restore_contract", "Restore Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut carried_session =
+            ChatSession::new("sess_group_carried_restore".to_string(), "chat".to_string());
+        carried_session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &carried_session).unwrap();
+
+        let mut manually_archived_session = ChatSession::new(
+            "sess_manual_archive_restore".to_string(),
+            "chat".to_string(),
+        );
+        manually_archived_session.group_id = Some(group.id.clone());
+        manually_archived_session.persist_status = PersistStatus::Archived;
+        manually_archived_session.metadata = Some(serde_json::json!({
+            "manuallyArchivedBy": {
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &manually_archived_session).unwrap();
+
+        ChatV2Repo::archive_group_with_conn(&mut conn, &group.id).unwrap();
+        ChatV2Repo::restore_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let restored_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored_group.persist_status, PersistStatus::Active);
+
+        let carried_after = ChatV2Repo::get_session_with_conn(&conn, &carried_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(carried_after.persist_status, PersistStatus::Active);
+        assert_eq!(carried_after.group_id.as_deref(), Some(group.id.as_str()));
+        assert!(carried_after
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupArchivedBy"))
+            .is_none());
+
+        let manual_after = ChatV2Repo::get_session_with_conn(&conn, &manually_archived_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(manual_after.persist_status, PersistStatus::Archived);
+        assert_eq!(manual_after.group_id.as_deref(), Some(group.id.as_str()));
+    }
+
+    #[test]
+    fn test_restore_group_reattaches_marker_sessions_with_cleared_group_id() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_restore_orphan_contract", "Restore Orphan Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut orphaned_session =
+            ChatSession::new("sess_group_restore_orphan".to_string(), "chat".to_string());
+        orphaned_session.group_id = None;
+        orphaned_session.persist_status = PersistStatus::Archived;
+        orphaned_session.metadata = Some(serde_json::json!({
+            "groupArchivedBy": {
+                "groupId": group.id.clone(),
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &orphaned_session).unwrap();
+
+        let mut archived_group = group.clone();
+        archived_group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &archived_group).unwrap();
+
+        ChatV2Repo::restore_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let restored = ChatV2Repo::get_session_with_conn(&conn, &orphaned_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.persist_status, PersistStatus::Active);
+        assert_eq!(restored.group_id.as_deref(), Some(group.id.as_str()));
+        assert!(restored
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupArchivedBy"))
+            .is_none());
+    }
+
+    #[test]
+    fn test_permanently_delete_group_deletes_topic_sessions_without_ungrouping() {
+        let mut conn = setup_test_db();
+        let mut group = test_group(
+            "group_permanent_delete_contract",
+            "Permanent Delete Contract",
+        );
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut session = ChatSession::new(
+            "sess_group_permanent_delete_contract".to_string(),
+            "chat".to_string(),
+        );
+        session.group_id = Some(group.id.clone());
+        session.persist_status = PersistStatus::Archived;
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &group).unwrap();
+
+        let deleted_session_ids =
+            ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        assert_eq!(deleted_session_ids, vec![session.id.clone()]);
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_none());
+        assert!(ChatV2Repo::get_session_with_conn(&conn, &session.id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_permanently_delete_group_deletes_marker_orphan_sessions() {
+        let mut conn = setup_test_db();
+        let mut group = test_group(
+            "group_permanent_delete_orphan_contract",
+            "Permanent Delete Orphan Contract",
+        );
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut orphaned_session = ChatSession::new(
+            "sess_group_permanent_delete_orphan_contract".to_string(),
+            "chat".to_string(),
+        );
+        orphaned_session.group_id = None;
+        orphaned_session.persist_status = PersistStatus::Archived;
+        orphaned_session.metadata = Some(serde_json::json!({
+            "groupArchivedBy": {
+                "groupId": group.id.clone(),
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &orphaned_session).unwrap();
+
+        group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &group).unwrap();
+
+        let deleted_session_ids =
+            ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        assert_eq!(deleted_session_ids, vec![orphaned_session.id.clone()]);
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_none());
+        assert!(
+            ChatV2Repo::get_session_with_conn(&conn, &orphaned_session.id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_permanently_delete_group_rejects_active_topic() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_active_delete_contract", "Active Delete Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let err = ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id)
+            .expect_err("active groups must not be permanently deleted through archive delete");
+
+        assert!(matches!(err, ChatV2Error::Validation(_)));
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn test_soft_delete_group_is_the_only_group_flow_that_ungroups_sessions() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_delete_contract", "Delete Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut session =
+            ChatSession::new("sess_group_delete_contract".to_string(), "chat".to_string());
+        session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::soft_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let deleted_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(deleted_group.persist_status, PersistStatus::Deleted);
+
+        let ungrouped_session = ChatV2Repo::get_session_with_conn(&conn, &session.id)
+            .unwrap()
+            .unwrap();
+        assert!(ungrouped_session.group_id.is_none());
+    }
+
+    #[test]
+    fn test_message_crud() {
+        let conn = setup_test_db();
+
+        // Create session first
+        let session = ChatSession::new("sess_msg_test".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // Create message
+        let message = ChatMessage::new_user("sess_msg_test".to_string(), vec!["blk_1".to_string()]);
+        let message_id = message.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // Read
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message_id)
+            .unwrap()
+            .expect("Message should exist");
+        assert_eq!(loaded.role, MessageRole::User);
+        assert_eq!(loaded.block_ids, vec!["blk_1".to_string()]);
+
+        // Get session messages
+        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, "sess_msg_test").unwrap();
+        assert_eq!(messages.len(), 1);
+
+        // Delete
+        ChatV2Repo::delete_message_with_conn(&conn, &message_id).unwrap();
+        let deleted = ChatV2Repo::get_message_with_conn(&conn, &message_id).unwrap();
+        assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_history_window_batch_preserves_key_order_metadata_and_replay() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+        let session_id = "sess_history_window_batch";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        // Equal timestamps and reverse-lexical IDs catch accidental id sorting;
+        // 405 keys also exercise both bounded parameter batches.
+        for index in 0..405 {
+            let mut message = ChatMessage::new_assistant(session_id.into());
+            message.id = format!("msg_batch_{:04}", 405 - index);
+            message.timestamp = 1_000;
+            message.meta = Some(MessageMeta {
+                model_id: Some(format!("model_{index}")),
+                ..Default::default()
+            });
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+            expected.push(message.id.clone());
+            if index == 0 || index == 404 {
+                for position in [2, 0] {
+                    let mut block = MessageBlock::new_content(message.id.clone(), position);
+                    block.id = format!("blk_batch_{index}_{position}");
+                    block.content = Some(format!("payload {index}/{position}"));
+                    ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+                    if position == 2 {
+                        ChatV2Repo::update_block_replay_with_conn(
+                            &conn,
+                            &block.id,
+                            &BlockReplayData {
+                                llm_content: Some(format!("wrapped {index}")),
+                                tool_call_id: Some(format!("call_{index}")),
+                                round_text: Some("before tool".into()),
+                            },
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        let ids = ChatV2Repo::get_session_message_ids_with_conn(&conn, session_id).unwrap();
+        assert_eq!(ids, expected);
+        let messages = ChatV2Repo::get_messages_by_ids_with_conn(&conn, session_id, &ids).unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| &message.id)
+                .collect::<Vec<_>>(),
+            ids.iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            messages[404].meta.as_ref().unwrap().model_id.as_deref(),
+            Some("model_404")
+        );
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &ids).unwrap();
+        for index in [0, 404] {
+            let row = blocks.get(&ids[index]).unwrap();
+            assert_eq!(
+                row.iter()
+                    .map(|block| block.block_index)
+                    .collect::<Vec<_>>(),
+                vec![0, 2]
+            );
+            let old_replay =
+                ChatV2Repo::get_block_replay_map_with_conn(&conn, &ids[index]).unwrap();
+            for (block_id, data) in old_replay {
+                assert_eq!(replay.get(&block_id), Some(&data));
+            }
+        }
+        assert_eq!(replay.len(), 2);
+        let selected = vec![ids[404].clone(), ids[0].clone()];
+        let selected_messages =
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, session_id, &selected).unwrap();
+        assert_eq!(selected_messages[0].id, selected[0]);
+        assert_eq!(selected_messages[1].id, selected[1]);
+        assert!(
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, "another_session", &selected)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_history_batch_without_replay_columns_keeps_blocks() {
+        let conn = setup_test_db();
+        let session_id = "sess_history_legacy_replay";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let message = ChatMessage::new_user(session_id.into(), Vec::new());
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.content = Some("legacy body".into());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &[message.id.clone()])
+                .unwrap();
+        assert_eq!(
+            blocks[&message.id][0].content.as_deref(),
+            Some("legacy body")
+        );
+        assert!(replay.is_empty());
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &[]).unwrap();
+        assert!(blocks.is_empty() && replay.is_empty());
+    }
+
+    #[test]
+    fn test_load_session_messages_page_with_role_filter() {
+        let conn = setup_test_db();
+        let session_id = "sess_message_page";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        for index in 0..5 {
+            let mut message = if index % 2 == 0 {
+                ChatMessage::new_user(session_id.to_string(), Vec::new())
+            } else {
+                ChatMessage::new_assistant(session_id.to_string())
+            };
+            message.id = format!("msg_page_{}", index);
+            message.timestamp = 1_000 + index;
+            let block_id = format!("blk_page_{}", index);
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some(format!("message {}", index));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        let (messages, blocks, total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 2, 2, None)
+                .unwrap();
+        assert_eq!(total, 5);
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["msg_page_2", "msg_page_3"]
+        );
+        assert_eq!(
+            blocks
+                .iter()
+                .map(|block| block.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["blk_page_2", "blk_page_3"]
+        );
+
+        let (user_messages, user_blocks, user_total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 2, 1, Some("user"))
+                .unwrap();
+        assert_eq!(user_total, 3);
+        assert_eq!(user_messages[0].id, "msg_page_2");
+        assert_eq!(user_blocks[0].id, "blk_page_2");
+
+        let (empty_messages, empty_blocks, empty_total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 99, 20, None)
+                .unwrap();
+        assert_eq!(empty_total, 5);
+        assert!(empty_messages.is_empty());
+        assert!(empty_blocks.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // #469：meta_json 去重 / 旧行回读 / 体量预算尾窗
+    // ------------------------------------------------------------------
+
+    fn issue469_runtime_snapshot() -> crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+        use crate::chat_v2::types::{McpToolSchema, ReplaySkillPayloadSnapshot};
+        let schema = |name: &str| McpToolSchema {
+            name: name.to_string(),
+            server_id: None,
+            description: Some(format!("{name} 的说明")),
+            input_schema: Some(serde_json::json!({"type": "object"})),
+        };
+        ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["skill-a".to_string()],
+            // 多键 HashMap：两份独立构造的快照迭代序可能不同，必须按结构比较
+            skill_dependencies: (0..8)
+                .map(|i| (format!("skill-{i}"), vec![format!("dep-{i}")]))
+                .collect(),
+            skill_embedded_tools: (0..8)
+                .map(|i| (format!("skill-{i}"), vec![schema(&format!("tool_{i}"))]))
+                .collect(),
+            mcp_tool_schemas: vec![schema("builtin-rag_search")],
+            ..Default::default()
+        }
+    }
+
+    fn issue469_tool_result(block_id: Option<&str>) -> crate::chat_v2::types::ToolResultInfo {
+        crate::chat_v2::types::ToolResultInfo {
+            tool_call_id: Some("call_469".to_string()),
+            block_id: block_id.map(str::to_string),
+            tool_name: "builtin-rag_search".to_string(),
+            input: serde_json::json!({"query": "资料"}),
+            output: serde_json::json!({"sources": ["x".repeat(4096)]}),
+            success: true,
+            error: None,
+            duration_ms: Some(12),
+            reasoning_content: Some("先检索".to_string()),
+            thought_signature: Some("sig-469".to_string()),
+        }
+    }
+
+    fn issue469_raw_meta_json(conn: &Connection, message_id: &str) -> Value {
+        let raw: String = conn
+            .query_row(
+                "SELECT meta_json FROM chat_v2_messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    #[test]
+    fn test_issue469_meta_write_collapses_duplicate_runtime_and_slims_tool_results() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_write";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_issue469_write".to_string();
+        message.meta = Some(MessageMeta {
+            // 两份独立构造（HashMap 迭代序各自随机），结构相等
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(issue469_runtime_snapshot()),
+            tool_results: Some(vec![
+                issue469_tool_result(Some("blk_issue469_tool")),
+                issue469_tool_result(None),
+            ]),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let raw = issue469_raw_meta_json(&conn, &message.id);
+        assert!(raw.get("skillRuntimeBefore").is_some());
+        assert!(
+            raw.get("skillRuntimeAfter").is_none(),
+            "与 before 相同的 after 不应再落库: {raw}"
+        );
+        let results = raw["toolResults"].as_array().unwrap();
+        // 有块承载的条目：input/output 清空，重放字段保留
+        assert!(results[0]["output"].is_null());
+        assert!(results[0]["input"].is_null());
+        assert_eq!(results[0]["thoughtSignature"], "sig-469");
+        assert_eq!(results[0]["reasoningContent"], "先检索");
+        assert_eq!(results[0]["blockId"], "blk_issue469_tool");
+        // 无 block_id 的条目没有别处可取，原样保留
+        assert!(results[1]["output"]["sources"].is_array());
+
+        // 回读：after 取有效值仍等于原快照
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        let meta = loaded.meta.unwrap();
+        assert_eq!(
+            meta.effective_skill_runtime_after(),
+            Some(&issue469_runtime_snapshot())
+        );
+
+        // before/after 真不同（本轮 load_skills 改了技能面）时两份都保留
+        let mut changed_after = issue469_runtime_snapshot();
+        changed_after.active_skill_ids.push("skill-b".to_string());
+        message.meta = Some(MessageMeta {
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(changed_after.clone()),
+            ..Default::default()
+        });
+        ChatV2Repo::update_message_with_conn(&conn, &message).unwrap();
+        let raw = issue469_raw_meta_json(&conn, &message.id);
+        assert!(raw.get("skillRuntimeBefore").is_some());
+        assert!(raw.get("skillRuntimeAfter").is_some());
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.meta.unwrap().effective_skill_runtime_after(),
+            Some(&changed_after)
+        );
+    }
+
+    #[test]
+    fn test_issue469_legacy_duplicated_meta_row_reads_back_slim_and_replayable() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_legacy";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_issue469_legacy".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // 模拟旧版本落库的行：before/after 重复 + toolResults 携带完整输出，
+        // 直接写原始 JSON，绕过新写入路径的规范化
+        let legacy_meta = serde_json::json!({
+            "skillRuntimeBefore": issue469_runtime_snapshot(),
+            "skillRuntimeAfter": issue469_runtime_snapshot(),
+            "toolResults": [issue469_tool_result(Some("blk_issue469_legacy_tool"))],
+        });
+        let mut legacy_variant = Variant::new("model-a".to_string());
+        legacy_variant.meta = Some(crate::chat_v2::types::VariantMeta {
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(issue469_runtime_snapshot()),
+            ..Default::default()
+        });
+        let legacy_variants = serde_json::to_string(&vec![legacy_variant]).unwrap();
+        conn.execute(
+            "UPDATE chat_v2_messages SET meta_json = ?2, variants_json = ?3 WHERE id = ?1",
+            params![message.id, legacy_meta.to_string(), legacy_variants],
+        )
+        .unwrap();
+
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        let meta = loaded.meta.as_ref().unwrap();
+        assert!(meta.skill_runtime_after.is_none(), "旧重复行回读即去重");
+        assert_eq!(
+            meta.effective_skill_runtime_after(),
+            Some(&issue469_runtime_snapshot())
+        );
+        let tool_result = &meta.tool_results.as_ref().unwrap()[0];
+        assert!(tool_result.output.is_null());
+        assert_eq!(tool_result.thought_signature.as_deref(), Some("sig-469"));
+        assert_eq!(tool_result.reasoning_content.as_deref(), Some("先检索"));
+
+        let variant_meta = loaded.variants.as_ref().unwrap()[0].meta.as_ref().unwrap();
+        assert!(variant_meta.skill_runtime_after.is_none());
+        assert_eq!(
+            variant_meta.skill_runtime_before,
+            Some(issue469_runtime_snapshot())
+        );
+
+        // 回读后的形状经 IPC 序列化同样不再带 after
+        let wire = serde_json::to_value(&loaded).unwrap();
+        assert!(wire["_meta"].get("skillRuntimeBefore").is_some());
+        assert!(wire["_meta"].get("skillRuntimeAfter").is_none());
+    }
+
+    fn issue469_seed_messages(conn: &Connection, session_id: &str, count: i64, payload: usize) {
+        ChatV2Repo::create_session_with_conn(
+            conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        for index in 0..count {
+            let mut message = if index % 2 == 0 {
+                ChatMessage::new_user(session_id.to_string(), Vec::new())
+            } else {
+                ChatMessage::new_assistant(session_id.to_string())
+            };
+            message.id = format!("{session_id}_msg_{index:02}");
+            message.timestamp = 1_000 + index;
+            let block_id = format!("{session_id}_blk_{index:02}");
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some("x".repeat(payload));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(conn, &block).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_issue469_tail_window_is_capped_by_payload_budget() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_heavy";
+        // 26 条消息 < tail_limit 80，但每条约 10KB：只按条数会整会话全量返回
+        issue469_seed_messages(&conn, session_id, 26, 10_000);
+
+        let response =
+            ChatV2Repo::load_session_tail_with_budget(&conn, session_id, 80, 35_000).unwrap();
+        assert_eq!(
+            response.total_message_count,
+            Some(26),
+            "体量预算截断时必须报告总数，前端据此分页回填"
+        );
+        let ids: Vec<&str> = response.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "sess_issue469_heavy_msg_23",
+                "sess_issue469_heavy_msg_24",
+                "sess_issue469_heavy_msg_25",
+            ]
+        );
+        assert_eq!(response.blocks.len(), 3);
+        assert!(response
+            .blocks
+            .iter()
+            .all(|b| ids.contains(&b.message_id.as_str())));
+
+        // 回填页与尾窗口径一致：offset = total - loaded 往前一页正好接上，不留空洞
+        let window_start = 26 - response.messages.len() as u64;
+        let (page, _, total) = ChatV2Repo::load_session_messages_window_with_conn(
+            &conn,
+            session_id,
+            window_start - 3,
+            3,
+            None,
+        )
+        .unwrap();
+        assert_eq!(total, 26);
+        assert_eq!(
+            page.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "sess_issue469_heavy_msg_20",
+                "sess_issue469_heavy_msg_21",
+                "sess_issue469_heavy_msg_22",
+            ]
+        );
+
+        // 单条就超预算时仍至少保留最近一问一答
+        let response = ChatV2Repo::load_session_tail_with_budget(&conn, session_id, 80, 1).unwrap();
+        assert_eq!(
+            response.messages.len(),
+            LOAD_SESSION_TAIL_MIN_MESSAGES as usize
+        );
+        assert_eq!(response.total_message_count, Some(26));
+    }
+
+    #[test]
+    fn test_issue469_light_session_tail_unchanged() {
+        let conn = setup_test_db();
+        // 轻量会话：条数与体量都在预算内 → 等价全量（total 为 None）
+        issue469_seed_messages(&conn, "sess_issue469_light", 26, 200);
+        let response =
+            ChatV2Repo::load_session_tail_with_conn(&conn, "sess_issue469_light", 80).unwrap();
+        assert_eq!(response.messages.len(), 26);
+        assert_eq!(response.total_message_count, None);
+
+        // 条数超出 tail_limit 时仍按条数截尾
+        issue469_seed_messages(&conn, "sess_issue469_long", 30, 200);
+        let response =
+            ChatV2Repo::load_session_tail_with_conn(&conn, "sess_issue469_long", 10).unwrap();
+        assert_eq!(response.messages.len(), 10);
+        assert_eq!(response.total_message_count, Some(30));
+        assert_eq!(response.messages[0].id, "sess_issue469_long_msg_20");
+    }
+
+    #[test]
+    fn test_search_content_date_range_preserves_legacy_search() {
+        let conn = setup_test_db();
+
+        for (index, updated_at) in ["2026-07-10T12:00:00Z", "2026-07-11T18:30:00Z"]
+            .iter()
+            .enumerate()
+        {
+            let session_id = format!("sess_fts_date_{}", index);
+            let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
+            session.title = Some(format!("Date {}", index));
+            session.updated_at = DateTime::parse_from_rfc3339(updated_at)
+                .unwrap()
+                .with_timezone(&Utc);
+            ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+            let mut message = ChatMessage::new_user(session_id, Vec::new());
+            message.id = format!("msg_fts_date_{}", index);
+            let block_id = format!("blk_fts_date_{}", index);
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some(format!("needle date result {}", index));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        let legacy = ChatV2Repo::search_content(&conn, "needle", 10).unwrap();
+        assert_eq!(legacy.len(), 2, "legacy search must remain unfiltered");
+
+        let filtered = ChatV2Repo::search_content_with_date_range(
+            &conn,
+            "needle",
+            10,
+            Some("2026-07-11T00:00:00.000Z"),
+            Some("2026-07-11T23:59:59.999Z"),
+        )
+        .unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].session_id, "sess_fts_date_1");
+    }
+
+    /// V20260719 回归：block_type 变更必须同步 FTS 索引（防幽灵/漏索引）
+    #[test]
+    fn test_fts_triggers_cover_block_type_changes() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_fts_blocktype";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_user(session_id.to_string(), Vec::new());
+        message.id = "msg_fts_blocktype".to_string();
+        message.block_ids = vec!["blk_fts_blocktype".to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_fts_blocktype".to_string();
+        block.content = Some("blocktypeneedle indexed text".to_string());
+        block.set_success();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // 初始为 content 块：可搜索
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert_eq!(hits.len(), 1, "content block must be indexed");
+
+        // 仅改 block_type（content 不变）为不可索引类型：索引必须被清理
+        conn.execute(
+            "UPDATE chat_v2_blocks SET block_type = 'mcp_tool' WHERE id = 'blk_fts_blocktype'",
+            [],
+        )
+        .unwrap();
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert!(
+            hits.is_empty(),
+            "block_type change away from content/thinking must remove FTS entry (ghost)"
+        );
+
+        // 改回可索引类型：索引必须补回
+        conn.execute(
+            "UPDATE chat_v2_blocks SET block_type = 'thinking' WHERE id = 'blk_fts_blocktype'",
+            [],
+        )
+        .unwrap();
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "block_type change into content/thinking must re-index (missing entry)"
+        );
+    }
+
+    #[test]
+    fn test_create_blocks_batch_atomic() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_batch_blocks";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_batch_blocks".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // 正常批量：三个块一次落盘
+        let blocks: Vec<MessageBlock> = (0..3)
+            .map(|i| {
+                let mut b = MessageBlock::new_content(message.id.clone(), i);
+                b.id = format!("blk_batch_{}", i);
+                b.content = Some(format!("batch content {}", i));
+                b.set_success();
+                b
+            })
+            .collect();
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &blocks).unwrap();
+        let loaded = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(loaded.len(), 3);
+
+        // 幂等 upsert：重复批量不新增行，内容更新
+        let mut updated = blocks.clone();
+        updated[1].content = Some("batch content 1 updated".to_string());
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &updated).unwrap();
+        let loaded = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(loaded.len(), 3);
+        assert_eq!(
+            loaded[1].content.as_deref(),
+            Some("batch content 1 updated")
+        );
+
+        // 原子性：批量中含外键违规块（message 不存在）时整体回滚
+        let bad_batch: Vec<MessageBlock> = vec![
+            {
+                let mut b = MessageBlock::new_content(message.id.clone(), 10);
+                b.id = "blk_batch_good".to_string();
+                b.content = Some("good".to_string());
+                b
+            },
+            {
+                let mut b = MessageBlock::new_content("msg_not_exists".to_string(), 0);
+                b.id = "blk_batch_bad".to_string();
+                b.content = Some("bad".to_string());
+                b
+            },
+        ];
+        let result = ChatV2Repo::create_blocks_batch_with_conn(&conn, &bad_batch);
+        assert!(result.is_err(), "FK violation must fail the batch");
+        assert!(
+            ChatV2Repo::get_block_with_conn(&conn, "blk_batch_good")
+                .unwrap()
+                .is_none(),
+            "batch must roll back as a whole"
+        );
+
+        // 空批量为 no-op
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &[]).unwrap();
+    }
+
+    /// setup_test_db 的迁移列表不含 V20260806（保持「无列回退」测试路径），
+    /// 需要三列时由本 helper 显式补充
+    fn apply_replay_columns(conn: &Connection) {
+        conn.execute_batch(include_str!(
+            "../../../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"
+        ))
+        .unwrap();
+    }
+
+    /// V20260806：三列旁路写入/读取/深拷贝补拷 全链路
+    #[test]
+    fn test_block_replay_sidecar_roundtrip_and_copy() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+
+        let session_id = "sess_replay_sidecar";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_replay_sidecar".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut user_block = MessageBlock::new_content(message.id.clone(), 0);
+        user_block.id = "blk_replay_user".to_string();
+        user_block.content = Some("原始用户输入".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            message.id.clone(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n1"}),
+            1,
+        );
+        tool_block.id = "blk_replay_tool".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+
+        // targeted UPDATE 写入
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_user",
+            &BlockReplayData {
+                llm_content: Some("<user_query>\n原始用户输入\n</user_query>".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_live_abc".to_string()),
+                round_text: Some("我先读一下笔记。".to_string()),
+            },
+        )
+        .unwrap();
+
+        // 读回
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_replay_user").unwrap().llm_content.as_deref(),
+            Some("<user_query>\n原始用户输入\n</user_query>")
+        );
+        let tool_replay = map.get("blk_replay_tool").unwrap();
+        assert_eq!(tool_replay.tool_call_id.as_deref(), Some("call_live_abc"));
+        assert_eq!(tool_replay.round_text.as_deref(), Some("我先读一下笔记。"));
+
+        // MessageBlock 结构体不携带三列：结构体深拷贝后必须 SQL 级补拷
+        let source = ChatV2Repo::get_block_with_conn(&conn, "blk_replay_tool")
+            .unwrap()
+            .unwrap();
+        let mut copied = source.clone();
+        copied.id = "blk_replay_tool_copy".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &copied).unwrap();
+        // 补拷前：新块三列为 NULL
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(map.get("blk_replay_tool_copy").is_none());
+        // 补拷后：与源块一致
+        ChatV2Repo::copy_block_replay_with_conn(&conn, "blk_replay_tool", "blk_replay_tool_copy")
+            .unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_replay_tool_copy").unwrap(),
+            map.get("blk_replay_tool").unwrap()
+        );
+    }
+
+    /// V20260806 P0 回归：update_block_with_conn 在 content 变更时必须失效
+    /// `llm_content`（编辑重发/块编辑残留旧 <user_query> 包装的根因）；
+    /// content 不变时保留；工具块 tool_call_id / round_text 不受影响
+    #[test]
+    fn test_update_block_invalidates_llm_content_on_content_change() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+
+        let session_id = "sess_replay_invalidate";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_user(session_id.to_string(), vec![]);
+        message.id = "msg_replay_invalidate".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut user_block = MessageBlock::new_content(message.id.clone(), 0);
+        user_block.id = "blk_inv_user".to_string();
+        user_block.content = Some("编辑前的问题".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_user",
+            &BlockReplayData {
+                llm_content: Some("<user_query>\n编辑前的问题\n</user_query>".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            message.id.clone(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n1"}),
+            1,
+        );
+        tool_block.id = "blk_inv_tool".to_string();
+        tool_block.content = Some("tool text".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_live_inv".to_string()),
+                round_text: Some("我先读一下。".to_string()),
+            },
+        )
+        .unwrap();
+
+        // 1) content 不变的 update（如仅改 status）：llm_content 保留
+        let mut unchanged = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_user")
+            .unwrap()
+            .unwrap();
+        unchanged.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::update_block_with_conn(&conn, &unchanged).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_inv_user").unwrap().llm_content.as_deref(),
+            Some("<user_query>\n编辑前的问题\n</user_query>"),
+            "content 未变时 llm_content 必须保留"
+        );
+
+        // 2) content 变更的 update：llm_content 必须置 NULL
+        let mut edited = unchanged.clone();
+        edited.content = Some("编辑后的新问题".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &edited).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(
+            map.get("blk_inv_user").is_none(),
+            "content 变更后旧 llm_content 必须失效"
+        );
+
+        // 3) 工具块 content 变更：tool_call_id / round_text 保留（不随 content 派生）
+        let mut tool_edited = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_tool")
+            .unwrap()
+            .unwrap();
+        tool_edited.content = Some("tool text changed".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &tool_edited).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        let tool_replay = map.get("blk_inv_tool").unwrap();
+        assert_eq!(tool_replay.tool_call_id.as_deref(), Some("call_live_inv"));
+        assert_eq!(tool_replay.round_text.as_deref(), Some("我先读一下。"));
+
+        // 4) 显式清空 llm_content（编辑重发事务路径）：可对已有值置 NULL
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_user",
+            &BlockReplayData {
+                llm_content: Some("重新写入的包装".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ChatV2Repo::clear_block_llm_content_with_conn(&conn, "blk_inv_user").unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(
+            map.get("blk_inv_user").is_none(),
+            "clear_block_llm_content_with_conn 必须清掉 llm_content"
+        );
+    }
+
+    /// V20260806 P0 回归：旧库（无三列）时 update_block_with_conn 走回退
+    /// 语句仍正常更新,clear_block_llm_content_with_conn 为 no-op
+    #[test]
+    fn test_update_block_fallback_without_replay_columns() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_inv_nocol";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_user(session_id.to_string(), vec![]);
+        message.id = "msg_inv_nocol".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_inv_nocol".to_string();
+        block.content = Some("原文".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        block.content = Some("改后".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &block).unwrap();
+        let loaded = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_nocol")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.content.as_deref(), Some("改后"));
+
+        ChatV2Repo::clear_block_llm_content_with_conn(&conn, "blk_inv_nocol").unwrap();
+
+        // 不存在的块仍报 BlockNotFound（回退路径保持原语义）
+        let mut missing = block.clone();
+        missing.id = "blk_not_exists".to_string();
+        assert!(ChatV2Repo::update_block_with_conn(&conn, &missing).is_err());
+    }
+
+    /// V20260806：迁移未应用（无三列）时写入静默跳过、读取返回空表
+    #[test]
+    fn test_block_replay_sidecar_fallback_without_columns() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_replay_nocol";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_replay_nocol".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_replay_nocol".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // 写入不报错（静默跳过）
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_nocol",
+            &BlockReplayData {
+                llm_content: Some("wrapped".to_string()),
+                tool_call_id: Some("call_x".to_string()),
+                round_text: None,
+            },
+        )
+        .unwrap();
+        // 读取返回空表（调用方回退旧重建）
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(map.is_empty());
+        // 深拷贝补拷同样 no-op
+        ChatV2Repo::copy_block_replay_with_conn(&conn, "blk_replay_nocol", "blk_replay_nocol")
+            .unwrap();
+    }
+
+    #[test]
+    fn test_insert_or_replace_message_cascades_blocks() {
+        let conn = setup_test_db();
+
+        // Create session first
+        let session_id = "sess_or_replace_test";
+        let session = ChatSession::new(session_id.to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // Create message with a stable id so we can trigger INSERT OR REPLACE.
+        let message_id = "msg_test_or_replace";
+        let block_id = "blk_test_anki_cards";
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = message_id.to_string();
+        message.block_ids = vec![block_id.to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // Insert an anki_cards block referencing the message_id.
+        let mut block = MessageBlock::new(
+            message_id.to_string(),
+            crate::chat_v2::types::block_types::ANKI_CARDS,
+            0,
+        );
+        block.id = block_id.to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // Verify it exists before we replace the message row.
+        assert!(ChatV2Repo::get_block_with_conn(&conn, block_id)
+            .unwrap()
+            .is_some());
+
+        // Re-inserting the same message id now uses ON CONFLICT DO UPDATE (not DELETE+INSERT).
+        // Blocks should NOT be cascade-deleted.
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // Block should still exist after upsert (no cascade deletion).
+        assert!(
+            ChatV2Repo::get_block_with_conn(&conn, block_id)
+                .unwrap()
+                .is_some(),
+            "Block must survive message upsert (ON CONFLICT DO UPDATE)"
+        );
+        let reloaded_message = ChatV2Repo::get_message_with_conn(&conn, message_id)
+            .unwrap()
+            .expect("Message should exist after upsert");
+        assert_eq!(reloaded_message.block_ids, vec![block_id.to_string()]);
+    }
+
+    #[test]
+    fn test_block_crud() {
+        let conn = setup_test_db();
+
+        // Create session and message first
+        let session = ChatSession::new("sess_blk_test".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let message = ChatMessage::new_assistant("sess_blk_test".to_string());
+        let message_id = message.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // Create block
+        let block = MessageBlock::new_content(message_id.clone(), 0);
+        let block_id = block.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // Read
+        let loaded = ChatV2Repo::get_block_with_conn(&conn, &block_id)
+            .unwrap()
+            .expect("Block should exist");
+        assert_eq!(loaded.block_type, "content");
+        assert_eq!(loaded.status, "pending");
+
+        // Update
+        let mut updated_block = loaded.clone();
+        updated_block.content = Some("Hello, world!".to_string());
+        updated_block.status = "success".to_string();
+        ChatV2Repo::update_block_with_conn(&conn, &updated_block).unwrap();
+
+        let reloaded = ChatV2Repo::get_block_with_conn(&conn, &block_id)
+            .unwrap()
+            .expect("Block should exist");
+        assert_eq!(reloaded.content, Some("Hello, world!".to_string()));
+        assert_eq!(reloaded.status, "success");
+
+        // Get message blocks
+        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message_id).unwrap();
+        assert_eq!(blocks.len(), 1);
+
+        // Delete
+        ChatV2Repo::delete_block_with_conn(&conn, &block_id).unwrap();
+        let deleted = ChatV2Repo::get_block_with_conn(&conn, &block_id).unwrap();
+        assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_retry_block_upsert_reloads_one_final_logical_block() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_retry_block".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let mut message = ChatMessage::new_assistant(session.id.clone());
+        let message_id = message.id.clone();
+        let logical_block_id = "blk_retry_logical".to_string();
+        message.block_ids = vec![logical_block_id.clone()];
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut block = MessageBlock::new_tool(
+            message_id.clone(),
+            "builtin-web_fetch",
+            serde_json::json!({"url": "https://example.com"}),
+            0,
+        );
+        block.id = logical_block_id.clone();
+        block.status = block_status::ERROR.to_string();
+        block.error = Some("connection reset by peer".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // A successful physical retry UPSERTs the same logical block instead of inserting a
+        // second failed-attempt row that would be returned by full-session reload.
+        block.status = block_status::SUCCESS.to_string();
+        block.error = None;
+        block.tool_output = Some(serde_json::json!({
+            "ok": true,
+            "_auto_retry_attempts": 1
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        let reloaded = ChatV2Repo::load_session_full_with_conn(&conn, &session.id).unwrap();
+        let retry_blocks: Vec<_> = reloaded
+            .blocks
+            .iter()
+            .filter(|candidate| candidate.message_id == message_id)
+            .collect();
+        assert_eq!(retry_blocks.len(), 1);
+        assert_eq!(retry_blocks[0].id, logical_block_id);
+        assert_eq!(retry_blocks[0].status, block_status::SUCCESS);
+        assert!(retry_blocks[0].error.is_none());
+        assert_eq!(
+            retry_blocks[0]
+                .tool_output
+                .as_ref()
+                .and_then(|output| output.get("_auto_retry_attempts")),
+            Some(&serde_json::json!(1))
+        );
+    }
+
+    #[test]
+    fn test_cascade_delete() {
+        let conn = setup_test_db();
+
+        // Create session
+        let session = ChatSession::new("sess_cascade_test".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // Create messages
+        let msg1 = ChatMessage::new_user("sess_cascade_test".to_string(), vec![]);
+        let msg1_id = msg1.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg1).unwrap();
+
+        let msg2 = ChatMessage::new_assistant("sess_cascade_test".to_string());
+        let msg2_id = msg2.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg2).unwrap();
+
+        // Create blocks for msg2
+        let block1 = MessageBlock::new_thinking(msg2_id.clone(), 0);
+        let block1_id = block1.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block1).unwrap();
+
+        let block2 = MessageBlock::new_content(msg2_id.clone(), 1);
+        let block2_id = block2.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block2).unwrap();
+
+        // Verify all exist
+        assert!(ChatV2Repo::get_message_with_conn(&conn, &msg1_id)
+            .unwrap()
+            .is_some());
+        assert!(ChatV2Repo::get_message_with_conn(&conn, &msg2_id)
+            .unwrap()
+            .is_some());
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block1_id)
+            .unwrap()
+            .is_some());
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block2_id)
+            .unwrap()
+            .is_some());
+
+        // Delete session (should cascade to messages and blocks)
+        let tx = conn.unchecked_transaction().unwrap();
+        ChatV2Repo::delete_session_with_tx(&tx, "sess_cascade_test").unwrap();
+        tx.commit().unwrap();
+
+        // Verify all are deleted
+        assert!(
+            ChatV2Repo::get_session_with_conn(&conn, "sess_cascade_test")
+                .unwrap()
+                .is_none()
+        );
+        assert!(ChatV2Repo::get_message_with_conn(&conn, &msg1_id)
+            .unwrap()
+            .is_none());
+        assert!(ChatV2Repo::get_message_with_conn(&conn, &msg2_id)
+            .unwrap()
+            .is_none());
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block1_id)
+            .unwrap()
+            .is_none());
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block2_id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_load_session_full() {
+        let conn = setup_test_db();
+
+        // Create session
+        let session = ChatSession::new("sess_full_test".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // Create messages
+        let msg1 = ChatMessage::new_user("sess_full_test".to_string(), vec![]);
+        ChatV2Repo::create_message_with_conn(&conn, &msg1).unwrap();
+
+        let msg2 = ChatMessage::new_assistant("sess_full_test".to_string());
+        let msg2_id = msg2.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg2).unwrap();
+
+        // Create blocks for msg2
+        let block1 = MessageBlock::new_thinking(msg2_id.clone(), 0);
+        ChatV2Repo::create_block_with_conn(&conn, &block1).unwrap();
+
+        let block2 = MessageBlock::new_content(msg2_id.clone(), 1);
+        ChatV2Repo::create_block_with_conn(&conn, &block2).unwrap();
+
+        // Save session state
+        let state = SessionState {
+            session_id: "sess_full_test".to_string(),
+            chat_params: Some(ChatParams::default()),
+            features: Some(HashMap::from([("rag".to_string(), true)])),
+            mode_state: None,
+            input_value: Some("draft input".to_string()),
+            panel_states: Some(PanelStates::default()),
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_full_test", &state).unwrap();
+
+        // Load full session
+        let full = ChatV2Repo::load_session_full_with_conn(&conn, "sess_full_test").unwrap();
+
+        assert_eq!(full.session.id, "sess_full_test");
+        assert_eq!(full.messages.len(), 2);
+        assert_eq!(full.blocks.len(), 2);
+        assert!(full.state.is_some());
+
+        let loaded_state = full.state.unwrap();
+        assert_eq!(loaded_state.input_value, Some("draft input".to_string()));
+        assert!(loaded_state
+            .features
+            .unwrap()
+            .get("rag")
+            .copied()
+            .unwrap_or(false));
+    }
+
+    #[test]
+    fn test_session_state_upsert() {
+        let conn = setup_test_db();
+
+        // Create session
+        let session = ChatSession::new("sess_state_test".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // First save
+        let state1 = SessionState {
+            session_id: "sess_state_test".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: Some("first draft".to_string()),
+            panel_states: None,
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_state_test", &state1).unwrap();
+
+        // Verify first save
+        let loaded1 = ChatV2Repo::load_session_state_with_conn(&conn, "sess_state_test")
+            .unwrap()
+            .expect("State should exist");
+        assert_eq!(loaded1.input_value, Some("first draft".to_string()));
+
+        // Upsert (update)
+        let state2 = SessionState {
+            session_id: "sess_state_test".to_string(),
+            chat_params: Some(ChatParams {
+                model_id: Some("gpt-4".to_string()),
+                ..Default::default()
+            }),
+            features: None,
+            mode_state: None,
+            input_value: Some("second draft".to_string()),
+            panel_states: None,
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_state_test", &state2).unwrap();
+
+        // Verify upsert
+        let loaded2 = ChatV2Repo::load_session_state_with_conn(&conn, "sess_state_test")
+            .unwrap()
+            .expect("State should exist");
+        assert_eq!(loaded2.input_value, Some("second draft".to_string()));
+        assert_eq!(
+            loaded2
+                .chat_params
+                .as_ref()
+                .and_then(|p| p.model_id.as_ref()),
+            Some(&"gpt-4".to_string())
+        );
+    }
+
+    // ========================================================================
+    // Prompt 7 相关测试：pending_context_refs_json 持久化
+    // ========================================================================
+
+    /// 测试 pending_context_refs_json 的保存和恢复
+    /// 对应 Prompt 7 要求的单测：验证保存和恢复一致性
+    #[test]
+    fn test_pending_context_refs_json_persistence() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new(
+            "sess_context_refs_test".to_string(),
+            "general_chat".to_string(),
+        );
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 保存带有 pending_context_refs_json 的状态
+        let context_refs_json =
+            r#"[{"resourceId":"res_abc123","hash":"sha256_xyz","typeId":"note"}]"#;
+        let state = SessionState {
+            session_id: "sess_context_refs_test".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            pending_context_refs_json: Some(context_refs_json.to_string()),
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_context_refs_test", &state).unwrap();
+
+        // 验证恢复
+        let loaded = ChatV2Repo::load_session_state_with_conn(&conn, "sess_context_refs_test")
+            .unwrap()
+            .expect("State should exist");
+        assert_eq!(
+            loaded.pending_context_refs_json,
+            Some(context_refs_json.to_string()),
+            "pending_context_refs_json should be correctly restored"
+        );
+    }
+
+    /// 测试空数组处理
+    /// 对应 Prompt 7 要求的单测：验证空数组处理
+    #[test]
+    fn test_pending_context_refs_json_empty_array() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new(
+            "sess_empty_refs_test".to_string(),
+            "general_chat".to_string(),
+        );
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 保存空数组
+        let empty_array_json = "[]";
+        let state = SessionState {
+            session_id: "sess_empty_refs_test".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            pending_context_refs_json: Some(empty_array_json.to_string()),
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_empty_refs_test", &state).unwrap();
+
+        // 验证恢复
+        let loaded = ChatV2Repo::load_session_state_with_conn(&conn, "sess_empty_refs_test")
+            .unwrap()
+            .expect("State should exist");
+        assert_eq!(
+            loaded.pending_context_refs_json,
+            Some(empty_array_json.to_string()),
+            "Empty array should be correctly restored"
+        );
+    }
+
+    /// 测试 None 处理
+    /// 对应 Prompt 7 要求的单测：验证无上下文引用的情况
+    #[test]
+    fn test_pending_context_refs_json_none() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new("sess_no_refs_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 保存 None
+        let state = SessionState {
+            session_id: "sess_no_refs_test".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        ChatV2Repo::save_session_state_with_conn(&conn, "sess_no_refs_test", &state).unwrap();
+
+        // 验证恢复
+        let loaded = ChatV2Repo::load_session_state_with_conn(&conn, "sess_no_refs_test")
+            .unwrap()
+            .expect("State should exist");
+        assert_eq!(
+            loaded.pending_context_refs_json, None,
+            "None should be correctly restored as None"
+        );
+    }
+
+    // ========================================================================
+    // Prompt 5 相关测试：Pipeline 数据持久化
+    // ========================================================================
+
+    /// 测试保存结果的基本功能（验证消息和块正确保存）
+    /// 对应 Prompt 5 要求的 test_save_results_basic
+    #[test]
+    fn test_save_results_basic() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new("sess_save_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 模拟 save_results 的行为：保存用户消息和块
+        let user_msg =
+            ChatMessage::new_user("sess_save_test".to_string(), vec!["blk_user_1".to_string()]);
+        let user_msg_id = user_msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &user_msg).unwrap();
+
+        let user_block = MessageBlock {
+            id: "blk_user_1".to_string(),
+            message_id: user_msg_id.clone(),
+            block_type: "content".to_string(),
+            status: "success".to_string(),
+            content: Some("用户问题内容".to_string()),
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: Some(1000),
+            ended_at: Some(1001),
+            first_chunk_at: None,
+            block_index: 0,
+        };
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+
+        // 保存助手消息和多个块
+        let assistant_msg = ChatMessage::new_assistant("sess_save_test".to_string());
+        let assistant_msg_id = assistant_msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        // 创建多个块，验证 block_index 正确
+        for i in 0..3 {
+            let block = MessageBlock {
+                id: format!("blk_assistant_{}", i),
+                message_id: assistant_msg_id.clone(),
+                block_type: if i == 0 {
+                    "thinking".to_string()
+                } else {
+                    "content".to_string()
+                },
+                status: "success".to_string(),
+                content: Some(format!("块内容 {}", i)),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: Some(2000 + i as i64),
+                ended_at: Some(2001 + i as i64),
+                first_chunk_at: None,
+                block_index: i as u32,
+            };
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        // 验证消息保存正确
+        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, "sess_save_test").unwrap();
+        assert_eq!(messages.len(), 2, "应该有 2 条消息（用户和助手）");
+
+        // 验证块保存正确
+        let assistant_blocks =
+            ChatV2Repo::get_message_blocks_with_conn(&conn, &assistant_msg_id).unwrap();
+        assert_eq!(assistant_blocks.len(), 3, "助手消息应该有 3 个块");
+
+        // 验证 block_index 正确（按顺序）
+        for (i, block) in assistant_blocks.iter().enumerate() {
+            assert_eq!(block.block_index, i as u32, "block_index 应该正确");
+        }
+    }
+
+    /// 测试加载聊天历史的基本功能
+    /// 对应 Prompt 5 要求的 test_load_chat_history_basic
+    #[test]
+    fn test_load_chat_history_basic() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new("sess_history_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 创建多条消息
+        for i in 0..5 {
+            let msg = if i % 2 == 0 {
+                ChatMessage::new_user("sess_history_test".to_string(), vec![format!("blk_{}", i)])
+            } else {
+                ChatMessage::new_assistant("sess_history_test".to_string())
+            };
+            let msg_id = msg.id.clone();
+            ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+            // 为每条消息创建 content 块
+            let block = MessageBlock {
+                id: format!("blk_{}", i),
+                message_id: msg_id,
+                block_type: "content".to_string(),
+                status: "success".to_string(),
+                content: Some(format!("消息 {} 的内容", i)),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: Some(i as i64 * 1000),
+                ended_at: Some(i as i64 * 1000 + 100),
+                first_chunk_at: None,
+                block_index: 0,
+            };
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        // 验证消息加载
+        let messages =
+            ChatV2Repo::get_session_messages_with_conn(&conn, "sess_history_test").unwrap();
+        assert_eq!(messages.len(), 5, "应该加载 5 条消息");
+
+        // 验证每条消息的块可以正确加载
+        for msg in &messages {
+            let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &msg.id).unwrap();
+            assert!(!blocks.is_empty(), "每条消息应该有至少一个块");
+        }
+    }
+
+    /// 测试加载聊天历史时的上下文限制
+    /// 对应 Prompt 5 要求的 test_load_chat_history_context_limit
+    #[test]
+    fn test_load_chat_history_context_limit() {
+        let conn = setup_test_db();
+
+        // 创建会话
+        let session = ChatSession::new("sess_limit_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 创建 25 条消息（超过默认的 context_limit=20）
+        for i in 0..25 {
+            let msg = if i % 2 == 0 {
+                ChatMessage::new_user("sess_limit_test".to_string(), vec![])
+            } else {
+                ChatMessage::new_assistant("sess_limit_test".to_string())
+            };
+            let msg_id = msg.id.clone();
+            ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+            let block = MessageBlock {
+                id: format!("blk_limit_{}", i),
+                message_id: msg_id,
+                block_type: "content".to_string(),
+                status: "success".to_string(),
+                content: Some(format!("限制测试消息 {}", i)),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: None,
+                ended_at: None,
+                first_chunk_at: None,
+                block_index: 0,
+            };
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        // 加载所有消息
+        let all_messages =
+            ChatV2Repo::get_session_messages_with_conn(&conn, "sess_limit_test").unwrap();
+        assert_eq!(all_messages.len(), 25, "应该有 25 条消息");
+
+        // 模拟 load_chat_history 中的 context_limit 逻辑
+        let context_limit: usize = 20;
+        let messages_to_load: Vec<_> = if all_messages.len() > context_limit {
+            // 取最新的 context_limit 条消息
+            all_messages
+                .into_iter()
+                .rev()
+                .take(context_limit)
+                .rev()
+                .collect()
+        } else {
+            all_messages
+        };
+
+        assert_eq!(
+            messages_to_load.len(),
+            20,
+            "应用 context_limit 后应该只有 20 条消息"
+        );
+    }
+
+    /// 测试只提取 content 类型块的内容（不包含 thinking 等其他类型）
+    /// 对应 Prompt 5 约束条件：只提取 content 类型块的内容
+    #[test]
+    fn test_load_chat_history_content_only() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_content_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_content_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建多种类型的块
+        let blocks_data = vec![
+            ("thinking", "这是思维链内容，不应该被提取"),
+            ("content", "这是主要内容，应该被提取"),
+            ("rag", "这是 RAG 结果，不应该被提取"),
+            ("content", "这是第二段内容，也应该被提取"),
+        ];
+
+        for (i, (block_type, content)) in blocks_data.iter().enumerate() {
+            let block = MessageBlock {
+                id: format!("blk_content_test_{}", i),
+                message_id: msg_id.clone(),
+                block_type: block_type.to_string(),
+                status: "success".to_string(),
+                content: Some(content.to_string()),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: None,
+                ended_at: None,
+                first_chunk_at: None,
+                block_index: i as u32,
+            };
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        // 加载块
+        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &msg_id).unwrap();
+        assert_eq!(blocks.len(), 4, "应该有 4 个块");
+
+        // 模拟 load_chat_history 中只提取 content 类型块的逻辑
+        let content: String = blocks
+            .iter()
+            .filter(|b| b.block_type == "content")
+            .filter_map(|b| b.content.as_ref())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert!(
+            content.contains("这是主要内容"),
+            "应该包含第一个 content 块"
+        );
+        assert!(
+            content.contains("这是第二段内容"),
+            "应该包含第二个 content 块"
+        );
+        assert!(!content.contains("思维链"), "不应该包含 thinking 块");
+        assert!(!content.contains("RAG"), "不应该包含 rag 块");
+    }
+
+    /// 测试块索引正确设置（Prompt 5 约束条件）
+    #[test]
+    fn test_block_index_correct() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_index_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_index_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建多个块，确保 block_index 正确
+        let block_ids: Vec<String> = (0..5).map(|i| format!("blk_idx_{}", i)).collect();
+
+        for (i, block_id) in block_ids.iter().enumerate() {
+            let block = MessageBlock {
+                id: block_id.clone(),
+                message_id: msg_id.clone(),
+                block_type: "content".to_string(),
+                status: "success".to_string(),
+                content: Some(format!("块 {} 内容", i)),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: None,
+                ended_at: None,
+                first_chunk_at: None,
+                block_index: i as u32,
+            };
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        // 加载块（应该按 block_index 排序）
+        let loaded_blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &msg_id).unwrap();
+
+        // 验证顺序和索引
+        for (i, block) in loaded_blocks.iter().enumerate() {
+            assert_eq!(block.block_index, i as u32, "block_index 应该为 {}", i);
+            assert_eq!(block.id, format!("blk_idx_{}", i), "块 ID 顺序应该正确");
+        }
+    }
+
+    // ========================================================================
+    // 变体相关测试（Prompt 3）
+    // ========================================================================
+
+    /// 测试变体 CRUD 操作
+    #[test]
+    fn test_variant_crud() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_variant_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_variant_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建变体
+        let variant1 = Variant::new("gpt-4".to_string());
+        let variant2 = Variant::new("claude-3".to_string());
+        let var1_id = variant1.id.clone();
+        let var2_id = variant2.id.clone();
+
+        let variants = vec![variant1, variant2];
+
+        // 更新变体列表
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var1_id))
+            .unwrap();
+
+        // 验证变体保存正确
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.active_variant_id, Some(var1_id.clone()));
+        assert!(loaded.variants.is_some());
+        let loaded_variants = loaded.variants.unwrap();
+        assert_eq!(loaded_variants.len(), 2);
+        assert_eq!(loaded_variants[0].model_id, "gpt-4");
+        assert_eq!(loaded_variants[1].model_id, "claude-3");
+
+        // 更新激活变体
+        ChatV2Repo::update_message_active_variant_with_conn(&conn, &msg_id, &var2_id).unwrap();
+        let reloaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.active_variant_id, Some(var2_id));
+    }
+
+    /// 测试变体状态更新
+    #[test]
+    fn test_variant_status_update() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_status_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_status_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建变体
+        let variant = Variant::new("gpt-4".to_string());
+        let var_id = variant.id.clone();
+        let variants = vec![variant];
+
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var_id))
+            .unwrap();
+
+        // 更新状态为 streaming
+        ChatV2Repo::update_variant_status_with_conn(&conn, &msg_id, &var_id, "streaming", None)
+            .unwrap();
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.variants.unwrap()[0].status, "streaming");
+
+        // 更新状态为 error
+        ChatV2Repo::update_variant_status_with_conn(
+            &conn,
+            &msg_id,
+            &var_id,
+            "error",
+            Some("Test error"),
+        )
+        .unwrap();
+        let loaded2 = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        let variant = &loaded2.variants.unwrap()[0];
+        assert_eq!(variant.status, "error");
+        assert_eq!(variant.error, Some("Test error".to_string()));
+    }
+
+    /// 测试删除变体（级联删除块）
+    #[test]
+    fn test_delete_variant_cascade() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_delete_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_delete_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建两个变体
+        let mut variant1 = Variant::new("gpt-4".to_string());
+        let mut variant2 = Variant::new("claude-3".to_string());
+        variant1.status = "success".to_string();
+        variant2.status = "error".to_string();
+        let var1_id = variant1.id.clone();
+        let var2_id = variant2.id.clone();
+
+        // 为变体1创建块
+        let block1 = MessageBlock::new_content(msg_id.clone(), 0);
+        let block1_id = block1.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block1).unwrap();
+        variant1.block_ids.push(block1_id.clone());
+
+        // 为变体2创建块
+        let block2 = MessageBlock::new_content(msg_id.clone(), 1);
+        let block2_id = block2.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block2).unwrap();
+        variant2.block_ids.push(block2_id.clone());
+
+        let variants = vec![variant1, variant2];
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var1_id))
+            .unwrap();
+
+        // 设置块表中的 variant_id（模拟 add_block_to_variant 的效果）
+        conn.execute(
+            "UPDATE chat_v2_blocks SET variant_id = ?2 WHERE id = ?1",
+            params![&block1_id, &var1_id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_v2_blocks SET variant_id = ?2 WHERE id = ?1",
+            params![&block2_id, &var2_id],
+        )
+        .unwrap();
+
+        // 删除变体1（应该级联删除其块）
+        let result = ChatV2Repo::delete_variant_with_conn(&conn, &msg_id, &var1_id).unwrap();
+
+        match result {
+            DeleteVariantResult::VariantDeleted { new_active_id } => {
+                // 应该自动选择新的激活变体
+                assert!(new_active_id.is_some());
+                // 因为 var2 是 error 状态，但是是唯一剩下的，所以会被选中
+                assert_eq!(new_active_id.as_deref(), Some(var2_id.as_str()));
+            }
+            DeleteVariantResult::MessageDeleted => {
+                panic!("不应该删除消息，还有一个变体");
+            }
+        }
+
+        // 验证变体1的块已删除
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block1_id)
+            .unwrap()
+            .is_none());
+
+        // 验证变体2的块仍存在
+        assert!(ChatV2Repo::get_block_with_conn(&conn, &block2_id)
+            .unwrap()
+            .is_some());
+
+        // 验证消息中只剩一个变体
+        let msg = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(msg.variants.unwrap().len(), 1);
+    }
+
+    /// 测试删除最后一个变体时删除消息
+    #[test]
+    fn test_delete_last_variant_deletes_message() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session =
+            ChatSession::new("sess_last_var_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_last_var_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建单个变体
+        let variant = Variant::new("gpt-4".to_string());
+        let var_id = variant.id.clone();
+        let variants = vec![variant];
+
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var_id))
+            .unwrap();
+
+        // 删除最后一个变体
+        let result = ChatV2Repo::delete_variant_with_conn(&conn, &msg_id, &var_id).unwrap();
+
+        match result {
+            DeleteVariantResult::MessageDeleted => {
+                // 正确！删除最后一个变体应该删除消息
+            }
+            DeleteVariantResult::VariantDeleted { .. } => {
+                panic!("删除最后一个变体应该删除消息");
+            }
+        }
+
+        // 验证消息已删除
+        assert!(ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .is_none());
+    }
+
+    /// 测试将块添加到变体
+    #[test]
+    fn test_add_block_to_variant() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new(
+            "sess_add_block_test".to_string(),
+            "general_chat".to_string(),
+        );
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_add_block_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建变体
+        let variant = Variant::new("gpt-4".to_string());
+        let var_id = variant.id.clone();
+        let variants = vec![variant];
+
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var_id))
+            .unwrap();
+
+        // 创建块
+        let block = MessageBlock::new_content(msg_id.clone(), 0);
+        let block_id = block.id.clone();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // 添加块到变体
+        ChatV2Repo::add_block_to_variant_with_conn(&conn, &msg_id, &var_id, &block_id).unwrap();
+
+        // 验证块已添加到变体
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        let variant = &loaded.variants.unwrap()[0];
+        assert!(variant.block_ids.contains(&block_id));
+
+        // 验证块表中的 variant_id 已更新
+        let block_row: String = conn
+            .query_row(
+                "SELECT variant_id FROM chat_v2_blocks WHERE id = ?1",
+                params![&block_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(block_row, var_id);
+    }
+
+    /// 测试共享上下文更新
+    #[test]
+    fn test_shared_context_update() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_context_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_context_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建共享上下文
+        let shared_context = SharedContext {
+            rag_sources: Some(vec![SourceInfo {
+                title: Some("Test Doc".to_string()),
+                url: Some("https://example.com".to_string()),
+                snippet: Some("Test snippet".to_string()),
+                score: Some(0.95),
+                metadata: None,
+            }]),
+            memory_sources: None,
+            graph_sources: None,
+            web_search_sources: None,
+            multimodal_sources: None,
+            rag_block_id: None,
+            memory_block_id: None,
+            graph_block_id: None,
+            web_search_block_id: None,
+            multimodal_block_id: None,
+        };
+
+        // 更新共享上下文
+        ChatV2Repo::update_message_shared_context_with_conn(&conn, &msg_id, &shared_context)
+            .unwrap();
+
+        // 验证共享上下文保存正确
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        assert!(loaded.shared_context.is_some());
+        let ctx = loaded.shared_context.unwrap();
+        assert!(ctx.rag_sources.is_some());
+        assert_eq!(
+            ctx.rag_sources.unwrap()[0].title,
+            Some("Test Doc".to_string())
+        );
+    }
+
+    /// 测试 is_multi_variant 和 get_active_block_ids 辅助方法
+    #[test]
+    fn test_message_variant_helpers() {
+        // 测试无变体消息
+        let msg1 = ChatMessage::new_assistant("sess_test".to_string());
+        assert!(!msg1.is_multi_variant());
+        assert!(msg1.get_active_block_ids().is_empty());
+
+        // 测试单变体消息
+        let mut msg2 = ChatMessage::new_assistant("sess_test".to_string());
+        let variant = Variant::new("gpt-4".to_string());
+        let var_id = variant.id.clone();
+        msg2.variants = Some(vec![variant]);
+        msg2.active_variant_id = Some(var_id);
+        assert!(!msg2.is_multi_variant()); // 单变体不是多变体模式
+
+        // 测试多变体消息
+        let mut msg3 = ChatMessage::new_assistant("sess_test".to_string());
+        let mut var1 = Variant::new("gpt-4".to_string());
+        var1.block_ids = vec!["blk_1".to_string(), "blk_2".to_string()];
+        let var1_id = var1.id.clone();
+        let var2 = Variant::new("claude-3".to_string());
+        msg3.variants = Some(vec![var1, var2]);
+        msg3.active_variant_id = Some(var1_id);
+
+        assert!(msg3.is_multi_variant());
+        assert_eq!(
+            msg3.get_active_block_ids(),
+            &["blk_1".to_string(), "blk_2".to_string()]
+        );
+    }
+
+    /// 测试崩溃恢复（修复 streaming/pending 状态的变体）
+    #[test]
+    fn test_repair_variant_status() {
+        let conn = setup_test_db();
+
+        // 创建会话和消息
+        let session = ChatSession::new("sess_repair_test".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let msg = ChatMessage::new_assistant("sess_repair_test".to_string());
+        let msg_id = msg.id.clone();
+        ChatV2Repo::create_message_with_conn(&conn, &msg).unwrap();
+
+        // 创建包含各种状态的变体
+        let mut variant1 = Variant::new("gpt-4".to_string());
+        variant1.status = "streaming".to_string(); // 需要修复
+        let var1_id = variant1.id.clone();
+
+        let mut variant2 = Variant::new("claude-3".to_string());
+        variant2.status = "pending".to_string(); // 需要修复
+
+        let mut variant3 = Variant::new("gemini".to_string());
+        variant3.status = "success".to_string(); // 正常
+        let var3_id = variant3.id.clone();
+
+        let variants = vec![variant1, variant2, variant3];
+        ChatV2Repo::update_message_variants_with_conn(&conn, &msg_id, &variants, Some(&var1_id))
+            .unwrap();
+
+        // 执行修复
+        let repaired = ChatV2Repo::repair_message_variant_status_with_conn(&conn, &msg_id).unwrap();
+        assert!(repaired);
+
+        // 验证修复结果
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &msg_id)
+            .unwrap()
+            .unwrap();
+        let loaded_variants = loaded.variants.unwrap();
+
+        // streaming 和 pending 应该变成 error
+        assert_eq!(loaded_variants[0].status, "error");
+        assert!(loaded_variants[0].error.is_some());
+        assert_eq!(loaded_variants[1].status, "error");
+        assert!(loaded_variants[1].error.is_some());
+
+        // success 应该保持不变
+        assert_eq!(loaded_variants[2].status, "success");
+
+        // active_variant_id 应该更新为第一个 success 变体
+        assert_eq!(loaded.active_variant_id, Some(var3_id));
+    }
+
+    /// FIX B: variants_json 命中 WARN 阈值（>=64KB 但 <256KB）应仅记录日志、不改动数据。
+    #[test]
+    fn test_enforce_variants_json_size_limit_warn_path_does_not_truncate() {
+        let mut variants = vec![Variant::new("model_warn".to_string())];
+        variants[0].error = Some("x".repeat(VARIANTS_JSON_WARN_BYTES + 1024));
+        let raw = serde_json::to_string(&variants).unwrap();
+        let original_len = variants.len();
+
+        assert!(raw.len() >= VARIANTS_JSON_WARN_BYTES);
+        assert!(raw.len() < VARIANTS_JSON_LIMIT_BYTES);
+
+        let out = ChatV2Repo::enforce_variants_json_size_limit(
+            raw.clone(),
+            &mut variants,
+            "msg_warn_test",
+        );
+
+        assert_eq!(out, raw, "warn-path must not rewrite the JSON");
+        assert_eq!(variants.len(), original_len, "warn-path must not truncate");
+    }
+
+    /// FIX B: variants_json 超过硬上限时必须从最旧变体开始截断，直到 JSON 字节数低于 LIMIT。
+    #[test]
+    fn test_enforce_variants_json_size_limit_hard_truncates_oldest() {
+        let payload = "y".repeat(VARIANTS_JSON_LIMIT_BYTES / 4);
+        let mut variants: Vec<Variant> = (0..6)
+            .map(|i| {
+                let mut v = Variant::new(format!("model_{}", i));
+                v.error = Some(payload.clone());
+                v
+            })
+            .collect();
+
+        let oldest_id = variants[0].id.clone();
+        let newest_id = variants.last().unwrap().id.clone();
+        let raw = serde_json::to_string(&variants).unwrap();
+        assert!(
+            raw.len() >= VARIANTS_JSON_LIMIT_BYTES,
+            "test fixture must exceed limit; got {}",
+            raw.len()
+        );
+
+        let out =
+            ChatV2Repo::enforce_variants_json_size_limit(raw, &mut variants, "msg_truncate_test");
+
+        assert!(
+            out.len() < VARIANTS_JSON_LIMIT_BYTES,
+            "post-truncation JSON must be under limit; got {}",
+            out.len()
+        );
+        assert!(
+            variants.iter().all(|v| v.id != oldest_id),
+            "oldest variant must be removed"
+        );
+        assert!(
+            variants.iter().any(|v| v.id == newest_id),
+            "newest variant must be preserved"
+        );
+        assert!(
+            !variants.is_empty(),
+            "at least one variant must remain after truncation"
+        );
+    }
+}
+
+// ============================================================================
+// 🆕 P1: Compaction CRUD
+// ============================================================================
+impl ChatV2Repo {
+    fn set_compaction_summary_active_metadata_with_conn(
+        conn: &Connection,
+        compaction_id: &str,
+        is_active: bool,
+    ) -> ChatV2Result<()> {
+        let Some(record) = Self::get_compaction_by_id_with_conn(conn, compaction_id)? else {
+            return Ok(());
+        };
+        for mut block in Self::get_message_blocks_with_conn(conn, &record.summary_message_id)? {
+            if block.block_type != block_types::COMPACTION_SUMMARY {
+                continue;
+            }
+            let mut metadata = block
+                .tool_output
+                .take()
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(object) = metadata.as_object_mut() {
+                object.insert("isActive".to_string(), serde_json::json!(is_active));
+            }
+            block.tool_output = Some(metadata);
+            Self::update_block_with_conn(conn, &block)?;
+        }
+        Ok(())
+    }
+
+    pub fn create_compaction_with_conn(
+        conn: &Connection,
+        rec: &CompactionRecord,
+    ) -> ChatV2Result<()> {
+        // 🔧 CR-02 / WR-01 改进：只 INSERT 不 UPDATE，避免 UPSERT 意外覆盖
+        // 已有记录的 tail cutoff；session 指针更新解耦到 set_session_last_compaction
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_compactions (
+                id, session_id, summary_message_id, tail_start_message_id,
+                tail_start_time_created, reason, is_auto, is_overflow,
+                tokens_before, tokens_after, model_id, model_config_id,
+                previous_compaction_id, range_start_message_id, range_end_message_id,
+                compacted_message_count, created_at, updated_at
+            )
+            VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, ?17, ?18
+            )
+            "#,
+            params![
+                rec.id,
+                rec.session_id,
+                rec.summary_message_id,
+                rec.tail_start_message_id,
+                rec.tail_start_time_created,
+                rec.reason,
+                if rec.is_auto { 1 } else { 0 },
+                if rec.is_overflow { 1 } else { 0 },
+                rec.tokens_before,
+                rec.tokens_after,
+                rec.model_id,
+                rec.model_config_id,
+                rec.previous_compaction_id,
+                rec.range_start_message_id,
+                rec.range_end_message_id,
+                rec.compacted_message_count,
+                rec.created_at,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 把会话的"当前活跃压缩"指针指向指定记录
+    pub fn set_session_last_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        compaction_id: &str,
+    ) -> ChatV2Result<()> {
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(current) = current
+            .as_deref()
+            .filter(|current| *current != compaction_id)
+        {
+            Self::set_compaction_summary_active_metadata_with_conn(conn, current, false)?;
+        }
+        Self::set_compaction_summary_active_metadata_with_conn(conn, compaction_id, true)?;
+        conn.execute(
+            "UPDATE chat_v2_sessions SET last_compaction_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![compaction_id, Utc::now().to_rfc3339(), session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_session_last_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<()> {
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(current) = current.as_deref() {
+            Self::set_compaction_summary_active_metadata_with_conn(conn, current, false)?;
+        }
+        conn.execute(
+            "UPDATE chat_v2_sessions SET last_compaction_id = NULL, updated_at = ?1 WHERE id = ?2",
+            params![Utc::now().to_rfc3339(), session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn invalidate_compaction_for_message_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        message_id: &str,
+    ) -> ChatV2Result<bool> {
+        let Some(record) = Self::get_active_compaction_with_conn(conn, session_id)? else {
+            return Ok(false);
+        };
+        if message_id == record.summary_message_id {
+            Self::clear_session_last_compaction_with_conn(conn, session_id)?;
+            return Ok(true);
+        }
+        let messages = Self::get_session_messages_with_conn(conn, session_id)?;
+        let target = messages.iter().position(|message| message.id == message_id);
+        let tail = messages
+            .iter()
+            .position(|message| message.id == record.history_boundary_id());
+        let affected = match (target, tail) {
+            (Some(target), Some(tail)) => target <= tail,
+            (_, None) => true,
+            (None, Some(_)) => false,
+        };
+        if affected {
+            Self::clear_session_last_compaction_with_conn(conn, session_id)?;
+            log::info!(
+                "[chat_v2::repo] invalidated compaction {} after message {} changed in session {}",
+                record.id,
+                message_id,
+                session_id
+            );
+        }
+        Ok(affected)
+    }
+
+    pub fn create_compaction(db: &Database, rec: &CompactionRecord) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_compaction_with_conn(&conn, rec)?;
+        Self::set_session_last_compaction_with_conn(&conn, &rec.session_id, &rec.id)
+    }
+
+    pub fn get_active_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        // 1) 查 session 指针
+        let last_id: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        let Some(id) = last_id else {
+            return Ok(None);
+        };
+        if !id.is_empty() {
+            if let Some(rec) = Self::get_compaction_by_id_with_conn(conn, &id)? {
+                if rec.session_id == session_id {
+                    return Ok(Some(rec));
+                }
+                log::error!(
+                    "[chat_v2::repo] session {} points to compaction {} owned by {}; using raw history",
+                    session_id,
+                    id,
+                    rec.session_id
+                );
+                return Ok(None);
+            }
+            log::warn!(
+                "[chat_v2::repo] session {} points to missing compaction {}; using raw history",
+                session_id,
+                id
+            );
+            return Ok(None);
+        }
+        // Compatibility only for legacy empty-string pointers.
+        Self::get_latest_compaction_with_conn(conn, session_id)
+    }
+
+    pub fn get_latest_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1 AND deleted_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            params![session_id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn get_compaction_by_id_with_conn(
+        conn: &Connection,
+        id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
+            FROM chat_v2_compactions
+            WHERE id = ?1 AND deleted_at IS NULL
+            "#,
+            params![id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn list_compactions_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<CompactionRecord>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1 AND deleted_at IS NULL
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let iter = stmt.query_map(params![session_id], Self::row_to_compaction)?;
+        let mut out = Vec::new();
+        for r in iter {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn row_to_compaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<CompactionRecord> {
+        Ok(CompactionRecord {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            summary_message_id: row.get(2)?,
+            tail_start_message_id: row.get(3)?,
+            tail_start_time_created: row.get(4)?,
+            reason: row.get(5)?,
+            is_auto: row.get::<_, i64>(6)? != 0,
+            is_overflow: row.get::<_, i64>(7)? != 0,
+            tokens_before: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
+            tokens_after: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+            model_id: row.get(10)?,
+            model_config_id: row.get(11)?,
+            previous_compaction_id: row.get(12)?,
+            range_start_message_id: row.get(13)?,
+            range_end_message_id: row.get(14)?,
+            compacted_message_count: row.get::<_, Option<i64>>(15)?.map(|v| v as u32),
+            created_at: row.get(16)?,
+        })
+    }
+}
+
+// ============================================================================
+// 🆕 Goal 模式（P0）：会话级持久目标 CRUD
+// ============================================================================
+//
+// 表结构见 migrations/chat_v2/V20260905__goal_table.sql（chat_v2_goals，
+// session_id 主键，每会话至多一条）。状态机七值：active / paused / blocked /
+// usage_limited / budget_limited / complete / waiting_user。
+//
+// 权限划分（由调用方强制，repo 层不做权限判断）：
+// - 模型（goal_update 工具）仅可设 complete / blocked / waiting_user；
+// - pause / resume 走 IPC（chat_v2_goal_pause / chat_v2_goal_resume）；
+// - usage_limited / budget_limited 由系统（goal 运行时）设置。
+
+/// Goal 模式会话目标记录（camelCase 序列化，与前端/事件契约一致）。
+///
+/// 跨代理契约：字段名与顺序不得变更；`status` 取值集合由迁移 SQL 的
+/// CHECK 约束保证。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalRecord {
+    pub session_id: String,
+    pub goal_id: String,
+    pub objective: String,
+    /// "active"|"paused"|"blocked"|"usage_limited"|"budget_limited"|"complete"|"waiting_user"
+    pub status: String,
+    pub token_budget: Option<i64>,
+    pub tokens_used: i64,
+    pub time_used_seconds: i64,
+    pub continuation_count: i64,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+impl ChatV2Repo {
+    /// 读取会话目标（无目标返回 None）
+    pub fn goal_get_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        conn.query_row(
+            r#"
+            SELECT session_id, goal_id, objective, status, token_budget,
+                   tokens_used, time_used_seconds, continuation_count,
+                   created_at_ms, updated_at_ms
+            FROM chat_v2_goals
+            WHERE session_id = ?1
+            "#,
+            params![session_id],
+            Self::row_to_goal,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    /// 插入新目标（会话已有记录时由 PK 约束报错；调用方须先检查）
+    pub fn goal_insert_with_conn(conn: &Connection, record: &GoalRecord) -> ChatV2Result<()> {
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_goals (
+                session_id, goal_id, objective, status, token_budget,
+                tokens_used, time_used_seconds, continuation_count,
+                created_at_ms, updated_at_ms
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+            params![
+                record.session_id,
+                record.goal_id,
+                record.objective,
+                record.status,
+                record.token_budget,
+                record.tokens_used,
+                record.time_used_seconds,
+                record.continuation_count,
+                record.created_at_ms,
+                record.updated_at_ms,
+            ],
+        )?;
+        debug!(
+            "[ChatV2::Repo] Goal inserted: session={}, goal_id={}, status={}",
+            record.session_id, record.goal_id, record.status
+        );
+        Ok(())
+    }
+
+    /// 乐观并发更新目标状态。
+    ///
+    /// 会话无目标或 `expected_goal_id` 与当前记录不匹配（并发变更）时返回
+    /// `Ok(None)`；否则更新 status + updated_at_ms 并返回更新后的完整记录。
+    pub fn goal_update_status_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        expected_goal_id: &str,
+        new_status: &str,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        let now_ms = Utc::now().timestamp_millis();
+        let affected = conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET status = ?3, updated_at_ms = ?4
+            WHERE session_id = ?1 AND goal_id = ?2
+            "#,
+            params![session_id, expected_goal_id, new_status, now_ms],
+        )?;
+        if affected == 0 {
+            return Ok(None);
+        }
+        Self::goal_get_with_conn(conn, session_id)
+    }
+
+    /// 更新目标描述与 token 预算（不改 status）。
+    ///
+    /// 会话无目标时返回 `Ok(None)`；否则返回更新后的完整记录。
+    pub fn goal_update_objective_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        objective: &str,
+        token_budget: Option<i64>,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        let now_ms = Utc::now().timestamp_millis();
+        let affected = conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET objective = ?2, token_budget = ?3, updated_at_ms = ?4
+            WHERE session_id = ?1
+            "#,
+            params![session_id, objective, token_budget, now_ms],
+        )?;
+        if affected == 0 {
+            return Ok(None);
+        }
+        Self::goal_get_with_conn(conn, session_id)
+    }
+
+    /// 累加用量（轮末由 goal 运行时调用；goal_id 不匹配时静默跳过，
+    /// 防止并发换代后把上一轮用量记到新目标上）。
+    pub fn goal_add_usage_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        goal_id: &str,
+        token_delta: i64,
+        time_delta_seconds: i64,
+    ) -> ChatV2Result<()> {
+        let now_ms = Utc::now().timestamp_millis();
+        conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET tokens_used = tokens_used + ?3,
+                time_used_seconds = time_used_seconds + ?4,
+                updated_at_ms = ?5
+            WHERE session_id = ?1 AND goal_id = ?2
+            "#,
+            params![session_id, goal_id, token_delta, time_delta_seconds, now_ms],
+        )?;
+        Ok(())
+    }
+
+    /// 续跑认领（CAS，2026-09-07 审阅 F4）：仅当目标仍 `active`、未达续跑
+    /// 上限且 token 预算未耗尽时，原子地将 continuation_count +1。
+    ///
+    /// 返回 `Ok(true)` 表示认领成功（恰好更新一行）；`Ok(false)` 表示目标
+    /// 在调用方读取之后已被并发暂停/清除/替换或触及上限——调用方必须放弃
+    /// 本次续跑。DB 错误经 `Err` 传播，调用方应失败关闭而非继续执行。
+    pub fn goal_claim_continuation_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        goal_id: &str,
+        max_continuations: i64,
+    ) -> ChatV2Result<bool> {
+        let now_ms = Utc::now().timestamp_millis();
+        let affected = conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET continuation_count = continuation_count + 1,
+                updated_at_ms = ?3
+            WHERE session_id = ?1 AND goal_id = ?2
+              AND status = 'active'
+              AND continuation_count < ?4
+              AND (token_budget IS NULL OR tokens_used < token_budget)
+            "#,
+            params![session_id, goal_id, now_ms, max_continuations],
+        )?;
+        Ok(affected == 1)
+    }
+
+    /// 删除会话目标（不存在时静默成功）
+    pub fn goal_delete_with_conn(conn: &Connection, session_id: &str) -> ChatV2Result<()> {
+        conn.execute(
+            "DELETE FROM chat_v2_goals WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        debug!("[ChatV2::Repo] Goal deleted: session={}", session_id);
+        Ok(())
+    }
+
+    /// 将数据库行转换为 GoalRecord
+    fn row_to_goal(row: &rusqlite::Row<'_>) -> rusqlite::Result<GoalRecord> {
+        Ok(GoalRecord {
+            session_id: row.get(0)?,
+            goal_id: row.get(1)?,
+            objective: row.get(2)?,
+            status: row.get(3)?,
+            token_budget: row.get(4)?,
+            tokens_used: row.get(5)?,
+            time_used_seconds: row.get(6)?,
+            continuation_count: row.get(7)?,
+            created_at_ms: row.get(8)?,
+            updated_at_ms: row.get(9)?,
+        })
+    }
+}
+
+// ============================================================================
+// Goal 模式单元测试
+// ============================================================================
+
+#[cfg(test)]
+mod goal_tests {
+    use super::*;
+
+    /// 直接执行迁移 SQL 建表（与生产 schema 保持一致）
+    fn setup_goal_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!(
+            "../../../../migrations/chat_v2/V20260905__goal_table.sql"
+        ))
+        .unwrap();
+        conn
+    }
+
+    fn sample_goal(session_id: &str, goal_id: &str) -> GoalRecord {
+        GoalRecord {
+            session_id: session_id.to_string(),
+            goal_id: goal_id.to_string(),
+            objective: "学完线性代数第 3 章".to_string(),
+            status: "active".to_string(),
+            token_budget: Some(100_000),
+            tokens_used: 0,
+            time_used_seconds: 0,
+            continuation_count: 0,
+            created_at_ms: 1_000,
+            updated_at_ms: 1_000,
+        }
+    }
+
+    #[test]
+    fn goal_crud_roundtrip() {
+        let conn = setup_goal_db();
+        let record = sample_goal("sess_goal_1", "goal_aaa");
+
+        // Create
+        ChatV2Repo::goal_insert_with_conn(&conn, &record).unwrap();
+
+        // Read（字段逐一核对）
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_goal_1")
+            .unwrap()
+            .expect("goal should exist");
+        assert_eq!(loaded, record);
+
+        // 无目标会话返回 None
+        assert!(ChatV2Repo::goal_get_with_conn(&conn, "sess_missing")
+            .unwrap()
+            .is_none());
+
+        // Update objective + budget（status 不变，updated_at 前进）
+        let updated = ChatV2Repo::goal_update_objective_with_conn(
+            &conn,
+            "sess_goal_1",
+            "学完线性代数第 4 章",
+            None,
+        )
+        .unwrap()
+        .expect("update should return record");
+        assert_eq!(updated.objective, "学完线性代数第 4 章");
+        assert_eq!(updated.token_budget, None);
+        assert_eq!(updated.status, "active");
+        assert!(updated.updated_at_ms >= record.updated_at_ms);
+
+        // Update status（乐观并发匹配）
+        let completed =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_goal_1", "goal_aaa", "complete")
+                .unwrap()
+                .expect("status update should return record");
+        assert_eq!(completed.status, "complete");
+
+        // Delete
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_goal_1").unwrap();
+        assert!(ChatV2Repo::goal_get_with_conn(&conn, "sess_goal_1")
+            .unwrap()
+            .is_none());
+        // 重复删除静默成功
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_goal_1").unwrap();
+    }
+
+    #[test]
+    fn goal_update_status_optimistic_concurrency() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_occ", "goal_real")).unwrap();
+
+        // goal_id 不匹配 → None，且原记录不变
+        let mismatched =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_occ", "goal_stale", "paused")
+                .unwrap();
+        assert!(mismatched.is_none());
+        let current = ChatV2Repo::goal_get_with_conn(&conn, "sess_occ")
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.status, "active");
+
+        // 会话无目标 → None
+        let missing =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_missing", "goal_real", "paused")
+                .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn goal_add_usage_accumulates() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_usage", "goal_u1")).unwrap();
+
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_u1", 100, 5).unwrap();
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_u1", 50, 7).unwrap();
+
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_usage")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.tokens_used, 150);
+        assert_eq!(loaded.time_used_seconds, 12);
+
+        // goal_id 不匹配 → 静默跳过不累加
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_stale", 999, 999).unwrap();
+        let reloaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_usage")
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.tokens_used, 150);
+        assert_eq!(reloaded.time_used_seconds, 12);
+    }
+
+    #[test]
+    fn goal_claim_continuation_counts() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_cont", "goal_c1")).unwrap();
+
+        // active 目标：认领成功并计数
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_c1", 20)
+                .unwrap()
+        );
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_c1", 20)
+                .unwrap()
+        );
+        // goal_id 不匹配（目标已被替换）→ 认领失败，不计数
+        assert!(!ChatV2Repo::goal_claim_continuation_with_conn(
+            &conn,
+            "sess_cont",
+            "goal_stale",
+            20
+        )
+        .unwrap());
+
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_cont")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.continuation_count, 2);
+    }
+
+    #[test]
+    fn goal_claim_continuation_rejects_stale_or_exhausted_goal() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_claim", "goal_p1")).unwrap();
+
+        // 暂停后：认领必须失败（读取后被暂停的陈旧执行不得计数/续跑）
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "paused").unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
+        let paused = ChatV2Repo::goal_get_with_conn(&conn, "sess_claim")
+            .unwrap()
+            .unwrap();
+        assert_eq!(paused.continuation_count, 0);
+
+        // 恢复 active 后触及续跑上限 → 认领失败
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "active").unwrap();
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 1)
+                .unwrap()
+        );
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 1)
+                .unwrap()
+        );
+
+        // token 预算耗尽 → 认领失败
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_claim", "goal_p1", 100_000, 0).unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
+
+        // 清除后：认领失败且零行更新不是错误之外的"成功"
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_claim").unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn goal_status_check_constraint_enforced() {
+        let conn = setup_goal_db();
+        let mut bad = sample_goal("sess_bad", "goal_bad");
+        bad.status = "flying".to_string();
+        assert!(ChatV2Repo::goal_insert_with_conn(&conn, &bad).is_err());
+    }
+
+    #[test]
+    fn goal_record_serializes_camel_case() {
+        // 跨代理契约：事件 payload 与 IPC 返回值按 camelCase 序列化
+        let record = sample_goal("sess_ser", "goal_ser");
+        let value = serde_json::to_value(&record).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in [
+            "sessionId",
+            "goalId",
+            "objective",
+            "status",
+            "tokenBudget",
+            "tokensUsed",
+            "timeUsedSeconds",
+            "continuationCount",
+            "createdAtMs",
+            "updatedAtMs",
+        ] {
+            assert!(obj.contains_key(key), "missing camelCase key: {}", key);
+        }
+        assert!(!obj.contains_key("session_id"));
+    }
+}

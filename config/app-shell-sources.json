@@ -1,0 +1,28 @@
+{
+  "$comment": "App 壳层源码集合：src/App.tsx 及从其中原样搬出的模块（按搬出顺序）。读 App.tsx 做源码契约的测试经 src/app/__tests__/appShellSources.ts 读取全部文件；scripts/lifecycle-score-gate.mjs 与 eslint.config.js 中原本只针对 App.tsx 的护栏同样覆盖这些文件。向 App 外搬代码时必须把目标文件登记在此，否则负向断言会对搬走的代码空转。",
+  "files": [
+    "src/App.tsx",
+    "src/app/shell/desktopHeaderHotzone.ts",
+    "src/app/navigation/viewRouting.ts",
+    "src/app/hooks/useSystemStatusSync.ts",
+    "src/app/hooks/useDebugPanelRequests.ts",
+    "src/app/hooks/usePlatformSettingsSync.ts",
+    "src/app/hooks/useAppBackgroundServices.ts",
+    "src/app/hooks/useWorkbenchMode.ts",
+    "src/app/hooks/useViewRedirects.ts",
+    "src/app/hooks/useFrontendErrorCapture.ts",
+    "src/app/hooks/useShellNavigationEvents.ts",
+    "src/app/hooks/useUnifiedNavigation.ts",
+    "src/app/hooks/useViewScrollRestoration.ts",
+    "src/app/hooks/useCrossFeatureHandoffs.ts",
+    "src/app/hooks/useDevtoolsShortcut.ts",
+    "src/app/hooks/useWebviewSettingsPersistence.ts",
+    "src/app/hooks/useDesktopSidebarElements.tsx",
+    "src/app/hooks/useSessionSidebarContextSync.ts",
+    "src/app/hooks/useDesktopTitlebarInteractions.ts",
+    "src/app/hooks/useClassicToWorkbenchHandoff.ts",
+    "src/app/hooks/useShellViewChrome.tsx",
+    "src/app/hooks/useViewLayerContents.tsx",
+    "src/app/hooks/useDesktopWindowMaximizeToggle.ts"
+  ]
+}

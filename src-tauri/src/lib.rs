@@ -1,3 +1,16 @@
+//! Deep Student 应用 crate —— **组合根（composition root）**。
+//!
+//! 领域与平台实现都在 `crates/dstu-*`（chat_v2 核心在 `dstu-agent`）；本 crate 只负责：
+//! - **组装**：构造共享服务并接线扩展点（`build_app_state`、`extensions::register_extensions`、
+//!   `agent_wiring` 的执行器花名册 / pipeline `Services` / 域能力插件）；
+//! - **状态管理**：`app.manage(...)`。`commands::AppState` 是仅限 app 的命令层聚合；
+//!   其中每个共享服务另以**同一份** `Arc<T>` 单独 manage（见 `manage_shared_services`），
+//!   下层 crate 只注入 `State<Arc<T>>`，绝不引用 `AppState`；
+//! - **命令注册**：唯一的 `tauri::generate_handler!`（见 `run()`）；
+//! - **Tauri 适配层**：取 `State<AppState>` 的薄命令包装、事件桥、插件与窗口/平台胶水。
+//!
+//! 新的业务逻辑应放进对应的 `dstu-*` crate，而不是这里。
+
 // Deep Student library entry
 // 提供 run() 供 bin 目标调用，以解决编译错误。
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
@@ -5,157 +18,212 @@
 #![recursion_limit = "512"]
 
 // 声明所有子模块，以便在 crate 内可见
-pub mod adapters;
-pub mod anki;
-pub mod anki_connect_service;
-pub mod anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
-pub mod anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
-pub mod anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
-pub mod anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
-pub mod anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
-pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
-pub mod anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
-pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
+pub use dstu_anki::anki;
+pub use dstu_anki::anki_connect_service;
+pub use dstu_anki::anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
+pub use dstu_anki::anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
+pub use dstu_anki::anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
+pub use dstu_anki::anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
+pub use dstu_anki::anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
+pub use dstu_anki::anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
+pub use dstu_anki::anki_qa_lint;
+pub use dstu_llm::adapters;
+pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7） // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
+pub mod agent_wiring; // step 10：向 chat_v2 pipeline 注入执行器花名册 / 服务 / 域能力（组装层）
 pub mod apk_installer;
 #[allow(dead_code)]
-pub mod apkg_exporter_service;
-pub mod apkg_importer_service;
+pub use dstu_anki::apkg_exporter_service;
+pub use dstu_anki::apkg_importer_service;
+pub use dstu_core::canonical_tools;
+pub use dstu_storage::batch_operations;
 #[allow(dead_code)]
-pub mod backup_job_manager;
-pub mod batch_operations;
-pub mod canonical_tools;
+pub use dstu_sync::backup_job_manager;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
-pub mod config_recovery;
+pub use dstu_llm::config_recovery;
 pub mod crash_logger;
+pub use dstu_security::crypto;
+pub use dstu_security::crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
 #[allow(dead_code)]
-pub mod crypto;
-pub mod crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
-#[allow(dead_code)]
-pub mod database;
+pub use dstu_storage::database;
 pub mod debug_commands;
-pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
-pub mod debug_logger;
+pub use dstu_platform::debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
+pub use dstu_platform::debug_logger;
 
-pub mod anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
-pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
-pub mod backup_common;
+pub use dstu_platform::anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
+pub use dstu_platform::background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
+pub use dstu_storage::backup_common;
 pub mod backup_config;
-pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
+pub use dstu_browser::browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 #[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
 pub mod cloud_config_commands;
+pub use dstu_llm::deepseek_ocr_parser;
+pub use dstu_storage::data_space;
 #[allow(dead_code)]
-pub mod cloud_storage;
-pub mod cross_page_merger;
-pub mod data_space;
-pub mod deepseek_ocr_parser;
+pub use dstu_sync::cloud_storage;
+pub use dstu_vision::cross_page_merger;
 pub mod diagnostics;
-#[allow(dead_code)]
-pub mod document_parser;
-pub mod document_processing_service;
-pub mod docx_handout;
-pub mod dstu;
-pub mod enhanced_anki_service;
-pub mod error_details;
-pub mod error_recovery;
+pub use dstu_anki::document_processing_service;
+pub use dstu_anki::enhanced_anki_service;
+pub use dstu_core::error_details;
+pub use dstu_core::error_recovery;
+pub use dstu_docs::document_parser;
+pub use dstu_docs::docx_handout;
+pub use dstu_vfs::dstu;
 pub mod essay_grading;
 #[allow(dead_code)]
-pub mod exam_sheet_service;
+pub use dstu_vision::exam_sheet_service;
+pub mod extensions; // 扩展点注册：低层模块对上层能力的回调统一在此接线
 pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
-pub mod feature_flags;
-pub mod figure_extractor;
-pub mod file_manager;
-pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
-pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
-pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
+pub use dstu_storage::feature_flags;
+pub use dstu_storage::file_manager;
+pub use dstu_vfs::file_stream_protocol;
+pub use dstu_vision::figure_extractor; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
+                                       // FSRS 闪卡复习服务（独立于题库 review_plans）
+                                       // 实现已下沉到 dstu-anki，这里按原路径重导出；用到题库（QuestionBankService）的跨域单测
+                                       // 留在 app，并保持原测试路径 `fsrs_review_service::tests`。
+pub mod fsrs_review_service {
+    pub use dstu_anki::fsrs_review_service::*;
+    #[cfg(test)]
+    mod tests;
+}
+pub use dstu_learning::fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
-pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
-pub mod injection_budget;
-pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
-pub mod json_validator;
+pub use dstu_research::hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
+pub use dstu_storage::injection_budget;
+// Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
+// 领域逻辑已下沉到 dstu-research；这里按原路径重导出，Tauri 命令层（取 AppState）留在 app。
+pub mod insight {
+    pub use dstu_research::insight::*;
+    pub mod handlers;
+}
+pub use dstu_core::json_validator;
 #[allow(dead_code)]
-pub mod lance_vector_store;
+pub use dstu_llm::llm_manager;
+pub use dstu_storage::llm_usage;
 #[allow(dead_code)]
-pub mod llm_manager;
-pub mod llm_structurer;
-pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
-pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+pub use dstu_vfs::lance_vector_store;
+pub use dstu_vision::llm_structurer; // LLM 使用量统计模块（独立 llm_usage.db）
+                                     // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+                                     // 实现已下沉到 dstu-learning，这里按原路径重导出；service 的单测要用题库/FSRS/画像等 app 侧
+                                     // 领域，留在 app 并保持原测试路径 `mastery::service::tests`。
+pub mod mastery {
+    pub use dstu_learning::mastery::*;
+    pub mod service {
+        pub use dstu_learning::mastery::service::*;
+        #[cfg(test)]
+        mod tests;
+    }
+}
+pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
 #[cfg(feature = "mcp")]
-pub mod mcp;
+pub use dstu_mcp::mcp;
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
-#[allow(dead_code)]
-pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
-pub mod metrics_server;
-pub mod models;
+pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
+pub use dstu_core::models;
+pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
+pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 #[allow(dead_code, deprecated)]
-pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+pub use dstu_llm::multimodal;
 #[allow(dead_code)]
-pub mod notes_exporter;
-pub mod notes_manager;
-pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
-pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
-pub mod openai_codex;
-pub mod package_manager;
-pub mod page_rasterizer;
-pub mod pdf_ocr_service;
-pub mod pdf_protocol;
-pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub use dstu_memory::memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
+#[allow(dead_code)]
+pub use dstu_notes::notes_exporter;
+pub use dstu_notes::notes_manager;
+pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+#[cfg(test)]
+mod notes_app_tests; // 依赖 app 组合根的笔记历史单测（notes_exporter 已拆到 dstu-notes）
+#[cfg(test)]
+mod sync_app_tests; // 依赖 app 组合根的同步字段合并单测（field_merge 已拆到 dstu-sync）
+pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
+pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
+pub use dstu_llm::openai_codex;
+pub use dstu_platform::package_manager;
+pub use dstu_vfs::pdf_protocol;
+pub use dstu_vision::page_rasterizer;
+pub use dstu_vision::pdf_ocr_service;
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
-pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
-pub mod providers;
-pub mod qbank_authoring_service;
-pub mod qbank_document;
+pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
+pub use dstu_llm::providers;
+pub use dstu_qbank::qbank_authoring_service;
+pub use dstu_qbank::qbank_document;
+// 业务体在 dstu-qbank；取 State<AppState> 的命令薄包装留在 app（见模块文件）。
 pub mod qbank_generation;
 pub mod qbank_grading;
-pub mod qbank_legacy_reconcile;
-pub mod qbank_management;
+pub use dstu_qbank::qbank_legacy_reconcile;
+pub use dstu_qbank::qbank_management;
 pub mod qbank_practice;
-pub mod qbank_read;
-pub mod qbank_source_view;
-pub mod question_authoring_runner;
+// 读取逻辑已下沉到 vfs；这里按原路径重导出，测试（需题库领域写入种子数据）留在 app。
+pub mod qbank_read {
+    pub use crate::vfs::qbank_read::*;
+    #[cfg(test)]
+    mod tests;
+}
+pub use dstu_qbank::qbank_source_view;
+pub use dstu_qbank::question_authoring_runner;
+// 服务本体在 dstu-qbank；依赖 memory/extensions 的单测留在 app。
 #[allow(dead_code)]
-pub mod question_bank_service;
-pub mod question_export_service;
+pub mod question_bank_service {
+    pub use dstu_qbank::question_bank_service::*;
+    #[cfg(test)]
+    mod tests;
+}
+pub use dstu_qbank::question_export_service;
 #[allow(dead_code)]
-pub mod question_import_service;
-pub mod question_sync_service;
+pub use dstu_qbank::question_import_service;
+pub use vfs::question_sync_service; // 题目集同步元数据服务（只依赖 vfs 表）
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
-pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
-pub mod review_plan_service; // 复习计划服务（与错题系统集成）
-pub mod secret_prompt;
+pub use dstu_llm::reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
+                                    // 复习计划服务（与错题系统集成）；本体在 dstu-qbank，依赖 data_governance 的单测留在 app。
+pub mod review_plan_service {
+    pub use dstu_qbank::review_plan_service::*;
+    #[cfg(test)]
+    mod tests;
+}
+pub use dstu_platform::secret_prompt;
 pub mod secure_store;
-pub mod services;
-pub mod spaced_repetition;
-pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
-pub mod startup_cleanup;
-pub mod startup_gate;
 #[allow(dead_code)]
-pub mod streaming_anki_service;
-pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
+pub use dstu_anki::streaming_anki_service;
+pub use dstu_core::services;
+pub use dstu_core::spaced_repetition; // SM-2 间隔重复算法（下沉 dstu-core，纯函数）
+pub use dstu_learning::study_loop;
+pub use dstu_platform::startup_gate;
+pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
+pub use dstu_storage::startup_cleanup; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
-pub mod system_notification;
+pub use dstu_agent::system_notification; // 统一系统通知策略（实现随 chat_v2 迁到 dstu-agent，按原路径重导出）
 pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
-pub mod textbooks_db;
+pub use dstu_core::text_escape; // XML 文本转义纯函数（chat_v2::vfs_resolver 按原路径重导出）
+pub use dstu_core::token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
 #[allow(dead_code)]
-pub mod tools;
+pub use dstu_mcp::tools;
+pub use dstu_vfs::textbooks_db;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]
-pub mod unified_file_manager;
+pub use dstu_storage::unified_file_manager;
 #[allow(dead_code)]
 pub mod utils;
-pub mod vector_store;
-pub mod vendors;
+pub use dstu_llm::vendors;
+pub use dstu_vfs::vector_store;
 #[allow(dead_code, deprecated)]
-pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
-pub mod vlm_grounding_service;
+pub use dstu_vfs::vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
+pub use dstu_vision::vlm_grounding_service;
 pub mod voice_input;
-pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
+pub use dstu_core::workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
+
+// 下沉到 dstu-core 的 #[macro_export] 宏，按原路径 `deep_student_lib::xxx!` 重导出。
+pub use dstu_core::{
+    retry_database_operation, retry_database_operation_async, retry_file_operation,
+    retry_network_operation, workflow_error,
+};
+// 下沉到 dstu-platform 的 #[macro_export] 宏，按原路径 `deep_student_lib::debug_log!` 重导出。
+pub use dstu_platform::debug_log;
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
@@ -180,6 +248,34 @@ use sentry::ClientInitGuard;
 #[cfg(feature = "mcp")]
 use tracing::debug;
 use tracing::{error, info, warn};
+
+// 本项目自己的日志 target 前缀。log/tracing 的默认 target 是模块路径，代码拆到
+// dstu-* crate 后前缀随之变化；日志插件对这里列出的每个前缀应用相同级别，
+// 保证拆分前后日志输出不变。新增 dstu-* crate 时在此追加。
+const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
+    "deep_student_lib",
+    "dstu_core",
+    "dstu_docs",
+    "dstu_util",
+    "dstu_platform",
+    "dstu_security",
+    "dstu_storage",
+    "dstu_llm",
+    "dstu_vfs",
+    "dstu_mcp",
+    "dstu_vision",
+    "dstu_learning",
+    "dstu_notes",
+    "dstu_research",
+    "dstu_browser",
+    "dstu_tutor",
+    "dstu_memory",
+    "dstu_anki",
+    "dstu_media",
+    "dstu_qbank",
+    "dstu_sync",
+    "dstu_agent",
+];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -360,6 +456,9 @@ fn enforce_linux_main_window_min_logical_size(window: &tauri::WebviewWindow) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // 先接好低层对上层的回调，再执行任何业务代码（见 extensions.rs）。
+    crate::extensions::register_extensions();
+
     // 环境变量在 run() 最前面设置（审阅 34 P2-3 / 19 P2-2）：
     // 此时 Sentry/tokio/ANR 看门狗等工作线程尚未启动，set_var 不存在
     // 多线程 getenv 数据竞争；原先放在 setup 闭包里时该前提不成立。
@@ -702,8 +801,10 @@ pub fn run() {
         .level_for("h2", log::LevelFilter::Warn)
         .level_for("hyper", log::LevelFilter::Warn)
         .level_for("rustls", log::LevelFilter::Warn)
-        .level_for("reqwest", log::LevelFilter::Warn)
-        .level_for("deep_student_lib", log::LevelFilter::Info);
+        .level_for("reqwest", log::LevelFilter::Warn);
+    for target in FIRST_PARTY_LOG_TARGETS {
+        log_plugin_builder = log_plugin_builder.level_for(*target, log::LevelFilter::Info);
+    }
 
     // 调试日志只写 stdout。不要启用 TargetKind::Webview：
     // 后台日志 emit 与主线程 resize/focus 窗口事件可能争用 WebView 锁，
@@ -722,8 +823,9 @@ pub fn run() {
         || std::env::var("DSTU_CONSOLE_LOG")
             .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
     {
-        log_plugin_builder =
-            log_plugin_builder.level_for("deep_student_lib", log::LevelFilter::Debug);
+        for target in FIRST_PARTY_LOG_TARGETS {
+            log_plugin_builder = log_plugin_builder.level_for(*target, log::LevelFilter::Debug);
+        }
     }
 
     builder
@@ -739,6 +841,15 @@ pub fn run() {
 
             // 设置全局 AppHandle，用于在任意位置发送事件
             set_global_app_handle(app_handle.clone());
+            // 存储层模块持有各自的 AppHandle（不回引 app crate 的全局句柄）
+            crate::unified_file_manager::set_app_handle(app_handle.clone());
+            crate::llm_usage::set_app_handle(app_handle.clone());
+            // LLM 服务层同样持有自己的句柄（OCR 调试事件 / debug 落盘目录）
+            crate::llm_manager::set_app_handle(app_handle.clone());
+            // VFS 服务层同样持有自己的句柄（PDF 流水线索引阶段复用托管的 Lance store）
+            crate::vfs::set_app_handle(app_handle.clone());
+            // Agent 层（chat_v2 编排引擎）同样持有自己的句柄（托管 Lance store / finalizer / 技能目录）
+            dstu_agent::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle
@@ -903,9 +1014,20 @@ pub fn run() {
 
             // 在任何数据库初始化之前，执行启动阶段清理（若存在清理标记）
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
+                // 清空后重置同步消费基线（同步状态属 data_governance，由 app 注入）
+                #[cfg(feature = "data_governance")]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    Some(|| {
+                        crate::data_governance::sync::state::SyncStateStore::reset_default_after_local_purge()
+                            .map_err(|e| e.to_string())
+                    });
+                #[cfg(not(feature = "data_governance"))]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    None;
                 match crate::startup_cleanup::purge_all_local_data(
                     &base_app_data_dir,
                     &active_app_data_dir,
+                    reset_sync_baseline,
                 ) {
                     Ok(report) => {
                         info!("启动阶段已执行数据清理:\n{}", report.details);
@@ -1212,6 +1334,9 @@ pub fn run() {
                 std::sync::Mutex::new(sentry_guard),
             )));
             app.manage(state);
+            // step 10 §4 / §6 #6：紧随 AppState 单独 manage 各共享服务（`Arc<Database>` 在最前），
+            // 与 AppState 字段是同一份 Arc；不存在“AppState 已 manage 而 Arc<Database> 未 manage”的窗口。
+            manage_shared_services(app.handle(), &app.state::<crate::commands::AppState>());
             // Reset process-local editor membership after restart, then expire
             // lost heartbeats without relying on a renderer remaining alive.
             if let Some(db) = app.state::<crate::commands::AppState>().vfs_db.clone() {
@@ -1297,9 +1422,8 @@ pub fn run() {
             // Retrieve the application state and clone the database from it
             let app_state: tauri::State<crate::commands::AppState> = app.state();
             let database = app_state.inner().database.clone();
-            // 兼容命令注入：部分命令直接请求 `State<Arc<Database>>`（例如 schedule_memory_internalization）
-            // 需要显式将 `Arc<Database>` 注入到 Tauri 状态中，否则会提示 `.manage()` 缺失
-            app.manage(database.clone());
+            // `Arc<Database>`（同一份 Arc）已在 `app.manage(state)` 之后由 `manage_shared_services` 注入
+            // （step 10 §6 #6，原先在此处 manage）。
 
             // 🆕 注册 BackupJobManagerState 为 Tauri State（单例模式）
             // 所有备份相关命令都应通过 State 注入获取管理器实例
@@ -1405,7 +1529,7 @@ pub fn run() {
                         .state::<std::sync::Arc<crate::chat_v2::ChatV2State>>()
                         .kill_switch
                         .clone();
-                    let chat_v2_pipeline_base = crate::chat_v2::pipeline::ChatV2Pipeline::new(
+                    let chat_v2_pipeline = crate::chat_v2::pipeline::ChatV2Pipeline::new(
                         chat_v2_db_arc.clone(),
                         Some(database.clone()), // 主数据库，用于工具读取用户配置
                         Some(app_state.inner().anki_database.clone()), // Anki 数据库，用于制卡进度查询
@@ -1414,20 +1538,25 @@ pub fn run() {
                         std::sync::Arc::new(crate::tools::ToolRegistry::new_with(vec![
                             std::sync::Arc::new(crate::tools::WebSearchTool) as std::sync::Arc<dyn crate::tools::Tool>,
                         ])),
-                        Some(app_state.inner().notes_manager.clone()), // NotesManager
+                        Some(std::sync::Arc::new(crate::agent_wiring::plugins::NotesCanvasSource(
+                            app_state.inner().notes_manager.clone(),
+                        ))), // NotesManager（Canvas 模式 prompt 注入）
                     )
+                    // step 10：生产执行器花名册（含域执行器）由 app 注入；顺序即分发顺序，与拆分前一致
+                    .with_executor_roster(std::sync::Arc::new(crate::agent_wiring::roster::AppExecutorRoster))
+                    // step 10：NotesManager（Canvas 工具）与智能题目集服务经 Services 注入执行上下文。
+                    // 🆕 缺失 QuestionBankService 时聊天侧全部 qbank_* 工具
+                    // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
+                    // Services 由已单独 manage 的同一份 Arc 组装（step 10 §4，见 manage_shared_services）。
+                    .with_services(crate::agent_wiring::services::build_pipeline_services_from_managed(
+                        &app_handle,
+                    ))
                     .with_approval_manager(approval_manager) // 🆕 关联审批管理器
                     .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
                     .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
                     .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()); // 🆕 论文保存触发 Pipeline
-                    // 🆕 注入智能题目集服务：缺失时聊天侧全部 qbank_* 工具
-                    // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
-                    let chat_v2_pipeline = match app_state.inner().question_bank_service.clone() {
-                        Some(question_bank_service) => {
-                            chat_v2_pipeline_base.with_question_bank_service(question_bank_service)
-                        }
-                        None => chat_v2_pipeline_base,
-                    };
+                    // step 10 §6 #3：漏注入花名册时域工具会静默落到 GeneralToolExecutor，启动期自检（只记日志）
+                    crate::agent_wiring::roster::verify_roster_coverage(&chat_v2_pipeline.executor_registry());
                     let chat_v2_pipeline = std::sync::Arc::new(chat_v2_pipeline);
                     let recovery_pipeline = chat_v2_pipeline.clone();
                     tauri::async_runtime::spawn(async move {
@@ -1579,7 +1708,11 @@ pub fn run() {
                 });
             }
 
-            // 有启用自动化时，用户关闭主窗口默认转为后台驻留。应用仍可通过
+            // Super 会话：读取开关（含旧 superagent.db 开关迁移），启用时 ensure()
+            // 活跃 Super 会话；不启动任何后台循环（投递由前端常驻控制器驱动）。错误只记日志。
+            crate::chat_v2::super_session::init(&app_handle);
+
+            // 有启用自动化 / 快速助手后台 / Super 会话时，用户关闭主窗口默认转为后台驻留。应用仍可通过
             // Dock/任务栏再次启动；single-instance 回调会唤回这一窗口。显式“退出”
             // 仍走 RunEvent::ExitRequested，不拦截。
             #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -1595,10 +1728,18 @@ pub fn run() {
                             .flatten()
                             .as_deref()
                             == Some("true");
-                        if !crate::chat_v2::automations::automation_app_is_exiting()
-                            && (crate::chat_v2::automations::should_keep_automation_background(
+                        let keep_automation_background =
+                            crate::chat_v2::automations::should_keep_automation_background(
                                 &database_for_close,
-                            ) || keep_quick_assistant_background)
+                            );
+                        // Super 会话启用时关窗只隐藏：webview 内的常驻控制器继续投递
+                        // Worker 结果，后台 Worker 也继续运行。
+                        let keep_super_session_background =
+                            crate::chat_v2::super_session::is_enabled(&app_for_close);
+                        if !crate::chat_v2::automations::automation_app_is_exiting()
+                            && (keep_automation_background
+                                || keep_quick_assistant_background
+                                || keep_super_session_background)
                         {
                             api.prevent_close();
                             let _ = window_for_close.hide();
@@ -1607,12 +1748,23 @@ pub fn run() {
                             if !crate::system_notification::notifications_disabled(
                                 &database_for_close,
                             ) {
+                                let mut reasons: Vec<&str> = Vec::new();
+                                if keep_automation_background {
+                                    reasons.push("已启用的定时任务会继续按计划执行");
+                                }
+                                if keep_super_session_background {
+                                    reasons.push("Super-agent 会话的后台任务会继续运行");
+                                }
+                                if keep_quick_assistant_background {
+                                    reasons.push("快速助手保持可用");
+                                }
+                                let body = format!("{}。", reasons.join("；"));
                                 use tauri_plugin_notification::NotificationExt;
                                 let _ = app_for_close
                                     .notification()
                                     .builder()
                                     .title("Deep Student 正在后台运行")
-                                    .body("已启用的定时任务会继续按计划执行。")
+                                    .body(body)
                                     .show();
                             }
                         } else if !crate::chat_v2::automations::automation_app_is_exiting() {
@@ -1901,6 +2053,7 @@ pub fn run() {
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
+            crate::commands::opencode_go_get_usage,
             crate::cmd::openai_codex::openai_codex_auth_status,
             crate::cmd::openai_codex::openai_codex_login_start,
             crate::cmd::openai_codex::openai_codex_login_cancel,
@@ -2417,6 +2570,13 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
+            // Super 会话（普通 chat_v2 会话 + metadata 标记；替代旧 superagent_* 命令）
+            ,crate::chat_v2::super_session::commands::super_session_get_state
+            ,crate::chat_v2::super_session::commands::super_session_set_enabled
+            ,crate::chat_v2::super_session::commands::super_session_ensure
+            ,crate::chat_v2::super_session::commands::super_session_get_settings
+            ,crate::chat_v2::super_session::commands::super_session_set_settings
+            ,crate::chat_v2::super_session::commands::chat_v2_super_deliver_inbox
             // COMPAT-REMOVED 2026-07-20 (owner: platform-chat, remove target: vNext)
             // 旧 resource_* 命令已注销：前端零 invoke，替代路径 = vfs_* / VfsResourceRepo。
             // chat_v2::resource_repo 仍保留只读兼容层（见该模块头注释），勿再注册 resource_*。
@@ -3293,6 +3453,29 @@ fn start_vfs_index_worker(
         }
         tracing::info!("[VfsIndexWorker] stopped");
     });
+}
+
+/// step 10 §4：把 `AppState` 中的共享服务以**同一份** `Arc<T>` 单独注入 Tauri 状态，
+/// 让下层 crate 注入 `State<Arc<T>>` / `try_state::<Arc<T>>()` 而无需引用 app-only 的 `AppState`。
+///
+/// 只 clone Arc，绝不构造第二个实例。必须紧跟 `app.manage(state)` 调用（§6 #6），且 `Arc<Database>`
+/// 排在最前。已由 `build_app_state` 自行 manage 的 `Arc<VfsDatabase>` / `Arc<VfsLanceStore>` /
+/// `Arc<LLMManager>` / `Arc<PdfProcessingService>` 不在此重复；`anki_database` / `notes_database` 与
+/// `database` 是同一 `Arc<Database>`（同一 TypeId），不另行 manage。
+/// `question_bank_service` 仅在 `Some` 时 manage（§6 #5：app 命令仍读 AppState 字段，不改签名）。
+fn manage_shared_services<R: tauri::Runtime>(
+    manager: &impl Manager<R>,
+    state: &crate::commands::AppState,
+) {
+    manager.manage(state.database.clone()); // Arc<Database>
+    manager.manage(state.database_manager.clone()); // Arc<DatabaseManager>
+    manager.manage(state.file_manager.clone()); // Arc<FileManager>
+    manager.manage(state.notes_manager.clone()); // Arc<NotesManager>
+    manager.manage(state.exam_sheet_service.clone()); // Arc<ExamSheetService>
+    manager.manage(state.pdf_ocr_service.clone()); // Arc<PdfOcrService>
+    if let Some(question_bank_service) = state.question_bank_service.clone() {
+        manager.manage(question_bank_service); // Arc<QuestionBankService>
+    }
 }
 
 // Helper to build the global application state

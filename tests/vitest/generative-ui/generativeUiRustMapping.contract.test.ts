@@ -4,11 +4,11 @@ import path from 'node:path';
 
 describe('generativeUI Rust dual-mapping contract', () => {
   const contextSrc = fs.readFileSync(
-    path.join(process.cwd(), 'src-tauri/src/chat_v2/context.rs'),
+    path.join(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/context.rs'),
     'utf8',
   );
   const pipelineSrc = fs.readFileSync(
-    path.join(process.cwd(), 'src-tauri/src/chat_v2/pipeline.rs'),
+    path.join(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/pipeline.rs'),
     'utf8',
   );
   const executorSrc = fs.readFileSync(
@@ -58,7 +58,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('event type constant matches frontend GENERATIVE_UI_BLOCK_TYPE', () => {
     const typesSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/chat_v2/types.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-core/src/agent.rs'),
       'utf8',
     );
     expect(typesSrc).toContain('pub const GENERATIVE_UI: &str = "generative_ui"');
@@ -90,7 +90,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('hpias Rust module emits on hpias_event channel', () => {
     const hpiasSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/events.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/events.rs'),
       'utf8',
     );
     expect(hpiasSrc).toContain('HPIAS_EVENT_CHANNEL');
@@ -102,7 +102,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('create_research_backend');
     expect(executorSrc).toContain('HpiasResearchSessionRequest');
     const orchestratorSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/orchestrator.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/orchestrator.rs'),
       'utf8',
     );
     expect(orchestratorSrc).toContain('build_pipeline_timeline');
@@ -111,7 +111,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('hpias research service exposes replaceable backend', () => {
     const serviceSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/service.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/service.rs'),
       'utf8',
     );
     expect(serviceSrc).toContain('trait HpiasResearchBackend');
@@ -122,7 +122,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('hpias retrieval backend uses VfsUnifiedRetriever', () => {
     const retrievalSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/retrieval_backend.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/retrieval_backend.rs'),
       'utf8',
     );
     expect(retrievalSrc).toContain('VfsUnifiedRetriever');
@@ -131,7 +131,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('hpias synthesis module uses LLM with markdown fallback', () => {
     const synthesisSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/synthesis.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/synthesis.rs'),
       'utf8',
     );
     expect(synthesisSrc).toContain('generate_synthesis_with_llm');
@@ -141,7 +141,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('hpias payloads align with frontend lifecycle events', () => {
     const payloadsSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/hpias/payloads.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-research/src/hpias/payloads.rs'),
       'utf8',
     );
     for (const eventType of [

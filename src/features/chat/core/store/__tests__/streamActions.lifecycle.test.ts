@@ -87,6 +87,49 @@ describe('completeStream lifecycle cleanup', () => {
     expect(state.messageMap.get('msg_1')?._meta?.preparingToolCall).toBeUndefined();
   });
 
+  // 回归：Super 会话里在 super_dispatch_worker 参数生成中途点停止，后端保存部分结果后
+  // 按 success 收尾；preparing 占位块在 activeBlockIds 中但未登记进 message.blockIds，
+  // 曾被第 1 步标成 success 而保留 isPreparing，子代理卡片永久显示“执行中”。
+  it.each(['success', 'cancelled'] as const)(
+    'never leaves a success+isPreparing block for active preparing blocks missing from blockIds (%s)',
+    (reason) => {
+      const preparing: Block = {
+        id: 'blk_prep_active',
+        type: 'subagent_embed',
+        status: 'pending',
+        messageId: 'msg_1',
+        toolName: 'builtin-super_dispatch_worker',
+        toolCallId: 'call_1',
+        isPreparing: true,
+      };
+      const msg = {
+        id: 'msg_1',
+        role: 'assistant',
+        blockIds: [],
+        _meta: { preparingToolCall: { toolCallId: 'call_1', toolName: 'builtin-super_dispatch_worker' } },
+      } as unknown as Message;
+      const harness = createHarness({
+        sessionStatus: 'streaming',
+        currentStreamingMessageId: 'msg_1',
+        activeBlockIds: new Set(['blk_prep_active']),
+        blocks: new Map([['blk_prep_active', preparing]]),
+        messageMap: new Map([['msg_1', msg]]),
+      });
+
+      harness.actions.completeStream(reason);
+
+      const block = harness.getState().blocks.get('blk_prep_active');
+      if (reason === 'success') {
+        expect(block).toBeUndefined();
+      } else {
+        expect(block?.isPreparing).toBe(false);
+        expect(block?.status).toBe('error');
+        expect(block?.error).toContain('before tool execution');
+      }
+      expect(harness.getState().activeBlockIds.size).toBe(0);
+    },
+  );
+
   it('keeps cancelled wording only when stream is cancelled', () => {
     const preparing: Block = {
       id: 'blk_prep',

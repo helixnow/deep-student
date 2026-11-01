@@ -3,7 +3,7 @@ import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import { invoke } from '@tauri-apps/api/core';
-import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset, GoalRecord } from '../types';
+import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset, GoalRecord, DeliverInboxCallback } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -680,6 +680,16 @@ export function createSessionActions(
           set({ _wakeSessionCallback: callback } as Partial<ChatStoreState>);
           console.log(
             '[ChatStore] WakeSession callback',
+            callback ? 'set' : 'cleared'
+          );
+        },
+
+        setDeliverInboxCallback: (
+          callback: DeliverInboxCallback | null
+        ): void => {
+          set({ _deliverInboxCallback: callback } as Partial<ChatStoreState>);
+          console.log(
+            '[ChatStore] DeliverInbox callback',
             callback ? 'set' : 'cleared'
           );
         },

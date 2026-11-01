@@ -12,17 +12,18 @@ describe('hidden draft session lifecycle contract', () => {
     'utf-8'
   );
   const repoSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/chat_v2/repo.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/repo.rs'),
     'utf-8'
   );
   const sessionActionsSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/core/store/sessionActions.ts'),
     'utf-8'
   );
-  const tauriAdapterSource = readFileSync(
-    resolve(process.cwd(), 'src/features/chat/adapters/TauriAdapter.ts'),
-    'utf-8'
-  );
+  // saveSession 实现已自 TauriAdapter.ts 拆至 tauri/sessionCommands.ts
+  const tauriAdapterSource = [
+    'src/features/chat/adapters/TauriAdapter.ts',
+    'src/features/chat/adapters/tauri/sessionCommands.ts',
+  ].map((p) => readFileSync(resolve(process.cwd(), p), 'utf-8')).join('\n');
   const restoreActionsSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/core/store/restoreActions.ts'),
     'utf-8'

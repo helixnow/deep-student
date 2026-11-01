@@ -1,0 +1,22 @@
+{
+  "title": "Super-agent",
+  "settings": {
+    "title": "Super-agent（实验）",
+    "description": "一个固定在会话列表顶部的会话：你可以随时交代多件事，耗时的部分交给后台任务并行处理。",
+    "switchTitle": "启用 Super-agent",
+    "switchDescription": "打开后，会话列表顶部会固定出现「Super-agent」会话（桌面端与移动端一致）。它就是一个普通会话：可以随时提出多件事，Super-agent 会把耗时的事交给后台任务并行处理，完成后在会话里向你汇报。关闭后该会话隐藏，记录保留，重新打开即可恢复。",
+    "safety": "后台任务默认只使用只读工具，不会修改你的数据或执行命令。窗口关闭到托盘后仍会继续处理，完成后在会话里汇报。"
+  },
+  "config": {
+    "saved": "已保存",
+    "save": "保存",
+    "instructionsTitle": "额外指令",
+    "instructionsDescription": "用自然语言告诉 Super-agent 哪些事值得处理、怎么处理，会加入它的系统提示。",
+    "instructionsPlaceholder": "例如：只处理和学习相关的请求；遇到需要修改数据的事先问我。"
+  },
+  "sidebar": {
+    "badge": "Super",
+    "badgeLabel": "Super-agent 会话",
+    "deleteConfirm": "删除后会新建一个空的 Super-agent 会话，后台任务会停止"
+  }
+}

@@ -50,8 +50,11 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn p2_1_get_file_decoded_is_gone_from_src() {
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
     let mut files = Vec::new();
     collect_rs_files(&src_root, &mut files);
+    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
+    collect_rs_files(&crates_root, &mut files);
     assert!(
         !files.is_empty(),
         "src/ 下应能收集到 .rs 文件（路径基准漂移？）"
@@ -80,7 +83,7 @@ fn p2_1_get_file_decoded_is_gone_from_src() {
 /// 防止清理注释后有人按旧文档/旧提交把死代码原样接回。
 #[test]
 fn p2_1_tombstone_comment_survives() {
-    let source = read_repo_file("src/data_governance/sync/mod.rs");
+    let source = read_repo_file("crates/dstu-sync/src/data_governance/sync/mod.rs");
     assert!(
         source.contains("[FINDINGS-R11 P2-1]"),
         "sync/mod.rs 应保留 FINDINGS-R11 P2-1 的墓碑注释（解释 get_file_decoded \
@@ -97,7 +100,7 @@ fn p2_1_tombstone_comment_survives() {
 /// 防止后续重构悄悄恢复「启用加密时也接受明文对象」的旧 get_file_decoded 语义。
 #[test]
 fn p2_1_download_file_object_keeps_antidowngrade_gate() {
-    let source = read_repo_file("src/data_governance/sync/mod.rs");
+    let source = read_repo_file("crates/dstu-sync/src/data_governance/sync/mod.rs");
 
     let start = source
         .find("async fn download_file_object")

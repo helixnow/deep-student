@@ -1,0 +1,1098 @@
+//! 块操作命令处理器
+//!
+//! 包含删除消息和复制块内容等命令。
+
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::chat_v2::database::ChatV2Database;
+use crate::chat_v2::error::ChatV2Error;
+use crate::chat_v2::handlers::ensure_session_writable;
+use crate::chat_v2::handlers::manage_session::rebuild_session_skill_state_from_surviving_history;
+use crate::chat_v2::pipeline::ChatV2Pipeline;
+use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::state::{ChatV2State, StreamGuard};
+use crate::chat_v2::types::{ChatMessage, MessageRole};
+// 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db 的 VfsResourceRepo
+use crate::vfs::database::VfsDatabase;
+use crate::vfs::repos::VfsResourceRepo;
+
+/// 复制块内容响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyBlockContentResponse {
+    /// 复制的内容
+    pub content: String,
+    /// 内容类型（text/markdown/json）
+    pub content_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoCompactionResponse {
+    pub active_compaction_id: Option<String>,
+}
+
+/// 手动压缩命令的结构化响应（serde camelCase，与前端逐字约定的契约）。
+///
+/// - `status`: "compacted" | "notNeeded" | "skipped" | "failed"
+/// - `reason`: "sessionTooShort" | "usableTooSmall" | "lockBusy" | "streaming"
+///   | "summaryFailed" | "cancelled" | "staleLineage" | "noModel"
+///   | "noCompactibleRange" 等（成功时为 null）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactSessionResponse {
+    pub status: String,
+    pub reason: Option<String>,
+    /// 🆕 压缩前后上下文占用估算（status=compacted 时携带；其余为 null）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_before: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<u32>,
+}
+
+#[tauri::command]
+pub async fn chat_v2_compact_session(
+    session_id: String,
+    model_config_id: String,
+    context_limit: Option<u32>,
+    pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+    chat_v2_db: State<'_, Arc<ChatV2Database>>,
+) -> Result<CompactSessionResponse, String> {
+    ensure_session_writable(&chat_v2_db, &session_id).map_err(String::from)?;
+    if model_config_id.trim().is_empty() {
+        return Err(ChatV2Error::Validation("modelConfigId is required".to_string()).into());
+    }
+    // 手动压缩没有随请求传入的 SendOptions，从持久化的会话功能开关读取记忆开关，
+    // 使压缩冲刷(memory flush)与发送路径遵守同一会话级语义。
+    // 键名 `userMemory` 由前端 TauriAdapter 定义(features.get('userMemory'))；
+    // 读取失败或键缺失时为 None = 默认开启，维持原行为。
+    let session_memory_enabled = ChatV2Repo::load_session_state_v2(&chat_v2_db, &session_id)
+        .ok()
+        .flatten()
+        .and_then(|state| state.features)
+        .and_then(|features| features.get("userMemory").copied());
+    // 🆕 流式中不再返回 Err，而是结构化的 skipped/streaming，方便前端区分
+    // "会话正忙" 与真正的调用失败。
+    let registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
+        Err(_) => {
+            return Ok(CompactSessionResponse {
+                status: "skipped".to_string(),
+                reason: Some("streaming".to_string()),
+                tokens_before: None,
+                tokens_after: None,
+            });
+        }
+    };
+    let token = registration.token().clone();
+    let _guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        session_id.clone(),
+        registration,
+    );
+    let outcome = pipeline
+        .run_compaction_for_session(
+            &session_id,
+            Some(model_config_id.trim()),
+            "manual",
+            &[],
+            context_limit,
+            session_memory_enabled,
+            Some(&token),
+        )
+        .await
+        .map_err(String::from)?;
+    let (tokens_before, tokens_after) = outcome.token_estimates();
+    Ok(CompactSessionResponse {
+        status: outcome.status_code().to_string(),
+        reason: outcome.reason_code().map(str::to_string),
+        tokens_before,
+        tokens_after,
+    })
+}
+
+#[tauri::command]
+pub async fn chat_v2_undo_compaction(
+    session_id: String,
+    compaction_id: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+) -> Result<UndoCompactionResponse, String> {
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
+    let registration = chat_v2_state
+        .try_register_stream_owned(&session_id)
+        .map_err(|_| {
+            String::from(ChatV2Error::Other(
+                "Cannot undo compaction while the session is streaming.".to_string(),
+            ))
+        })?;
+    let _guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        session_id.clone(),
+        registration,
+    );
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
+    let tx = conn
+        .transaction()
+        .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+    let active = ChatV2Repo::get_active_compaction_with_conn(&tx, &session_id)
+        .map_err(String::from)?
+        .ok_or_else(|| {
+            String::from(ChatV2Error::Validation(
+                "No active context compaction".to_string(),
+            ))
+        })?;
+    if active.id != compaction_id {
+        return Err(ChatV2Error::Validation(
+            "Only the active compaction can be undone".to_string(),
+        )
+        .into());
+    }
+    let previous_id = if let Some(previous) = active.previous_compaction_id.as_deref() {
+        ChatV2Repo::get_compaction_by_id_with_conn(&tx, previous)
+            .map_err(String::from)?
+            .filter(|record| record.session_id == session_id)
+            .map(|record| record.id)
+    } else {
+        None
+    };
+    if let Some(previous) = previous_id.as_deref() {
+        ChatV2Repo::set_session_last_compaction_with_conn(&tx, &session_id, previous)
+            .map_err(String::from)?;
+    } else {
+        ChatV2Repo::clear_session_last_compaction_with_conn(&tx, &session_id)
+            .map_err(String::from)?;
+    }
+    tx.commit()
+        .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+    Ok(UndoCompactionResponse {
+        active_compaction_id: previous_id,
+    })
+}
+
+/// 删除消息
+///
+/// 删除指定消息及其所有关联的块。
+/// 支持级联删除：删除消息时会同时删除其所有块。
+///
+/// ## 参数
+/// - `session_id`: 会话 ID
+/// - `message_id`: 消息 ID
+/// - `db`: Chat V2 独立数据库
+///
+/// ## 返回
+/// - `Ok(())`: 删除成功
+/// - `Err(String)`: 消息不存在或删除失败
+///
+/// ## 级联删除
+/// 删除消息时会自动删除：
+/// - `chat_v2_blocks` 表中 `message_id` 匹配的所有块
+/// - `chat_v2_messages` 表中的消息记录
+#[tauri::command]
+pub async fn chat_v2_delete_message(
+    session_id: String,
+    message_id: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_delete_message: session_id={}, message_id={}",
+        session_id,
+        message_id
+    );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
+
+    // 🔒 P0 修复（2026-01-10）：检查会话是否有活跃流
+    // 防止流式中删除消息导致 Pipeline save_results() 写入已删除消息失败
+    if chat_v2_state.has_active_stream(&session_id) {
+        return Err(ChatV2Error::Other(
+            "Cannot delete message while streaming. Please wait for completion or cancel first."
+                .to_string(),
+        )
+        .into());
+    }
+
+    // 验证消息 ID 格式
+    if !message_id.starts_with("msg_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid message ID format: {}", message_id)).into(),
+        );
+    }
+
+    // 删除消息（包含级联删除块）
+    // 🆕 VFS 统一存储：传入 vfs_db 用于减少引用计数
+    delete_message_from_db(&session_id, &message_id, &db, &vfs_db)?;
+
+    log::info!(
+        "[ChatV2::handlers] Deleted message: session_id={}, message_id={}",
+        session_id,
+        message_id
+    );
+
+    Ok(())
+}
+
+/// 复制块内容
+///
+/// 获取指定块的内容，用于复制到剪贴板。
+/// 根据块类型返回不同格式的内容。
+///
+/// ## 参数
+/// - `block_id`: 块 ID
+/// - `format`: 可选的输出格式（text/markdown/json），默认为 text
+/// - `db`: Chat V2 独立数据库
+///
+/// ## 返回
+/// - `Ok(CopyBlockContentResponse)`: 块内容和格式
+/// - `Err(String)`: 块不存在或读取失败
+///
+/// ## 格式说明
+/// - `text`: 纯文本格式，适合粘贴到普通文本框
+/// - `markdown`: Markdown 格式，保留格式信息
+/// - `json`: JSON 格式，包含完整块数据
+#[tauri::command]
+pub async fn chat_v2_copy_block_content(
+    block_id: String,
+    format: Option<String>,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<CopyBlockContentResponse, String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_copy_block_content: block_id={}, format={:?}",
+        block_id,
+        format
+    );
+
+    // 验证块 ID 格式
+    if !block_id.starts_with("blk_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid block ID format: {}", block_id)).into(),
+        );
+    }
+
+    let output_format = format.unwrap_or_else(|| "text".to_string());
+
+    // 获取块内容
+    let response = get_block_content_from_db(&block_id, &output_format, &db)?;
+
+    log::info!(
+        "[ChatV2::handlers] Copied block content: block_id={}, content_type={}, len={}",
+        block_id,
+        response.content_type,
+        response.content.len()
+    );
+
+    Ok(response)
+}
+
+// ============================================================================
+// 内部辅助函数（调用 ChatV2Repo 实现）
+// ============================================================================
+
+/// 从数据库删除消息
+///
+/// 🔧 优化：使用单一连接避免多次获取锁（遵循规则 #12）
+/// 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db 减少引用计数
+fn delete_message_from_db(
+    session_id: &str,
+    message_id: &str,
+    db: &ChatV2Database,
+    vfs_db: &VfsDatabase,
+) -> Result<(), ChatV2Error> {
+    // 🔧 优化：在函数开头获取一次连接，后续使用 _with_conn 方法
+    let mut conn = db.get_conn_safe()?;
+
+    // 验证会话存在
+    let _ = ChatV2Repo::get_session_with_conn(&conn, session_id)?
+        .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+
+    // 验证消息存在且属于该会话
+    let message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
+        .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+
+    // 检查消息是否属于指定会话
+    if message.session_id != session_id {
+        return Err(ChatV2Error::Validation(format!(
+            "Message {} does not belong to session {}",
+            message_id, session_id
+        )));
+    }
+
+    // 🆕 Prompt 8: 消息删除前减少资源引用计数（统一上下文注入系统）
+    // 🆕 VFS 统一存储：使用 vfs.db 而非 resources.db
+    // 约束：消息删除时调用 decrementRef
+    if let Some(ref meta) = message.meta {
+        if let Some(ref context_snapshot) = meta.context_snapshot {
+            let resource_ids = context_snapshot.all_resource_ids();
+            if !resource_ids.is_empty() {
+                // 获取 VFS 数据库连接
+                match vfs_db.get_conn_safe() {
+                    Ok(vfs_conn) => {
+                        // 转换为 String 类型
+                        let resource_ids_owned: Vec<String> =
+                            resource_ids.iter().map(|s| s.to_string()).collect();
+                        // 使用 vfs.db 的连接减少引用计数
+                        if let Err(e) = VfsResourceRepo::decrement_refs_with_conn(
+                            &vfs_conn,
+                            &resource_ids_owned,
+                        ) {
+                            // 记录警告但不阻止删除
+                            log::warn!(
+                                "[ChatV2::handlers] Failed to decrement refs for message {}: {}",
+                                message_id,
+                                e
+                            );
+                        } else {
+                            log::debug!(
+                                "[ChatV2::handlers] Decremented refs for {} resources in vfs.db before deleting message {}",
+                                resource_ids_owned.len(), message_id
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[ChatV2::handlers] Failed to get vfs.db connection for decrement refs: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // 删除消息（级联删除关联的块由外键约束处理）
+    // 🔧 优化：使用 _with_conn 版本
+    let tx = conn.transaction()?;
+    ChatV2Repo::invalidate_compaction_for_message_with_conn(&tx, session_id, message_id)?;
+    ChatV2Repo::delete_message_with_conn(&tx, message_id)?;
+    tx.commit()?;
+    let _ = rebuild_session_skill_state_from_surviving_history(session_id, db);
+
+    Ok(())
+}
+
+/// 从数据库获取块内容
+fn get_block_content_from_db(
+    block_id: &str,
+    format: &str,
+    db: &ChatV2Database,
+) -> Result<CopyBlockContentResponse, ChatV2Error> {
+    // 从数据库获取块
+    let block = ChatV2Repo::get_block_v2(db, block_id)?
+        .ok_or_else(|| ChatV2Error::BlockNotFound(block_id.to_string()))?;
+
+    // 获取块内容（如果为空则使用默认值）
+    let block_content = block.content.unwrap_or_default();
+
+    // 根据格式生成输出
+    let (content, content_type) = match format {
+        "markdown" => {
+            // 返回 Markdown 格式
+            (block_content, "markdown".to_string())
+        }
+        "json" => {
+            // 返回 JSON 格式（包含完整块数据）
+            let json = serde_json::json!({
+                "id": block.id,
+                "type": block.block_type,
+                "status": block.status,
+                "content": block_content,
+                "toolName": block.tool_name,
+                "toolInput": block.tool_input,
+                "toolOutput": block.tool_output,
+                "citations": block.citations,
+                "error": block.error,
+                "startedAt": block.started_at,
+                "endedAt": block.ended_at,
+            });
+            (
+                serde_json::to_string_pretty(&json).unwrap_or_default(),
+                "json".to_string(),
+            )
+        }
+        _ => {
+            // 默认返回纯文本
+            (block_content, "text".to_string())
+        }
+    };
+
+    Ok(CopyBlockContentResponse {
+        content,
+        content_type,
+    })
+}
+
+/// 更新块内容
+///
+/// 更新指定块的文本内容。用于编辑用户消息等场景。
+///
+/// ## 参数
+/// - `block_id`: 块 ID
+/// - `content`: 新内容
+/// - `db`: Chat V2 独立数据库
+///
+/// ## 返回
+/// - `Ok(())`: 更新成功
+/// - `Err(String)`: 块不存在或更新失败
+#[tauri::command]
+pub async fn chat_v2_update_block_content(
+    block_id: String,
+    content: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_update_block_content: block_id={}, content_len={}",
+        block_id,
+        content.len()
+    );
+
+    // 验证块 ID 格式
+    if !block_id.starts_with("blk_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid block ID format: {}", block_id)).into(),
+        );
+    }
+
+    // 🔒 P1 修复（2026-01-10）：检查块所属会话是否有活跃流
+    // 防止流式中修改历史消息内容导致语义不一致
+    let existing_block = ChatV2Repo::get_block_v2(&db, &block_id)
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::BlockNotFound(block_id.clone())))?;
+
+    // 从块获取消息，从消息获取 session_id
+    let message = ChatV2Repo::get_message_v2(&db, &existing_block.message_id)
+        .map_err(String::from)?
+        .ok_or_else(|| {
+            String::from(ChatV2Error::MessageNotFound(
+                existing_block.message_id.clone(),
+            ))
+        })?;
+
+    ensure_session_writable(&db, &message.session_id).map_err(String::from)?;
+
+    if chat_v2_state.has_active_stream(&message.session_id) {
+        return Err(ChatV2Error::Other(
+            "Cannot update block content while session is streaming. Please wait for completion or cancel first.".to_string()
+        ).into());
+    }
+
+    // 更新块内容
+    update_block_content_in_db(&block_id, &content, &db)?;
+
+    log::info!(
+        "[ChatV2::handlers] Block content updated: block_id={}",
+        block_id
+    );
+
+    Ok(())
+}
+
+/// 更新块的 tool_output（用于前端编辑 anki_cards 卡片后持久化）
+///
+/// 🔧 修复场景8：前端编辑卡片后调用此命令持久化到数据库，
+/// 防止后续 pipeline 重保存消息时丢失用户编辑。
+#[tauri::command]
+pub async fn chat_v2_update_block_tool_output(
+    block_id: String,
+    tool_output_json: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_update_block_tool_output: block_id={}, len={}",
+        block_id,
+        tool_output_json.len()
+    );
+
+    if !block_id.starts_with("blk_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid block ID format: {}", block_id)).into(),
+        );
+    }
+
+    // 验证 JSON 合法性
+    let tool_output: serde_json::Value = serde_json::from_str(&tool_output_json).map_err(|e| {
+        String::from(ChatV2Error::Validation(format!(
+            "Invalid tool_output_json: {}",
+            e
+        )))
+    })?;
+
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
+    let mut block = ChatV2Repo::get_block_with_conn(&conn, &block_id)
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::BlockNotFound(block_id.clone())))?;
+    let message = ChatV2Repo::get_message_with_conn(&conn, &block.message_id)
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(block.message_id.clone())))?;
+    ensure_session_writable(&db, &message.session_id).map_err(String::from)?;
+    block.tool_output = Some(tool_output);
+    let tx = conn
+        .transaction()
+        .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+    ChatV2Repo::update_block_with_conn(&tx, &block).map_err(String::from)?;
+    ChatV2Repo::invalidate_compaction_for_message_with_conn(&tx, &message.session_id, &message.id)
+        .map_err(String::from)?;
+    tx.commit()
+        .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+
+    log::info!(
+        "[ChatV2::handlers] Block tool_output updated: block_id={}",
+        block_id
+    );
+
+    Ok(())
+}
+
+/// 根据 document_id 获取聊天块中持久化的 anki_cards（优先返回前端编辑后的版本）
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn chat_v2_get_anki_cards_from_block_by_document_id(
+    documentId: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<Vec<crate::models::AnkiCard>, String> {
+    let doc_id = documentId.trim();
+    if doc_id.is_empty() {
+        return Err(ChatV2Error::Validation("documentId is required".to_string()).into());
+    }
+
+    let conn = db.get_conn_safe().map_err(String::from)?;
+    // 用 LIKE 预过滤把候选行压到目标 documentId 附近，避免逐行反序列化全表
+    // 的 anki_cards 块；精确匹配仍在下方 JSON 解析后完成（防止子串误命中）。
+    let like_pattern = format!(
+        "%{}%",
+        doc_id
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    );
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT tool_output_json
+            FROM chat_v2_blocks
+            WHERE block_type = 'anki_cards'
+              AND tool_output_json IS NOT NULL
+              AND tool_output_json LIKE ?1 ESCAPE '\'
+            ORDER BY rowid DESC
+            "#,
+        )
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!(
+                "Failed to prepare query: {}",
+                e
+            )))
+        })?;
+
+    let rows = stmt
+        .query_map([&like_pattern], |row| row.get::<_, String>(0))
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!(
+                "Failed to query blocks: {}",
+                e
+            )))
+        })?;
+
+    for row in rows {
+        let tool_output_json = row.map_err(|e| {
+            String::from(ChatV2Error::Database(format!("Failed to read row: {}", e)))
+        })?;
+        let parsed: serde_json::Value = match serde_json::from_str(&tool_output_json) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        let block_doc_id = parsed
+            .get("documentId")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        if block_doc_id != doc_id {
+            continue;
+        }
+
+        let cards = parsed
+            .get("cards")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let converted = cards
+            .into_iter()
+            .filter_map(|value| serde_json::from_value::<crate::models::AnkiCard>(value).ok())
+            .collect::<Vec<_>>();
+
+        return Ok(converted);
+    }
+
+    Ok(Vec::new())
+}
+
+/// 在数据库中更新块内容
+fn update_block_content_in_db(
+    block_id: &str,
+    content: &str,
+    db: &ChatV2Database,
+) -> Result<(), ChatV2Error> {
+    let mut conn = db.get_conn_safe()?;
+    // 先获取现有块
+    let existing = ChatV2Repo::get_block_with_conn(&conn, block_id)?
+        .ok_or_else(|| ChatV2Error::BlockNotFound(block_id.to_string()))?;
+    let message = ChatV2Repo::get_message_with_conn(&conn, &existing.message_id)?
+        .ok_or_else(|| ChatV2Error::MessageNotFound(existing.message_id.clone()))?;
+
+    // 构建更新后的块（只更新 content 字段）
+    let updated_block = crate::chat_v2::types::MessageBlock {
+        content: Some(content.to_string()),
+        ..existing
+    };
+
+    // 更新数据库
+    let tx = conn.transaction()?;
+    ChatV2Repo::update_block_with_conn(&tx, &updated_block)?;
+    ChatV2Repo::invalidate_compaction_for_message_with_conn(&tx, &message.session_id, &message.id)?;
+    tx.commit()?;
+
+    Ok(())
+}
+
+/// 流式块单次 UPSERT 的 payload 上限（content + tool_input + tool_output 合计字节数）。
+///
+/// 防止异常前端 / 越权调用向持久层写入超大行导致 SQLite 行膨胀与 IPC 阻塞。
+/// 正常流式内容远小于该值；工具输出接近该值时应改走附件/VFS 通道。
+const MAX_STREAMING_BLOCK_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
+
+/// 流式过程中保存块内容（UPSERT 语义）
+///
+/// 用于流式过程中定期保存块内容，防止闪退丢失。
+/// - 如果块不存在，创建它
+/// - 如果块存在，更新内容
+///
+/// ## 参数
+/// - `block_id`: 块 ID
+/// - `message_id`: 消息 ID
+/// - `block_type`: 块类型（如 content, thinking）
+/// - `content`: 当前累积内容
+/// - `status`: 块状态（默认 streaming）
+/// - `db`: Chat V2 独立数据库
+///
+/// ## 返回
+/// - `Ok(())`: 保存成功
+/// - `Err(String)`: 保存失败
+///
+/// ## 安全加固（P1）
+/// - payload（content + tool json）超过 [`MAX_STREAMING_BLOCK_PAYLOAD_BYTES`] 直接拒绝
+/// - 传入 `session_id` 时校验目标消息确实属于该会话，越权（跨会话写块）返回错误
+#[tauri::command]
+pub async fn chat_v2_upsert_streaming_block(
+    block_id: String,
+    message_id: String,
+    session_id: Option<String>,
+    block_type: String,
+    content: String,
+    status: Option<String>,
+    // 🔧 P35: 扩展支持工具块持久化
+    tool_name: Option<String>,
+    tool_input_json: Option<String>,
+    tool_output_json: Option<String>,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_upsert_streaming_block: block_id={}, message_id={}, session_id={:?}, type={}, content_len={}, has_tool={}",
+        block_id,
+        message_id,
+        session_id,
+        block_type,
+        content.len(),
+        tool_name.is_some()
+    );
+
+    // 验证块 ID 格式
+    if !block_id.starts_with("blk_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid block ID format: {}", block_id)).into(),
+        );
+    }
+
+    // 验证消息 ID 格式
+    if !message_id.starts_with("msg_") {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid message ID format: {}", message_id)).into(),
+        );
+    }
+
+    // P1 加固：payload 大小上限（content + tool_input + tool_output 合计）
+    let payload_bytes = content.len()
+        + tool_input_json.as_ref().map_or(0, |s| s.len())
+        + tool_output_json.as_ref().map_or(0, |s| s.len());
+    if payload_bytes > MAX_STREAMING_BLOCK_PAYLOAD_BYTES {
+        return Err(ChatV2Error::LimitExceeded(format!(
+            "Streaming block payload too large: {} bytes (max {} bytes, block_id={})",
+            payload_bytes, MAX_STREAMING_BLOCK_PAYLOAD_BYTES, block_id
+        ))
+        .into());
+    }
+
+    // P1 加固：越权校验 —— 消息已存在时，必须属于调用方声明的会话
+    let conn = db.get_conn_safe().map_err(String::from)?;
+    if let Some(existing_message) =
+        ChatV2Repo::get_message_with_conn(&conn, &message_id).map_err(String::from)?
+    {
+        if let Some(claimed_session) = session_id.as_deref().filter(|s| !s.is_empty()) {
+            if existing_message.session_id != claimed_session {
+                log::warn!(
+                    "[ChatV2::handlers] Rejected cross-session streaming block write: block_id={}, message_id={} belongs to {}, caller claimed {}",
+                    block_id,
+                    message_id,
+                    existing_message.session_id,
+                    claimed_session
+                );
+                return Err(ChatV2Error::Validation(format!(
+                    "Message {} does not belong to session {}",
+                    message_id, claimed_session
+                ))
+                .into());
+            }
+        }
+    }
+
+    // 🔧 P35: 解析工具输入/输出 JSON
+    let tool_input: Option<serde_json::Value> = tool_input_json
+        .as_ref()
+        .map(|s| serde_json::from_str(s))
+        .transpose()
+        .map_err(|e| {
+            String::from(ChatV2Error::Validation(format!(
+                "Invalid tool_input_json: {}",
+                e
+            )))
+        })?;
+    let tool_output: Option<serde_json::Value> = tool_output_json
+        .as_ref()
+        .map(|s| serde_json::from_str(s))
+        .transpose()
+        .map_err(|e| {
+            String::from(ChatV2Error::Validation(format!(
+                "Invalid tool_output_json: {}",
+                e
+            )))
+        })?;
+
+    // 构建块对象
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let block = crate::chat_v2::types::MessageBlock {
+        id: block_id.clone(),
+        message_id,
+        block_type,
+        status: status.unwrap_or_else(|| crate::chat_v2::types::block_status::RUNNING.to_string()),
+        content: if content.is_empty() {
+            None
+        } else {
+            Some(content)
+        },
+        tool_name,
+        tool_input,
+        tool_output,
+        citations: None,
+        error: None,
+        started_at: Some(now_ms),
+        ended_at: Some(now_ms), // 🔧 P35: 工具块已完成，设置 ended_at
+        // 🔧 流式块：第一次创建时记录 first_chunk_at
+        first_chunk_at: Some(now_ms),
+        block_index: 0, // 流式块不需要排序，使用默认值
+    };
+
+    // 先确保消息占位行存在（FK 约束要求消息先于块存在）
+    // 复用上方越权校验获取的连接
+    if let Err(e) =
+        ensure_message_exists_with_block(&conn, session_id.as_deref(), &block.message_id, &block.id)
+    {
+        log::warn!(
+            "[ChatV2::handlers] Failed to ensure placeholder message for streaming block: {}",
+            e
+        );
+    }
+
+    // 再 UPSERT 块到数据库（消息已存在，FK 不会违反）
+    upsert_block_in_db(&block, &db)?;
+
+    // 追加 block_id 到消息的 block_ids
+    if let Err(e) = append_block_id_to_message(&conn, &block.message_id, &block.id) {
+        log::warn!(
+            "[ChatV2::handlers] Failed to append block_id to message: {}",
+            e
+        );
+    }
+
+    log::info!(
+        "[ChatV2::handlers] Streaming block upserted: block_id={}, message_id={}",
+        block_id,
+        block.message_id
+    );
+
+    Ok(())
+}
+
+/// 🔧 P35 批判性修复：追加块 ID 到消息的 block_ids_json
+///
+/// 如果消息存在，追加 block_id；如果消息不存在，忽略（流式块场景）
+fn append_block_id_to_message(
+    conn: &rusqlite::Connection,
+    message_id: &str,
+    block_id: &str,
+) -> Result<(), ChatV2Error> {
+    // 尝试读取现有的 block_ids
+    let existing_block_ids: Result<Option<String>, _> = conn.query_row(
+        "SELECT block_ids_json FROM chat_v2_messages WHERE id = ?1",
+        rusqlite::params![message_id],
+        |row| row.get(0),
+    );
+
+    match existing_block_ids {
+        Ok(block_ids_json) => {
+            // 消息存在，追加 block_id
+            let mut block_ids: Vec<String> = block_ids_json
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            // 避免重复添加
+            if !block_ids.contains(&block_id.to_string()) {
+                block_ids.push(block_id.to_string());
+
+                let block_ids_json = serde_json::to_string(&block_ids)?;
+
+                conn.execute(
+                    "UPDATE chat_v2_messages SET block_ids_json = ?1 WHERE id = ?2",
+                    rusqlite::params![block_ids_json, message_id],
+                )?;
+
+                log::info!(
+                    "[ChatV2::handlers] ✅ Appended block_id {} to message {}, new_block_ids={}",
+                    block_id,
+                    message_id,
+                    block_ids_json
+                );
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            // 消息不存在，忽略（流式块场景，消息稍后会创建）
+            log::warn!(
+                "[ChatV2::handlers] ⚠️ Message {} not found, skipping block_ids update for block {}",
+                message_id, block_id
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "[ChatV2::handlers] Failed to read message {}: {}",
+                message_id,
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// 🔧 防闪退补齐：消息缺失时创建占位消息，避免块孤儿
+fn ensure_message_exists_with_block(
+    conn: &rusqlite::Connection,
+    session_id: Option<&str>,
+    message_id: &str,
+    block_id: &str,
+) -> Result<bool, ChatV2Error> {
+    if ChatV2Repo::get_message_with_conn(conn, message_id)?.is_some() {
+        return Ok(false);
+    }
+
+    let session_id = match session_id {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            log::warn!(
+                "[ChatV2::handlers] Missing session_id for streaming block: message_id={}",
+                message_id
+            );
+            return Ok(false);
+        }
+    };
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let placeholder_message = ChatMessage {
+        id: message_id.to_string(),
+        session_id: session_id.to_string(),
+        role: MessageRole::Assistant,
+        block_ids: vec![block_id.to_string()],
+        timestamp: now_ms,
+        persistent_stable_id: None,
+        parent_id: None,
+        supersedes: None,
+        meta: None,
+        attachments: None,
+        active_variant_id: None,
+        variants: None,
+        shared_context: None,
+    };
+
+    ChatV2Repo::create_message_with_conn(conn, &placeholder_message)?;
+    log::info!(
+        "[ChatV2::handlers] Created placeholder message for streaming block: message_id={}, block_id={}",
+        message_id,
+        block_id
+    );
+
+    Ok(true)
+}
+
+/// 在数据库中 UPSERT 块（防闪退保存专用）
+///
+/// 🔧 关键设计：临时禁用外键约束
+///
+/// 流式过程中，助手消息还未保存到数据库，但我们需要先保存块内容以防闪退。
+/// 正常流式结束后，`save_results` 会保存完整的消息和块，覆盖这里的临时数据。
+///
+/// 如果闪退：
+/// - 块数据已保存，可恢复部分内容
+/// - 消息数据缺失，需要在恢复时处理孤儿块
+fn upsert_block_in_db(
+    block: &crate::chat_v2::types::MessageBlock,
+    db: &ChatV2Database,
+) -> Result<(), ChatV2Error> {
+    let conn = db.get_conn_safe()?;
+
+    let tool_input_json = block
+        .tool_input
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let tool_output_json = block
+        .tool_output
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let citations_json = block
+        .citations
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+
+    conn.execute(
+        r#"
+        INSERT INTO chat_v2_blocks
+        (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        ON CONFLICT(id) DO UPDATE SET
+            message_id = excluded.message_id,
+            block_type = excluded.block_type,
+            status = excluded.status,
+            block_index = excluded.block_index,
+            content = excluded.content,
+            tool_name = excluded.tool_name,
+            tool_input_json = excluded.tool_input_json,
+            tool_output_json = excluded.tool_output_json,
+            citations_json = excluded.citations_json,
+            error = excluded.error,
+            started_at = COALESCE(chat_v2_blocks.started_at, excluded.started_at),
+            ended_at = excluded.ended_at,
+            first_chunk_at = COALESCE(chat_v2_blocks.first_chunk_at, excluded.first_chunk_at)
+        "#,
+        rusqlite::params![
+            block.id,
+            block.message_id,
+            block.block_type,
+            block.status,
+            block.block_index,
+            block.content,
+            block.tool_name,
+            tool_input_json,
+            tool_output_json,
+            citations_json,
+            block.error,
+            block.started_at,
+            block.ended_at,
+            block.first_chunk_at,
+        ],
+    )?;
+
+    // 🔧 P35 批判性修复：更新消息的 block_ids_json，确保块被正确关联
+    // 如果不更新，刷新后加载消息时 block_ids_json 中没有这个块 ID，块不会被渲染
+    append_block_id_to_message(&conn, &block.message_id, &block.id)?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_streaming_block_test_db() -> (tempfile::TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrations");
+        let db = ChatV2Database::new(temp_dir.path()).expect("chat_v2 db");
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn streaming_upsert_preserves_first_timestamps() {
+        use crate::chat_v2::types::{ChatSession, MessageBlock};
+
+        let (_temp_dir, db) = setup_streaming_block_test_db();
+        let session = ChatSession::new("sess_stream_times".to_string(), "chat".to_string());
+        let mut message = ChatMessage::new_assistant(session.id.clone());
+        message.id = "msg_stream_times".to_string();
+        message.block_ids = vec!["blk_stream_times".to_string()];
+        let conn = db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        drop(conn);
+
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_stream_times".to_string();
+        block.content = Some("first".to_string());
+        block.started_at = Some(100);
+        block.first_chunk_at = Some(110);
+        block.ended_at = Some(120);
+        upsert_block_in_db(&block, &db).unwrap();
+
+        block.content = Some("second".to_string());
+        block.started_at = Some(200);
+        block.first_chunk_at = Some(210);
+        block.ended_at = Some(220);
+        upsert_block_in_db(&block, &db).unwrap();
+
+        let saved = ChatV2Repo::get_block_v2(&db, &block.id)
+            .unwrap()
+            .expect("saved streaming block");
+        assert_eq!(saved.content.as_deref(), Some("second"));
+        assert_eq!(saved.started_at, Some(100));
+        assert_eq!(saved.first_chunk_at, Some(110));
+        assert_eq!(saved.ended_at, Some(220));
+    }
+
+    // step 10：`removed_cardforge_callback_stays_off_command_surfaces`（include_str! app 的
+    // lib.rs / permissions）已迁到 app `agent_wiring::tests::command_surface_tests`（函数名不变）。
+
+    #[test]
+    fn test_block_id_validation() {
+        assert!("blk_12345".starts_with("blk_"));
+        assert!("blk_a1b2c3d4-e5f6-7890-abcd-ef1234567890".starts_with("blk_"));
+        assert!(!"block_12345".starts_with("blk_"));
+        assert!(!"invalid".starts_with("blk_"));
+    }
+
+    #[test]
+    fn test_message_id_validation() {
+        assert!("msg_12345".starts_with("msg_"));
+        assert!("msg_a1b2c3d4-e5f6-7890-abcd-ef1234567890".starts_with("msg_"));
+        assert!(!"message_12345".starts_with("msg_"));
+        assert!(!"invalid".starts_with("msg_"));
+    }
+}

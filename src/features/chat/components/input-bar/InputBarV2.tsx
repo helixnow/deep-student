@@ -1237,16 +1237,43 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     const runtimeModelOptions = useMemo(() => {
       if (!availableModels || availableModels.length === 0) return [];
-      const recentModelIds = new Set(recentModels.map((model) => model.id));
+      const recentRankById = new Map(recentModels.map((model, index) => [model.id, index] as const));
       return availableModels.map((model) => ({
         id: model.id,
         label: model.model || model.name || model.id,
         providerLabel: model.vendorName,
         providerId: model.vendorId,
         iconId: model.model || model.name || model.id,
-        isRecent: recentModelIds.has(model.id),
+        isRecent: recentRankById.has(model.id),
+        recentRank: recentRankById.get(model.id),
       }));
     }, [availableModels, recentModels]);
+
+    // 🆕 runtime 模型子菜单内的多选（并行回答）：复用 ModelPicker compare 模式的同一份状态与回调，
+    // 不改变发送路径（发送时仍读取 selectedModels → parallelModelIds）
+    const selectedModelIds = useMemo(() => selectedModels.map((model) => model.id), [selectedModels]);
+    const runtimeModelMultiSelect = useMemo(() => {
+      if (!multiModelSelectEnabled || modelRetryTarget) return undefined;
+      return {
+        active: compareMode || selectedModels.length > 0,
+        selectedIds: selectedModelIds,
+        onActiveChange: (active: boolean) => handleCompareModeChange(active ? 'compare' : 'single'),
+        onToggle: (modelId: string) => {
+          const model = availableModels?.find((candidate) => candidate.id === modelId)
+            ?? selectedModels.find((candidate) => candidate.id === modelId);
+          if (model) handleToggleCompareModel(model);
+        },
+      };
+    }, [
+      availableModels,
+      compareMode,
+      handleCompareModeChange,
+      handleToggleCompareModel,
+      modelRetryTarget,
+      multiModelSelectEnabled,
+      selectedModelIds,
+      selectedModels,
+    ]);
 
     const handleSelectRuntimeModel = useCallback((modelId: string) => {
       const selected = availableModels?.find((model) => model.id === modelId);
@@ -1427,6 +1454,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         runtimeCurrentModelId={model2OverrideId}
         runtimeModelOptions={runtimeModelOptions}
         onSelectRuntimeModel={handleSelectRuntimeModel}
+        runtimeModelMultiSelect={runtimeModelMultiSelect}
         // 推理模式
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}

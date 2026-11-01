@@ -1,0 +1,22 @@
+{
+  "title": "Super-agent",
+  "settings": {
+    "title": "Super-agent (experimental)",
+    "description": "A session pinned to the top of your session list: hand it several things at any time, and it runs the slow parts as parallel background tasks.",
+    "switchTitle": "Enable Super-agent",
+    "switchDescription": "When on, a \"Super-agent\" session is pinned to the top of the session list (same on desktop and mobile). It is a regular session: bring up several things at any time, and Super-agent hands the time-consuming ones to background tasks that run in parallel, then reports back in the session when they finish. When off, the session is hidden but its history is kept; turn it back on to restore it.",
+    "safety": "Background tasks use read-only tools by default; they never modify your data or run commands. They keep working after the window is closed to the tray and report back in the session."
+  },
+  "config": {
+    "saved": "Saved",
+    "save": "Save",
+    "instructionsTitle": "Extra instructions",
+    "instructionsDescription": "Tell Super-agent in plain language what is worth handling and how. This is added to its system prompt.",
+    "instructionsPlaceholder": "e.g. Only handle study-related requests; ask me before anything that would change data."
+  },
+  "sidebar": {
+    "badge": "Super",
+    "badgeLabel": "Super-agent session",
+    "deleteConfirm": "A new empty Super-agent session will be created and background tasks will stop"
+  }
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
@@ -115,7 +116,7 @@ describe('mobile header view registry contract', () => {
   });
 
   it('keeps an App.tsx fallback label entry for every CurrentView', () => {
-    const appSource = readSource('src/App.tsx');
+    const appSource = readAppShellSource();
     const labelsBlock = appSource.match(
       /const labels: Partial<Record<CurrentView, string>> = \{[\s\S]*?\};/,
     )?.[0] ?? '';

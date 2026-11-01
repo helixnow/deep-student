@@ -67,7 +67,7 @@ describe('profile auto-recall contract (issue #90)', () => {
     // vfs-memory 声称"画像已随会话自动注入 system prompt"——用源码契约钉住该事实，
     // 后端注入路径变化时此测试会失败，提醒同步更新技能提示词。
     const promptBuilderSource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/chat_v2/prompt_builder.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/prompt_builder.rs'),
       'utf-8',
     );
 

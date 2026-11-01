@@ -28,6 +28,9 @@ import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
 import { DeepSeekBalanceSection } from './DeepSeekBalanceSection';
 import { isOfficialDeepSeekVendor } from './deepSeekBalance';
+import { OpenCodeGoUsageSection } from './OpenCodeGoUsageSection';
+import { OpenCodeGoPlanQuotaSection } from './OpenCodeGoPlanQuotaSection';
+import { isOpenCodeGoVendor } from '@/utils/opencodeGo';
 import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { OpenAICodexAccountSection } from './OpenAICodexAccountSection';
@@ -225,6 +228,7 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
     ollama: 'Ollama',
     nvidia: 'NVIDIA',
     mimo: 'Xiaomi MiMo',
+    opencode_go: 'OpenCode Go',
   };
   const fallback = map[normalizedProviderType] || providerType;
   return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;
@@ -248,6 +252,7 @@ export const getProviderWebsiteUrl = (providerType?: string | null): string | nu
     minimax: 'https://platform.minimaxi.com',
     moonshot: 'https://platform.moonshot.cn',
     openai: 'https://platform.openai.com',
+    opencode_go: 'https://opencode.ai/go',
     openai_codex: 'https://chatgpt.com',
     gemini: 'https://aistudio.google.com',
     anthropic: 'https://console.anthropic.com',
@@ -993,6 +998,22 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   )}
               </div>
             </InlineEditorCollapse>
+          </div>
+        )}
+
+        {/* OpenCode Go：「建议仅用于 Agent 对话」说明与订阅用量常驻，不随连接区折叠；填好 Key 后自动查询一次 */}
+        {isOpenCodeGoVendor(selectedVendor) && (
+          <div className="mt-3">
+            <OpenCodeGoUsageSection
+              key={selectedVendor.id}
+              vendor={selectedVendor}
+              active={isConnectionConfigured}
+            />
+            <div className="mt-3">
+              <OpenCodeGoPlanQuotaSection
+                configuredModelIds={selectedVendorModels.map(({ api }) => api.model)}
+              />
+            </div>
           </div>
         )}
       </div>

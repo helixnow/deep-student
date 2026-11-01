@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -25,7 +26,7 @@ const readText = (relativePath: string): string =>
 
 const baseConf = JSON.parse(readText('src-tauri/tauri.conf.json'));
 const linuxConf = JSON.parse(readText('src-tauri/tauri.linux.conf.json'));
-const appSource = readText('src/App.tsx');
+const appSource = readAppShellSource();
 const statusBarSource = readText('src/features/workbench/components/StatusBar.tsx');
 
 const linuxWindows: Array<Record<string, unknown>> = linuxConf.app?.windows ?? [];

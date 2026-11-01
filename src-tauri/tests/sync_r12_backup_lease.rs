@@ -368,6 +368,8 @@ fn default_ttl_is_ten_minutes_and_namespaces_are_isolated() {
 #[test]
 fn source_lock_backup_lease_has_zero_production_wiring() {
     let src_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // cloud_storage 已拆到 dstu-sync：app 的 src/ 与 dstu-sync 的源码树按相对路径同规则检查。
+    let sync_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/dstu-sync/src");
 
     fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -381,6 +383,7 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
     }
     let mut files = Vec::new();
     rust_files(&src_root, &mut files);
+    rust_files(&sync_root, &mut files);
     assert!(
         files.len() > 50,
         "生产源码遍历异常，仅找到 {} 个文件",
@@ -389,7 +392,12 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
 
     let mut backup_lease_referencers = Vec::new();
     for path in &files {
-        let relative = path.strip_prefix(&src_root).unwrap().to_string_lossy();
+        let root = if path.starts_with(&sync_root) {
+            &sync_root
+        } else {
+            &src_root
+        };
+        let relative = path.strip_prefix(root).unwrap().to_string_lossy();
         let content = std::fs::read_to_string(path).unwrap();
 
         if relative == "cloud_storage/backup_lease.rs" {
@@ -444,6 +452,29 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
         "backup_lease 必须零生产接线（增量备份尚未实现），却被引用于: {backup_lease_referencers:?}"
     );
 
+    // 搬家后的成员 crate 同样零 backup_lease 接线（src/ 之外还有 crates/*/src）。
+    let crates_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
+    let mut crate_files = Vec::new();
+    rust_files(&crates_root, &mut crate_files);
+    let mut crate_referencers = Vec::new();
+    for path in &crate_files {
+        if path.starts_with(&sync_root) {
+            // dstu-sync 的源码树已在上面按相对路径同规则检查。
+            continue;
+        }
+        let content = std::fs::read_to_string(path).unwrap();
+        if content.contains("backup_lease")
+            || content.contains("BACKUP_LEASE_HELD")
+            || content.contains("acquire_backup_repo_lease")
+        {
+            crate_referencers.push(path.display().to_string());
+        }
+    }
+    assert!(
+        crate_referencers.is_empty(),
+        "backup_lease 在 crates/ 下必须零生产接线，却被引用于: {crate_referencers:?}"
+    );
+
     // 记录级同步入口仍然只使用 sync_lease / E_SYNC_LEASE_HELD。
     let commands_sync =
         std::fs::read_to_string(src_root.join("data_governance/commands_sync.rs")).unwrap();
@@ -456,7 +487,7 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
         "记录级同步入口不得引用 backup_lease"
     );
     let sync_lease_src =
-        std::fs::read_to_string(src_root.join("cloud_storage/sync_lease.rs")).unwrap();
+        std::fs::read_to_string(sync_root.join("cloud_storage/sync_lease.rs")).unwrap();
     assert!(
         sync_lease_src.contains("\"E_SYNC_LEASE_HELD\"")
             && sync_lease_src.contains("\"data_governance/locks/sync-target\""),

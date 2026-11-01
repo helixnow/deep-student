@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('app create navigation contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const createBridgeStart = appSource.indexOf('const handleCreateChatSessionBridge = useCallback');
   const createBridgeEnd = appSource.indexOf('useEventRegistry([', createBridgeStart);
   const createBridgeSource = appSource.slice(createBridgeStart, createBridgeEnd).replace(/\s+/g, ' ');

@@ -366,7 +366,7 @@ fn r12_staging_with_backslash_filename_or_symlink_fails_closed() {
 #[test]
 fn r12_source_lock_inventory_has_no_production_callers() {
     // 生产备份仍构造 backups/<version>.zip 并整包 put_file。
-    let sync_manager = include_str!("../src/cloud_storage/sync_manager.rs");
+    let sync_manager = include_str!("../crates/dstu-sync/src/cloud_storage/sync_manager.rs");
     assert!(
         sync_manager.contains(r#"format!("{}/{}.zip", BACKUPS_DIR, version_id)"#),
         "sync_manager.rs no longer builds the whole-ZIP remote key; \
@@ -382,7 +382,8 @@ fn r12_source_lock_inventory_has_no_production_callers() {
     );
 
     // 本路不分配云端对象名：模块里不得出现 object_key 字段或 put_file 调用。
-    let module_src = include_str!("../src/data_governance/backup/delta_inventory.rs");
+    let module_src =
+        include_str!("../crates/dstu-sync/src/data_governance/backup/delta_inventory.rs");
     assert!(
         !module_src.contains("object_key:") && !module_src.contains("pub object_key"),
         "delta_inventory must not assign cloud object keys (that is the upload route)"
@@ -393,7 +394,8 @@ fn r12_source_lock_inventory_has_no_production_callers() {
     );
 
     // 全 src 扫描：除声明行、模块自身、未接线 upload 积木外，生产代码零引用。
-    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    // 模块本体已拆到 dstu-sync：按相对路径锁定其源码树。
+    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/dstu-sync/src");
     let mut referencing_files = Vec::new();
     collect_files_mentioning(&src_root, "delta_inventory", &mut referencing_files);
     referencing_files.sort();
@@ -417,8 +419,16 @@ fn r12_source_lock_inventory_has_no_production_callers() {
          (upload 积木可复用清单；sync_manager / 命令 / UI 仍不得引用)"
     );
 
+    // 成员 crate（crates/*/src）同样零引用：搬家不能把未接线积木接进生产路径。
+    let mut crate_referencing_files = Vec::new();
+    collect_outside_sync_crate("delta_inventory", &mut crate_referencing_files);
+    assert!(
+        crate_referencing_files.is_empty(),
+        "crates/ 下的生产代码不得引用 delta_inventory: {crate_referencing_files:?}"
+    );
+
     // backup/mod.rs 只允许出现声明行本身。
-    let backup_mod = include_str!("../src/data_governance/backup/mod.rs");
+    let backup_mod = include_str!("../crates/dstu-sync/src/data_governance/backup/mod.rs");
     assert_eq!(
         backup_mod.matches("delta_inventory").count(),
         1,
@@ -441,4 +451,20 @@ fn collect_files_mentioning(root: &Path, needle: &str, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// cloud_storage / data_governance::{backup,sync} 已拆到 dstu-sync：模块本体所在源码树
+/// （`crates/dstu-sync/src`）以外的全部生产源码——app 的 `src/` 与其他成员 crate——
+/// 都必须零引用（与拆分前“`src/` 除模块本体外零引用 + `crates/` 零引用”等价）。
+fn collect_outside_sync_crate(needle: &str, out: &mut Vec<PathBuf>) {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let sync_root = manifest_dir.join("crates").join("dstu-sync").join("src");
+    collect_files_mentioning(&manifest_dir.join("src"), needle, out);
+    let mut crate_files = Vec::new();
+    collect_files_mentioning(&manifest_dir.join("crates"), needle, &mut crate_files);
+    out.extend(
+        crate_files
+            .into_iter()
+            .filter(|p| !p.starts_with(&sync_root)),
+    );
 }

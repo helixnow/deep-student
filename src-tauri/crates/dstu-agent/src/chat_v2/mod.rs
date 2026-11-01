@@ -1,0 +1,269 @@
+//! Chat V2 - 新版聊天后端模块
+//!
+//! 基于 Block 的消息架构，支持流式事件驱动的聊天体验。
+//!
+//! ## 模块结构
+//! - `database`: 独立数据库管理（chat_v2.db）
+//! - `error`: 统一错误处理
+//! - `events`: 块级和会话级事件发射系统
+//! - `handlers`: Tauri 命令处理器
+//! - `state`: 全局状态管理
+//! - `types`: 核心类型定义
+//! - `adapters`: 外部服务适配器（待完善）
+//! - `repo`: 数据存取层
+//! - `pipeline`: 编排引擎（待实现）
+
+pub mod adapters;
+pub mod agents_md; // AGENTS.md 常驻指令发现与注入
+pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
+pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
+pub mod automations; // 🆕 周期自动化定义存储与调度器
+pub mod budget; // 🆕 G08：全树预算管控（BudgetLedger 树根账本 + worker 派生绑定 + hooks 预算门）
+pub mod completion_dispatcher; // 🆕 G03-a：子代理完成投递派发器（completion_outbox 账本的后端兜底）
+#[path = "workspace/completion_outbox.rs"]
+pub mod completion_outbox; // 🆕 G03-a：子代理完成投递持久账本（chat_v2 主库，迁移 V20260908）
+pub mod connector_ledger; // 🆕 Connector 操作持久账本（G04-P0：状态机 + 系统幂等键 + outcome_unknown）
+pub mod connector_providers; // 🆕 Connector provider 抽象（G04-P1：ConnectorProvider trait + generic webhook 实现）
+pub mod context; // PipelineContext 拆分
+pub mod database;
+pub mod environment_manifest; // 🆕 G08：每任务环境清单（OS/runtime/工具表/模型/技能/网络/工作目录身份）+ 漂移检测
+pub mod error;
+pub mod events;
+pub mod finalizer; // 🆕 G07-a：candidate_complete 与任务验收分离（TaskFinalizer 骨架）
+pub mod goal; // 🆕 Goal 模式（P0）：跨轮次会话目标（续跑运行时 + 提示词注入）
+pub mod grants; // 🆕 G02-P1：DelegatedGrant 委派授权（worker 白名单的授权载体 + 撤权 epoch 实时生效）
+pub mod handlers;
+pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
+pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）
+pub mod migration; // 旧版数据迁移模块
+pub mod pipeline;
+pub mod prompt_builder;
+pub mod repo;
+pub mod resource_repo; // DEPRECATED (owner: platform-chat, remove: vNext): resource_* 命令已注销；替代 = vfs/repos/resource_repo.rs。
+pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
+pub mod role_packs;
+pub mod runtime_roots;
+pub mod session_export; // 🆕 WI-12: session JSONL 导出（规范见 docs/dev/optimization0824/WI-12-session-jsonl-spec.md）
+pub mod session_scope; // 会话检索范围（RAG 文件夹硬过滤）读取，manage_session 与检索执行器共用
+pub mod shell_command_policy;
+pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
+pub mod skill_replay; // 🆕 技能经验回放器（G09-P1：dry-run 对账 + 人工晋升，无自动行为）
+pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
+pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
+pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
+pub mod skill_usage; // 🆕 技能使用后端账目 + 经验候选库（G09-P0：只记录，不回放）
+pub mod skills; // 🆕 Skills 文件系统处理器
+pub mod state;
+pub mod super_session; // Super 会话：普通 chat_v2 会话 + metadata 标记；Router 提示词/工具注入、Worker 收件箱投递、外部事件入口
+pub mod task_audit; // Deterministic task audit manifests and export redaction
+pub mod task_command; // 🆕 G10-P1：远程渠道入站统一 TaskCommand（iLink 接入同一 ChatV2 任务运行系统）
+                      // Unified file/message/event/record identity and delivery receipts（已下沉 dstu-core，旧路径保留）
+pub use dstu_core::task_objects;
+pub mod tool_approval_policy;
+pub mod tool_descriptors; // 🆕 G01-c：ToolDescriptor 后端权威注册表（内建工具静态元数据 SSOT）
+pub mod tool_policy;
+pub mod tools;
+pub mod types;
+pub mod user_message_builder; // 用户消息统一构建模块
+pub mod variant_context;
+pub mod vfs_resolver;
+pub mod workspace; // VFS 解引用模块 - 统一处理首次发送和历史加载的资源解引用
+pub mod workspace_change_set; // Workspace 文件变更收据、检查点与安全回滚
+
+// 测试模块（仅在测试时编译）
+#[cfg(test)]
+mod pipeline_tests;
+
+// 重导出错误类型
+pub use error::{ChatV2Error, ChatV2Result};
+
+// 重导出数据库类型
+pub use database::{
+    ChatV2Database, ChatV2DatabaseStats, ChatV2Pool, ChatV2PooledConnection, CURRENT_SCHEMA_VERSION,
+};
+
+// 重导出数据存取层
+pub use repo::ChatV2Repo;
+
+// 重导出事件类型
+pub use events::{event_phase, event_types, session_event_type};
+pub use events::{BackendEvent, ChatV2EventEmitter, SessionEvent};
+
+// 重导出状态类型
+pub use state::{ChatV2State, StreamGuard};
+
+// 重导出 Headless Runner（供 automations 调度器 / 手动触发命令使用）
+pub use headless::{
+    run_headless_turn, HeadlessSessionMode, HeadlessTurnRequest, HeadlessTurnResult,
+};
+
+// 重导出核心类型
+pub use types::{
+    // 常量模块
+    block_status,
+    block_types,
+    // Feature Flags
+    feature_flags,
+    variant_status,
+    // 附件相关
+    AttachmentInput,
+    AttachmentMeta,
+    // 消息相关
+    ChatMessage,
+    // 会话状态
+    ChatParams,
+    // 会话相关
+    ChatSession,
+    // 块相关
+    Citation,
+    // 多变体相关
+    DeleteVariantResult,
+    // 请求/响应
+    LoadSessionResponse,
+    MessageBlock,
+    MessageMeta,
+    MessageRole,
+    MessageSources,
+    PanelStates,
+    PersistStatus,
+    SendMessageRequest,
+    SendOptions,
+    SessionSettings,
+    SessionState,
+    SharedContext,
+    SourceInfo,
+    // Token 统计相关
+    TokenSource,
+    TokenUsage,
+    ToolResultInfo,
+    Variant,
+};
+
+// 重导出变体执行上下文
+pub use variant_context::{ParallelExecutionManager, VariantExecutionContext};
+
+pub use workspace::{
+    AgentRole, AgentStatus, DocumentType, InjectionResult, MessageStatus as WorkspaceMessageStatus,
+    MessageType, Workspace, WorkspaceAgent, WorkspaceContext, WorkspaceCoordinator,
+    WorkspaceDatabase, WorkspaceDocument, WorkspaceInjector, WorkspaceMessage, WorkspaceRepo,
+    WorkspaceStatus,
+};
+
+// 重导出资源库类型（统一上下文注入系统）
+// NOTE: 这些类型仍被 pipeline/context/user_message_builder 等模块使用，暂不废弃。
+// resource_handlers 已删除（2026-07-20）；resource_repo 仍 DEPRECATED 保留（owner: platform-chat, remove: vNext）。
+pub use resource_types::{
+    // 资源相关
+    ContentBlock,
+    ContextRef,
+    ContextSnapshot,
+    CreateResourceParams,
+    CreateResourceResult,
+    Resource,
+    ResourceMetadata,
+    ResourceType,
+    SendContextRef,
+};
+
+// 重导出用户消息构建器（统一用户消息处理）
+pub use user_message_builder::{
+    build_user_message, convert_attachment_input_to_meta, extract_user_refs_snapshot,
+    UserMessageParams, UserMessageResult,
+};
+
+// 重导出 Skills 命令
+pub use skills::{skill_list_directories, skill_list_package_files, skill_read_file};
+
+// 重导出 Tauri 命令
+pub use handlers::{
+    chat_v2_archive_session,
+    chat_v2_cancel_stream,
+    chat_v2_cancel_variant,
+    // 数据迁移命令
+    chat_v2_check_migration_status,
+    chat_v2_copy_block_content,
+    chat_v2_count_sessions,
+    chat_v2_create_session,
+    chat_v2_delete_message,
+    chat_v2_delete_session,
+    chat_v2_delete_variant,
+    chat_v2_edit_and_resend,
+    chat_v2_empty_deleted_sessions,
+    // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
+    chat_v2_get_message_summary,
+    chat_v2_has_active_stream,
+    chat_v2_list_sessions,
+    chat_v2_load_messages_page,
+    chat_v2_load_session,
+    chat_v2_migrate_legacy_chat,
+    chat_v2_perform_ocr,
+    chat_v2_retry_message,
+    chat_v2_retry_variant,
+    chat_v2_retry_variants,
+    chat_v2_rollback_migration,
+    chat_v2_save_session,
+    chat_v2_send_message,
+    chat_v2_session_message_count,
+    // 变体管理命令
+    chat_v2_switch_variant,
+    chat_v2_update_block_content,
+    chat_v2_update_session_settings,
+    chat_v2_upsert_streaming_block,
+};
+
+// ============================================================================
+// 统一初始化函数
+// ============================================================================
+
+use std::path::Path;
+
+/// Chat V2 统一初始化函数
+///
+/// 创建 Chat V2 数据库并执行 schema 迁移。
+/// 这是 Chat V2 模块的唯一入口点。
+///
+/// ## 初始化流程
+/// 1. 创建 `chat_v2.db` 数据库文件
+/// 2. 执行 schema 迁移（如有更新）
+/// 3. 返回 ChatV2Database
+///
+/// ## 参数
+/// - `app_data_dir`: 应用数据目录路径
+///
+/// ## 返回
+/// - `Ok(ChatV2Database)`: 初始化成功
+/// - `Err(ChatV2Error)`: 初始化失败
+pub fn init_chat_v2(app_data_dir: &Path) -> ChatV2Result<ChatV2Database> {
+    tracing::info!(
+        "[ChatV2] 开始统一初始化, 数据目录: {}",
+        app_data_dir.display()
+    );
+
+    // 创建数据库（内部执行 schema 迁移）
+    let db = ChatV2Database::new(app_data_dir)?;
+
+    // 🔧 A1修复：启动时清理历史遗留的孤儿用户消息 content block
+    // 之前 build_user_message 每次生成随机 block_id，多次 save 导致 DB 积累重复块
+    match repo::ChatV2Repo::cleanup_orphan_user_content_blocks(&db) {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!(
+                    "[ChatV2] Startup cleanup: removed {} orphan user content blocks",
+                    count
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!("[ChatV2] Startup cleanup failed (non-fatal): {}", e);
+        }
+    }
+
+    // 上次进程被打断的生成回合：残留 running/pending 块会让前端永远显示「正在思考」
+    if let Err(e) = repo::ChatV2Repo::reconcile_interrupted_blocks_on_startup(&db) {
+        tracing::warn!("[ChatV2] Startup block reconcile failed (non-fatal): {}", e);
+    }
+
+    tracing::info!("[ChatV2] 统一初始化完成: {}", db.db_path().display());
+
+    Ok(db)
+}

@@ -2,10 +2,10 @@
  * 确定性制卡质量 lint（eval 测试侧，复用 Rust 生产 lint 契约）。
  *
  * 状态（Round 4 #10 落地，Round 5 #10 完全对齐）：生产 lint 模块为
- * `src-tauri/src/anki_qa_lint.rs`（Round 3 #3）。本文件不使用自造码，
+ * `src-tauri/crates/dstu-anki/src/anki_qa_lint.rs`（Round 3 #3）。本文件不使用自造码，
  * 而是**逐字节复用 Rust 侧的 code 字符串契约**：凡两侧都实现的规则，
  * code 必须与 `anki_qa_lint::codes` 常量一致（契约清单固化在
- * `src-tauri/src/anki_gold_set.rs` 的 LINT_CONTRACT_CODES，
+ * `src-tauri/crates/dstu-anki/src/anki_gold_set.rs` 的 LINT_CONTRACT_CODES，
  * 对齐由 tests/vitest/anki/eval/lintContract.test.ts 双向锁定）。
  *
  * Round 5 #10 起，Rust 侧的全部 code 以具名常量导出于

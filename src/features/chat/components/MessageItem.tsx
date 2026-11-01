@@ -59,6 +59,8 @@ import { generateCardsFromSelection } from '../services/selectionCardGeneration'
 import { selectionToChat } from '../context/selectionRef';
 import { MessageSearchProvider } from './messageSearchContext';
 import { useMessageSearchVisibility } from '../hooks/useMessageSearchVisibility';
+import { SuperInboxEventMessage } from '../superSession/SuperInboxEventCard';
+import { isInboundUserMessage } from '../superSession/inboundOrigin';
 
 // ============================================================================
 // 辅助函数
@@ -906,6 +908,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 消息不存在
   if (!message) {
     return null;
+  }
+
+  // Super 会话收件箱投递消息（_meta.inboundOrigin）：渲染为系统事件卡片而非用户气泡，
+  // 不提供编辑/重发（guards.canEdit 同样拒绝）
+  if (isInboundUserMessage(message)) {
+    return (
+      <div className={cn('group relative px-4 py-2 md:px-8', isFirst && 'pt-6', className)}>
+        <ThreadContentShell width="thread">
+          <SuperInboxEventMessage store={store} messageId={messageId} />
+        </ThreadContentShell>
+      </div>
+    );
   }
 
   return (

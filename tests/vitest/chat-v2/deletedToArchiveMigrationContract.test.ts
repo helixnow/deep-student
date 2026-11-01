@@ -9,7 +9,7 @@ describe('chat v2 deleted session migration contract', () => {
       'src-tauri/migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql'
     );
     const migrationRegistrySource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/migration/chat_v2.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-storage/src/migration/chat_v2.rs'),
       'utf8'
     );
 
@@ -25,7 +25,7 @@ describe('chat v2 deleted session migration contract', () => {
     expect(migrationRegistrySource).toContain('20260502');
     expect(migrationRegistrySource).toContain('archive_legacy_deleted_sessions');
     expect(migrationRegistrySource).toContain(
-      'include_str!("../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql")'
+      'include_str!("../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql")'
     );
   });
 });

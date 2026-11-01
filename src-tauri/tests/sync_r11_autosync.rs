@@ -148,7 +148,7 @@ fn r11_autosync_failclose_markers_stay_in_sync_across_layers() {
     );
 
     // 无密码（云端要求 E2EE 但本机未配置加密密码）：引擎稳定文案
-    let sync_mod = read_repo_file("src/data_governance/sync/mod.rs");
+    let sync_mod = read_repo_file("crates/dstu-sync/src/data_governance/sync/mod.rs");
     assert!(
         sync_mod.contains("未配置加密密码"),
         "引擎「未配置加密密码」文案被改动——前端 AUTO_SYNC_UNCONFIGURED_MARKERS \

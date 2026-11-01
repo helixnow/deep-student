@@ -17,10 +17,8 @@ import {
   Lightning,
   CircleNotch,
   CaretDown,
-  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { TextSwap } from '@/components/ui/TextSwap';
 import {
@@ -45,6 +43,11 @@ import type { PermissionPreset } from '../../core/types/store';
 import type { ReasoningLevelOption, ReasoningLevel } from '@/utils/reasoning';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { ThinkingDepthSlider } from './ThinkingDepthSlider';
+import {
+  RuntimeModelSubmenuBody,
+  type RuntimeModelMultiSelectConfig,
+  type RuntimeModelOption,
+} from './RuntimeModelSubmenuBody';
 import { ContextUsagePopover } from './ContextUsagePopover';
 
 // ============================================================================
@@ -272,7 +275,9 @@ export interface ComposerToolbarProps {
   runtimeModelProviderLabel?: string;
   runtimeModelIconId?: string;
   runtimeCurrentModelId?: string | null;
-  runtimeModelOptions: Array<{ id: string; label: string; providerLabel?: string; iconId?: string; providerId?: string; isRecent?: boolean }>;
+  runtimeModelOptions: RuntimeModelOption[];
+  /** runtime 子菜单内的多选（并行回答）配置；不提供则隐藏多选开关 */
+  runtimeModelMultiSelect?: RuntimeModelMultiSelectConfig;
   onSelectRuntimeModel?: (modelId: string) => void;
   /** 是否存在模型选择面板（决定运行时模型菜单是否可用） */
   hasModelPanel: boolean;
@@ -348,6 +353,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   runtimeCurrentModelId,
   runtimeModelOptions,
   onSelectRuntimeModel,
+  runtimeModelMultiSelect,
   hasModelPanel,
   onOpenRuntimeModelPanel,
   onThinkingMenuWillOpen,
@@ -382,9 +388,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     : compactThinkingStateLabel;
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
   const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
-  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
@@ -419,46 +422,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
   const thinkingRuntimeTriggerLabel = resolvedThinkingTriggerLabel || runtimeModelLabel || runtimeModelTitle;
 
-  const [runtimeModelSearch, setRuntimeModelSearch] = useState('');
-  const normalizedRuntimeModelSearch = runtimeModelSearch.trim().toLowerCase();
-  const groupedRuntimeModelOptions = useMemo(() => {
-    if (runtimeModelOptions.length === 0) return [];
-
-    const filteredOptions = normalizedRuntimeModelSearch.length === 0
-      ? runtimeModelOptions
-      : runtimeModelOptions.filter((model) => {
-          const haystack = [model.label, model.providerLabel, model.id]
-            .filter((value): value is string => typeof value === 'string' && value.length > 0)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(normalizedRuntimeModelSearch);
-        });
-
-    const groups = new Map<string, { key: string; label: string; models: typeof runtimeModelOptions }>();
-    const recent = normalizedRuntimeModelSearch.length === 0
-      ? filteredOptions.filter((model) => model.isRecent)
-      : [];
-    if (recent.length > 0) {
-      groups.set('__recent__', { key: '__recent__', label: t('chatV2:inputBar.runtimeModelRecent'), models: recent });
-    }
-    filteredOptions.forEach((model) => {
-      const providerLabel = model.providerLabel?.trim() || fallbackRuntimeProviderLabel;
-      const providerKey = model.providerId?.trim() || providerLabel;
-      const existing = groups.get(providerKey);
-      if (existing) {
-        existing.models.push(model);
-        return;
-      }
-      groups.set(providerKey, { key: providerKey, label: providerLabel, models: [model] });
-    });
-
-    return Array.from(groups.values()).map(({ key, label, models }) => ({
-      key,
-      providerLabel: label,
-      models,
-    }));
-  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions, t]);
-
   const handleTurnThinkingOn = useCallback(() => {
     if (enableThinking) return;
     onToggleThinking?.();
@@ -475,12 +438,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
 
   const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      onThinkingMenuWillOpen();
-      setRuntimeModelSearch('');
-      return;
-    }
-    setRuntimeModelSearch('');
+    // 子菜单搜索词由 RuntimeModelSubmenuBody 自持，随子菜单卸载自然清空
+    if (open) onThinkingMenuWillOpen();
   }, [onThinkingMenuWillOpen]);
 
   return (
@@ -686,70 +645,13 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                               chooseRuntimeModelLabel
                             )}
                           </AppMenuSubTrigger>
-                          <AppMenuSubContent className="w-[min(240px,calc(100vw-24px))] max-w-[min(240px,calc(100vw-24px))] p-1">
-                            <div className="app-menu-search">
-                              <MagnifyingGlass className="app-menu-search-icon" />
-                              <input
-                                type="search"
-                                // 📱 触控目标 + 16px 输入契约：.ds-search-input 的 coarse 规则挂在
-                                // enhanced-pdf.css（仅 PDF 视图加载），此处内联补齐防 iOS 聚焦缩放
-                                className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!text-base"
-                                placeholder={runtimeModelSearchPlaceholder}
-                                value={runtimeModelSearch}
-                                onChange={(event) => setRuntimeModelSearch(event.target.value)}
-                                onClick={(event) => event.stopPropagation()}
-                              />
-                            </div>
-                            <CustomScrollArea
-                              fullHeight={false}
-                              className="max-h-[220px]"
-                              viewportClassName="max-h-[220px]"
-                            >
-                              {groupedRuntimeModelOptions.length > 0 ? (
-                                groupedRuntimeModelOptions.map((group) => (
-                                  <AppMenuGroup
-                                    key={group.key}
-                                    label={group.providerLabel}
-                                    className="app-menu-group--natural-case"
-                                  >
-                                    {group.models.map((model) => (
-                                      <AppMenuItem
-                                        key={model.id}
-                                        icon={model.iconId ? (
-                                          <ProviderIcon
-                                            modelId={model.iconId}
-                                            size={14}
-                                            showTooltip={false}
-                                            variant="mono"
-                                          />
-                                        ) : undefined}
-                                        checked={model.id === runtimeCurrentModelId}
-                                        onClick={() => onSelectRuntimeModel?.(model.id)}
-                                      >
-                                        <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                          <span className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground">
-                                            {model.label}
-                                          </span>
-                                          {model.providerLabel && (
-                                            <span className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground">
-                                              {model.providerLabel}
-                                            </span>
-                                          )}
-                                        </span>
-                                      </AppMenuItem>
-                                    ))}
-                                  </AppMenuGroup>
-                                ))
-                              ) : (
-                                <AppMenuItem disabled>
-                                  {t('chatV2:inputBar.runtimeModelNoResults')}
-                                </AppMenuItem>
-                              )}
-                            </CustomScrollArea>
-                            <AppMenuSeparator />
-                            <AppMenuItem onClick={() => onOpenRuntimeModelPanel('compare')}>
-                              {runtimeCompareModeLabel}
-                            </AppMenuItem>
+                          <AppMenuSubContent className="w-[min(264px,calc(100vw-24px))] max-w-[min(264px,calc(100vw-24px))] p-1">
+                            <RuntimeModelSubmenuBody
+                              options={runtimeModelOptions}
+                              currentModelId={runtimeCurrentModelId}
+                              onSelect={onSelectRuntimeModel}
+                              multiSelect={runtimeModelMultiSelect}
+                            />
                           </AppMenuSubContent>
                         </AppMenuSub>
                       ) : (

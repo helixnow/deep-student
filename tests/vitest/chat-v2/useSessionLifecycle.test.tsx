@@ -5,6 +5,7 @@ import { useSessionLifecycle, type UseSessionLifecycleDeps } from '@/features/ch
 import { retainSessionListStore, useSessionListStore } from '@/features/chat/stores/sessionListStore';
 import type { ChatSession } from '@/features/chat/types/session';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useSuperAgentEnabledStore } from '@/stores/superAgentEnabledStore';
 
 const { createSessionWithDefaultsMock, invokeMock, sessionManagerGetMock } = vi.hoisted(() => ({
   createSessionWithDefaultsMock: vi.fn(),
@@ -286,4 +287,60 @@ describe('useSessionLifecycle hidden draft creation', () => {
     expect(deps.setIsInitialLoading).toHaveBeenCalledWith(false);
   });
 
+});
+
+describe('useSessionLifecycle deleting the Super-agent session', () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: createStorage(),
+      configurable: true,
+    });
+    invokeMock.mockReset();
+    useSuperAgentEnabledStore.setState({ enabled: true, sessionId: 'sess_super', synced: true });
+  });
+
+  it('switches to the replacement Super-agent session the backend created', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'super_session_get_state') {
+        return Promise.resolve({ enabled: true, sessionId: 'sess_super_new', workspaceId: 'ws_2', pendingInbox: 0 });
+      }
+      return Promise.resolve(command === 'chat_v2_count_sessions' ? 0 : null);
+    });
+    const sessionsRef = { current: [{ id: 'sess_super' }, { id: 'sess_other' }] as ChatSession[] };
+    const deps = createDeps({ currentSessionId: 'sess_super', sessionsRef });
+    let api: ReturnType<typeof useSessionLifecycle> | null = null;
+    function Harness() {
+      api = useSessionLifecycle(deps);
+      return null;
+    }
+    render(<Harness />);
+
+    await act(async () => { await api!.deleteSession('sess_super'); });
+
+    expect(invokeMock).toHaveBeenCalledWith('chat_v2_delete_session', { sessionId: 'sess_super' });
+    const updater = vi.mocked(deps.setCurrentSessionId).mock.calls.at(-1)?.[0] as (prev: string | null) => string | null;
+    expect(typeof updater).toBe('function');
+    expect(updater('sess_super')).toBe('sess_super_new');
+    // 不在 Super 会话上时保持当前会话
+    expect(updater('sess_other')).toBe('sess_other');
+    expect(useSuperAgentEnabledStore.getState().sessionId).toBe('sess_super_new');
+  });
+
+  it('keeps the regular fallback when deleting a normal session', async () => {
+    invokeMock.mockImplementation((command: string) => Promise.resolve(command === 'chat_v2_count_sessions' ? 0 : null));
+    const sessionsRef = { current: [{ id: 'sess_a' }, { id: 'sess_b' }] as ChatSession[] };
+    const deps = createDeps({ currentSessionId: 'sess_a', sessionsRef });
+    let api: ReturnType<typeof useSessionLifecycle> | null = null;
+    function Harness() {
+      api = useSessionLifecycle(deps);
+      return null;
+    }
+    render(<Harness />);
+
+    await act(async () => { await api!.deleteSession('sess_a'); });
+
+    expect(invokeMock).not.toHaveBeenCalledWith('super_session_get_state');
+    const updater = vi.mocked(deps.setCurrentSessionId).mock.calls.at(-1)?.[0] as (prev: string | null) => string | null;
+    expect(updater('sess_a')).toBe('sess_b');
+  });
 });

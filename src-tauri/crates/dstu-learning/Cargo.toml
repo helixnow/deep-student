@@ -1,0 +1,31 @@
+[package]
+name = "dstu-learning"
+version = "0.0.0"
+description = "Deep Student 学习能力：FSRS 调度层（Anki 语义学习步 / fuzz / 逻辑日）、掌握度中间层（事件聚合、FSRS due 偏置、画像回流扩展点）、学习闭环（媒体出处锚点、学习时长）"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "capability"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-vfs = { workspace = true }
+chrono = { workspace = true }
+fsrs = { workspace = true }
+nanoid = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+tauri = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# 对下游 crate 的单测公开 `mastery::service::set_now_override_ms`（只在 dev-dependency 中打开）。
+test-util = []

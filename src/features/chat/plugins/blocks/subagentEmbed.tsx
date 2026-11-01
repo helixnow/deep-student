@@ -569,6 +569,28 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   // 实时路径：subagent_call 的 toolInput 没有 sessionId，工具返回前 output 也不存在。
   // 块仍在执行时显示"启动中"占位，而不是错误卡
   if (!sessionId) {
+    const blockTerminal = block.status === 'success' || block.status === 'error';
+    // 工具参数尚在生成（preparing）时流被停止：派发从未执行。终态 + isPreparing 是
+    // 「执行前已结束」，不能再显示“执行中”转圈（曾永久卡住），也不是“会话 ID 缺失”错误。
+    // completeStream 收尾 preparing 孤儿块时写入的终态文案（streamActions.ts 第 3 步）
+    const endedBeforeExecution =
+      block.status === 'error'
+      && typeof block.error === 'string'
+      && block.error.includes('before tool execution');
+    if ((block.isPreparing && blockTerminal) || endedBeforeExecution) {
+      return (
+        <div
+          className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-card"
+          data-testid="subagent-embed-not-executed"
+        >
+          <Robot size={16} className="text-muted-foreground flex-shrink-0" />
+          <span className="text-sm font-medium flex-1 truncate text-muted-foreground">{cardTitle}</span>
+          <span className="text-xs text-muted-foreground flex-shrink-0">
+            {t('subagent.status.cancelled')}
+          </span>
+        </div>
+      );
+    }
     const blockInProgress =
       block.isPreparing || block.status === 'pending' || block.status === 'running';
     if (blockInProgress) {

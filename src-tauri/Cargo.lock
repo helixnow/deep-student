@@ -3280,6 +3280,29 @@ dependencies = [
  "dirs 4.0.0",
  "docx-rs",
  "dotenvy",
+ "dstu-agent",
+ "dstu-agent-api",
+ "dstu-anki",
+ "dstu-browser",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-mcp",
+ "dstu-media",
+ "dstu-memory",
+ "dstu-notes",
+ "dstu-platform",
+ "dstu-qbank",
+ "dstu-research",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-sync",
+ "dstu-tutor",
+ "dstu-util",
+ "dstu-vfs",
+ "dstu-vision",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -3717,6 +3740,712 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "dstu-agent"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "chrono-tz",
+ "csv",
+ "dashmap 5.5.3",
+ "dirs 4.0.0",
+ "dstu-agent-api",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-llm",
+ "dstu-mcp",
+ "dstu-memory",
+ "dstu-platform",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "encoding_rs",
+ "env_logger",
+ "futures",
+ "futures-util",
+ "hex",
+ "hostname",
+ "html2text",
+ "hyper 0.14.32",
+ "libc",
+ "log",
+ "mockito",
+ "nanoid",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "starlark",
+ "tauri",
+ "tauri-plugin-notification",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "ulid",
+ "url",
+ "uuid",
+ "walkdir",
+ "windows-sys 0.59.0",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-agent-api"
+version = "0.0.0"
+dependencies = [
+ "dstu-core",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio-util",
+]
+
+[[package]]
+name = "dstu-anki"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "fsrs",
+ "futures",
+ "futures-util",
+ "log",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
+ "zstd 0.13.3",
+]
+
+[[package]]
+name = "dstu-browser"
+version = "0.0.0"
+dependencies = [
+ "block2 0.6.2",
+ "chrono",
+ "cocoa",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-storage",
+ "hex",
+ "javascriptcore-rs",
+ "objc",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
+ "objc2-web-kit 0.3.2",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "refinery",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "webkit2gtk",
+ "webview2-com",
+]
+
+[[package]]
+name = "dstu-core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "hex",
+ "jsonschema",
+ "log",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-docs"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "calamine",
+ "csv",
+ "docx-rs",
+ "encoding_rs",
+ "html2text",
+ "image 0.24.9",
+ "log",
+ "pdfium-render",
+ "ppt-rs",
+ "pptx-to-md",
+ "quick-xml 0.37.5",
+ "rtf-parser",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tracing",
+ "umya-spreadsheet",
+ "urlencoding",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-kernel"
+version = "0.0.0"
+
+[[package]]
+name = "dstu-learning"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-vfs",
+ "fsrs",
+ "nanoid",
+ "rusqlite",
+ "serde",
+ "tauri",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "dstu-llm"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-platform",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "futures",
+ "futures-util",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "objc",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "windows 0.58.0",
+ "zeroize",
+]
+
+[[package]]
+name = "dstu-mcp"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "backon",
+ "chrono",
+ "config",
+ "dashmap 5.5.3",
+ "dotenvy",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-llm",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "futures",
+ "hyper 0.14.32",
+ "libc",
+ "log",
+ "lru",
+ "oauth2",
+ "quick-xml 0.37.5",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-opener",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "dstu-media"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "encoding_rs",
+ "flate2",
+ "futures-util",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "prost",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tokio-util",
+ "tungstenite 0.21.0",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "dstu-memory"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-vfs",
+ "log",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "dstu-notes"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "chrono",
+ "dstu-core",
+ "dstu-storage",
+ "dstu-vfs",
+ "futures-util",
+ "lancedb",
+ "log",
+ "pulldown-cmark",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-platform"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "cocoa",
+ "hyper 0.14.32",
+ "log",
+ "regex",
+ "sentry",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "dstu-qbank"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "csv",
+ "docx-rs",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "dstu-vision",
+ "encoding_rs",
+ "futures",
+ "futures-util",
+ "hex",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "nanoid",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-research"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "dstu-core",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-vfs",
+ "log",
+ "nanoid",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "dstu-security"
+version = "0.0.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "argon2",
+ "base64 0.21.7",
+ "chrono",
+ "dirs 4.0.0",
+ "dstu-core",
+ "hex",
+ "hostname",
+ "keyring",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "dstu-storage"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "dirs 4.0.0",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-platform",
+ "dstu-security",
+ "dstu-util",
+ "fs2",
+ "hex",
+ "image 0.24.9",
+ "libc",
+ "log",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "refinery",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-plugin-fs",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+ "walkdir",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-sync"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-sdk-s3",
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dirs 4.0.0",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-vfs",
+ "futures-util",
+ "hex",
+ "hyper 0.14.32",
+ "log",
+ "reqwest 0.11.27",
+ "roxmltree",
+ "rusqlite",
+ "rustls 0.23.36",
+ "serde",
+ "serde_json",
+ "sha2",
+ "suppaftp",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-rustls 0.26.4",
+ "tokio-util",
+ "tracing",
+ "unicode-normalization",
+ "url",
+ "urlencoding",
+ "uuid",
+ "walkdir",
+ "webpki-roots 0.26.11",
+ "zeroize",
+ "zip 0.6.6",
+ "zstd 0.13.3",
+]
+
+[[package]]
+name = "dstu-testkit"
+version = "0.0.0"
+dependencies = [
+ "dstu-storage",
+ "tempfile",
+]
+
+[[package]]
+name = "dstu-tutor"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "futures-util",
+ "log",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "dstu-util"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "image 0.24.9",
+ "log",
+ "qrcode",
+ "reqwest 0.11.27",
+ "serde_json",
+ "tiktoken-rs",
+ "tracing",
+]
+
+[[package]]
+name = "dstu-vfs"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-testkit",
+ "dstu-util",
+ "futures",
+ "futures-util",
+ "hex",
+ "image 0.24.9",
+ "lancedb",
+ "libc",
+ "log",
+ "nanoid",
+ "pdfium-render",
+ "pulldown-cmark",
+ "r2d2",
+ "r2d2_sqlite",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-vision"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "futures-util",
+ "image 0.24.9",
+ "log",
+ "nanoid",
+ "pdfium-render",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "urlencoding",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]
