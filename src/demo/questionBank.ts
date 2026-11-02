@@ -108,6 +108,10 @@ export async function handleDemoQuestionBank(command: string, args: Record<strin
       questions.set(question.id, updated);
       return updated;
     }
+    case 'qbank_list_authoring_drafts':
+      return [];
+    case 'qbank_get_authoring_draft':
+      return null;
     default:
       throw new Error('请使用示例题目的收录、作答与解析功能。');
   }
