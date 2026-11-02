@@ -128,7 +128,7 @@ jobs:
           bash scripts/ci/r2-put.sh "$R2_BUCKET/demo/latest.json" latest.json 'application/json; charset=utf-8' 'public, max-age=60'
           echo "$DEMO_BASE_URL/latest.json" > purge-urls.txt
           bash scripts/ci/purge-cdn.sh purge-urls.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always() && steps.target.outputs.skip == 'false'
         with:
           name: demo-check

@@ -45,7 +45,7 @@ jobs:
       - name: Recheck time-sensitive migration requirements
         if: inputs.stage == 'migration'
         run: node scripts/migration-ci/verify-release-requirements.mjs --manifest scripts/migration-ci/release-requirements.json --out "$RUNNER_TEMP/release-requirements-current.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.names.outputs.asset }}
           path: recovered/${{ inputs.stage }}/${{ steps.names.outputs.asset }}
@@ -54,7 +54,7 @@ jobs:
           compression-level: 0
           overwrite: true
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: steps.names.outputs.proof != ''
         with:
           name: ${{ steps.names.outputs.proof }}
