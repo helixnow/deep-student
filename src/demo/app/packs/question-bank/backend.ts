@@ -601,6 +601,12 @@ export function handleQuestionBank(cmd: string, args: DemoArgs): unknown {
       return [];
     case 'qbank_list_generation_tasks':
       return [];
+    // 试卷导入的“待确认草稿”列表：演示里没有草稿，返回空数组而不是让通用
+    // mock 回退成 null（否则页面 setState(null) 后渲染读 .length 会崩）。
+    case 'qbank_list_authoring_drafts':
+      return [];
+    case 'qbank_get_authoring_draft':
+      return null;
     case 'qbank_get_generation_task':
     case 'qbank_cancel_generation_task':
       return null;

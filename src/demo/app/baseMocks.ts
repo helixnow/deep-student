@@ -75,6 +75,14 @@ export function installDemoAppMocks(pack: DemoAppPack): void {
           return DEMO_APP_MODEL_PROFILES;
         case 'get_model_assignments':
           return { model2_config_id: 'demo-deepseek-v4' };
+        // 演示没有常驻 Super 会话：所有演示包都按“未启用”应答，避免落到
+        // unmocked 分支返回 null（侧栏会把它当状态快照读）。
+        case 'super_session_get_state':
+        case 'super_session_set_enabled':
+        case 'super_session_ensure':
+          return { enabled: false, sessionId: null, workspaceId: null, pendingInbox: 0 };
+        case 'super_session_get_settings':
+          return { instructions: '' };
         case 'plugin:clipboard-manager|write_text':
           // 交给浏览器剪贴板回退路径
           throw new Error('Use browser clipboard');

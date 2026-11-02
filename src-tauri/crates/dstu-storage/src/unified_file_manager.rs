@@ -549,7 +549,7 @@ struct SafPermissionHandle(tauri::plugin::PluginHandle<tauri::Wry>);
 
 /// 原生插件只通知 MainActivity 扫描持久队列，不传递或缓存 URI grant。
 #[cfg(target_os = "android")]
-pub(crate) fn saf_permission_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+pub fn saf_permission_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::new("saf-permission")
         .setup(|app, api| {
             let handle =
