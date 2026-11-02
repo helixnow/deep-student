@@ -671,6 +671,17 @@ export function createDemoIpcHandler(options: DemoIpcOptions = {}): (cmd: string
         case 'chat_v2_reorder_groups':
           return null;
 
+        // ---------- Super 会话（侧栏 / 设置页启动时查询状态） ----------
+        // 演示没有常驻 Super 会话：给一份“未启用”的快照，别让通用 mock 回 null。
+        case 'super_session_get_state':
+        case 'super_session_set_enabled':
+        case 'super_session_ensure':
+          return { enabled: false, sessionId: null, workspaceId: null, pendingInbox: 0 };
+        case 'super_session_get_settings':
+          return { instructions: '' };
+        case 'super_session_set_settings':
+          return null;
+
         // ---------- 分组 ----------
         case 'chat_v2_list_groups':
           return [];

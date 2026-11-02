@@ -545,6 +545,7 @@
     "draft_needs_review": "Some source issues or unmatched answers require review. Select only verified questions.",
     "commit_not_confirmed": "The questions were not committed. Please retry.",
     "import_interrupted": "Import interrupted, {{count}} questions saved",
+    "audit_imports": "Import history and reparse review",
     "resume_import": "Resume from where it stopped",
     "resuming": "Resuming...",
     "filter_hint": "Unchecked questions won't be imported",

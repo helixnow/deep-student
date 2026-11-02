@@ -1974,7 +1974,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     let cancelled = false;
     const refresh = () => {
       void invoke<typeof pendingAuthoringDrafts>('qbank_list_authoring_drafts', {examId:sessionId})
-        .then((drafts) => { if (!cancelled) setPendingAuthoringDrafts(drafts); })
+        // 演示/旧后端可能对未知命令返回 null；非数组一律按“没有草稿”处理
+        .then((drafts) => { if (!cancelled) setPendingAuthoringDrafts(Array.isArray(drafts) ? drafts : []); })
         .catch((error) => { debugLog.warn('[ExamContentView] Pending drafts unavailable:', error); });
     };
     setPendingAuthoringDrafts([]);
