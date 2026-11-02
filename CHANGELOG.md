@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.1](https://github.com/helixnow/deep-student/compare/v0.11.0...v0.11.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **demo:** 补 Super 会话与待确认草稿的演示数据，修掉烟测报错 ([099130b](https://github.com/helixnow/deep-student/commit/099130be5c91072d87e05401bb46393d070c452d))
+* **mobile:** 导出 SAF 插件构造函数供 app crate 调用 ([d26c27c](https://github.com/helixnow/deep-student/commit/d26c27cfce4b91c7f4dd3c930bd43d6b72af1a5c))
+* 补 v0.11.0 的 Android APK 与演示站构建 ([6c73530](https://github.com/helixnow/deep-student/commit/6c73530d87f3180c2ff555dd5729943a77086dc3))
+* 补 v0.11.0 的 Android APK 与演示站构建 ([#518](https://github.com/helixnow/deep-student/issues/518)) ([6c73530](https://github.com/helixnow/deep-student/commit/6c73530d87f3180c2ff555dd5729943a77086dc3))
+
 ## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.10...v0.11.0) (2026-11-01)
 
 
