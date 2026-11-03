@@ -16,9 +16,9 @@ declare global {
   }
 }
 
-export function InkEditorHarness({ saveMode, documentId = 'ink-editor-ct-document', imageBackground = false, pdfPageBackground = false }: { saveMode: 'success' | 'conflict' | 'offline' | 'offline-once' | 'operation-unknown' | 'save-echo'; documentId?: string; imageBackground?: boolean; pdfPageBackground?: boolean }) {
+export function InkEditorHarness({ saveMode, documentId = 'ink-editor-ct-document', imageBackground = false, pdfPageBackground = false, pdfPageHighlights = true }: { saveMode: 'success' | 'conflict' | 'offline' | 'offline-once' | 'operation-unknown' | 'save-echo'; documentId?: string; imageBackground?: boolean; pdfPageBackground?: boolean; pdfPageHighlights?: boolean }) {
   const background: InkEditorBackgroundFixture = pdfPageBackground ? 'pdf_page' : imageBackground ? 'image' : 'none';
-  const [backend] = useState(() => createInkEditorBackend(saveMode, documentId, background));
+  const [backend] = useState(() => createInkEditorBackend(saveMode, documentId, background, { pdfPageHighlights }));
   const [mounted, setMounted] = useState(true);
   const [mountKey, setMountKey] = useState(0);
   const initialized = useRef(false);

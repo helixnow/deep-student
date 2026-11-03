@@ -29,6 +29,7 @@ const COLORS: Record<InkColor, { pen: string; highlighter: string }> = {
   blue: { pen: '#0000ff', highlighter: '#0000ff80' },
 };
 const WIDTHS: Record<InkWidth, number> = { small: 2, medium: 8, large: 12 };
+
 export function InkEditor({ documentId, className, initialPageId, onAskAi, onExport }: InkEditorProps) {
   const { t } = useTranslation('ink');
   const docState = useInkDocument(documentId, initialPageId);
@@ -47,9 +48,7 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [renameValue, setRenameValue] = useState('');
-  const [background, setBackground] = useState<CanvasImageSource | undefined>();
-  const backgroundLeaseRef = useRef<InkBackgroundLease | undefined>(undefined);
-  const composedBackgroundRef = useRef<HTMLCanvasElement | undefined>(undefined);
+  const [publishedBackground, setPublishedBackground] = useState<InkBackgroundLease>();
   const [backgroundError, setBackgroundError] = useState(false);
   const [pageError, setPageError] = useState(false);
 
@@ -110,14 +109,7 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
     const pageRef = docState.pageRef;
     const manifest = docState.manifest;
     let cancelled = false;
-    backgroundLeaseRef.current?.dispose();
-    backgroundLeaseRef.current = undefined;
-    if (composedBackgroundRef.current) {
-      composedBackgroundRef.current.width = 0;
-      composedBackgroundRef.current.height = 0;
-      composedBackgroundRef.current = undefined;
-    }
-    setBackground(undefined);
+    setPublishedBackground(undefined);
     setBackgroundError(false);
     if (docState.status !== 'ready' || !pageRef || !manifest) return;
 
@@ -136,10 +128,22 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
           lease.dispose();
           return;
         }
-        backgroundLeaseRef.current = lease;
         const composed = composeSourceHighlights(lease.background, pageRef, highlights);
-        if (composed) composedBackgroundRef.current = composed;
-        setBackground(composed ?? lease.background);
+        const owned = lease;
+        lease = undefined;
+        let disposed = false;
+        setPublishedBackground({
+          background: composed ?? owned.background,
+          dispose() {
+            if (disposed) return;
+            disposed = true;
+            owned.dispose();
+            if (composed) {
+              composed.width = 0;
+              composed.height = 0;
+            }
+          },
+        });
       } catch {
         lease?.dispose();
         if (!cancelled) setBackgroundError(true);
@@ -148,15 +152,14 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
 
     return () => {
       cancelled = true;
-      backgroundLeaseRef.current?.dispose();
-      backgroundLeaseRef.current = undefined;
-      if (composedBackgroundRef.current) {
-        composedBackgroundRef.current.width = 0;
-        composedBackgroundRef.current.height = 0;
-        composedBackgroundRef.current = undefined;
-      }
     };
   }, [documentId, docState.status, docState.pageRef, docState.manifest]);
+
+  // Disposing from this effect (not the loader's cleanup) ties the lease to the
+  // value React actually published: React runs this cleanup only after the
+  // background prop has been replaced or detached, so InkPageView can no longer
+  // redraw a closed ImageBitmap in the same commit.
+  useEffect(() => () => publishedBackground?.dispose(), [publishedBackground]);
 
   const onPageChange = useCallback(async (page: InkPage) => {
     const previous = documentRef.current.page;
@@ -294,7 +297,7 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
         documentId={documentId}
         pageRef={docState.pageRef}
         page={docState.page}
-        background={background}
+        background={publishedBackground?.background}
         tool={toolSettings}
         erasing={erasing}
         onPageChange={onPageChange}

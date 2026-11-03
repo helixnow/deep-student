@@ -68,7 +68,9 @@ export function createInkEditorBackend(
   saveMode: InkEditorSaveMode = 'success',
   documentId = inkEditorDocumentId,
   background: InkEditorBackgroundFixture = 'none',
+  options: { pdfPageHighlights?: boolean } = {},
 ) {
+  const pdfPageHighlights = options.pdfPageHighlights !== false;
   const manifestPages = structuredClone(pageRefs);
   if (background === 'image') manifestPages[1].background = { kind: 'image', blob_hash: 'ink-editor-background-blob' };
   if (background === 'pdf_page') {
@@ -152,7 +154,7 @@ export function createInkEditorBackend(
       const pageRef = manifest.pages.find((candidate) => candidate.page_id === request.pageId);
       const page = request.pageId ? pages.get(request.pageId) : undefined;
       if (!pageRef || !page || page.page_id !== pageRef.page_id) throw new Error('Unknown fixture frozen Ink page');
-      const highlights = pdfResource?.metadata.extra.highlights ?? [];
+      const highlights = pdfResource && pdfPageHighlights ? pdfResource.metadata.extra.highlights ?? [] : [];
       return structuredClone({
         revision: manifest.revision,
         source: manifest.source,

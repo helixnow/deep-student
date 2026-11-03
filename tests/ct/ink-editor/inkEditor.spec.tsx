@@ -60,6 +60,14 @@ async function hasRedPixelAt(canvas: ReturnType<Page['locator']>, x: number, y: 
   }, { x, y });
 }
 
+async function readCanvasPixel(canvas: ReturnType<Page['locator']>, x: number, y: number) {
+  return canvas.evaluate((element, point) => {
+    const context = (element as HTMLCanvasElement).getContext('2d');
+    if (!context) throw new Error('Canvas 2D context is unavailable');
+    return Array.from(context.getImageData(point.x, point.y, 1, 1).data);
+  }, { x, y });
+}
+
 test('loads the requested page, writes one real pointer stroke, saves, and reopens it', async ({ mount, page }) => {
   const component = await mount(<InkEditorHarness saveMode="success" />);
   const canvas = component.getByTestId('ink-page-canvas');
@@ -634,6 +642,52 @@ test('uses prepared PNG bytes for PDF-page backgrounds and paints normalized sou
   expect(pixels.background).toEqual([221, 221, 221, 255]);
   expect(pixels.sourceHighlight).toEqual([110, 110, 221, 255]);
   expect(pixels.inkOverSource).toEqual([0, 0, 255, 255]);
+});
+
+test('keeps the image background and saved stroke after a successful save advances the manifest', async ({ mount, page }) => {
+  const component = await mount(<InkEditorHarness saveMode="success" imageBackground />);
+  const canvas = component.getByTestId('ink-page-canvas');
+  await expect(canvas).toBeVisible();
+  await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([255, 0, 0, 255]);
+
+  await drawStroke(page, canvas);
+  await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
+  await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
+
+  await expect(component.getByRole('alert')).toHaveCount(0);
+  await expect(component.getByTestId('ink-editor')).toBeVisible();
+  await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([255, 0, 0, 255]);
+  await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
+});
+
+test('keeps a prepared PDF background without source highlights after a successful save advances the manifest', async ({ mount, page }) => {
+  const component = await mount(<InkEditorHarness saveMode="success" pdfPageBackground pdfPageHighlights={false} />);
+  const canvas = component.getByTestId('ink-page-canvas');
+  await expect(canvas).toBeVisible();
+  await expect(component.getByRole('alert')).toHaveCount(0);
+  await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([221, 221, 221, 255]);
+
+  await drawStroke(page, canvas);
+  await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
+  await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
+
+  await expect(component.getByRole('alert')).toHaveCount(0);
+  await expect(component.getByTestId('ink-editor')).toBeVisible();
+  await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([221, 221, 221, 255]);
+  await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
+});
+
+test('keeps the image background when navigating away from the background page', async ({ mount }) => {
+  const component = await mount(<InkEditorHarness saveMode="success" imageBackground />);
+  const canvas = component.getByTestId('ink-page-canvas');
+  await expect(canvas).toHaveAttribute('data-page-id', inkEditorPageId);
+  await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([255, 0, 0, 255]);
+
+  await component.getByTestId('ink-page-previous').click();
+
+  await expect(component.getByRole('alert')).toHaveCount(0);
+  await expect(component.getByTestId('ink-editor')).toBeVisible();
+  await expect(component.getByTestId('ink-page-canvas')).toHaveAttribute('data-page-id', 'ink-editor-ct-page-1');
 });
 
 test('refetches the loaded page on a matching ink:changed event instead of trusting payload content', async ({ mount, page }) => {
