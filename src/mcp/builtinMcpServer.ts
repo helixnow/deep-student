@@ -251,6 +251,7 @@ export const ALL_SEARCH_ENGINE_IDS = [
   'zhipu',
   'bocha',
   'deepseek',
+  'keenable',
 ] as const;
 
 export type SearchEngineId = typeof ALL_SEARCH_ENGINE_IDS[number];

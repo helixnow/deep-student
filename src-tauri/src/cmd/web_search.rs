@@ -110,6 +110,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
         ("zhipu", "智谱 AI"),
         ("bocha", "博查 AI"),
         ("deepseek", "DeepSeek 官方搜索"),
+        ("keenable", "Keenable"),
     ];
 
     let mut results = HashMap::new();
@@ -120,7 +121,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 
         // 检查是否有必要的配置
         let has_config = match engine_id {
-            "bing_rss" => true,
+            "bing_rss" | "keenable" => true,
             "google_cse" => cfg.keys.google_cse.is_some() && cfg.keys.google_cse_cx.is_some(),
             "serpapi" => cfg.keys.serpapi.is_some(),
             "tavily" => cfg.keys.tavily.is_some(),

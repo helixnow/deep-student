@@ -35,6 +35,7 @@ export interface WebSearchConfig {
   webSearchSerpApiKey?: string;
   webSearchTavilyKey?: string;
   webSearchBraveKey?: string;
+  webSearchKeenableKey?: string;
   webSearchSearxngEndpoint?: string;
   webSearchSearxngKey?: string;
   webSearchZhipuKey?: string;
@@ -311,7 +312,7 @@ export const EngineSettingsSection: React.FC<{
             </div>
             
             <div className="flex flex-col gap-1 mt-4 rounded-2xl bg-muted p-1.5">
-              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha', 'deepseek'].map((id) => {
+              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha', 'deepseek', 'keenable'].map((id) => {
                 const labelMap: Record<string, string> = {
                   bing_rss: t('settings:external_search.bing_rss_name'),
                   google_cse: 'Google CSE',
@@ -321,7 +322,8 @@ export const EngineSettingsSection: React.FC<{
                   searxng: 'SearXNG',
                   zhipu: t('settings:external_search.zhipu_name'),
                   bocha: t('settings:external_search.bocha_name'),
-                  deepseek: t('settings:external_search.deepseek_name')
+                  deepseek: t('settings:external_search.deepseek_name'),
+                  keenable: 'Keenable'
                 };
                 const isConfiguredMap: Record<string, boolean> = {
                   bing_rss: true,
@@ -332,7 +334,8 @@ export const EngineSettingsSection: React.FC<{
                   searxng: !!config.webSearchSearxngEndpoint,
                   zhipu: !!config.webSearchZhipuKey,
                   bocha: !!config.webSearchBochaKey,
-                  deepseek: !!config.webSearchDeepseekKey
+                  deepseek: !!config.webSearchDeepseekKey,
+                  keenable: true
                 };
                 const isActive = activeEngine === id;
                 const isConfigured = isConfiguredMap[id];
@@ -471,6 +474,34 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
+              </div>
+            </div>
+          )}
+
+          {activeEngine === 'keenable' && (
+            <div className="w-full ui-rise-in">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-base font-semibold text-foreground truncate">Keenable</h3>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://keenable.ai/")} title={t('settings:external_search.get_keenable_key')}>
+                      <ArrowSquareOut size={14} />
+                    </DsButton>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.keenable_desc')}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.keenable_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchKeenableKey ?? ''} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchKeenableKey: v }))} placeholder="KEENABLE_API_KEY" isSensitive />
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.keenable_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('keenable', true)}
               </div>
             </div>
           )}
@@ -685,6 +716,7 @@ export const EngineSettingsSection: React.FC<{
                   { value: 'zhipu', label: t('settings:external_search.engine_options.zhipu'), disabled: !config.webSearchZhipuKey },
                   { value: 'bocha', label: t('settings:external_search.engine_options.bocha'), disabled: !config.webSearchBochaKey },
                   { value: 'deepseek', label: t('settings:external_search.engine_options.deepseek'), disabled: !config.webSearchDeepseekKey },
+                  { value: 'keenable', label: t('settings:external_search.engine_options.keenable') },
                 ]}
                 variant="outline"
                 className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"
