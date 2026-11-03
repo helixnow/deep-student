@@ -1,0 +1,25 @@
+# Task8 production placement — live/history/variant, actual Provider requests
+
+Approved plan. Repo /home/xutao/deepstudent/deep-student. Scope ONLY dstu-agent ChatV2 pipeline/tool_loop.rs, history.rs, multi_variant.rs, context.rs tiny needed preservation, own ink_visual_rounds.rs helper registered frompipeline, tests andreport. DoNOTeditcore/repo/persistencefield/compiler/retrievalbudget; otherscompletedthose. NO tests/build/install/agents/commits. Main owns review/test execution. Do not invoke brainstorming approval; alreadyapproveddesign.
+
+## Existing APIs
+
+MessageBlock.ink_artifacts Vec<dstu_core::agent::InkVisualArtifactRef> camelCase alreadypersistedink_artifacts_json. ToolResultInfo hasnoartifactfield. `ChatV2Repo::get_blocks_by_message`/get_block returnsMessageBlock; live result.block_id pointsstoredblockcreatedtrustedexecutor. Artifactrefs ONLYfromnonemptytypedblockfield, NEVERextractarbitraryresult.outputJSON. Onlyexecutor tool exactbuiltin-ink_render/ink_render allowed.
+
+Compiler `context_compiler::compile_ink_visual_message(vfs_db,session_id,tool_name,tool_call_id,round_last_tool_call_id,refs,&mut RetrievalPageImageBudget,is_multimodal)->Result<Option<LegacyChatMessage>,InkImageError>` loads immutableVfsInkArtifactRepoPNG andchecksprovenance+parentidentity+count/bytes. Shared RetrievalPageImageBudget clone,countremains4,total16MiB/single4MiB. Newmethod commit_batch_with_bytes plus count_request_image_bytes; existingretrievalinjectionusesactualbytes. Ref.round_last_tool_call_id mustsetoncecompleteparallelroundknown, persistedtypedrefs updateinexistingblock(forimagesonly). Mainexecutorwillinitiallysetowncallid butpipelinefixanchor toroundlast validatedtrustedsource.
+
+## Required complete behavior
+
+Atlive roundcompletion tool_loop.rs aroundold2281: collecttypedrefs forsuccessfulinkrender toolresults fromDBblocks; verify actualctxsession/toolcall/block association andtoolname, bindroundanchor toLASTtoolresultcallid, persistrefs viaChatV2Repo::update_block. Compile afteralltoolresults once sharedbudget (sameinstanceusedretrieval), appendfollowingusermultimodalmessage atstored roundlast boundary, retainingimagein subsequentrequests. Existingretrieval_page_image_batches insertion pathreuse toavoidtoolorderbreak; eithergeneralizebatches oraddseparatetypedbatchesbutsharedbudget. Ordinaryoutput/lognogiantbase64.
+
+Imagefailure/textmodel makeinktoolresult structuredfailedIMAGE_DELIVERY_FAILED/VISION_MODEL_REQUIRED beforeadd_tool_results nextrequest, updateblockstatuserror; don'tsuccessclaimlooked. Ifartifactproducedbutdeliveryfailedwriteiscommittedderivedfilebuttoolvisionerroraccurate. Don'trollbackotherwrites. Noninktoolsunchanged.
+
+History load afterbuildtoolroundpairsin existinghistory assembler: typedrefscompiledusingSAMEresolver andpersistedroundanchor; flushONLYafteranchor'stoolresultpair soallparalleltoolsintact. Readscall/sessionmatch throughactualparentmessage. Invalidanchor/session/blobs MUSTnotinjectwrongimage (structurederror/requestfailclosed), notsilentlyskipandpretendvision. Multi_variant uses sharedhistoryhelper; livevarianttoolcompletion mirrorssinglelivecompiler withits ownperrequestbudget butsameartifactbytes/refs. Existing two paths maybesame helpercalls factoringnarrowlyallowed. Retried oldmessages readartifact notcurrentdocument—eveniflaterink edits changed.
+
+## FIRST gate
+
+Addtestactualsharedroundassembler with two toolresults+trustedtypedref yields roles assistant/toolassistant/tool/user-image AFTERcompletegroup, imagebase64decodebyteslocalPNG; samepersistedrefs replayequalbytes; maliciousMCPtooloutputimage_url nofetch. Helperstub noimageforpositiveRED ifnoexistingoutputpath. Prefer integrationtestfeedingcurrenthistorybuildingfunctions; notsourcegrep/stringconsttests. Atleastonepositive shouldfail becausecurrentnoneinjection, notmissingimports/compile. Real migratedChatV2+VFSfixturesuseexisting. StopNEEDS_RED_VERIFICATION. Mainruns, thenauthorizedimplementation entireflow.
+
+Aftergreen mandatorylocalHTTPProvidercapture (OpenAI/Responses/Anthropic adapters) usingselfcreatedPNG and capture request: actualimagepart correctrole/order, notJSONURL. This mayuseexisting compaction.rs localhyperfixture pattern, no realAPI/model/networkfee. Request budgetmixretrievaldedup/historyimages4limit. Testswithnonvision + invalidroundanchor/forgedrefsession failclosed. Verifyallselectedtestsnonzero.
+
+Reporttasks/task-8-placement-report.md APIchoices, exactselectors, initialREDandremainingproviderchecks. Keepfirstslice<=15callsnoall-providerarchaeology.

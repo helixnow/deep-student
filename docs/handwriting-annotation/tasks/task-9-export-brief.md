@@ -1,0 +1,11 @@
+# Task9 PNG/PDF export — same renderer, real output checks
+
+Repo /home/xutao/deepstudent/deep-student featurebranch. Scope new `src/features/ink/export.ts`+tests/ct/ink-export andreport, nootherinkfiles. Existing renderer renderInkPage(canvas,pageRef,page,{background?,crop?,scale?,max_pixels?}) with31unit/7realCTPASS. Pagebackgroundloading callersupply alreadydecodedimage CanvasImageSource, avoidDB/network in pureexport.
+
+FIRST tests+compilingErrscaffold, mainredthenimplementation. No tests/build/install/agents/commit. DoNOTaskdesignagainapproved. Useexistingpdfmake0.3.13 dynamicimport, nofonttablesneededrasterimages. NoPDFenginewritesornewdeps.
+
+Interface `exportInkPng(input:{page_ref,page,background?,crop?},options?:{long_edge?:number,signal?:AbortSignal}):Promise<Blob>` and `exportInkPdf(pages:Array<{page_ref,page,background?}>,options?:{page_ids?:string[],long_edge?:number,signal?:AbortSignal}):Promise<Blob>`; expectedcallerfixedmanifestrevisionchecks handledbridge, functiononlyfrozenstate. sizebudgets16M/longedge<=4096forexport,max500pages,totalestimatedbytecap200MiB andserialpages; preservepageaspect/differentpagesizes,selectedpageorderexactnotdocumentorder,dup/unknownIDsreject. PNGcropcorrectfromsharedrenderer. PDFflattenedraster content, noselectabletextguarantee. `pdfmake.createPdf`asyncgetBuffer existingpaperExportpattern. AvoidwholePDFbase64 IPC; callerstageBlobUploadafterreturn. Cancellationcheckperpageandbeforepublish, nofakecancelcompletedartifact.
+
+InitialrealCT: selfbuilt2pagesdifferentratio, redpenandbluearrownearbottomovergraybackground, exportPNGcropandPDFselectedreverseorder. PNGdecodepixels atknownpoints; PDFloadwithinstalledpdfjsworker/assets sameconfig asPDFpreview, verifyactualpagecount/ratio/orderandrenderedpixelannotationpresence. Testsnormalbrowsernotmockpdfmake/Canvas. Initial3success tests witherrorstubgiveexpectedred. Negativecancel/limit/unknownselectionaftergreen. NoTauri globalharness; isolatedwrapperrootdiv notbutton. Need actualbytes signatures andpagepixels, don'tassertsourceincludesstring. Reporttasks/task-9-export-report.md exactselectors.
+
+Nextintegrationviaappglobalbridge exportsartifactfiletoVFSnooverwrite，UI/Chat callbackwithdocument/revision. Thisworkeronlypureexports, mandatoryintegrationcoordinatedmainlater.
