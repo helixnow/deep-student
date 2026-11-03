@@ -420,6 +420,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         if ((sxEndpoint || '').trim()) engines.push({ id: 'searxng', label: 'SearXNG' });
         if ((zhipu || '').trim()) engines.push({ id: 'zhipu', label: i18n.t('common:search_engines.zhipu', 'Zhipu AI Search') });
         if ((bocha || '').trim()) engines.push({ id: 'bocha', label: i18n.t('common:search_engines.bocha', 'Bocha AI Search') });
+        engines.push({ id: 'keenable', label: 'Keenable' }); // keyless public endpoint
         if ((deepseek || '').trim()) engines.push({ id: 'deepseek', label: i18n.t('common:search_engines.deepseek', 'DeepSeek Search') });
         setAvailableSearchEngines(engines);
         // 🔧 同步更新搜索引擎缓存，让 TauriAdapter 能获取可用引擎列表

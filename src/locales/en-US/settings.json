@@ -1632,7 +1632,8 @@
       "searxng": "SearXNG",
       "zhipu": "Zhipu AI (China)",
       "bocha": "Bocha AI (China)",
-      "deepseek": "DeepSeek Official Search"
+      "deepseek": "DeepSeek Official Search",
+      "keenable": "Keenable (Free)"
     },
     "bing_rss_name": "Bing RSS (Free)",
     "zhipu_name": "Zhipu AI Search",
@@ -1653,7 +1654,10 @@
     "deepseek_need_content_label": "Return page content with search results",
     "deepseek_need_content_desc": "Official need_content: results include the page body (Markdown) so the model can read more with one request; billed per successful search, no extra charge",
     "deepseek_fetch_label": "Use DeepSeek Fetch for web pages",
-    "deepseek_fetch_desc": "Fetch pages through DeepSeek's official Fetch API first (clean Markdown, ~$0.00075 per successful request, 5 QPS); automatically falls back to the local fetch pipeline on failure"
+    "deepseek_fetch_desc": "Fetch pages through DeepSeek's official Fetch API first (clean Markdown, ~$0.00075 per successful request, 5 QPS); automatically falls back to the local fetch pipeline on failure",
+    "get_keenable_key": "Get a Keenable API key (optional)",
+    "keenable_key_label": "Keenable Key (optional)",
+    "keenable_key_desc": "Optional. Keenable works without a key via its public endpoint; a key raises rate limits."
   },
   "model_presets": {
     "title": "Model Assignment Presets",
@@ -2102,7 +2106,8 @@
     "zhipu_desc": "A China-based internet search aggregation service from Zhipu.",
     "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes.",
     "deepseek_desc": "DeepSeek in-house search with precise date/site filters and built-in relevance and authority scores.",
-    "qbank_ai_generation_desc": "Used for AI question generation in question banks. If not configured, it falls back to the AI grading model, then the second model. Vision-capable models can generate questions directly from scanned page images."
+    "qbank_ai_generation_desc": "Used for AI question generation in question banks. If not configured, it falls back to the AI grading model, then the second model. Vision-capable models can generate questions directly from scanned page images.",
+    "keenable_desc": "Web search built for AI agents. Works keyless; an optional API key raises limits."
   },
   "common_labels": {
     "no_data": "No data",

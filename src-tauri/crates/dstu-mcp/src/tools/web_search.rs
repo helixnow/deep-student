@@ -3,7 +3,7 @@
 #![allow(clippy::large_enum_variant)]
 //! Single-file implementation of `web_search` tool.
 //! - Standardized citations output + optional `inject_text` fallback.
-//! - Multi-provider adapters: bing_rss, google_cse, serpapi, tavily, brave, searxng, zhipu, bocha, deepseek.
+//! - Multi-provider adapters: bing_rss, google_cse, serpapi, tavily, brave, searxng, zhipu, bocha, deepseek, keenable.
 //! - CLI: read `SearchInput` JSON from stdin -> print `ToolResult` JSON to stdout.
 //! - Optional HTTP server: set `HTTP_MODE=1` (requires axum in Cargo.toml).
 //!
@@ -435,6 +435,8 @@ pub struct ProviderStrategies {
     pub zhipu: Option<ProviderStrategy>,      // 智谱AI策略
     pub bocha: Option<ProviderStrategy>,      // 博查AI策略
     pub deepseek: Option<ProviderStrategy>,   // DeepSeek 官方搜索策略
+    #[serde(default)]
+    pub keenable: Option<ProviderStrategy>, // Keenable 策略（可免 Key）
 }
 
 impl Default for ProviderStrategies {
@@ -505,6 +507,12 @@ impl Default for ProviderStrategies {
                 rate_limit_per_minute: Some(60),
                 ..Default::default()
             }),
+            keenable: Some(ProviderStrategy {
+                timeout_ms: Some(10000),
+                max_retries: Some(2),
+                rate_limit_per_minute: Some(30),
+                ..Default::default()
+            }),
         }
     }
 }
@@ -522,6 +530,7 @@ impl ProviderStrategies {
             "zhipu" => self.zhipu.as_ref().unwrap_or(&self.default),
             "bocha" => self.bocha.as_ref().unwrap_or(&self.default),
             "deepseek" => self.deepseek.as_ref().unwrap_or(&self.default),
+            "keenable" => self.keenable.as_ref().unwrap_or(&self.default),
             _ => &self.default,
         }
     }
@@ -848,6 +857,9 @@ pub struct ProviderKeys {
     pub bocha: Option<String>,
     #[serde(rename = "web_search.api_key.deepseek")]
     pub deepseek: Option<String>,
+    /// Optional: Keenable works keyless (public endpoint); a key unlocks higher limits.
+    #[serde(rename = "web_search.api_key.keenable", default)]
+    pub keenable: Option<String>,
 }
 
 impl ProviderKeys {
@@ -855,6 +867,8 @@ impl ProviderKeys {
     pub fn has_valid_keys(&self, engine: &str) -> bool {
         match engine {
             "bing_rss" => true,
+            // Keenable has a keyless public endpoint, so it is always usable.
+            "keenable" => true,
             "google_cse" => {
                 self.google_cse.as_ref().is_some_and(|k| !k.is_empty())
                     && self.google_cse_cx.as_ref().is_some_and(|k| !k.is_empty())
@@ -1066,6 +1080,11 @@ impl ToolConfig {
         if let Some(v) = get_secret("web_search.api_key.tavily") {
             if !v.is_empty() {
                 self.keys.tavily = Some(v);
+            }
+        }
+        if let Some(v) = get_secret("web_search.api_key.keenable") {
+            if !v.is_empty() {
+                self.keys.keenable = Some(v);
             }
         }
         if let Some(v) = get_secret("web_search.api_key.brave") {
@@ -1309,6 +1328,9 @@ impl ToolConfig {
         }
         if tool.keys.tavily.is_none() {
             tool.keys.tavily = std::env::var("TAVILY_API_KEY").ok();
+        }
+        if tool.keys.keenable.is_none() {
+            tool.keys.keenable = std::env::var("KEENABLE_API_KEY").ok();
         }
         if tool.keys.brave.is_none() {
             tool.keys.brave = std::env::var("BRAVE_API_KEY").ok();
@@ -1699,6 +1721,7 @@ pub fn build_provider(_cfg: &ToolConfig, engine: &str) -> Result<Box<dyn Provide
         "zhipu" => Ok(Box::new(ZhipuProvider)),
         "bocha" => Ok(Box::new(BochaProvider)),
         "deepseek" => Ok(Box::new(DeepSeekProvider)),
+        "keenable" => Ok(Box::new(KeenableProvider)),
         _ => Err(ToolError::Config(format!("unknown engine: {}", engine))),
     }
 }
@@ -2311,6 +2334,109 @@ impl Provider for TavilyProvider {
             retries: None,
             provider_latency_ms: Some(latency),
             provider: Some("tavily".into()),
+        };
+        Ok((out, usage))
+    }
+}
+
+/// Keenable web search (https://keenable.ai).
+/// Keyless by default via the public endpoint; uses the keyed endpoint when
+/// `web_search.api_key.keenable` / `KEENABLE_API_KEY` is set.
+#[derive(Default)]
+pub struct KeenableProvider;
+
+const KEENABLE_PUBLIC_URL: &str = "https://api.keenable.ai/v1/search/public";
+const KEENABLE_KEYED_URL: &str = "https://api.keenable.ai/v1/search";
+
+pub(crate) fn keenable_request_target(key: Option<&str>) -> (&'static str, Option<String>) {
+    match key.map(str::trim).filter(|k| !k.is_empty()) {
+        Some(k) => (KEENABLE_KEYED_URL, Some(k.to_string())),
+        None => (KEENABLE_PUBLIC_URL, None),
+    }
+}
+
+pub(crate) fn parse_keenable_items(raw: &serde_json::Value) -> Vec<SearchItem> {
+    let mut items = vec![];
+    if let Some(arr) = raw.get("results").and_then(|x| x.as_array()) {
+        for it in arr {
+            let url = it.get("url").and_then(|x| x.as_str()).unwrap_or("");
+            if url.is_empty() {
+                continue;
+            }
+            let title = it.get("title").and_then(|x| x.as_str()).unwrap_or("");
+            let desc = it
+                .get("description")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| it.get("snippet").and_then(|x| x.as_str()))
+                .unwrap_or("");
+            let snippet: String = desc.chars().take(1000).collect();
+            items.push(SearchItem {
+                title: title.to_string(),
+                url: url.to_string(),
+                snippet,
+                rank: items.len() + 1,
+                score_hint: None,
+            });
+        }
+    }
+    items
+}
+
+#[async_trait]
+impl Provider for KeenableProvider {
+    fn name(&self) -> &'static str {
+        "keenable"
+    }
+    async fn search(
+        &self,
+        cfg: &ToolConfig,
+        input: &SearchInput,
+    ) -> Result<(ProviderResponse, Usage), ToolError> {
+        let client = Client::builder()
+            .user_agent("web_search_tool/0.1")
+            .timeout(cfg.timeout())
+            .build()?;
+        let mut q = input.query.clone();
+        if let Some(site) = &input.site {
+            if !site.trim().is_empty() {
+                q = format!("site:{} {}", site.trim(), q);
+            }
+        }
+        let top_k = input.top_k.clamp(1, 20) as u32;
+        let (url, key) = keenable_request_target(cfg.keys.keenable.as_deref());
+        let mut req = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("X-Keenable-Title", "Deep Student")
+            .json(&json!({"query": q, "max_results": top_k}));
+        if let Some(k) = key {
+            req = req.header("X-API-Key", k);
+        }
+        let t0 = Instant::now();
+        let resp = req.send().await?;
+        let latency = t0.elapsed().as_millis();
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let snippet: String = body.chars().take(512).collect();
+            return Err(ToolError::Provider(format!(
+                "keenable http {}: {}",
+                status, snippet
+            )));
+        }
+        let raw: serde_json::Value = resp.json().await?;
+        let items = parse_keenable_items(&raw);
+        let out = ProviderResponse {
+            items,
+            raw,
+            provider: "keenable".into(),
+        };
+        let usage = Usage {
+            elapsed_ms: latency,
+            retries: None,
+            provider_latency_ms: Some(latency),
+            provider: Some("keenable".into()),
         };
         Ok((out, usage))
     }
@@ -3470,6 +3596,30 @@ async fn run_http(_cfg: ToolConfig) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t_keenable_keyless_and_keyed_targets() {
+        assert_eq!(keenable_request_target(None).0, KEENABLE_PUBLIC_URL);
+        assert_eq!(keenable_request_target(Some("  ")).0, KEENABLE_PUBLIC_URL);
+        let (url, key) = keenable_request_target(Some("k-123"));
+        assert_eq!(url, KEENABLE_KEYED_URL);
+        assert_eq!(key.as_deref(), Some("k-123"));
+        assert!(ProviderKeys::default().has_valid_keys("keenable"));
+    }
+
+    #[test]
+    fn t_keenable_parse_items() {
+        let raw = json!({"results": [
+            {"title": "A", "url": "https://a.example", "description": "", "snippet": "snip a"},
+            {"title": "skip", "url": ""},
+            {"title": "B", "url": "https://b.example", "description": "desc b", "snippet": "long"}
+        ]});
+        let items = parse_keenable_items(&raw);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].snippet, "snip a");
+        assert_eq!(items[1].snippet, "desc b");
+        assert_eq!(items[1].rank, 2);
+    }
     #[test]
     fn t_normalize_score() {
         assert!((normalize_score(1, 5) - 1.0).abs() < 1e-6);

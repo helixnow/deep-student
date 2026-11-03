@@ -60,6 +60,7 @@ export interface SystemConfig {
   webSearchSerpApiKey: string;
   webSearchTavilyKey: string;
   webSearchBraveKey: string;
+  webSearchKeenableKey: string;
   webSearchSearxngEndpoint: string;
   webSearchSearxngKey: string;
   webSearchZhipuKey: string;
