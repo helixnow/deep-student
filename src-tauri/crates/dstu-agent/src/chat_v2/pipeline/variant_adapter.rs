@@ -150,6 +150,8 @@ impl VariantLLMAdapter {
             ended_at: Some(ended_at),
             first_chunk_at: Some(segment.started_at),
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         });
     }
 

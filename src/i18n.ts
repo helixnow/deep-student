@@ -26,7 +26,7 @@ const ALL_NS = [
   'skills', 'command_palette', 'backend_errors', 'mcp', 'workspace',
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap', 'vfs',
   'forms', 'console', 'cloudStorage', 'todo', 'workbench', 'flashcards',
-  'quickAssistant', 'generativeUi', 'mediaStudio', 'superAgent',
+  'quickAssistant', 'generativeUi', 'mediaStudio', 'superAgent', 'ink',
 ];
 
 const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');

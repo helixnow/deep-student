@@ -187,6 +187,7 @@ function convertBackendBlock(
     toolName,
     toolInput: blk.toolInput as Record<string, unknown> | undefined,
     toolOutput: blk.toolOutput,
+    inkArtifacts: blk.inkArtifacts,
     citations: blk.citations,
     error: blk.error,
     startedAt: blk.startedAt,

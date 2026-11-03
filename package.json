@@ -58,6 +58,7 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test-ct": "playwright test -c playwright-ct.config.ts",
+    "test-ct:ink-office": "playwright test -c playwright-ct.config.ts tests/ct/ink-office/office.spec.tsx",
     "test-ct:ui": "playwright test -c playwright-ct.config.ts --ui",
     "test:unit": "vitest --config vitest.config.ts",
     "test:unit:ui": "vitest --config vitest.config.ts --ui",

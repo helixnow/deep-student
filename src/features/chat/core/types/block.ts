@@ -18,6 +18,23 @@ export type { BlockStatus, BlockType } from './common';
  * 通用块结构
  * 所有块类型共享此基础结构
  */
+export interface InkVisualArtifactRef {
+  artifactId: string;
+  renderId: string;
+  sessionId: string;
+  toolCallId: string;
+  roundLastToolCallId: string;
+  documentId: string;
+  pageId: string;
+  revision: string;
+  blobHash: string;
+  resourceId: string;
+  contentHash: string;
+  mimeType: string;
+  widthPx: number;
+  heightPx: number;
+}
+
 export interface Block {
   /** 块唯一标识 */
   id: string;
@@ -46,6 +63,9 @@ export interface Block {
 
   /** 工具输出结果 */
   toolOutput?: unknown;
+
+  /** Typed immutable references to rendered ink artifacts, stored with the block. */
+  inkArtifacts?: InkVisualArtifactRef[];
 
   /** 🆕 工具调用参数正在生成中（LLM 正在累积参数） */
   isPreparing?: boolean;

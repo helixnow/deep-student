@@ -1019,6 +1019,8 @@ impl ChatV2Pipeline {
                             // 🔧 检索块使用 started_at 作为排序依据
                             first_chunk_at: Some(started_at),
                             block_index: $block_index,
+
+                            ink_artifacts: Vec::new(),
                         };
                         $block_ids.push(block.id.clone());
                         $blocks.push(block);
@@ -1170,6 +1172,8 @@ impl ChatV2Pipeline {
                             // 🔧 使用 started_at 作为 first_chunk_at（流式时记录的）
                             first_chunk_at: Some(started_at),
                             block_index,
+
+                            ink_artifacts: Vec::new(),
                         };
                         block_ids.push(block.id.clone());
                         blocks.push(block);
@@ -1224,6 +1228,8 @@ impl ChatV2Pipeline {
                         // 🔧 使用 started_at 作为 first_chunk_at
                         first_chunk_at: Some(started_at),
                         block_index,
+
+                        ink_artifacts: Vec::new(),
                     };
                     block_ids.push(block.id.clone());
                     blocks.push(block);
@@ -1267,6 +1273,8 @@ impl ChatV2Pipeline {
                     // 🔧 工具块使用 started_at 作为排序依据
                     first_chunk_at: Some(started_at),
                     block_index,
+
+                    ink_artifacts: Vec::new(),
                 };
                 block_ids.push(block.id.clone());
                 blocks.push(block);

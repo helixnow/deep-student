@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { DstuNode } from '@/dstu';
-import { MagnifyingGlass, Plus, X, Trash } from '@phosphor-icons/react';
+import { MagnifyingGlass, PenNib, Plus, X, Trash } from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuContent,
@@ -41,6 +41,7 @@ export interface SidebarMobileToolbarProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
+  handleNewInk: () => Promise<void>;
   isTrashView: boolean;
   handleEmptyTrash: () => void;
   items: DstuNode[];
@@ -68,6 +69,7 @@ export function SidebarMobileToolbar({
   handleNewTranslation,
   handleNewEssay,
   handleNewMindMap,
+  handleNewInk,
   isTrashView,
   handleEmptyTrash,
   items,
@@ -187,6 +189,9 @@ export function SidebarMobileToolbar({
                 onClick={handleNewMindMap}
               >
                 {t('finder.toolbar.newMindMap')}
+              </AppMenuItem>
+              <AppMenuItem icon={<PenNib size={16} />} onClick={() => { void handleNewInk(); }}>
+                {t('finder.toolbar.newInk')}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>

@@ -1546,7 +1546,8 @@ impl ChatV2Repo {
             r#"
             SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
                    b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
-                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at,
+                   b.ink_artifacts_json
             FROM chat_v2_blocks b
             INNER JOIN (
                 SELECT id, timestamp, rowid AS message_rowid
@@ -1789,11 +1790,12 @@ impl ChatV2Repo {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
+        let ink_artifacts_json = serde_json::to_string(&block.ink_artifacts)?;
 
         conn.execute(
             r#"
-            INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at, ink_artifacts_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(id) DO UPDATE SET
                 message_id = excluded.message_id,
                 block_type = excluded.block_type,
@@ -1807,7 +1809,12 @@ impl ChatV2Repo {
                 error = excluded.error,
                 started_at = excluded.started_at,
                 ended_at = excluded.ended_at,
-                first_chunk_at = excluded.first_chunk_at
+                first_chunk_at = excluded.first_chunk_at,
+                ink_artifacts_json = CASE
+                    WHEN excluded.ink_artifacts_json = '[]'
+                    THEN COALESCE(chat_v2_blocks.ink_artifacts_json, excluded.ink_artifacts_json)
+                    ELSE excluded.ink_artifacts_json
+                END
             "#,
             params![
                 block.id,
@@ -1824,6 +1831,7 @@ impl ChatV2Repo {
                 block.started_at,
                 block.ended_at,
                 block.first_chunk_at,
+                ink_artifacts_json,
             ],
         )?;
 
@@ -1856,8 +1864,8 @@ impl ChatV2Repo {
         let result = (|| -> ChatV2Result<()> {
             let mut stmt = conn.prepare(
                 r#"
-                INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at, ink_artifacts_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                 ON CONFLICT(id) DO UPDATE SET
                     message_id = excluded.message_id,
                     block_type = excluded.block_type,
@@ -1871,7 +1879,12 @@ impl ChatV2Repo {
                     error = excluded.error,
                     started_at = excluded.started_at,
                     ended_at = excluded.ended_at,
-                    first_chunk_at = excluded.first_chunk_at
+                    first_chunk_at = excluded.first_chunk_at,
+                    ink_artifacts_json = CASE
+                        WHEN excluded.ink_artifacts_json = '[]'
+                        THEN COALESCE(chat_v2_blocks.ink_artifacts_json, excluded.ink_artifacts_json)
+                        ELSE excluded.ink_artifacts_json
+                    END
                 "#,
             )?;
 
@@ -1891,6 +1904,7 @@ impl ChatV2Repo {
                     .as_ref()
                     .map(serde_json::to_string)
                     .transpose()?;
+                let ink_artifacts_json = serde_json::to_string(&block.ink_artifacts)?;
 
                 stmt.execute(params![
                     block.id,
@@ -1907,6 +1921,7 @@ impl ChatV2Repo {
                     block.started_at,
                     block.ended_at,
                     block.first_chunk_at,
+                    ink_artifacts_json,
                 ])?;
             }
             Ok(())
@@ -1949,7 +1964,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<MessageBlock>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at
+            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at, ink_artifacts_json
             FROM chat_v2_blocks
             WHERE id = ?1
             "#,
@@ -1975,7 +1990,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Vec<MessageBlock>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at
+            SELECT id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at, ink_artifacts_json
             FROM chat_v2_blocks
             WHERE message_id = ?1
             ORDER BY block_index ASC
@@ -2012,8 +2027,10 @@ impl ChatV2Repo {
             let placeholders = std::iter::repeat_n("?", chunk.len())
                 .collect::<Vec<_>>()
                 .join(",");
-            let base_columns = "id, message_id, block_type, status, block_index, content, tool_name,
-                tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at";
+            let base_columns =
+                "id, message_id, block_type, status, block_index, content, tool_name,
+                tool_input_json, tool_output_json, citations_json, error, started_at, ended_at,
+                first_chunk_at, ink_artifacts_json";
             let sql = |with_replay: bool| {
                 format!(
                     "SELECT {base_columns}{} FROM chat_v2_blocks
@@ -2041,9 +2058,9 @@ impl ChatV2Repo {
                 let replay = if has_replay_columns {
                     (|| -> rusqlite::Result<BlockReplayData> {
                         Ok(BlockReplayData {
-                            llm_content: row.get(14)?,
-                            tool_call_id: row.get(15)?,
-                            round_text: row.get(16)?,
+                            llm_content: row.get(15)?,
+                            tool_call_id: row.get(16)?,
+                            round_text: row.get(17)?,
                         })
                     })()
                     .ok()
@@ -2245,6 +2262,7 @@ impl ChatV2Repo {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
+        let ink_artifacts_json = serde_json::to_string(&block.ink_artifacts)?;
 
         let update_params = params![
             block.id,
@@ -2257,6 +2275,7 @@ impl ChatV2Repo {
             block.started_at,
             block.ended_at,
             block.first_chunk_at,
+            ink_artifacts_json,
         ];
 
         // SET 表达式引用的列取更新前的旧值：`content IS ?3` 即「旧正文 == 新正文」，
@@ -2265,7 +2284,11 @@ impl ChatV2Repo {
             r#"
             UPDATE chat_v2_blocks
             SET llm_content = CASE WHEN content IS ?3 THEN llm_content ELSE NULL END,
-                status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+                status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10,
+                ink_artifacts_json = CASE
+                    WHEN ?11 = '[]' THEN COALESCE(ink_artifacts_json, ?11)
+                    ELSE ?11
+                END
             WHERE id = ?1
             "#,
             update_params,
@@ -2277,7 +2300,7 @@ impl ChatV2Repo {
             Err(e) if Self::is_missing_replay_column_error(&e) => conn.execute(
                 r#"
                 UPDATE chat_v2_blocks
-                SET status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+                SET status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10, ink_artifacts_json = ?11
                 WHERE id = ?1
                 "#,
                 update_params,
@@ -2343,6 +2366,19 @@ impl ChatV2Repo {
         let citations = citations_json
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok());
+        let ink_artifacts_json: Option<String> = row.get(14)?;
+        let ink_artifacts = ink_artifacts_json
+            .map(|json| {
+                serde_json::from_str(&json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        14,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
 
         Ok(MessageBlock {
             id,
@@ -2359,6 +2395,7 @@ impl ChatV2Repo {
             started_at,
             ended_at,
             first_chunk_at,
+            ink_artifacts,
         })
     }
 
@@ -2379,7 +2416,8 @@ impl ChatV2Repo {
             r#"
             SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
                    b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
-                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at,
+                   b.ink_artifacts_json
             FROM chat_v2_blocks b
             INNER JOIN chat_v2_messages m ON b.message_id = m.id
             WHERE m.session_id = ?1
@@ -2599,7 +2637,8 @@ impl ChatV2Repo {
             r#"
             SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
                    b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
-                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at,
+                   b.ink_artifacts_json
             FROM chat_v2_blocks b
             INNER JOIN (
                 SELECT id, timestamp, rowid AS message_rowid
@@ -4771,6 +4810,93 @@ mod tests {
     use rusqlite::Connection;
     use std::collections::HashMap;
 
+    fn migrated_chat_v2_db() -> (tempfile::TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let dir = tempfile::TempDir::new().expect("chat temp dir");
+        MigrationCoordinator::new(dir.path().to_path_buf())
+            .with_audit_db(None)
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrations");
+        let db = ChatV2Database::new(dir.path()).expect("chat_v2 db");
+        (dir, db)
+    }
+
+    fn sample_ink_artifact_ref() -> dstu_core::agent::InkVisualArtifactRef {
+        dstu_core::agent::InkVisualArtifactRef {
+            artifact_id: "artifact_test".to_string(),
+            render_id: "render_test".to_string(),
+            session_id: "sess_ink_repo".to_string(),
+            tool_call_id: "call_ink_test".to_string(),
+            round_last_tool_call_id: "call_ink_last".to_string(),
+            document_id: "doc_test".to_string(),
+            page_id: "page_test".to_string(),
+            revision: "r_7".to_string(),
+            blob_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            resource_id: "resource_test".to_string(),
+            content_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
+            mime_type: "image/png".to_string(),
+            width_px: 1280,
+            height_px: 720,
+        }
+    }
+
+    #[test]
+    fn migrated_chat_v2_repo_roundtrips_typed_ink_artifacts() {
+        let (_dir, db) = migrated_chat_v2_db();
+        let session = ChatSession::new("sess_ink_repo".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+        let message = ChatMessage::new_assistant(session.id.clone());
+        ChatV2Repo::create_message_v2(&db, &message).unwrap();
+        let mut block = MessageBlock::new_tool(
+            message.id.clone(),
+            "builtin-ink_render",
+            serde_json::json!({"documentId": "doc_test"}),
+            0,
+        );
+        block.id = "blk_ink_repo".to_string();
+        block.ink_artifacts = vec![sample_ink_artifact_ref()];
+
+        ChatV2Repo::create_block_v2(&db, &block).unwrap();
+        let mut completed = block.clone();
+        completed.status = block_status::SUCCESS.to_string();
+        completed.ink_artifacts.clear();
+        ChatV2Repo::update_block_v2(&db, &completed).unwrap();
+        let loaded = ChatV2Repo::get_block_v2(&db, &block.id)
+            .unwrap()
+            .expect("saved block");
+
+        assert_eq!(loaded.ink_artifacts, block.ink_artifacts);
+    }
+
+    #[test]
+    fn migrated_chat_v2_repo_defaults_null_ink_artifacts_to_empty() {
+        let (_dir, db) = migrated_chat_v2_db();
+        let session = ChatSession::new("sess_ink_legacy".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+        let message = ChatMessage::new_assistant(session.id.clone());
+        ChatV2Repo::create_message_v2(&db, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_ink_legacy".to_string();
+        ChatV2Repo::create_block_v2(&db, &block).unwrap();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE chat_v2_blocks SET ink_artifacts_json = NULL WHERE id = ?1",
+                [&block.id],
+            )
+            .unwrap();
+        }
+
+        let loaded = ChatV2Repo::get_block_v2(&db, &block.id)
+            .unwrap()
+            .expect("saved block");
+        assert!(loaded.ink_artifacts.is_empty());
+    }
+
     fn setup_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
@@ -4801,6 +4927,7 @@ mod tests {
             include_str!(
                 "../../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
             ),
+            include_str!("../../../../migrations/chat_v2/V20260911__chat_block_ink_artifacts.sql"),
         ];
         for sql in migrations {
             conn.execute_batch(sql).unwrap();
@@ -7560,6 +7687,8 @@ mod tests {
             ended_at: Some(1001),
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
         ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
 
@@ -7589,6 +7718,8 @@ mod tests {
                 ended_at: Some(2001 + i as i64),
                 first_chunk_at: None,
                 block_index: i as u32,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
         }
@@ -7644,6 +7775,8 @@ mod tests {
                 ended_at: Some(i as i64 * 1000 + 100),
                 first_chunk_at: None,
                 block_index: 0,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
         }
@@ -7695,6 +7828,8 @@ mod tests {
                 ended_at: None,
                 first_chunk_at: None,
                 block_index: 0,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
         }
@@ -7763,6 +7898,8 @@ mod tests {
                 ended_at: None,
                 first_chunk_at: None,
                 block_index: i as u32,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
         }
@@ -7824,6 +7961,8 @@ mod tests {
                 ended_at: None,
                 first_chunk_at: None,
                 block_index: i as u32,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
         }

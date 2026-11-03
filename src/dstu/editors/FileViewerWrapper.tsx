@@ -12,14 +12,16 @@ import { CircleNotch, WarningCircle, File, Download, Info, ArrowClockwise } from
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { dstu } from '../api';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
 
 interface FileInfo {
+  id: string;
   name: string;
   size: number;
   type: string;
+  previewType?: string;
   createdAt: number;
   updatedAt: number;
   /** 源文件路径（用于下载） */
@@ -82,9 +84,11 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
     if (result.ok) {
       const node = result.value;
       setFileInfo({
+        id: node?.id || pathInfo?.id || '',
         name: node?.name || pathInfo?.id || 'unknown',
         size: (node?.size as number) || 0,
         type: (node?.metadata?.mimeType as string) || 'application/octet-stream',
+        previewType: node?.previewType,
         createdAt: node?.createdAt || Date.now(),
         updatedAt: node?.updatedAt || Date.now(),
         sourcePath: (node?.metadata?.filePath as string) || undefined,

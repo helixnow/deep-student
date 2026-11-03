@@ -1,9 +1,10 @@
 import type { ResourceListItem } from '../../types';
 import { inferFilePreviewTypeFromName, normalizePreviewType } from '../../types';
+import { INK_EXTENSION, INK_MIME } from '@/dstu';
 
 export type FilePreviewMode = Extract<
   ResourceListItem['previewType'],
-  'pdf' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'none'
+  'pdf' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'none' | 'ink'
 >;
 
 const FILE_PREVIEW_MODES: Set<FilePreviewMode> = new Set([
@@ -16,6 +17,7 @@ const FILE_PREVIEW_MODES: Set<FilePreviewMode> = new Set([
   'audio',
   'video',
   'none',
+  'ink',
 ]);
 
 const asFilePreviewMode = (value?: string): FilePreviewMode | null => {
@@ -28,7 +30,7 @@ const asFilePreviewMode = (value?: string): FilePreviewMode | null => {
 
 /**
  * 为 file 资源解析最终预览模式
- * 优先级：显式 previewType > MIME > 扩展名
+ * `.dsink` MIME/扩展名是格式标识，优先于可能过时的 previewType。其余仍按显式 previewType > MIME > 扩展名。
  */
 export function resolveFilePreviewMode(
   mimeType: string,
@@ -36,6 +38,10 @@ export function resolveFilePreviewMode(
   previewType?: string
 ): FilePreviewMode {
   const normalizedMime = (mimeType || '').toLowerCase();
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  const mimeEssence = normalizedMime.split(';', 1)[0]?.trim();
+  if (mimeEssence === INK_MIME || extension === INK_EXTENSION) return 'ink';
+
   const isEpubFile = fileName.split('.').pop()?.toLowerCase() === 'epub';
 
   // Older imports labelled EPUB as text. The file signature wins so they are

@@ -1866,6 +1866,8 @@ fn branch_session_in_db(
                 ended_at: source_block.ended_at,
                 first_chunk_at: source_block.first_chunk_at,
                 block_index: source_block.block_index,
+
+                ink_artifacts: Vec::new(),
             };
             ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
             // V20260806 B 层：MessageBlock 结构体不携带重放三列

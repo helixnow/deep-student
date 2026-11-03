@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
-import { Document, Page, Thumbnail, pdfjs, PasswordResponses } from 'react-pdf';
+import { Document, Page, Thumbnail, PasswordResponses } from 'react-pdf';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -63,6 +63,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import '../styles/enhanced-pdf.css';
 import { PDF_OPTIONS } from '@/utils/pdfConfig';
+import { initializePdfWorker } from '@/utils/pdfjsWorker';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -74,8 +75,7 @@ import {
 } from '../pdfAnnotationEvents';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
-// 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
-pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
+initializePdfWorker();
 
 // 共享层划词工具条：必须懒加载——它内部依赖 shared/selection、shared/notes
 // 与聊天弹层（解释/翻译 Popover），若在此静态导入，翻译/制卡链路会被

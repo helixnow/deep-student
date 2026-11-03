@@ -13,6 +13,7 @@ import {
   Star,
   Trash,
   X,
+  PenNib,
 } from '@phosphor-icons/react';
 import {
   NoteIcon,
@@ -63,6 +64,7 @@ interface FinderQuickAccessProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
+  onNewInk?: () => void;
   createDisabled?: boolean;
   favoriteCount?: number;
   noteCount?: number;
@@ -86,6 +88,7 @@ export interface FinderCreateMenuItemsProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
+  onNewInk?: () => void;
 }
 
 /** 学习资源「新建」菜单项：快捷访问侧栏与顶栏 + 菜单共用 */
@@ -99,6 +102,7 @@ export function FinderCreateMenuItems({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
+  onNewInk,
 }: FinderCreateMenuItemsProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   return (
@@ -148,6 +152,11 @@ export function FinderCreateMenuItems({
           {t('finder.toolbar.newMindMap')}
         </AppMenuItem>
       )}
+      {onNewInk && (
+        <AppMenuItem icon={<PenNib size={16} />} onClick={onNewInk}>
+          {t('finder.toolbar.newInk')}
+        </AppMenuItem>
+      )}
     </>
   );
 }
@@ -174,6 +183,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
+  onNewInk,
   createDisabled = false,
   favoriteCount,
   recentCount,
@@ -335,6 +345,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       onNewTranslation={onNewTranslation}
       onNewEssay={onNewEssay}
       onNewMindMap={onNewMindMap}
+      onNewInk={onNewInk}
     />
   );
 

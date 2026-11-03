@@ -543,6 +543,12 @@ export function AppMenuContent({
     if (!isOpen || !shouldRender || !presence.shown) return undefined;
     const timer = window.setTimeout(() => {
       if (!isOpen) return;
+      // 延迟交接不得把焦点从本菜单（含 portal 子菜单）内部抢回根菜单壳。
+      if (
+        ctx?.menuId
+        && document.activeElement instanceof HTMLElement
+        && document.activeElement.closest('[data-app-menu-id]')?.getAttribute('data-app-menu-id') === ctx.menuId
+      ) return;
       if (showSearch && searchInputRef.current) {
         searchInputRef.current.focus({ preventScroll: true });
         return;
@@ -556,7 +562,7 @@ export function AppMenuContent({
       contentRef.current?.focus({ preventScroll: true });
     }, showSearch ? 50 : 0);
     return () => window.clearTimeout(timer);
-  }, [contentRef, ctx?.openIntentRef, getEnabledItems, isOpen, presence.shown, shouldRender, showSearch]);
+  }, [contentRef, ctx?.menuId, ctx?.openIntentRef, getEnabledItems, isOpen, presence.shown, shouldRender, showSearch]);
 
   const handleContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);

@@ -1,9 +1,13 @@
+use std::io::Read;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use deep_student_lib::chat_v2::automations::{
     list_automation_runs, load_automations, AUTOMATIONS_CHANGED_EVENT,
 };
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
+use deep_student_lib::chat_v2::state::ChatV2State;
 use deep_student_lib::chat_v2::tools::automation_executor::tool_names;
 use deep_student_lib::chat_v2::tools::user_todo_executor::{
     USER_TODO_CREATE_ITEM, USER_TODO_CREATE_LIST, USER_TODO_DELETE_ITEM, USER_TODO_DELETE_LIST,
@@ -58,6 +62,7 @@ fn create_harness(label: &str) -> Phase5Harness {
     let (vfs_dir, vfs_db) = create_vfs_db();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .manage(Arc::new(ChatV2State::new()))
         .manage(main_db.clone())
         .manage(vfs_db.clone())
         .build(tauri::generate_context!())
@@ -165,13 +170,16 @@ fn assert_success(result: &ToolResultInfo) -> &Value {
 
 fn structured_error(result: &ToolResultInfo) -> Value {
     assert!(!result.success, "tool unexpectedly succeeded: {result:?}");
-    serde_json::from_str(
-        result
-            .error
-            .as_deref()
-            .expect("failed result must carry an error"),
-    )
-    .expect("expected a structured tool error")
+    let raw = result
+        .error
+        .as_deref()
+        .expect("failed result must carry an error");
+    serde_json::from_str(raw).unwrap_or_else(|error| {
+        panic!(
+            "expected structured tool error: {error}; tool={} input={} error={:?} output={:?}",
+            result.tool_name, result.input, result.error, result.output
+        )
+    })
 }
 
 fn assert_error_code(result: &ToolResultInfo, code: &str) -> Value {
@@ -209,7 +217,7 @@ async fn user_todo_executor_runs_crud_occ_trash_restore_and_reorder_on_productio
         .expect("created list id")
         .to_string();
     let create_list_event = wait_for_event(&events, "create_list", Some("todo-create-list")).await;
-    assert_eq!(create_list_event["source"], "ai");
+    assert_eq!(create_list_event["source"], "agent");
     assert_eq!(create_list_event["entityIds"], json!([list_id]));
     assert_eq!(created_list.output["reversible"], false);
     assert_eq!(created_list.output["reversibleWithApproval"], true);
@@ -746,12 +754,24 @@ async fn automation_executor_runs_db_occ_events_restore_contracts_and_manual_wra
         json!({"id": automation_id, "expected_version": updated_version}),
     )
     .await;
-    assert_eq!(assert_success(&run_now)["result"]["status"], "notified");
+    assert_eq!(assert_success(&run_now)["result"]["status"], "started");
     assert_eq!(run_now.output["reversible"], false);
     assert!(run_now.output["restoreWith"].is_null());
     let run_event = wait_for_event(&events, "run_now", None).await;
     assert_eq!(run_event["automationId"], automation_id);
-    let runs = list_automation_runs(&harness.main_db, Some(&automation_id), 10).unwrap();
+    // Notify delivery runs in the background; wait for the claimed run to reach
+    // a terminal status before checking history instead of racing it.
+    let mut runs = list_automation_runs(&harness.main_db, Some(&automation_id), 10).unwrap();
+    for _ in 0..500 {
+        if runs
+            .iter()
+            .all(|run| run.status.as_deref() != Some("running"))
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        runs = list_automation_runs(&harness.main_db, Some(&automation_id), 10).unwrap();
+    }
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].trigger_type, "manual");
     assert!(runs[0]
@@ -801,13 +821,98 @@ async fn automation_executor_runs_db_occ_events_restore_contracts_and_manual_wra
     assert!(load_automations(&harness.main_db).unwrap().is_empty());
 }
 
-fn main() {
+const PHASE5_CASES: &[&str] = &[
+    "user_todo_executor_runs_crud_occ_trash_restore_and_reorder_on_production_vfs",
+    "automation_executor_runs_db_occ_events_restore_contracts_and_manual_wrapper",
+];
+const CASE_FLAG: &str = "--case";
+const CASE_TIMEOUT: Duration = Duration::from_secs(180);
+
+fn run_case(name: &str) {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("build phase 5 current-thread runtime");
-    runtime.block_on(async {
-        user_todo_executor_runs_crud_occ_trash_restore_and_reorder_on_production_vfs().await;
-        automation_executor_runs_db_occ_events_restore_contracts_and_manual_wrapper().await;
-    });
+    match name {
+        "user_todo_executor_runs_crud_occ_trash_restore_and_reorder_on_production_vfs" => {
+            runtime.block_on(
+                user_todo_executor_runs_crud_occ_trash_restore_and_reorder_on_production_vfs(),
+            );
+        }
+        "automation_executor_runs_db_occ_events_restore_contracts_and_manual_wrapper" => {
+            runtime.block_on(
+                automation_executor_runs_db_occ_events_restore_contracts_and_manual_wrapper(),
+            );
+        }
+        other => panic!("unknown phase 5 case {other:?}; known cases: {PHASE5_CASES:?}"),
+    }
+}
+
+fn read_pipe(mut pipe: impl Read) -> String {
+    let mut buffer = String::new();
+    let _ = pipe.read_to_string(&mut buffer);
+    buffer
+}
+
+/// Run one case in its own process. tao can export only one
+/// `/org/gtk/Application/anonymous` per process, so sequential in-process
+/// Tauri builders abort; a fresh process per case keeps the cases independent.
+fn run_case_in_subprocess(name: &str) {
+    let exe = std::env::current_exe().expect("resolve phase 5 test binary");
+    let mut child = Command::new(exe)
+        .arg(CASE_FLAG)
+        .arg(name)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("spawn phase 5 case {name}: {error}"));
+    let stdout = child.stdout.take().expect("capture phase 5 case stdout");
+    let stderr = child.stderr.take().expect("capture phase 5 case stderr");
+    let stdout_reader = std::thread::spawn(move || read_pipe(stdout));
+    let stderr_reader = std::thread::spawn(move || read_pipe(stderr));
+
+    let started = Instant::now();
+    let status = loop {
+        match child
+            .try_wait()
+            .unwrap_or_else(|error| panic!("poll phase 5 case {name}: {error}"))
+        {
+            Some(status) => break status,
+            None if started.elapsed() >= CASE_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let stdout = stdout_reader.join().unwrap_or_default();
+                let stderr = stderr_reader.join().unwrap_or_default();
+                panic!(
+                    "phase 5 case {name} timed out after {CASE_TIMEOUT:?}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                );
+            }
+            None => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+
+    let stdout = stdout_reader.join().unwrap_or_default();
+    let stderr = stderr_reader.join().unwrap_or_default();
+    if !status.success() {
+        eprintln!("phase 5 case {name} failed with {status}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        std::process::exit(status.code().unwrap_or(1));
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(position) = args.iter().position(|arg| arg == CASE_FLAG) {
+        let name = args.get(position + 1).unwrap_or_else(|| {
+            panic!("{CASE_FLAG} requires a case name; known cases: {PHASE5_CASES:?}")
+        });
+        run_case(name);
+        return;
+    }
+
+    // Parent process: never builds a Tauri app itself; each case gets its own
+    // process, timeout, and exit-code propagation.
+    for case in PHASE5_CASES {
+        run_case_in_subprocess(case);
+        println!("phase5 case {case}: PASSED");
+    }
 }

@@ -72,6 +72,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         },
         TableClassification {
             database: "vfs",
+            table_name: "ink_render_artifacts",
+            primary_key: "render_id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Globally verified immutable render provenance; image_blob_hash owns one blob ref per row; sync skips identical rows and quarantines mutation attempts",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "files",
             primary_key: "id",
             category: SyncCategory::RowSync,

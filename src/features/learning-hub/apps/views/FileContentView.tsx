@@ -36,6 +36,7 @@ import { archiveManifestDisplayText, isArchiveManifestText } from './archiveMani
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { isMobilePlatform } from '@/utils/platform';
+import { LazyInkEditor } from '@/features/ink';
 
 /**
  * 富文档（docx/xlsx/pptx/epub）在 WebView 内整份解析，且预览组件需要 base64：
@@ -725,6 +726,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           delayMs={LOADING_INDICATOR_DELAY_MS}
         />
       );
+    }
+
+    if (previewMode === 'ink') {
+      return <LazyInkEditor documentId={node.id} className="h-full min-h-0" />;
     }
 
     // PDF 预览

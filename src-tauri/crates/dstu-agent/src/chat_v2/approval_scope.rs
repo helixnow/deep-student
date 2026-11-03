@@ -275,6 +275,9 @@ pub fn is_privilege_escalation_tool_name(tool_name: &str) -> bool {
 
 /// Argument-aware privilege escalation detection for multiplexed tools.
 pub fn is_privilege_escalation_tool_for_args(tool_name: &str, args: &Value) -> bool {
+    if requires_destructive_ink_confirmation(tool_name, args) {
+        return true;
+    }
     let short = semantic_tool_short_name(tool_name);
     if short == "skill_market_download_and_scan" {
         return args
@@ -283,6 +286,93 @@ pub fn is_privilege_escalation_tool_for_args(tool_name: &str, args: &Value) -> b
             .unwrap_or(false);
     }
     is_privilege_escalation_tool(tool_name)
+}
+
+fn is_ink_apply_ops_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "ink_apply_ops" | "builtin-ink_apply_ops" | "builtin:ink_apply_ops"
+    )
+}
+
+fn ink_scope_fingerprint(args: &Value) -> Option<String> {
+    let valid_identity = |field: &str| {
+        args.get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    };
+    let scope = if valid_identity("document_id")
+        && valid_identity("expected_revision")
+        && args
+            .get("ops")
+            .and_then(Value::as_array)
+            .is_some_and(|ops| !ops.is_empty())
+    {
+        serde_json::json!({
+            "document_id": args.get("document_id")?,
+            "expected_revision": args.get("expected_revision")?,
+            "ops": args.get("ops")?,
+        })
+    } else {
+        canonical_scope_value(args)
+    };
+    let encoded = serde_json::to_string(&canonical_scope_value(&scope)).ok()?;
+    Some(format!("ink:{}", raw_hash(&encoded)))
+}
+
+/// Destructive ink calls need one-shot approval. Invalid calls fail closed because
+/// the executor's argument rejection must not turn a write call into Low.
+pub(crate) fn requires_destructive_ink_confirmation(tool_name: &str, args: &Value) -> bool {
+    if !is_ink_apply_ops_tool(tool_name) {
+        return false;
+    }
+    let Some(object) = args.as_object() else {
+        return true;
+    };
+    let has_nonempty_string = |key: &str| {
+        object
+            .get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    };
+    if !has_nonempty_string("document_id") || !has_nonempty_string("expected_revision") {
+        return true;
+    }
+    let Some(ops) = object.get("ops").and_then(Value::as_array) else {
+        return true;
+    };
+    if ops.is_empty() {
+        return true;
+    }
+    let mut destructive = false;
+    for item in ops {
+        let Some(item) = item.as_object() else {
+            return true;
+        };
+        let Some(op) = item.get("op").and_then(Value::as_str) else {
+            return true;
+        };
+        match op {
+            "update_object" | "remove_object" => {
+                if !item
+                    .get("object_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    return true;
+                }
+                destructive = true;
+            }
+            "add_text"
+            | "add_rect"
+            | "add_arrow"
+            | "add_ellipse"
+            | "add_region_highlight"
+            | "append_blank_page" => {}
+            _ => return true,
+        }
+    }
+    destructive
 }
 
 /// 权限升级与 Workbench High 工具永不进入 remember / 本会话允许 / 始终允许。
@@ -301,7 +391,8 @@ pub fn never_remember_approval(tool_name: &str) -> bool {
 /// Craft+Relaxed; PATH/wrappers/scripts/interpreters/`-c`/`-e` remain High and
 /// therefore never-remember. Preflight is analysis-only and remains rememberable.
 pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
-    if is_privilege_escalation_tool_for_args(tool_name, args)
+    if requires_destructive_ink_confirmation(tool_name, args)
+        || is_privilege_escalation_tool_for_args(tool_name, args)
         || is_workbench_always_confirm_tool(tool_name)
         || is_acr_destructive_domain_tool(tool_name)
         || is_dstu_purge_tool(tool_name)
@@ -346,7 +437,9 @@ pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
 }
 
 pub fn ignores_broad_approval_bypass_for_args(tool_name: &str, args: &Value) -> bool {
-    is_shell_runtime_tool_for_args(tool_name, args) || requires_precise_approval_scope(tool_name)
+    is_shell_runtime_tool_for_args(tool_name, args)
+        || requires_precise_approval_scope(tool_name)
+        || requires_destructive_ink_confirmation(tool_name, args)
 }
 
 /// Broad approval bypasses are intentionally ignored for local runtime tools
@@ -1686,6 +1779,14 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                 args,
                 &["fileId", "file_id", "pptxId", "pptx_id", "id", "path"],
             )
+        }
+
+        // Destructive ink approvals bind document + revision + the ordered ops payload.
+        "ink_apply_ops"
+            if is_ink_apply_ops_tool(tool_name)
+                && requires_destructive_ink_confirmation(tool_name, args) =>
+        {
+            ink_scope_fingerprint(args)
         }
 
         // --- Shell / 命令：command_prefix 已做安全处理（见该函数注释）---
@@ -3433,6 +3534,130 @@ pub fn make_setting_key(tool_name: &str, args: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn destructive_ink_ops_have_an_opaque_ordered_scope_bound_to_all_inputs() {
+        let base = json!({
+            "document_id": "doc-a",
+            "expected_revision": "rev-7",
+            "ops": [
+                {
+                    "op": "update_object",
+                    "object_id": "obj-a",
+                    "content": "private ink payload",
+                    "render": {"x": 12, "y": 24, "crop": [1, 2, 3, 4]}
+                },
+                {"op": "remove_object", "object_id": "obj-b"}
+            ]
+        });
+        let expected = make_runtime_scope_key_v2("ink_apply_ops", &base);
+        assert!(
+            expected.is_some(),
+            "destructive ink calls need a precise scope"
+        );
+        let expected = expected.unwrap();
+
+        assert_eq!(
+            make_runtime_scope_key_v2("ink_apply_ops", &base),
+            Some(expected.clone())
+        );
+        for changed in [
+            json!({"document_id":"doc-b","expected_revision":"rev-7","ops":base["ops"]}),
+            json!({"document_id":"doc-a","expected_revision":"rev-8","ops":base["ops"]}),
+            json!({"document_id":"doc-a","expected_revision":"rev-7","ops":[base["ops"][1].clone(),base["ops"][0].clone()]}),
+            json!({"document_id":"doc-a","expected_revision":"rev-7","ops":[{"op":"update_object","object_id":"obj-a","content":"private ink payload","render":{"x":13,"y":24,"crop":[1,2,3,4]}},{"op":"remove_object","object_id":"obj-b"}]}),
+            json!({"document_id":"doc-a","expected_revision":"rev-7","ops":[{"op":"update_object","object_id":"obj-z","content":"private ink payload","render":{"x":12,"y":24,"crop":[1,2,3,4]}},{"op":"remove_object","object_id":"obj-b"}]}),
+            json!({"document_id":"doc-a","expected_revision":"rev-7","ops":[{"op":"update_object","object_id":"obj-a","content":"changed private payload","render":{"x":12,"y":24,"crop":[1,2,3,4]}},{"op":"remove_object","object_id":"obj-b"}]}),
+        ] {
+            assert_ne!(
+                make_runtime_scope_key_v2("ink_apply_ops", &changed),
+                Some(expected.clone()),
+                "changing any approved document, revision, op order, render, target, or payload must change scope"
+            );
+        }
+        assert!(!expected.contains("doc-a"));
+        assert!(!expected.contains("private ink payload"));
+    }
+
+    #[test]
+    fn destructive_ink_ops_require_one_shot_approval_independent_of_declared_author() {
+        for tool_name in [
+            "ink_apply_ops",
+            "builtin-ink_apply_ops",
+            "builtin:ink_apply_ops",
+        ] {
+            for author in ["human", "assistant"] {
+                let args = json!({
+                    "document_id": "doc-a",
+                    "expected_revision": "rev-7",
+                    "author": author,
+                    "ops": [{"op":"update_object","object_id":"obj-a","content":"x"}]
+                });
+                assert!(
+                    requires_destructive_ink_confirmation(tool_name, &args),
+                    "{tool_name} with declared author {author} must still require confirmation"
+                );
+                assert!(never_remember_approval_for_args(tool_name, &args));
+                assert!(ignores_broad_approval_bypass_for_args(tool_name, &args));
+            }
+        }
+    }
+
+    #[test]
+    fn destructive_ink_ops_are_never_remembered() {
+        let args = json!({
+            "document_id":"doc-a",
+            "expected_revision":"rev-7",
+            "ops":[{"op":"remove_object","object_id":"obj-a"}]
+        });
+        assert!(never_remember_approval_for_args("ink_apply_ops", &args));
+    }
+
+    #[test]
+    fn destructive_ink_ops_ignore_broad_approval_bypass() {
+        let args = json!({
+            "document_id":"doc-a",
+            "expected_revision":"rev-7",
+            "ops":[{"op":"remove_object","object_id":"obj-a"}]
+        });
+        assert!(ignores_broad_approval_bypass_for_args(
+            "ink_apply_ops",
+            &args
+        ));
+    }
+
+    #[test]
+    fn malformed_ink_ops_cannot_be_downgraded_to_low_approval() {
+        for args in [
+            json!({}),
+            json!({"ops":"not-an-array"}),
+            json!({"ops":[{"op":"update_object"}]}),
+        ] {
+            assert!(
+                requires_destructive_ink_confirmation("ink_apply_ops", &args),
+                "malformed destructive tool arguments must not turn off the confirmation requirement"
+            );
+            assert!(ignores_broad_approval_bypass_for_args(
+                "ink_apply_ops",
+                &args
+            ));
+            assert!(never_remember_approval_for_args("ink_apply_ops", &args));
+        }
+    }
+
+    #[test]
+    fn non_destructive_ink_ops_do_not_force_one_shot_confirmation() {
+        let args = json!({
+            "document_id":"doc-a",
+            "expected_revision":"rev-7",
+            "ops":[{"op":"add_text","text":"note"}]
+        });
+        assert!(!requires_destructive_ink_confirmation(
+            "ink_apply_ops",
+            &args
+        ));
+        assert!(!never_remember_approval_for_args("ink_apply_ops", &args));
+    }
 
     #[test]
     fn note_replace_different_content_same_scope() {

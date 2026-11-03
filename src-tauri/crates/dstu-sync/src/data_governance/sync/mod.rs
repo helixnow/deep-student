@@ -44,6 +44,9 @@ pub mod emitter;
 pub mod field_merge;
 pub mod history;
 pub mod hlc;
+mod ink;
+#[cfg(test)]
+mod ink_tests;
 mod note_history;
 pub mod pomodoro_counts;
 pub mod progress;
@@ -7098,6 +7101,7 @@ impl SyncManager {
                         .unwrap_or("id");
                     let change_to_apply =
                         Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+                    ink::validate_change(conn, &change_to_apply)?;
 
                     let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
 
@@ -7268,6 +7272,7 @@ impl SyncManager {
     fn recompute_derived_ref_counts(conn: &Connection) -> Result<(), SyncError> {
         let pre_log_max = Self::change_log_max_id(conn);
 
+        ink::reconcile_resource_hash(conn)?;
         Self::recompute_resource_ref_counts(conn)?;
         Self::recompute_blob_ref_counts(conn)?;
 
@@ -7410,6 +7415,20 @@ impl SyncManager {
                 "SELECT image_blob_hash AS blob_hash FROM vfs_index_units WHERE image_blob_hash IS NOT NULL"
                     .to_string(),
             );
+        }
+        if Self::table_has_column(conn, "ink_render_artifacts", "image_blob_hash") {
+            subqueries.push(
+                "SELECT image_blob_hash AS blob_hash FROM ink_render_artifacts WHERE image_blob_hash IS NOT NULL"
+                    .to_string(),
+            );
+        }
+
+        // dsink page/background dependencies are derived from a validated manifest closure.
+        // Current files.blob_hash is counted by the explicit-column query above; only its
+        // manifest-derived dependencies enter this temporary table. Conflict snapshots pin
+        // both their old manifest and unique dependencies until resolved.
+        if ink::rebuild_dependency_refs(conn)? {
+            subqueries.push("SELECT blob_hash FROM temp.__dsink_blob_refs".to_string());
         }
 
         // ★ 2026-06-12（P1 防数据丢失）：JSON 内嵌 blob 引用必须参与重算。
@@ -7652,6 +7671,7 @@ impl SyncManager {
                         .unwrap_or("id");
                     let change_to_apply =
                         Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+                    ink::validate_change(conn, &change_to_apply)?;
 
                     let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
                     let pre_log_max_id = if suppress {
@@ -7832,6 +7852,7 @@ impl SyncManager {
 
                     let change_to_apply =
                         Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+                    ink::validate_change(conn, &change_to_apply)?;
 
                     if matches!(
                         change_to_apply.operation,

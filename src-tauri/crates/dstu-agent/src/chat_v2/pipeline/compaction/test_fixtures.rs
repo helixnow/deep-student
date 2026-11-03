@@ -71,6 +71,8 @@ pub(super) fn make_text_block(id: &str, msg_id: &str, content: &str) -> MessageB
         ended_at: None,
         first_chunk_at: None,
         block_index: 0,
+
+        ink_artifacts: Vec::new(),
     }
 }
 
@@ -96,5 +98,7 @@ pub(super) fn make_tool_block(
         ended_at: None,
         first_chunk_at: None,
         block_index: 0,
+
+        ink_artifacts: Vec::new(),
     }
 }

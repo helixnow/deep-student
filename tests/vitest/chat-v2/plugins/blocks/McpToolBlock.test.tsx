@@ -9,9 +9,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { Block } from '@/features/chat/core/types';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(() => Promise.resolve({})) }));
+import { invoke } from '@tauri-apps/api/core';
 
 // Mock react-i18next
 // - 缺失词条时必须尊重 defaultValue（getReadableToolName 用 defaultValue: ''
@@ -35,6 +38,10 @@ vi.mock('react-i18next', () => ({
       'blocks.mcpTool.status.running': 'Running',
       'blocks.mcpTool.status.success': 'Completed',
       'blocks.mcpTool.status.error': 'Failed',
+      'blocks.ink.openArtifact': 'Open artifact',
+      'blocks.ink.openDocument': 'Open document',
+      'blocks.ink.undo': 'Undo',
+      'blocks.ink.undoing': 'Undoing',
       'labels.skill': 'Skill',
     };
     const t = (key: string, params?: Record<string, unknown>) => {
@@ -305,6 +312,178 @@ describe('McpToolBlock', () => {
       // 在 error 状态下，输入应该自动展开
       expect(screen.getByText('Input Parameters')).toBeInTheDocument();
     });
+  });
+});
+
+describe('Ink render tool result card', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const artifactRef = {
+    artifactId: 'artifact-2',
+    renderId: 'render-2',
+    sessionId: 'sess_window_test',
+    toolCallId: 'call-2',
+    roundLastToolCallId: 'call-last-2',
+    documentId: 'doc-1',
+    pageId: 'page-2',
+    revision: 'r_7',
+    blobHash: 'a'.repeat(64),
+    resourceId: 'res_artifact_2',
+    contentHash: 'b'.repeat(64),
+    mimeType: 'image/png',
+    widthPx: 640,
+    heightPx: 480,
+  };
+  const output = {
+    status: 'success',
+    document_id: 'doc-1',
+    revision: 'r_7',
+    operation_id: 'op-1',
+    pages: [{
+      page_id: 'page-2',
+      artifact: {
+        artifact_id: 'artifact-2',
+        page_id: 'page-2',
+        file_id: 'file_artifact_2',
+        resource_id: 'res_artifact_2',
+      },
+    }],
+  };
+
+  it('renders ink_render metadata from the real snake_case tool output and typed refs', () => {
+    const card = blockRegistry.get('mcp_tool');
+    expect(card?.component).toBe(McpToolBlockComponent);
+    render(<McpToolBlockComponent block={createMcpToolBlock({
+      id: 'blk-ink',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName: 'builtin-ink_render',
+      toolOutput: output,
+      inkArtifacts: [artifactRef],
+    })} />);
+
+    expect(screen.getByTestId('ink-document-id')).toHaveTextContent('doc-1');
+    expect(screen.getByTestId('ink-page-id')).toHaveTextContent('page-2');
+    expect(screen.getByTestId('ink-artifact-resource')).toHaveTextContent('file_artifact_2');
+    expect(screen.getByRole('button', { name: /open artifact/i })).toBeInTheDocument();
+    expect(blockRegistry.has('mcp_tool')).toBe(true);
+    expect(screen.queryByText(/<script>/i)).not.toBeInTheDocument();
+  });
+
+  it('opens an ink create/get document by its stable document ID', () => {
+    const onPreview = vi.fn();
+    window.addEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onPreview);
+    render(<McpToolBlockComponent block={createMcpToolBlock({
+      id: 'blk-ink-created',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName: 'builtin-ink_create',
+      toolOutput: {
+        status: 'success',
+        document_id: 'doc_123stable',
+        revision: 'r_3',
+        pages: [{ page_id: 'page_1' }],
+      },
+    })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /open document/i }));
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({
+      detail: { id: 'doc_123stable', type: 'file', title: 'doc_123stable' },
+    }));
+    window.removeEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onPreview);
+  });
+
+  it('routes all six exact builtin tool names through the Ink card', () => {
+    for (const toolName of [
+      'ink_prepare', 'builtin-ink_prepare',
+      'ink_create', 'builtin-ink_create',
+      'ink_get', 'builtin-ink_get',
+      'ink_render', 'builtin-ink_render',
+      'ink_apply_ops', 'builtin-ink_apply_ops',
+      'ink_export', 'builtin-ink_export',
+    ]) {
+      const { unmount } = render(<McpToolBlockComponent block={createMcpToolBlock({
+        id: `blk-${toolName}`,
+        type: 'mcp_tool',
+        status: 'success',
+        toolName,
+        toolOutput: output,
+        inkArtifacts: [artifactRef],
+      })} />);
+      expect(screen.getByTestId('ink-tool-output-card')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('does not claim an external MCP tool whose name resembles an ink tool', () => {
+    render(<McpToolBlockComponent block={createMcpToolBlock({
+      id: 'blk-mcp-ink-collision',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName: 'mcp_ink_render',
+      toolOutput: { ...output, pages: [] },
+    })} />);
+
+    expect(screen.queryByTestId('ink-tool-output-card')).not.toBeInTheDocument();
+    expect(screen.getByText('Output Result')).toBeInTheDocument();
+  });
+
+  it('shows structured errors without offering undo for non-undoable render output', () => {
+    render(<McpToolBlockComponent block={createMcpToolBlock({
+      id: 'blk-ink-error',
+      type: 'mcp_tool',
+      status: 'error',
+      messageId: 'msg-ink',
+      toolName: 'builtin-ink_render',
+      toolOutput: {
+        status: 'error',
+        code: 'INK_RENDER_FAILED',
+        message: 'Render failed',
+        hint: 'Retry after refresh',
+      },
+    })} store={{ getState: () => ({ sessionId: 'sess_window_test' }) } as never} />);
+
+    expect(screen.getByTestId('ink-error-code')).toHaveTextContent('INK_RENDER_FAILED');
+    expect(screen.getByTestId('ink-error-message')).toHaveTextContent('Render failed');
+    expect(screen.getByTestId('ink-error-hint')).toHaveTextContent('Retry after refresh');
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+  });
+
+  it('allows undo only for a trusted apply receipt and uses current revision plus a fresh operation ID', async () => {
+    vi.mocked(invoke)
+      .mockResolvedValueOnce({ revision: 'r_current' } as never)
+      .mockResolvedValueOnce({} as never);
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('undo-op-fresh');
+    const applyOutput = {
+      status: 'committed',
+      document_id: 'doc-1',
+      revision: 'r_apply',
+      operation_id: 'apply-op-1',
+      undo_available: true,
+      affected_page_ids: ['page-2'],
+    };
+    render(<McpToolBlockComponent block={createMcpToolBlock({
+      id: 'blk-ink-apply',
+      type: 'mcp_tool',
+      status: 'success',
+      messageId: 'msg-ink',
+      toolName: 'builtin-ink_apply_ops',
+      toolOutput: applyOutput,
+    })} store={{ getState: () => ({ sessionId: 'sess_window_test' }) } as never} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /undo/i }));
+    await waitFor(() => expect(invoke).toHaveBeenNthCalledWith(1, 'vfs_ink_get', {
+      request: { document_id: 'doc-1' },
+    }));
+    await waitFor(() => expect(invoke).toHaveBeenNthCalledWith(2, 'vfs_ink_undo_tool_operation', {
+      sessionId: 'sess_window_test',
+      messageId: 'msg-ink',
+      blockId: 'blk-ink-apply',
+      expectedRevision: 'r_current',
+      operationId: 'undo-op-fresh',
+    }));
   });
 });
 

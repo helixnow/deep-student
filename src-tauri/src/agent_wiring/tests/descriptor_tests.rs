@@ -31,8 +31,8 @@ use crate::chat_v2::tools::{
     DataGovernanceToolExecutor, DocumentProcessingExecutor, DocxToolExecutor, DstuToolExecutor,
     EssayGradingExecutor, FetchExecutor, FileManagerExecutor, FsrsSettingsExecutor,
     GeneralToolExecutor, GenerativeUiExecutor, GitToolExecutor, GoalExecutor,
-    ImageGenerationExecutor, IndexWebpageToolExecutor, InsightRecallExecutor, KnowledgeExecutor,
-    LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
+    ImageGenerationExecutor, IndexWebpageToolExecutor, InkToolExecutor, InsightRecallExecutor,
+    KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
     LocalShellPreflightExecutor, LspNavigationExecutor, McpManageExecutor, McpProposeExecutor,
     MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor, PaperSaveExecutor,
     PptxToolExecutor, PtcExecutor, ReviewToolExecutor, SessionToolExecutor,
@@ -87,6 +87,7 @@ fn production_like_registry() -> (tempfile::TempDir, Arc<ToolExecutorRegistry>) 
         Arc::new(SkillsExecutor::new()),
         Arc::new(TemplateDesignerExecutor::new()),
         Arc::new(TextbookPdfToolExecutor::new()),
+        Arc::new(InkToolExecutor::new()),
         Arc::new(IndexWebpageToolExecutor::new()),
         Arc::new(AskUserExecutor::new()),
         Arc::new(SessionToolExecutor::new()),
@@ -170,6 +171,7 @@ pub(crate) const EXPECTED_ROSTER: &[&str] = &[
     "SkillsExecutor",
     "TemplateDesignerExecutor",
     "TextbookPdfToolExecutor",
+    "InkToolExecutor",
     "IndexWebpageToolExecutor",
     "AskUserExecutor",
     "SessionToolExecutor",
@@ -301,5 +303,64 @@ fn descriptor_sensitivity_matches_executor_baseline() {
             "sensitivity drift for tool {}",
             descriptor.name
         );
+    }
+}
+
+#[test]
+fn ink_descriptors_match_access_and_timeout_policy() {
+    use crate::chat_v2::tool_descriptors::SideEffectClass;
+    use crate::chat_v2::tools::ToolSensitivity;
+
+    for (name, sensitivity, read_only, side_effect, timeout) in [
+        (
+            "ink_prepare",
+            ToolSensitivity::Medium,
+            false,
+            SideEffectClass::WriteLocal,
+            None,
+        ),
+        (
+            "ink_create",
+            ToolSensitivity::Medium,
+            false,
+            SideEffectClass::WriteLocal,
+            None,
+        ),
+        (
+            "ink_get",
+            ToolSensitivity::Low,
+            true,
+            SideEffectClass::Read,
+            None,
+        ),
+        (
+            "ink_render",
+            ToolSensitivity::Low,
+            false,
+            SideEffectClass::WriteLocal,
+            Some(120),
+        ),
+        (
+            "ink_apply_ops",
+            ToolSensitivity::Medium,
+            false,
+            SideEffectClass::WriteLocal,
+            None,
+        ),
+        (
+            "ink_export",
+            ToolSensitivity::Medium,
+            false,
+            SideEffectClass::WriteLocal,
+            None,
+        ),
+    ] {
+        let descriptor = lookup(name).unwrap_or_else(|| panic!("missing Ink descriptor {name}"));
+        assert_eq!(descriptor.sensitivity, sensitivity, "{name}");
+        assert_eq!(descriptor.read_only, read_only, "{name}");
+        assert_eq!(descriptor.side_effect_class, side_effect, "{name}");
+        assert_eq!(descriptor.timeout_secs, timeout, "{name}");
+        assert!(!descriptor.headless_allowed, "{name}");
+        assert!(!descriptor.ptc_allowed, "{name}");
     }
 }

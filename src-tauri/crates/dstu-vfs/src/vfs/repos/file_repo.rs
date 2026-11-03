@@ -312,6 +312,13 @@ impl VfsFileRepo {
         src_file_id: &str,
         new_file_name: &str,
     ) -> VfsResult<VfsFile> {
+        if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, src_file_id)? {
+            return Err(VfsError::InvalidOperation {
+                operation: "copy_ink_file".to_owned(),
+                reason: "Ink documents must be copied through VfsInkRepo with a blob directory"
+                    .to_owned(),
+            });
+        }
         // 1. 读取源文件完整数据
         let src =
             Self::get_file_with_conn(conn, src_file_id)?.ok_or_else(|| VfsError::NotFound {
@@ -909,6 +916,18 @@ impl VfsFileRepo {
         file_id: &str,
         new_name: &str,
     ) -> VfsResult<VfsFile> {
+        let file = Self::get_file_with_conn(conn, file_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "File".to_string(),
+            id: file_id.to_string(),
+        })?;
+        if file.mime_type.as_deref() == Some(crate::vfs::ink::INK_MIME) {
+            return Err(VfsError::InvalidOperation {
+                operation: "rename Ink document with generic file updater".to_owned(),
+                reason: "Ink title and canonical filename must be renamed through VfsInkRepo"
+                    .to_owned(),
+            });
+        }
+
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -1156,100 +1175,107 @@ impl VfsFileRepo {
 
         // ★ P0修复：减少 blob 引用计数（文件的 blob_hash + PDF 预渲染页面的 blob_hash）
         // 必须在删除文件记录之前处理，因为需要读取 file 信息
+        let ink_purged = rollback_on_error!(
+            super::ink_repo::VfsInkRepo::purge_file_refs_with_conn(conn, blobs_dir, file_id),
+            "Failed to release Ink blob references"
+        );
 
         // 1. 处理文件自身的 blob_hash（大文件外部存储）
-        if let Some(ref blob_hash) = file.blob_hash {
-            match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, blob_hash) {
-                Ok(new_count) => {
-                    info!(
-                        "[VFS::FileRepo] Decremented blob ref for file: {} -> {}",
-                        blob_hash, new_count
-                    );
-                }
-                Err(e) => {
-                    // blob 不存在时仅警告，不阻止删除
-                    warn!(
-                        "[VFS::FileRepo] Failed to decrement blob ref {}: {}",
-                        blob_hash, e
-                    );
-                }
-            }
-        }
-
-        // 1.5 处理文件自身的压缩 blob（仅当与原始 blob 不同）
-        if let Some(ref compressed_hash) = file.compressed_blob_hash {
-            let is_same_as_original = file
-                .blob_hash
-                .as_ref()
-                .map(|h| h == compressed_hash)
-                .unwrap_or(false);
-            if !is_same_as_original {
-                match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
+        if !ink_purged {
+            if let Some(ref blob_hash) = file.blob_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, blob_hash) {
                     Ok(new_count) => {
                         info!(
-                            "[VFS::FileRepo] Decremented compressed blob ref for file: {} -> {}",
-                            compressed_hash, new_count
+                            "[VFS::FileRepo] Decremented blob ref for file: {} -> {}",
+                            blob_hash, new_count
                         );
                     }
                     Err(e) => {
+                        // blob 不存在时仅警告，不阻止删除
                         warn!(
-                            "[VFS::FileRepo] Failed to decrement compressed blob ref {}: {}",
-                            compressed_hash, e
+                            "[VFS::FileRepo] Failed to decrement blob ref {}: {}",
+                            blob_hash, e
                         );
                     }
                 }
             }
-        }
 
-        // 2. 处理 PDF 预渲染页面的 blob_hash
-        if let Some(ref preview_json_str) = file.preview_json {
-            if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(preview_json_str) {
-                for page in &preview.pages {
-                    match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, &page.blob_hash) {
+            // 1.5 处理文件自身的压缩 blob（仅当与原始 blob 不同）
+            if let Some(ref compressed_hash) = file.compressed_blob_hash {
+                let is_same_as_original = file
+                    .blob_hash
+                    .as_ref()
+                    .map(|h| h == compressed_hash)
+                    .unwrap_or(false);
+                if !is_same_as_original {
+                    match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
                         Ok(new_count) => {
-                            debug!(
-                                "[VFS::FileRepo] Decremented PDF page blob ref: page={}, hash={} -> {}",
-                                page.page_index, page.blob_hash, new_count
-                            );
+                            info!(
+                            "[VFS::FileRepo] Decremented compressed blob ref for file: {} -> {}",
+                            compressed_hash, new_count
+                        );
                         }
                         Err(e) => {
-                            // 页面 blob 不存在时仅警告
                             warn!(
-                                "[VFS::FileRepo] Failed to decrement PDF page blob {}: {}",
-                                page.blob_hash, e
+                                "[VFS::FileRepo] Failed to decrement compressed blob ref {}: {}",
+                                compressed_hash, e
                             );
                         }
                     }
+                }
+            }
 
-                    // 同时处理压缩后的页面 blob（仅当与原始 blob 不同）
-                    if let Some(ref compressed_hash) = page.compressed_blob_hash {
-                        if compressed_hash != &page.blob_hash {
-                            match VfsBlobRepo::decrement_ref_with_conn(
-                                conn,
-                                blobs_dir,
-                                compressed_hash,
-                            ) {
-                                Ok(new_count) => {
-                                    debug!(
+            // 2. 处理 PDF 预渲染页面的 blob_hash
+            if let Some(ref preview_json_str) = file.preview_json {
+                if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(preview_json_str) {
+                    for page in &preview.pages {
+                        match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, &page.blob_hash)
+                        {
+                            Ok(new_count) => {
+                                debug!(
+                                "[VFS::FileRepo] Decremented PDF page blob ref: page={}, hash={} -> {}",
+                                page.page_index, page.blob_hash, new_count
+                            );
+                            }
+                            Err(e) => {
+                                // 页面 blob 不存在时仅警告
+                                warn!(
+                                    "[VFS::FileRepo] Failed to decrement PDF page blob {}: {}",
+                                    page.blob_hash, e
+                                );
+                            }
+                        }
+
+                        // 同时处理压缩后的页面 blob（仅当与原始 blob 不同）
+                        if let Some(ref compressed_hash) = page.compressed_blob_hash {
+                            if compressed_hash != &page.blob_hash {
+                                match VfsBlobRepo::decrement_ref_with_conn(
+                                    conn,
+                                    blobs_dir,
+                                    compressed_hash,
+                                ) {
+                                    Ok(new_count) => {
+                                        debug!(
                                         "[VFS::FileRepo] Decremented PDF compressed page blob ref: page={}, hash={} -> {}",
                                         page.page_index, compressed_hash, new_count
                                     );
-                                }
-                                Err(e) => {
-                                    warn!(
+                                    }
+                                    Err(e) => {
+                                        warn!(
                                         "[VFS::FileRepo] Failed to decrement PDF compressed page blob {}: {}",
                                         compressed_hash, e
                                     );
+                                    }
                                 }
                             }
                         }
                     }
+                    info!(
+                        "[VFS::FileRepo] Processed {} PDF preview page blobs for file: {}",
+                        preview.pages.len(),
+                        file_id
+                    );
                 }
-                info!(
-                    "[VFS::FileRepo] Processed {} PDF preview page blobs for file: {}",
-                    preview.pages.len(),
-                    file_id
-                );
             }
         }
 
@@ -1801,6 +1827,105 @@ mod tests {
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
         crate::vfs::database::setup_migrated_test_db()
+    }
+
+    #[test]
+    fn generic_copy_rejects_ink_without_creating_shared_manifest_copy() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let ink = super::super::ink_repo::VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Ink copy guard",
+            crate::vfs::ink::InkRuling::Blank,
+            100.0,
+            100.0,
+            "copy-guard-create",
+            None,
+        )
+        .unwrap();
+        let before: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM files), (SELECT COALESCE(SUM(ref_count), 0) FROM blobs)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert!(
+            VfsFileRepo::copy_file_with_conn(&conn, &ink.document_id, "Generic copy.dsink")
+                .is_err()
+        );
+        let after: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM files), (SELECT COALESCE(SUM(ref_count), 0) FROM blobs)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn generic_rename_rejects_ink_documents_without_changing_manifest_or_filename() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let manifest = super::super::ink_repo::VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Canonical Ink title",
+            crate::vfs::ink::InkRuling::Blank,
+            100.0,
+            100.0,
+            "rename-guard-create",
+            None,
+        )
+        .unwrap();
+
+        let result = VfsFileRepo::update_file_name_with_conn(
+            &conn,
+            &manifest.document_id,
+            "different-title.txt",
+        );
+
+        assert!(
+            result.is_err(),
+            "generic file rename must reject Ink documents"
+        );
+        let stored = VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.file_name, "Canonical Ink title.dsink");
+        let reopened = super::super::ink_repo::VfsInkRepo::get_manifest_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+        )
+        .unwrap();
+        assert_eq!(reopened.title, "Canonical Ink title");
+        assert_eq!(reopened.revision, manifest.revision);
+    }
+
+    #[test]
+    fn generic_rename_still_renames_ordinary_files() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let file = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "rename-ordinary-file-sha",
+            "ordinary.txt",
+            12,
+            "document",
+            Some("text/plain"),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let renamed = VfsFileRepo::update_file_name_with_conn(&conn, &file.id, "renamed.txt")
+            .expect("ordinary file rename remains supported");
+
+        assert_eq!(renamed.file_name, "renamed.txt");
     }
 
     #[test]

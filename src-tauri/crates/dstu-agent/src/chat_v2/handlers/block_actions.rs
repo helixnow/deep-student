@@ -802,6 +802,7 @@ pub async fn chat_v2_upsert_streaming_block(
         ended_at: Some(now_ms), // 🔧 P35: 工具块已完成，设置 ended_at
         // 🔧 流式块：第一次创建时记录 first_chunk_at
         first_chunk_at: Some(now_ms),
+        ink_artifacts: Vec::new(),
         block_index: 0, // 流式块不需要排序，使用默认值
     };
 

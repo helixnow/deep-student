@@ -691,6 +691,20 @@
       "statsSimple_one": "{{count}} 篇论文",
       "statsSimple_other": "{{count}} 篇论文"
     },
+    "ink": {
+      "title": "手写渲染",
+      "document": "文档",
+      "revision": "版本",
+      "page": "页面",
+      "artifact": "产物",
+      "resource": "本地资源",
+      "openArtifact": "打开产物",
+      "openDocument": "打开文档",
+      "undo": "撤销",
+      "undoing": "正在撤销…",
+      "invalidOutput": "无法显示手写结果。",
+      "undoFailed": "撤销失败"
+    },
     "mcpTool": {
       "title": "工具调用",
       "unknownTool": "未知工具",

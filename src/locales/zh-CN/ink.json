@@ -1,0 +1,59 @@
+{
+  "status": {
+    "loading": "正在加载页面…",
+    "saved": "已保存",
+    "saving": "正在保存…",
+    "conflict": "文档已有更新版本，本地草稿已保留。",
+    "offline": "保存失败，本地恢复草稿已保存。",
+    "storage-error": "本地恢复存储失败，此笔迹尚未安全保存。请保持页面打开并重试或复制内容。",
+    "retryStorage": "重试本地保存",
+    "restored": "已恢复本地草稿"
+  },
+  "actions": {
+    "reloadRemote": "重新加载远端页面",
+    "keepDraft": "保留我的草稿",
+    "retrySave": "重试保存",
+    "undo": "撤销",
+    "redo": "重做",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "appendPage": "添加页面",
+    "rename": "重命名",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "touchDrawOn": "已开启触摸书写",
+    "touchDrawOff": "已关闭触摸书写",
+    "panLeft": "向左平移",
+    "panRight": "向右平移",
+    "panUp": "向上平移",
+    "panDown": "向下平移",
+    "askAi": "询问 AI",
+    "export": "导出"
+  },
+  "tools": {
+    "pen": "钢笔",
+    "highlighter": "荧光笔",
+    "eraser": "橡皮擦"
+  },
+  "colors": {
+    "black": "黑色",
+    "red": "红色",
+    "blue": "蓝色"
+  },
+  "width": {
+    "small": "细",
+    "medium": "中",
+    "large": "粗"
+  },
+  "toolbar": {
+    "label": "手写编辑器"
+  },
+  "canvas": {
+    "label": "手写页面"
+  },
+  "errors": {
+    "loadFailed": "无法加载此页面。",
+    "backgroundLoadFailed": "无法加载页面背景。",
+    "operationFailed": "无法完成此编辑操作。"
+  }
+}

@@ -1265,6 +1265,8 @@ impl ChatV2Pipeline {
                     ended_at: Some(now_ms),
                     first_chunk_at: Some(now_ms),
                     block_index: 0,
+
+                    ink_artifacts: Vec::new(),
                 };
                 let record = CompactionRecord {
                     id: compaction_id.clone(),
@@ -2129,6 +2131,8 @@ mod tests {
             ended_at: None,
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
         let assistant_msg = crate::chat_v2::types::ChatMessage {
             id: "msg_sp_a1".to_string(),
@@ -2169,6 +2173,8 @@ mod tests {
             ended_at: None,
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
         ChatV2Repo::create_message_v2(&pipeline.db, &user_msg).expect("create user msg");
         ChatV2Repo::create_block_v2(&pipeline.db, &user_block).expect("create user block");
@@ -2248,6 +2254,8 @@ mod tests {
             ended_at: None,
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
 
         ChatV2Repo::create_message_v2(
@@ -2433,6 +2441,8 @@ mod tests {
             ended_at: None,
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
 
         let mut ts = 1_700_000_000_000i64;

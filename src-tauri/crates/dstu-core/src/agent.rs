@@ -128,6 +128,26 @@ impl ToolCall {
     }
 }
 
+/// Trusted reference to an immutable, locally stored rendered ink image.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InkVisualArtifactRef {
+    pub artifact_id: String,
+    pub render_id: String,
+    pub session_id: String,
+    pub tool_call_id: String,
+    pub round_last_tool_call_id: String,
+    pub document_id: String,
+    pub page_id: String,
+    pub revision: String,
+    pub blob_hash: String,
+    pub resource_id: String,
+    pub content_hash: String,
+    pub mime_type: String,
+    pub width_px: u32,
+    pub height_px: u32,
+}
+
 /// 工具调用结果（与前端 ToolResult 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -353,6 +373,9 @@ pub struct MessageBlock {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_chunk_at: Option<i64>,
 
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ink_artifacts: Vec<InkVisualArtifactRef>,
+
     // ========== 后端专用字段 ==========
     /// 块顺序（前端通过 message.blockIds 顺序确定，不序列化到前端）
     #[serde(skip_serializing, default)]
@@ -381,6 +404,7 @@ impl MessageBlock {
             started_at: None,
             ended_at: None,
             first_chunk_at: None,
+            ink_artifacts: Vec::new(),
             block_index,
         }
     }

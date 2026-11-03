@@ -1031,6 +1031,10 @@ fn redact_skill_instruction_blocks_in_text(text: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "model2_pipeline/handwriting_provider_capture_tests.rs"]
+mod handwriting_provider_capture_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::database::Database;

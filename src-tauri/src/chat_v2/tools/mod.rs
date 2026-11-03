@@ -4,8 +4,8 @@
 //! agent-core / agent-platform 执行器已迁到 dstu-agent 的 `chat_v2::tools`，这里整体重导出，
 //! 所有 `crate::chat_v2::tools::…` 路径保持不变。
 //!
-//! 下面声明的是留在 app 的 37 个域执行器（anki / qbank / notes / research / tutor /
-//! media / sync / memory / learning / vision / office）。它们实现旧版 `ToolExecutor`，
+//! 下面声明的是留在 app 的 38 个域执行器（anki / qbank / notes / research / tutor /
+//! media / sync / memory / learning / vision / office / handwriting）。它们实现旧版 `ToolExecutor`，
 //! 经 `agent_wiring::roster::AppExecutorRoster` 注入 pipeline，分发顺序与拆分前逐字一致；
 //! 之后（W5）随各域迁入对应 domain crate。
 
@@ -29,6 +29,7 @@ pub mod fsrs_settings_executor; // 🆕 闪卡 FSRS 调度设置工具执行器�
 pub mod generative_ui_executor; // 🆕 生成式 UI 工具执行器（render_generative_ui）
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
+pub mod ink_executor; // Ink handwriting tools
 pub mod insight_recall_executor; // 🆕 灵感召回工具执行器（Insight Recall v2 阶段二）
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod learning_overview_executor; // Read-only learning overview and Pomodoro statistics
@@ -66,6 +67,7 @@ pub use fsrs_settings_executor::FsrsSettingsExecutor; // 🆕 闪卡 FSRS 调度
 pub use generative_ui_executor::GenerativeUiExecutor; // 🆕 生成式 UI 工具执行器
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use index_webpage_executor::IndexWebpageToolExecutor;
+pub use ink_executor::InkToolExecutor;
 pub use insight_recall_executor::InsightRecallExecutor; // 🆕 灵感召回工具执行器
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use learning_overview_executor::LearningOverviewExecutor;

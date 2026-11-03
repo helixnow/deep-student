@@ -375,6 +375,8 @@ fn test_user_message_block_structure() {
         ended_at: Some(chrono::Utc::now().timestamp_millis()),
         first_chunk_at: None,
         block_index: 0,
+
+        ink_artifacts: Vec::new(),
     };
 
     assert!(block.id.starts_with("blk_"));
@@ -496,6 +498,8 @@ fn test_block_index_ordering() {
             ended_at: None,
             first_chunk_at: None,
             block_index: i,
+
+            ink_artifacts: Vec::new(),
         })
         .collect();
 
@@ -550,6 +554,8 @@ fn test_content_block_filter() {
             ended_at: None,
             first_chunk_at: None,
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         },
         MessageBlock {
             id: "blk_2".to_string(),
@@ -566,6 +572,8 @@ fn test_content_block_filter() {
             ended_at: None,
             first_chunk_at: None,
             block_index: 1,
+
+            ink_artifacts: Vec::new(),
         },
         MessageBlock {
             id: "blk_3".to_string(),
@@ -582,6 +590,8 @@ fn test_content_block_filter() {
             ended_at: None,
             first_chunk_at: None,
             block_index: 2,
+
+            ink_artifacts: Vec::new(),
         },
         MessageBlock {
             id: "blk_4".to_string(),
@@ -598,6 +608,8 @@ fn test_content_block_filter() {
             ended_at: None,
             first_chunk_at: None,
             block_index: 3,
+
+            ink_artifacts: Vec::new(),
         },
     ];
 

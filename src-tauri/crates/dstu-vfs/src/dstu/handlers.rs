@@ -68,10 +68,12 @@ use super::handler_utils::{
 
 use crate::vfs::repos::note_lease_repo::{NoteLeaseAuth, NoteLeaseRepo};
 use crate::vfs::{
-    canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
-    VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteMetadataUpdate,
-    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    canonical_folder_item_type,
+    repos::{VfsInkRepo, VfsMindMapRepo},
+    VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams, VfsCreateMindMapParams,
+    VfsCreateNoteParams, VfsDatabase, VfsError, VfsEssayRepo, VfsExamRepo, VfsFileRepo,
+    VfsFolderItem, VfsFolderRepo, VfsNoteMetadataUpdate, VfsNoteRepo, VfsTextbookRepo,
+    VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -102,6 +104,56 @@ const MAX_NAME_LENGTH: usize = 256;
 
 /// 批量操作的最大数量限制 (防止 DoS 和超时)
 const MAX_BATCH_SIZE: usize = 100;
+
+fn rename_dstu_file(
+    db: &VfsDatabase,
+    file_id: &str,
+    title: &str,
+) -> Result<crate::vfs::types::VfsFile, String> {
+    let conn = db.get_conn_safe().map_err(|error| error.to_string())?;
+    let file = VfsFileRepo::get_file_with_conn(&conn, file_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("File not found: {file_id}"))?;
+    if file.mime_type.as_deref() != Some(crate::vfs::ink::INK_MIME) {
+        return VfsFileRepo::update_file_name_with_conn(&conn, file_id, title)
+            .map_err(|error| error.to_string());
+    }
+
+    let current = VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), file_id)
+        .map_err(|error| error.to_string())?;
+    let title = title.strip_suffix(".dsink").unwrap_or(title);
+    let renamed = VfsInkRepo::rename_with_conn(
+        &conn,
+        db.blobs_dir(),
+        file_id,
+        &current.revision,
+        &format!("dstu-rename-{}", uuid::Uuid::new_v4()),
+        title,
+    )
+    .map_err(|error| error.to_string())?;
+    VfsFileRepo::get_file_with_conn(&conn, &renamed.document_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Renamed Ink file not found: {}", renamed.document_id))
+}
+
+fn set_dstu_file_name_metadata(
+    db: &VfsDatabase,
+    file_id: &str,
+    file_name: &str,
+) -> Result<crate::vfs::types::VfsFile, String> {
+    let conn = db.get_conn_safe().map_err(|error| error.to_string())?;
+    let file = VfsFileRepo::get_file_with_conn(&conn, file_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("File not found: {file_id}"))?;
+    if file.mime_type.as_deref() == Some(crate::vfs::ink::INK_MIME) {
+        return Err(
+            "INVALID_ARGUMENT: Ink filename metadata is unsupported; use versioned rename"
+                .to_owned(),
+        );
+    }
+    VfsFileRepo::update_file_name_with_conn(&conn, file_id, file_name)
+        .map_err(|error| error.to_string())
+}
 
 fn parse_note_metadata_update(
     metadata: &Value,
@@ -2071,8 +2123,8 @@ pub async fn dstu_rename(
             textbook_to_dstu_node(&updated_textbook)
         }
         "files" => {
-            // 更新文件名
-            let updated_file = match VfsFileRepo::update_file_name(&vfs_db, &id, &new_name) {
+            // Ink 专用版本化重命名接入点由 rename_dstu_file 统一收口。
+            let updated_file = match rename_dstu_file(&vfs_db, &id, &new_name) {
                 Ok(f) => {
                     log::info!(
                         "[DSTU::handlers] dstu_rename: SUCCESS - type=file, id={}",
@@ -2641,13 +2693,40 @@ pub async fn dstu_copy(
                 }
             };
 
-            // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_file 复制。
-            // 旧实现直接复用 blob_hash 但不递增引用计数（删除任一副本导致另一
-            // 副本物理文件被清扫），且不复制 preview/OCR/压缩产物。
             let new_file_name = format!("{} (副本)", file.file_name);
+            let mut ink_copied = false;
             let new_file = {
                 let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
-                match VfsFileRepo::copy_file_with_conn(&conn, &src_id, &new_file_name) {
+                let is_ink = VfsInkRepo::is_ink_file_candidate_with_conn(&conn, &src_id)
+                    .map_err(|e| e.to_string())?;
+                let copied = if is_ink {
+                    ink_copied = true;
+                    let title = file
+                        .file_name
+                        .strip_suffix(".dsink")
+                        .unwrap_or(&file.file_name);
+                    let title = format!("{title} (副本)");
+                    let operation_id = format!("dstu-copy:{}:{}", src_id, nanoid::nanoid!(16));
+                    VfsInkRepo::copy_with_conn(
+                        &conn,
+                        vfs_db.blobs_dir(),
+                        &src_id,
+                        &title,
+                        &operation_id,
+                        dest_folder_id.as_deref(),
+                    )
+                    .and_then(|manifest| {
+                        VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)?.ok_or_else(
+                            || VfsError::NotFound {
+                                resource_type: "File".to_owned(),
+                                id: manifest.document_id,
+                            },
+                        )
+                    })
+                } else {
+                    VfsFileRepo::copy_file_with_conn(&conn, &src_id, &new_file_name)
+                };
+                match copied {
                     Ok(f) => {
                         log::info!(
                             "[DSTU::handlers] dstu_copy: SUCCESS - created file copy, id={}",
@@ -2663,23 +2742,25 @@ pub async fn dstu_copy(
             };
 
             // 如果指定了目标文件夹，将新资源添加到文件夹（保留原条目类型）
-            if let Some(ref folder_id) = dest_folder_id {
-                let item_type = if src_resource_type == "images" {
-                    "image"
-                } else {
-                    "file"
-                };
-                let folder_item = VfsFolderItem::new(
-                    Some(folder_id.clone()),
-                    item_type.to_string(),
-                    new_file.id.clone(),
-                );
-                if let Err(e) = VfsFolderRepo::add_item_to_folder(&vfs_db, &folder_item) {
-                    log::warn!(
-                        "[DSTU::handlers] dstu_copy: failed to add file to folder {}: {}",
-                        folder_id,
-                        e
+            if !ink_copied {
+                if let Some(ref folder_id) = dest_folder_id {
+                    let item_type = if src_resource_type == "images" {
+                        "image"
+                    } else {
+                        "file"
+                    };
+                    let folder_item = VfsFolderItem::new(
+                        Some(folder_id.clone()),
+                        item_type.to_string(),
+                        new_file.id.clone(),
                     );
+                    if let Err(e) = VfsFolderRepo::add_item_to_folder(&vfs_db, &folder_item) {
+                        log::warn!(
+                            "[DSTU::handlers] dstu_copy: failed to add file to folder {}: {}",
+                            folder_id,
+                            e
+                        );
+                    }
                 }
             }
 
@@ -3176,19 +3257,42 @@ fn copy_resource_to_folder(
             };
 
             let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
-            let new_file =
-                match VfsFileRepo::copy_file_with_conn(&conn, &item.item_id, &file.file_name) {
-                    Ok(f) => f,
-                    Err(e) => return Err(e.to_string()),
-                };
+            let ink_copy = VfsInkRepo::is_ink_file_candidate_with_conn(&conn, &item.item_id)
+                .map_err(|e| e.to_string())?;
+            let new_file = if ink_copy {
+                let title = file
+                    .file_name
+                    .strip_suffix(".dsink")
+                    .unwrap_or(&file.file_name);
+                let title = format!("{title} (副本)");
+                let operation_id = format!("folder-copy:{}:{}", item.item_id, nanoid::nanoid!(16));
+                let manifest = VfsInkRepo::copy_with_conn(
+                    &conn,
+                    vfs_db.blobs_dir(),
+                    &item.item_id,
+                    &title,
+                    &operation_id,
+                    Some(dest_folder_id),
+                )
+                .map_err(|e| e.to_string())?;
+                VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("复制后的手写文件不存在: {}", manifest.document_id))?
+            } else {
+                VfsFileRepo::copy_file_with_conn(&conn, &item.item_id, &file.file_name)
+                    .map_err(|e| e.to_string())?
+            };
 
-            // 保留原条目类型（image 副本仍是 image）
-            let folder_item = VfsFolderItem::new(
-                Some(dest_folder_id.to_string()),
-                item.item_type.clone(),
-                new_file.id.clone(),
-            );
-            VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item).map_err(|e| e.to_string())?;
+            if !ink_copy {
+                // 保留原条目类型（image 副本仍是 image）
+                let folder_item = VfsFolderItem::new(
+                    Some(dest_folder_id.to_string()),
+                    item.item_type.clone(),
+                    new_file.id.clone(),
+                );
+                VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item)
+                    .map_err(|e| e.to_string())?;
+            }
 
             log::debug!(
                 "[DSTU::handlers] copy_resource_to_folder: copied file {} -> {}",
@@ -4000,7 +4104,7 @@ pub async fn dstu_set_metadata(
             }
             // 更新文件名
             if let Some(file_name) = metadata.get("fileName").and_then(|v| v.as_str()) {
-                match VfsFileRepo::update_file_name(&vfs_db, &id, file_name) {
+                match set_dstu_file_name_metadata(&vfs_db, &id, file_name) {
                     Ok(_) => log::info!(
                         "[DSTU::handlers] dstu_set_metadata: set file name={}, id={}",
                         file_name,
@@ -6655,6 +6759,81 @@ pub async fn dstu_get_path_by_id(
 mod tests {
     use super::*;
     use crate::dstu::handler_utils::{create_type_folder, generate_resource_id};
+    use crate::vfs::{
+        database::setup_migrated_test_db,
+        ink::{InkRuling, INK_MIME},
+        repos::{file_repo::VfsFileRepo, ink_repo::VfsInkRepo},
+    };
+
+    #[test]
+    fn dstu_file_rename_uses_versioned_ink_repo_contract() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let original = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Original title",
+            InkRuling::Blank,
+            100.0,
+            100.0,
+            "dstu-rename-create-test",
+            None,
+        )
+        .unwrap();
+
+        let renamed = rename_dstu_file(&db, &original.document_id, "Renamed title.dsink")
+            .expect("DSTU rename should use the versioned Ink rename contract");
+        let current =
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &original.document_id)
+                .unwrap();
+        assert_eq!(current.title, "Renamed title");
+        assert_ne!(current.revision, original.revision);
+        assert_eq!(
+            current
+                .last_operation
+                .as_ref()
+                .unwrap()
+                .previous_revision
+                .as_deref(),
+            Some(original.revision.as_str())
+        );
+        assert_eq!(renamed.file_name, "Renamed title.dsink");
+    }
+
+    #[test]
+    fn dstu_metadata_file_name_uses_same_ink_rename_boundary() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let original = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Original metadata title",
+            InkRuling::Blank,
+            100.0,
+            100.0,
+            "dstu-metadata-rename-create-test",
+            None,
+        )
+        .unwrap();
+        let file = VfsFileRepo::get_file_with_conn(&conn, &original.document_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(file.mime_type.as_deref(), Some(INK_MIME));
+
+        assert!(
+            set_dstu_file_name_metadata(&db, &original.document_id, "Bypass title.txt").is_err(),
+            "versionless metadata filename changes must fail closed for Ink"
+        );
+        let current =
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &original.document_id)
+                .unwrap();
+        let unchanged_file = VfsFileRepo::get_file_with_conn(&conn, &original.document_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.title, "Original metadata title");
+        assert_eq!(current.revision, original.revision);
+        assert_eq!(unchanged_file.file_name, "Original metadata title.dsink");
+    }
 
     #[test]
     fn test_generate_resource_id() {

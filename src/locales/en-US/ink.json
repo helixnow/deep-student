@@ -1,0 +1,59 @@
+{
+  "status": {
+    "loading": "Loading page…",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "conflict": "A newer version exists. Your draft is kept.",
+    "offline": "Could not save. A local recovery draft is saved.",
+    "storage-error": "Local recovery storage failed. This stroke is not saved safely; keep this page open and retry or copy your work.",
+    "retryStorage": "Retry local save",
+    "restored": "Recovered local draft"
+  },
+  "actions": {
+    "reloadRemote": "Reload remote page",
+    "keepDraft": "Keep my draft",
+    "retrySave": "Retry save",
+    "undo": "Undo",
+    "redo": "Redo",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "appendPage": "Add page",
+    "rename": "Rename",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "touchDrawOn": "Touch drawing on",
+    "touchDrawOff": "Touch drawing off",
+    "panLeft": "Pan left",
+    "panRight": "Pan right",
+    "panUp": "Pan up",
+    "panDown": "Pan down",
+    "askAi": "Ask AI",
+    "export": "Export"
+  },
+  "tools": {
+    "pen": "Pen",
+    "highlighter": "Highlighter",
+    "eraser": "Eraser"
+  },
+  "colors": {
+    "black": "Black",
+    "red": "Red",
+    "blue": "Blue"
+  },
+  "width": {
+    "small": "Thin",
+    "medium": "Medium",
+    "large": "Thick"
+  },
+  "toolbar": {
+    "label": "Handwriting editor"
+  },
+  "canvas": {
+    "label": "Handwriting page"
+  },
+  "errors": {
+    "loadFailed": "Could not load this page.",
+    "backgroundLoadFailed": "Could not load the page background.",
+    "operationFailed": "Could not complete the editor action."
+  }
+}

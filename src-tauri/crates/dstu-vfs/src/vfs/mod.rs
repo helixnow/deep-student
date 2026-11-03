@@ -31,6 +31,8 @@ pub mod hooks;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
+pub mod ink;
+pub mod ink_commands;
 #[cfg(feature = "lance")]
 pub mod lance_store;
 pub mod lexical_bm25;

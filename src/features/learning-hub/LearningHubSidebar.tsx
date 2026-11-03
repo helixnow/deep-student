@@ -614,6 +614,7 @@ export function LearningHubSidebar({
     handleNewTranslation,
     handleNewEssay,
     handleNewMindMap,
+    handleNewInk,
   } = createResourceCreators({
     ensureCreatableView,
     currentCreatableFolderId,
@@ -1089,6 +1090,7 @@ export function LearningHubSidebar({
       onNewTranslation={handleNewTranslation}
       onNewEssay={handleNewEssay}
       onNewMindMap={handleNewMindMap}
+      onNewInk={() => { void handleNewInk(); }}
       createDisabled={!canCreateInCurrentView}
       favoriteCount={favoriteCount}
       fillContainer={Boolean(quickAccessPortalTarget)}
@@ -1147,6 +1149,7 @@ export function LearningHubSidebar({
             handleNewTranslation={handleNewTranslation}
             handleNewEssay={handleNewEssay}
             handleNewMindMap={handleNewMindMap}
+            handleNewInk={() => handleNewInk()}
             isTrashView={isTrashView}
             handleEmptyTrash={handleEmptyTrash}
             items={items}
@@ -1219,6 +1222,7 @@ export function LearningHubSidebar({
             handleNewTranslation={handleNewTranslation}
             handleNewEssay={handleNewEssay}
             handleNewMindMap={handleNewMindMap}
+            handleNewInk={() => handleNewInk()}
             toolbarPortalTarget={toolbarPortalTarget}
             toolbarPortalMode={toolbarPortalMode}
           />
@@ -1352,6 +1356,7 @@ export function LearningHubSidebar({
         handleNewTranslation={handleNewTranslation}
         handleNewEssay={handleNewEssay}
         handleNewMindMap={handleNewMindMap}
+        handleNewInk={handleNewInk}
         handleImportMarkdownNote={handleImportMarkdownNote}
         handleRefresh={handleRefresh}
         handleOpenFolder={handleOpenFolder}

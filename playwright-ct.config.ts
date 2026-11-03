@@ -1,10 +1,15 @@
 import { defineConfig } from '@playwright/experimental-ct-react';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import { normalizePath } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
+const pdfjsDistPath = path.dirname(require.resolve('pdfjs-dist/package.json'));
 
 export default defineConfig({
   testDir: './tests/ct',
@@ -16,7 +21,16 @@ export default defineConfig({
   use: {
     ctPort: 3101,
     ctViteConfig: {
-      plugins: [react()],
+      publicDir: path.resolve(__dirname, 'public'),
+      plugins: [
+        react(),
+        viteStaticCopy({
+          targets: [{
+            src: normalizePath(path.join(pdfjsDistPath, 'build', 'pdf.worker.min.mjs')),
+            dest: '',
+          }],
+        }),
+      ],
       server: { port: 3101 },
       build: {
         rollupOptions: {

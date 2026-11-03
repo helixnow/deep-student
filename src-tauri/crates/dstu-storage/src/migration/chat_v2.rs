@@ -614,6 +614,24 @@ pub const V20260910_REVOCATION_EPOCHS_AND_BUDGET: MigrationDef = MigrationDef::n
 ])
 .idempotent();
 
+/// V20260911: add typed ink visual references to ChatV2 blocks.
+pub const V20260911_CHAT_BLOCK_INK_ARTIFACTS: MigrationDef = MigrationDef::new(
+    20260911,
+    "chat_block_ink_artifacts",
+    include_str!("../../../../migrations/chat_v2/V20260911__chat_block_ink_artifacts.sql"),
+)
+.with_expected_columns(&[("chat_v2_blocks", "ink_artifacts_json")])
+.with_expected_queries(&["SELECT ink_artifacts_json FROM chat_v2_blocks LIMIT 0"]);
+
+/// V20260912: add durable, backend-only Ink tool undo receipt to ChatV2 blocks.
+pub const V20260912_CHAT_BLOCK_INK_UNDO: MigrationDef = MigrationDef::new(
+    20260912,
+    "chat_block_ink_undo",
+    include_str!("../../../../migrations/chat_v2/V20260912__ink_tool_undo.sql"),
+)
+.with_expected_columns(&[("chat_v2_blocks", "ink_undo_json")])
+.with_expected_queries(&["SELECT ink_undo_json FROM chat_v2_blocks LIMIT 0"]);
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -645,6 +663,8 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260908_COMPLETION_OUTBOX,
     V20260909_SKILL_USAGE_CANDIDATES,
     V20260910_REVOCATION_EPOCHS_AND_BUDGET,
+    V20260911_CHAT_BLOCK_INK_ARTIFACTS,
+    V20260912_CHAT_BLOCK_INK_UNDO,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -656,7 +676,7 @@ pub const CHAT_V2_MIGRATION_SET: MigrationSet = MigrationSet {
 /// Chat V2 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准。
 /// `chat_v2::database::CURRENT_SCHEMA_VERSION` 按原路径重导出。
-pub const CHAT_V2_SCHEMA_VERSION: u32 = 20260910;
+pub const CHAT_V2_SCHEMA_VERSION: u32 = 20260912;
 
 // ============================================================================
 // 测试
@@ -669,7 +689,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 29); // V20260130 ~ V20260910
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 31); // Includes V20260911 and V20260912.
     }
 
     #[test]
@@ -696,10 +716,8 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(
-            CHAT_V2_MIGRATION_SET.latest_version(),
-            CHAT_V2_SCHEMA_VERSION as i32
-        );
+        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260912);
+        assert_eq!(CHAT_V2_SCHEMA_VERSION, 20260912);
     }
 
     #[test]
@@ -862,7 +880,7 @@ mod tests {
             20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
             20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
             20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721, 20260806,
-            20260905, 20260907, 20260908, 20260909, 20260910,
+            20260905, 20260907, 20260908, 20260909, 20260910, 20260911, 20260912,
         ];
         let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
             .pending(0)
@@ -874,8 +892,10 @@ mod tests {
             let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
             assert_eq!(remaining.len(), expected_versions.len() - index - 1);
         }
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260909).count(), 1);
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260910).count(), 0);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260909).count(), 3);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260910).count(), 2);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260911).count(), 1);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260912).count(), 0);
     }
 
     #[test]
@@ -884,6 +904,47 @@ mod tests {
             .get(20260510)
             .expect("V20260510 should exist");
         assert_eq!(migration.name, "add_compaction");
+    }
+
+    #[test]
+    fn test_ink_block_migrations_add_nullable_columns_for_existing_rows() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chat_v2_blocks (id TEXT PRIMARY KEY);
+             INSERT INTO chat_v2_blocks (id) VALUES ('existing-block');",
+        )
+        .unwrap();
+
+        conn.execute_batch(V20260911_CHAT_BLOCK_INK_ARTIFACTS.sql)
+            .expect("artifact migration adds its nullable column");
+        conn.execute_batch(V20260912_CHAT_BLOCK_INK_UNDO.sql)
+            .expect("undo migration adds its nullable column");
+
+        let values: (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT ink_artifacts_json, ink_undo_json FROM chat_v2_blocks WHERE id = 'existing-block'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(values, (None, None));
+
+        let artifact_not_null: i64 = conn
+            .query_row(
+                "SELECT [notnull] FROM pragma_table_info('chat_v2_blocks') WHERE name = 'ink_artifacts_json'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let undo_not_null: i64 = conn
+            .query_row(
+                "SELECT [notnull] FROM pragma_table_info('chat_v2_blocks') WHERE name = 'ink_undo_json'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(artifact_not_null, 0);
+        assert_eq!(undo_not_null, 0);
     }
 
     /// V20260910（G02-P2/G08-P2）：两张新表幂等可重放，基本读写与

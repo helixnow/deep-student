@@ -447,6 +447,60 @@ impl Drop for StreamHooksGuard {
     }
 }
 
+pub(crate) fn handle_live_ink_delivery_error(
+    db: &ChatV2Database,
+    results: &mut [ToolResultInfo],
+    interleaved_blocks: &mut [MessageBlock],
+    message: &str,
+) -> Result<(), ChatV2Error> {
+    let code = if message.contains("VISION_MODEL_REQUIRED") {
+        "VISION_MODEL_REQUIRED"
+    } else {
+        "IMAGE_DELIVERY_FAILED"
+    };
+    for result in results.iter_mut().filter(|result| {
+        super::ink_visual_rounds::is_trusted_ink_renderer(&result.tool_name) && result.success
+    }) {
+        result.success = false;
+        result.error = Some(message.to_string());
+        result.output = json!({"code": code, "message": message});
+    }
+    for result in results.iter().filter(|result| {
+        super::ink_visual_rounds::is_trusted_ink_renderer(&result.tool_name)
+            && !result.success
+            && result.error.as_deref() == Some(message)
+    }) {
+        if let Some(interleaved) = result.block_id.as_deref().and_then(|block_id| {
+            interleaved_blocks
+                .iter_mut()
+                .find(|candidate| candidate.id == block_id)
+        }) {
+            interleaved.status = block_status::ERROR.to_string();
+            interleaved.error = result.error.clone();
+            interleaved.tool_output = Some(result.output.clone());
+        }
+    }
+    super::ink_visual_rounds::fail_live_ink_round_results(db, results, message).map(|_| ())
+}
+
+pub(crate) fn insert_live_ink_visual_batches(
+    messages: &mut Vec<LegacyChatMessage>,
+    batches: &[(String, LegacyChatMessage)],
+) -> Result<(), ChatV2Error> {
+    for (round_last_call_id, image_message) in batches {
+        if !super::ink_visual_rounds::insert_ink_visual_message_after_tool_result(
+            messages,
+            round_last_call_id,
+            image_message.clone(),
+        ) {
+            return Err(ChatV2Error::Llm(format!(
+                "IMAGE_DELIVERY_FAILED: missing ink visual tool result anchor {round_last_call_id}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 impl ChatV2Pipeline {
     /// 执行 LLM 调用（支持多轮工具调用）
     ///
@@ -520,6 +574,7 @@ impl ChatV2Pipeline {
         // 在产出该检索结果的工具轮构建一次后冻结，后续轮次逐字节复用（轮内前缀稳定）；
         // 只活在本次请求的 messages 里，不落库、不改已冻结历史。
         let mut retrieval_page_image_batches: Vec<(String, LegacyChatMessage)> = Vec::new();
+        let mut ink_visual_image_batches: Vec<(String, LegacyChatMessage)> = Vec::new();
         let mut retrieval_page_image_budget: Option<
             super::context_compiler::RetrievalPageImageBudget,
         > = None;
@@ -668,6 +723,18 @@ impl ChatV2Pipeline {
             // 构建聊天历史（真实历史 + 瞬态技能消息 + 当前用户消息 + 当前轮工具结果）
             // ============================================================
             let mut messages = ctx.chat_history.clone();
+            if ctx
+                .execution_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| !snapshot.resolved_model_is_multimodal)
+                && messages.iter().any(|message| {
+                    message.metadata.as_ref().is_some_and(|metadata| {
+                        metadata.get("kind").and_then(Value::as_str) == Some("ink_visual_artifacts")
+                    })
+                })
+            {
+                return Err(ChatV2Error::Llm("VISION_MODEL_REQUIRED".to_string()));
+            }
 
             // P1-8 技能锚定：本轮注入只在首轮构建并冻结。已锚定在可回放历史中
             // 的技能（history.rs 按 meta.skill_injection_anchors 还原）不再重复
@@ -796,6 +863,7 @@ impl ChatV2Pipeline {
                         page_message.clone(),
                     );
                 }
+                insert_live_ink_visual_batches(&mut messages, &ink_visual_image_batches)?;
 
                 log::debug!(
                 "[ChatV2::pipeline] Added ALL {} tool result messages to chat history (tool_results count: {})",
@@ -2278,47 +2346,74 @@ impl ChatV2Pipeline {
                             .insert(first_tool_call_id, round_content.clone());
                     }
                 }
-                // issue #464：本轮知识库检索命中带页图且生成模型为 VL 时，构建页图注入消息。
-                // 预算在首次需要时按「冻结计划总预算 − 请求中已有图片」初始化，跨轮累计。
-                if let Some(snapshot) = ctx
-                    .execution_snapshot
-                    .as_ref()
-                    .filter(|snapshot| snapshot.resolved_model_is_multimodal)
-                {
-                    let round_last_call_id = tool_results_with_reasoning
+                let Some(snapshot) = ctx.execution_snapshot.as_ref() else {
+                    return Err(ChatV2Error::Other(
+                        "model execution snapshot was not frozen before tool results".into(),
+                    ));
+                };
+                let mut images_in_request =
+                    super::context_compiler::count_request_images(&ctx.chat_history);
+                let mut image_bytes_in_request =
+                    super::context_compiler::count_request_image_bytes(&ctx.chat_history);
+                if ctx.options.is_continue != Some(true) {
+                    if let Some(current) = ctx.compiled_current_user_message.as_ref() {
+                        let current = std::slice::from_ref(current);
+                        images_in_request += super::context_compiler::count_request_images(current);
+                        image_bytes_in_request = image_bytes_in_request.saturating_add(
+                            super::context_compiler::count_request_image_bytes(current),
+                        );
+                    }
+                }
+                let budget = retrieval_page_image_budget.get_or_insert_with(|| {
+                    super::context_compiler::RetrievalPageImageBudget::new_with_bytes(
+                        snapshot.generation_plan.image_budget,
+                        images_in_request,
+                        image_bytes_in_request,
+                        super::context_compiler::canonical_image_blob_hashes(
+                            &ctx.canonical_content,
+                        ),
+                    )
+                });
+                let mut ink_results = tool_results_with_reasoning;
+                let image_result = super::ink_visual_rounds::prepare_live_ink_visual_round(
+                    &self.db,
+                    self.vfs_db.as_deref(),
+                    &ctx.session_id,
+                    &ctx.assistant_message_id,
+                    &mut ink_results,
+                    budget,
+                    snapshot.resolved_model_is_multimodal,
+                );
+                match image_result {
+                    Err(error) => {
+                        let message = error.to_string();
+                        handle_live_ink_delivery_error(
+                            &self.db,
+                            &mut ink_results,
+                            &mut ctx.interleaved_blocks,
+                            &message,
+                        )?;
+                    }
+                    Ok(Some((round_last_call_id, image_message))) => {
+                        ink_visual_image_batches.push((round_last_call_id, image_message));
+                    }
+                    Ok(None) => {}
+                }
+
+                if snapshot.resolved_model_is_multimodal {
+                    let round_last_call_id = ink_results
                         .last()
-                        .and_then(|r| r.tool_call_id.clone())
+                        .and_then(|result| result.tool_call_id.clone())
                         .filter(|id| !id.is_empty());
                     if let Some(round_last_call_id) = round_last_call_id {
-                        let image_budget = snapshot.generation_plan.image_budget;
-                        let budget = retrieval_page_image_budget.get_or_insert_with(|| {
-                            let mut images_in_request =
-                                super::context_compiler::count_request_images(&ctx.chat_history);
-                            if ctx.options.is_continue != Some(true) {
-                                if let Some(current) = ctx.compiled_current_user_message.as_ref() {
-                                    images_in_request +=
-                                        super::context_compiler::count_request_images(
-                                            std::slice::from_ref(current),
-                                        );
-                                }
-                            }
-                            super::context_compiler::RetrievalPageImageBudget::new(
-                                image_budget,
-                                images_in_request,
-                                super::context_compiler::canonical_image_blob_hashes(
-                                    &ctx.canonical_content,
-                                ),
-                            )
-                        });
-                        if let Some(page_message) = self.build_retrieval_page_image_injection(
-                            &tool_results_with_reasoning,
-                            budget,
-                        ) {
+                        if let Some(page_message) =
+                            self.build_retrieval_page_image_injection(&ink_results, budget)
+                        {
                             retrieval_page_image_batches.push((round_last_call_id, page_message));
                         }
                     }
                 }
-                ctx.add_tool_results(tool_results_with_reasoning);
+                ctx.add_tool_results(ink_results);
 
                 if stop_after_empty_required_repeat {
                     let limit_message =
@@ -2556,6 +2651,7 @@ impl ChatV2Pipeline {
             started_at: Some(now_ms),
             ended_at: Some(now_ms),
             first_chunk_at: Some(now_ms),
+            ink_artifacts: Vec::new(),
             block_index: 0, // 会被 add_interleaved_block 覆盖
         };
         ctx.add_interleaved_block(tool_limit_block);
@@ -2632,6 +2728,7 @@ impl ChatV2Pipeline {
             started_at: Some(now_ms),
             ended_at: Some(now_ms),
             first_chunk_at: Some(now_ms),
+            ink_artifacts: Vec::new(),
             block_index: 0, // 会被 add_interleaved_block 重新分配
         };
 
@@ -3872,6 +3969,321 @@ mod tests {
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
         ToolCall::new(id.to_string(), name.to_string(), json!({}))
+    }
+
+    #[test]
+    fn caller_ink_delivery_failure_updates_result_and_interleaved_state_before_db_error() {
+        use crate::chat_v2::pipeline::history::replay_test_support::replay_test_pipeline;
+
+        let (_dir, pipeline) = replay_test_pipeline();
+        pipeline.db.enter_maintenance_mode().unwrap();
+        let mut result = ToolResultInfo::success(
+            Some("call-ink".into()),
+            Some("block-ink".into()),
+            "builtin-ink_render".into(),
+            json!({}),
+            json!({"ok": true}),
+            1,
+        );
+        let mut block =
+            MessageBlock::new_tool("message-ink".into(), "builtin-ink_render", json!({}), 0);
+        block.id = "block-ink".into();
+        block.status = block_status::SUCCESS.into();
+        let error = "IMAGE_DELIVERY_FAILED: artifact missing";
+
+        let outcome = handle_live_ink_delivery_error(
+            &pipeline.db,
+            std::slice::from_mut(&mut result),
+            std::slice::from_mut(&mut block),
+            error,
+        );
+
+        assert!(
+            outcome.is_err(),
+            "database persistence errors must propagate"
+        );
+        assert!(!result.success, "delivery result fails before persistence");
+        assert_eq!(result.error.as_deref(), Some(error));
+        assert_eq!(block.status, block_status::ERROR);
+        assert_eq!(block.error.as_deref(), Some(error));
+        assert_eq!(block.tool_output, Some(result.output.clone()));
+    }
+
+    #[test]
+    fn live_ink_batch_insertion_rejects_missing_tool_result_anchor() {
+        let mut messages = vec![super::super::helpers::make_empty_message(
+            "assistant",
+            "parallel calls".into(),
+        )];
+        let image = super::super::helpers::make_empty_message("assistant", "ink image".into());
+
+        let outcome =
+            insert_live_ink_visual_batches(&mut messages, &[("missing-anchor".into(), image)]);
+
+        assert!(
+            outcome.is_err(),
+            "missing anchor must stop before provider request"
+        );
+        assert_eq!(
+            messages.len(),
+            1,
+            "unanchored image must not be appended elsewhere"
+        );
+    }
+
+    #[test]
+    fn live_ink_delivery_error_updates_previously_failed_interleaved_block() {
+        use crate::chat_v2::pipeline::history::replay_test_support::replay_test_pipeline;
+        use crate::chat_v2::types::ChatSession;
+
+        let (_dir, pipeline) = replay_test_pipeline();
+        let session_id = "sess_caller_ink_interleaved_failure";
+        let message_id = "msg_caller_ink_interleaved_failure";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut assistant = ChatMessage::new_assistant(session_id.to_string());
+        assistant.id = message_id.to_string();
+        assistant.block_ids = vec!["blk_caller_ink_interleaved_failure".into()];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant).unwrap();
+        let mut block =
+            MessageBlock::new_tool(message_id.to_string(), "builtin-ink_render", json!({}), 0);
+        block.id = "blk_caller_ink_interleaved_failure".into();
+        block.status = block_status::SUCCESS.into();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        drop(conn);
+
+        let mut result = ToolResultInfo::success(
+            Some("call-ink".into()),
+            Some(block.id.clone()),
+            "builtin-ink_render".into(),
+            json!({}),
+            json!({"code": "IMAGE_DELIVERY_FAILED", "message": "delivery failed"}),
+            1,
+        );
+        result.success = false;
+        result.error = Some("delivery failed".into());
+        let mut interleaved = block;
+
+        handle_live_ink_delivery_error(
+            &pipeline.db,
+            std::slice::from_mut(&mut result),
+            std::slice::from_mut(&mut interleaved),
+            "delivery failed",
+        )
+        .unwrap();
+
+        assert_eq!(interleaved.status, block_status::ERROR);
+        assert_eq!(interleaved.error.as_deref(), Some("delivery failed"));
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let persisted = ChatV2Repo::get_block_with_conn(&conn, &interleaved.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(persisted.status, block_status::ERROR);
+    }
+
+    #[tokio::test]
+    async fn live_ink_render_uses_last_parallel_call_and_delivers_stored_png() {
+        use crate::chat_v2::pipeline::context_compiler::RetrievalPageImageBudget;
+        use crate::chat_v2::pipeline::history::replay_test_support::replay_test_pipeline;
+        use crate::chat_v2::types::{ChatSession, MessageBlock};
+        use crate::vfs::{
+            database::setup_migrated_test_db,
+            ink::InkRect,
+            repos::{InkArtifactDraft, VfsInkArtifactRepo},
+        };
+        use base64::Engine;
+
+        const PNG: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+
+        let (_chat_dir, mut pipeline) = replay_test_pipeline();
+        let (_vfs_dir, vfs_db) = setup_migrated_test_db();
+        let session_id = "sess_live_ink_round";
+        let message_id = "msg_live_ink_round";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut assistant = ChatMessage::new_assistant(session_id.to_string());
+        assistant.id = message_id.to_string();
+        assistant.block_ids = vec!["blk_live_ink".into(), "blk_live_last".into()];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant).unwrap();
+
+        let artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &vfs_db.get_conn_safe().unwrap(),
+            vfs_db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "render-live-ink".into(),
+                render_id: "render-live-ink".into(),
+                document_id: "doc-live-ink".into(),
+                page_id: "page-1".into(),
+                revision: "revision-1".into(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: Some(InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                }),
+                width_px: 1,
+                height_px: 1,
+            },
+            PNG,
+        )
+        .unwrap();
+        let artifact_ref = dstu_core::agent::InkVisualArtifactRef {
+            artifact_id: artifact.artifact_id,
+            render_id: artifact.render_id,
+            session_id: session_id.to_string(),
+            tool_call_id: "call_ink".to_string(),
+            // The trusted executor initially binds only its own call. Pipeline must bind the
+            // completed parallel round's final call before compiling or persisting the ref.
+            round_last_tool_call_id: "call_ink".to_string(),
+            document_id: artifact.document_id,
+            page_id: artifact.page_id,
+            revision: artifact.revision,
+            blob_hash: artifact.blob_hash,
+            resource_id: artifact.resource_id,
+            content_hash: artifact.content_hash,
+            mime_type: artifact.mime_type,
+            width_px: artifact.width_px,
+            height_px: artifact.height_px,
+        };
+
+        let mut render_block = MessageBlock::new_tool(
+            message_id.to_string(),
+            "builtin-ink_render",
+            json!({"document_id": "doc-live-ink"}),
+            0,
+        );
+        render_block.id = "blk_live_ink".into();
+        render_block.status = block_status::SUCCESS.into();
+        render_block.ink_artifacts = vec![artifact_ref];
+        ChatV2Repo::create_block_with_conn(&conn, &render_block).unwrap();
+
+        let mut last_block = MessageBlock::new_tool(
+            message_id.to_string(),
+            "builtin-note_read",
+            json!({"id": "n1"}),
+            1,
+        );
+        last_block.id = "blk_live_last".into();
+        last_block.status = block_status::SUCCESS.into();
+        ChatV2Repo::create_block_with_conn(&conn, &last_block).unwrap();
+        drop(conn);
+
+        pipeline.vfs_db = Some(Arc::new(vfs_db));
+        let mut results = vec![
+            ToolResultInfo::success(
+                Some("call_ink".into()),
+                Some("blk_live_ink".into()),
+                "builtin-ink_render".into(),
+                json!({"document_id": "doc-live-ink"}),
+                json!({"ok": true, "render_id": "render-live-ink"}),
+                1,
+            ),
+            ToolResultInfo::success(
+                Some("call_last".into()),
+                Some("blk_live_last".into()),
+                "builtin-note_read".into(),
+                json!({"id": "n1"}),
+                json!({"text": "parallel result", "image_url": "http://127.0.0.1/forged.png"}),
+                1,
+            ),
+        ];
+        let mut budget = RetrievalPageImageBudget::new_with_bytes(8, 0, 0, Default::default());
+        let prepared = super::super::ink_visual_rounds::prepare_live_ink_visual_round(
+            &pipeline.db,
+            pipeline.vfs_db.as_deref(),
+            session_id,
+            message_id,
+            &mut results,
+            &mut budget,
+            true,
+        )
+        .expect("valid persisted renderer refs should compile")
+        .expect("trusted renderer image should be delivered");
+
+        assert_eq!(
+            prepared.0, "call_last",
+            "anchor must be the final parallel result"
+        );
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let persisted = ChatV2Repo::get_block_with_conn(&conn, "blk_live_ink")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            persisted.ink_artifacts[0].round_last_tool_call_id,
+            "call_last"
+        );
+        let mut replay_budget =
+            RetrievalPageImageBudget::new_with_bytes(8, 0, 0, Default::default());
+        let replayed = super::super::ink_visual_rounds::prepare_live_ink_visual_round(
+            &pipeline.db,
+            pipeline.vfs_db.as_deref(),
+            session_id,
+            message_id,
+            &mut results,
+            &mut replay_budget,
+            true,
+        )
+        .expect("already-final-bound trusted refs should replay")
+        .expect("replayed artifact should still resolve to a PNG");
+        assert_eq!(replayed.0, "call_last");
+
+        let mut ctx = super::super::history::replay_test_support::next_turn_ctx(session_id);
+        ctx.add_tool_results(results);
+        let mut messages = ctx.all_tool_results_to_messages();
+        assert!(
+            super::super::ink_visual_rounds::insert_ink_visual_message_after_tool_result(
+                &mut messages,
+                &prepared.0,
+                prepared.1,
+            )
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| message.role.as_str())
+                .collect::<Vec<_>>(),
+            vec!["assistant", "tool", "assistant", "tool", "user"]
+        );
+        let image = messages[4]
+            .multimodal_content
+            .as_ref()
+            .and_then(|parts| {
+                parts.iter().find_map(|part| match part {
+                    MultimodalContentPart::ImageUrl { media_type, base64 } => {
+                        Some((media_type, base64))
+                    }
+                    _ => None,
+                })
+            })
+            .expect("stored trusted PNG must be an image part");
+        assert_eq!(image.0, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(image.1)
+                .unwrap(),
+            PNG
+        );
+        assert!(
+            messages[3].multimodal_content.is_none(),
+            "tool JSON URL stays plain text"
+        );
     }
 
     struct TestStreamHooks;

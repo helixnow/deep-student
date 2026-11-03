@@ -770,6 +770,23 @@ fn resolve_indexable_content(
     conn: &rusqlite::Connection,
     resource: &VfsResource,
 ) -> Option<String> {
+    if resource.resource_type == VfsResourceType::File
+        || resource.resource_type == VfsResourceType::Image
+    {
+        match is_managed_ink_resource(conn, &resource.id) {
+            Ok(true) => return None,
+            Ok(false) => {}
+            Err(error) => {
+                log::warn!(
+                    "[resolve_indexable_content] Failed to check managed Ink metadata for {}: {}",
+                    resource.id,
+                    error
+                );
+                return None;
+            }
+        }
+    }
+
     log::debug!(
         "[resolve_indexable_content] resource_id={}, type={:?}, data_len={}, storage_mode={:?}",
         resource.id,
@@ -1868,6 +1885,41 @@ fn reextract_pdf_page_text(
     Some(text)
 }
 
+fn is_managed_ink_metadata(
+    file_name: Option<&str>,
+    mime_type: Option<&str>,
+    preview_json: Option<&str>,
+) -> bool {
+    mime_type == Some(crate::vfs::ink::INK_MIME)
+        || file_name
+            .and_then(|name| name.rsplit_once('.').map(|(_, ext)| ext))
+            .map(|extension| extension.eq_ignore_ascii_case(crate::vfs::ink::INK_EXTENSION))
+            .unwrap_or(false)
+        || preview_json
+            .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+            .and_then(|preview| preview.get("ink").cloned())
+            .is_some()
+}
+
+fn is_managed_ink_resource(conn: &rusqlite::Connection, resource_id: &str) -> VfsResult<bool> {
+    let metadata: Option<(Option<String>, Option<String>, Option<String>)> = conn
+        .query_row(
+            "SELECT file_name, mime_type, preview_json FROM files WHERE resource_id = ?1",
+            rusqlite::params![resource_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    Ok(metadata
+        .map(|(file_name, mime_type, preview_json)| {
+            is_managed_ink_metadata(
+                file_name.as_deref(),
+                mime_type.as_deref(),
+                preview_json.as_deref(),
+            )
+        })
+        .unwrap_or(false))
+}
+
 /// VFS 完整索引服务
 ///
 /// 扩展 VfsIndexingService，集成嵌入生成和 Lance 向量存储。
@@ -2067,15 +2119,25 @@ impl VfsFullIndexingService {
         let input = match resource.resource_type {
             VfsResourceType::File | VfsResourceType::Image => {
                 let conn = self.db.get_conn_safe()?;
-                let (blob_hash, page_count, extracted_text, preview_json, ocr_pages_json): (
+                let (
+                    blob_hash,
+                    page_count,
+                    extracted_text,
+                    preview_json,
+                    ocr_pages_json,
+                    file_name,
+                    mime_type,
+                ): (
                     Option<String>,
                     Option<i32>,
                     Option<String>,
                     Option<String>,
                     Option<String>,
+                    Option<String>,
+                    Option<String>,
                 ) = conn
                     .query_row(
-                        "SELECT blob_hash, page_count, extracted_text, preview_json, ocr_pages_json FROM files WHERE resource_id = ?1",
+                        "SELECT blob_hash, page_count, extracted_text, preview_json, ocr_pages_json, file_name, mime_type FROM files WHERE resource_id = ?1",
                         rusqlite::params![resource_id],
                         |row| {
                             Ok((
@@ -2084,11 +2146,31 @@ impl VfsFullIndexingService {
                                 row.get(2)?,
                                 row.get(3)?,
                                 row.get(4)?,
+                                row.get(5)?,
+                                row.get(6)?,
                             ))
                         },
                     )
                     .optional()?
-                    .unwrap_or((None, None, None, None, None));
+                    .unwrap_or((None, None, None, None, None, None, None));
+
+                let managed_ink = is_managed_ink_metadata(
+                    file_name.as_deref(),
+                    mime_type.as_deref(),
+                    preview_json.as_deref(),
+                );
+                if managed_ink {
+                    // Managed drawings are structured source data, never retrieval text. Remove
+                    // any units created by older versions so their manifest text cannot linger.
+                    index_unit_repo::sync_units(&conn, resource_id, Vec::new())?;
+                    drop(conn);
+                    VfsIndexStateRepo::mark_disabled_with_reason(
+                        &self.db,
+                        resource_id,
+                        "managed Ink documents are not text-indexed",
+                    )?;
+                    return Ok(());
+                }
 
                 // 旧版导入的多页 PDF 文字没有页分隔符，只能整篇一个单元：从原文件按页重提一次并回写，
                 // 之后即可逐页建索引（引用精确到页、多模态按页向量化）。每个文件只会发生一次。
@@ -2242,6 +2324,17 @@ impl VfsFullIndexingService {
         progress_callback: Option<EmbeddingProgressCallback>,
         refresh_counts: bool,
     ) -> VfsResult<(usize, usize)> {
+        // Managed Ink must never reuse historical manifest text Units; route it through
+        // the factory guard so stale unit/segment metadata is purged before returning.
+        let managed_ink = {
+            let conn = self.db.get_conn_safe()?;
+            is_managed_ink_resource(&conn, resource_id)?
+        };
+        if managed_ink {
+            self.sync_resource_to_units(resource_id)?;
+            return Ok((0, 0));
+        }
+
         // 0. 同步资源到 vfs_index_units 表（VFS 统一索引架构）
         // ★ 2026-02 修复：检查 Units 是否已存在且有效，避免删除 Pipeline 创建的完整 Units
         // ★ P2-7 修复：仅当"资源内容自上次索引后未变、且没有 pending 文本 Unit"时才复用。
@@ -5275,6 +5368,242 @@ impl VfsFullSearchService {
 mod tests {
     use super::*;
     use crate::vfs::{StorageMode, VfsResourceMetadata};
+
+    #[test]
+    fn resolve_indexable_content_excludes_managed_ink_and_keeps_ordinary_json() {
+        use crate::vfs::{
+            database::setup_migrated_test_db,
+            ink::{InkRuling, INK_MIME},
+            repos::{ink_repo::VfsInkRepo, VfsFileRepo, VfsResourceRepo},
+        };
+
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let ink = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Resolver guard fixture",
+            InkRuling::Blank,
+            800.0,
+            1000.0,
+            "resolve-ink-fixture",
+            None,
+        )
+        .expect("create canonical managed Ink file");
+        let ink_resource_id: String = conn
+            .query_row(
+                "SELECT resource_id FROM files WHERE id = ?1",
+                [&ink.document_id],
+                |row| row.get(0),
+            )
+            .expect("Ink resource id");
+        let poisoned_data = r#"{"extracted_text":"poison manifest text must not be indexed"}"#;
+        conn.execute(
+            "UPDATE resources SET data = ?1, ocr_text = ?2 WHERE id = ?3",
+            rusqlite::params![poisoned_data, "poison Ink OCR text", &ink_resource_id],
+        )
+        .expect("poison Ink resources.data and OCR text");
+        conn.execute(
+            "UPDATE files SET extracted_text = ?1, ocr_pages_json = ?2 WHERE id = ?3",
+            rusqlite::params![
+                "poison Ink extracted text",
+                r#"[\"poison Ink OCR page\"]"#,
+                &ink.document_id
+            ],
+        )
+        .expect("poison Ink extracted and OCR page text");
+
+        // Exact managed MIME is sufficient to exclude Ink, even without the file suffix/preview marker.
+        conn.execute(
+            "UPDATE files SET file_name = 'managed drawing', mime_type = ?1, preview_json = NULL WHERE id = ?2",
+            rusqlite::params![INK_MIME, &ink.document_id],
+        )
+        .expect("isolate managed Ink MIME marker");
+        let resource = VfsResourceRepo::get_resource_with_conn(&conn, &ink_resource_id)
+            .expect("load managed Ink resource")
+            .expect("managed Ink resource exists");
+        assert_eq!(resolve_indexable_content(&conn, &resource), None);
+
+        // The canonical preview discriminator is independently sufficient with ordinary file metadata.
+        conn.execute(
+            "UPDATE files SET file_name = 'managed drawing.json', mime_type = 'application/json', preview_json = ?1 WHERE id = ?2",
+            rusqlite::params![r#"{"ink":{"schema_version":1}}"#, &ink.document_id],
+        )
+        .expect("isolate Ink preview marker");
+        let resource = VfsResourceRepo::get_resource_with_conn(&conn, &ink_resource_id)
+            .expect("reload managed Ink resource")
+            .expect("managed Ink resource exists");
+        assert_eq!(resolve_indexable_content(&conn, &resource), None);
+
+        let ordinary = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "resolve-ordinary-json-fixture",
+            "ordinary.json",
+            40,
+            "document",
+            Some("application/json"),
+            None,
+            None,
+        )
+        .expect("create ordinary JSON file");
+        let ordinary_resource_id = ordinary.resource_id.expect("ordinary resource id");
+        conn.execute(
+            "UPDATE resources SET data = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r#"{"extracted_text":"ordinary JSON remains indexable"}"#,
+                &ordinary_resource_id
+            ],
+        )
+        .expect("set ordinary JSON data");
+        let resource = VfsResourceRepo::get_resource_with_conn(&conn, &ordinary_resource_id)
+            .expect("load ordinary JSON resource")
+            .expect("ordinary JSON resource exists");
+        assert_eq!(
+            resolve_indexable_content(&conn, &resource).as_deref(),
+            Some("ordinary JSON remains indexable")
+        );
+    }
+
+    #[test]
+    fn sync_resource_to_units_excludes_managed_ink_but_keeps_ordinary_json() {
+        use crate::vfs::{
+            database::setup_migrated_test_db,
+            ink::InkRuling,
+            lance_store::VfsLanceStore,
+            repos::{index_unit_repo, ink_repo::VfsInkRepo, VfsFileRepo},
+        };
+        use std::sync::Arc;
+
+        let (temp_dir, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let settings_db = Arc::new(
+            crate::database::Database::new(&temp_dir.path().join("settings.db"))
+                .expect("settings db"),
+        );
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(temp_dir.path().to_path_buf())
+                .expect("file manager"),
+        );
+        let llm_manager =
+            Arc::new(LLMManager::new(settings_db, file_manager).expect("LLM manager"));
+        let lance_store = Arc::new(VfsLanceStore::new(db.clone()).expect("Lance store"));
+        let service = VfsFullIndexingService::with_chunking_config(
+            db.clone(),
+            llm_manager,
+            lance_store,
+            ChunkingConfig::default(),
+        );
+
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let ink = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Managed drawing",
+            InkRuling::Blank,
+            800.0,
+            1000.0,
+            "index-fixture-ink",
+            None,
+        )
+        .expect("create canonical managed ink document");
+        let (ink_resource_id, ink_file_name, ink_mime, ink_preview): (
+            String,
+            String,
+            String,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT resource_id, file_name, mime_type, preview_json FROM files WHERE id = ?1",
+                [&ink.document_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("ink managed file metadata");
+        assert!(ink_file_name.ends_with(".dsink"));
+        assert_eq!(ink_mime, crate::vfs::ink::INK_MIME);
+        assert!(serde_json::from_str::<serde_json::Value>(&ink_preview)
+            .unwrap()
+            .get("ink")
+            .is_some());
+        let hostile_manifest = format!(
+            r#"{{"schema_version":1,"document_id":"{}","title":"private manifest text"}}"#,
+            ink.document_id
+        );
+        conn.execute(
+            "UPDATE resources SET data = ?1, ocr_text = ?2 WHERE id = ?3",
+            rusqlite::params![&hostile_manifest, "hostile OCR text", &ink_resource_id],
+        )
+        .expect("inject hostile resource fields");
+        conn.execute(
+            "UPDATE files SET extracted_text = ?1, ocr_pages_json = ?2 WHERE id = ?3",
+            rusqlite::params![
+                "hostile extracted text",
+                r#"["hostile OCR page text"]"#,
+                &ink.document_id
+            ],
+        )
+        .expect("inject hostile file extraction fields");
+
+        index_unit_repo::sync_units(
+            &conn,
+            &ink_resource_id,
+            vec![index_unit_repo::CreateUnitInput {
+                resource_id: ink_resource_id.clone(),
+                unit_index: 0,
+                image_blob_hash: None,
+                image_mime_type: None,
+                text_content: Some(hostile_manifest.clone()),
+                text_source: Some("native".to_string()),
+            }],
+        )
+        .expect("seed a stale manifest-text unit from the older behavior");
+
+        service
+            .sync_resource_to_units(&ink_resource_id)
+            .expect("sync managed ink file");
+        let ink_units = index_unit_repo::get_by_resource(&conn, &ink_resource_id)
+            .expect("read managed ink units");
+        assert!(
+            ink_units.is_empty(),
+            "managed .dsink must produce zero indexing units"
+        );
+        let ordinary = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "ordinary-json-index-fixture",
+            "ordinary.json",
+            32,
+            "document",
+            Some("application/json"),
+            None,
+            None,
+        )
+        .expect("create ordinary JSON file");
+        let ordinary_resource_id = ordinary.resource_id.expect("ordinary resource id");
+        conn.execute(
+            "UPDATE resources SET data = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r#"{"message":"ordinary JSON remains indexable"}"#,
+                &ordinary_resource_id
+            ],
+        )
+        .expect("set ordinary JSON data");
+        conn.execute(
+            "UPDATE files SET extracted_text = ?1 WHERE id = ?2",
+            rusqlite::params!["ordinary JSON remains indexable", &ordinary.id],
+        )
+        .expect("set ordinary extracted text");
+
+        service
+            .sync_resource_to_units(&ordinary_resource_id)
+            .expect("sync ordinary JSON file");
+        let ordinary_units = index_unit_repo::get_by_resource(&conn, &ordinary_resource_id)
+            .expect("read ordinary JSON units");
+        assert_eq!(ordinary_units.len(), 1);
+        assert!(ordinary_units[0]
+            .text_content
+            .as_deref()
+            .unwrap_or_default()
+            .contains("ordinary JSON remains indexable"));
+    }
 
     #[test]
     fn legacy_cross_dimension_flag_always_selects_unified_profile_planner() {

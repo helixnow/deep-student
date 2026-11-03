@@ -33,6 +33,10 @@ export {
   type ReferenceToChatResult,
   type SourceType,
 } from './useReferenceToChat';
+export { resolveFilePreviewMode, isRichDocumentPreviewMode } from './apps/views/filePreviewResolver';
+export type { FilePreviewMode } from './apps/views/filePreviewResolver';
+export { sanitizeRenderedDom, sanitizeRenderedLinks, sanitizeDocxGeneratedStyles } from './apps/views/sanitizers';
+export type { SanitizeDocxStylesOptions } from './apps/views/sanitizers';
 
 // 导航上下文
 export {

@@ -76,6 +76,7 @@ pub mod context_compiler;
 pub mod helpers;
 pub mod history;
 pub mod hooks; // WI-13: 流水线钩子（审批准入 + 审计记录内置 hook）
+pub(crate) mod ink_visual_rounds;
 pub mod llm_adapter;
 #[cfg(test)]
 mod llm_content_crash_tests;

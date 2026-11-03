@@ -139,13 +139,14 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 2026-09-09：qbank-tools 新增 2 个 AI 出题工具后实测 6900，有意识上调至 7000
 // （先精简一轮 7025→6900，剩余属合理功能增长）；记录见 R4-WI-10-full.md 末节。
 const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_000;
+// 2026-11-03 Ink 首发单独计入功能预算，旧组护栏不变：旧组实测合计 51299，Ink 实测 2851。
 const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
-// 2026-09-09 合并 #391（qbank AI 出题）后实测 total = 75900：main 新增工具
-// 与 qbank-tools 叠加，属合理功能增长，有意识上调至 76500；记录见
-// docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
-// 2026-10-04：qbank_import_document 支持 resource_id 后实测 76554，先精简一轮至 76520，
-// 剩余属合理功能增长，有意识上调至 76600；记录同上。
+const MAX_INK_SCHEMA_TOKENS = 3_000;
+const MAX_AGGREGATE_SCHEMA_TOKENS = MAX_TOTAL_SCHEMA_TOKENS + MAX_INK_SCHEMA_TOKENS;
+// 2026-09-09/10-04 legacy schema+content baseline (see R4-WI-10-full.md).
 const MAX_TOTAL_TOKENS = 76_600;
+const MAX_INK_TOTAL_TOKENS = 3_200;
+const MAX_AGGREGATE_TOTAL_TOKENS = MAX_TOTAL_TOKENS + MAX_INK_TOTAL_TOKENS;
 
 // ============================================================================
 // 测试
@@ -209,12 +210,24 @@ describe('builtin skill schema token budget baseline (WI-10)', () => {
     ).toEqual([]);
   });
 
-  it('aggregate schema and total budgets stay within baseline ceilings', () => {
-    const totalSchema = ranked.reduce((sum, b) => sum + b.schemaTokens, 0);
-    const totalAll = ranked.reduce((sum, b) => sum + b.totalTokens, 0);
-    expect(totalSchema).toBeGreaterThan(0);
-    expect(totalSchema).toBeLessThanOrEqual(MAX_TOTAL_SCHEMA_TOKENS);
-    expect(totalAll).toBeLessThanOrEqual(MAX_TOTAL_TOKENS);
+  it('preserves legacy aggregate ceilings and budgets Ink additively', () => {
+    const ink = budgets.find((budget) => budget.id === 'ink-tools');
+    expect(ink, 'ink-tools must have its own explicit feature budget').toBeDefined();
+    if (!ink) throw new Error('ink-tools budget is missing');
+
+    const legacy = budgets.filter((budget) => budget.id !== 'ink-tools');
+    const legacySchema = legacy.reduce((sum, budget) => sum + budget.schemaTokens, 0);
+    const legacyTotal = legacy.reduce((sum, budget) => sum + budget.totalTokens, 0);
+    const totalSchema = ranked.reduce((sum, budget) => sum + budget.schemaTokens, 0);
+    const totalAll = ranked.reduce((sum, budget) => sum + budget.totalTokens, 0);
+
+    expect(legacySchema).toBeGreaterThan(0);
+    expect(legacySchema).toBeLessThanOrEqual(MAX_TOTAL_SCHEMA_TOKENS);
+    expect(legacyTotal).toBeLessThanOrEqual(MAX_TOTAL_TOKENS);
+    expect(ink.schemaTokens).toBeLessThanOrEqual(MAX_INK_SCHEMA_TOKENS);
+    expect(ink.totalTokens).toBeLessThanOrEqual(MAX_INK_TOTAL_TOKENS);
+    expect(totalSchema).toBeLessThanOrEqual(MAX_AGGREGATE_SCHEMA_TOKENS);
+    expect(totalAll).toBeLessThanOrEqual(MAX_AGGREGATE_TOTAL_TOKENS);
   });
 
   it('emits markdown report when TOKEN_BUDGET_REPORT_PATH is set', () => {

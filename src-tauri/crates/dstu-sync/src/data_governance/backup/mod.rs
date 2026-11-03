@@ -7069,6 +7069,319 @@ mod tests {
     }
 
     #[test]
+    fn vfs_backup_restore_preserves_ink_manifest_artifact_blob_pin_and_immutable_triggers() {
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::vfs::{
+            database::VfsDatabase,
+            ink::{
+                InkAuthor, InkBackground, InkObject, InkObjectContent, InkPage, InkRect, InkRuling,
+            },
+            repos::{InkArtifactDraft, VfsBlobRepo, VfsInkArtifactRepo, VfsInkRepo},
+        };
+
+        const PNG_1X1: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let mut coordinator =
+            crate::data_governance::migration::MigrationCoordinator::new(active_dir.clone());
+        coordinator.migrate_single(DatabaseId::Vfs).unwrap();
+
+        let db = VfsDatabase::new(&active_dir).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let mut manifest = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Backup Ink artifact",
+            InkRuling::Blank,
+            100.0,
+            100.0,
+            "backup-ink-create",
+            None,
+        )
+        .unwrap();
+        let page_id = manifest.pages[0].page_id.clone();
+        let manifest = VfsInkRepo::save_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            "backup-ink-page",
+            &InkPage {
+                schema_version: 1,
+                page_id: page_id.clone(),
+                objects: vec![InkObject {
+                    id: "backup-text".to_owned(),
+                    author: InkAuthor::User,
+                    created_at: 1,
+                    content: InkObjectContent::Text {
+                        rect: InkRect {
+                            x: 10.0,
+                            y: 10.0,
+                            width: 50.0,
+                            height: 20.0,
+                        },
+                        text: "saved page text".to_owned(),
+                        font_size: 12.0,
+                        color: "#000000".to_owned(),
+                    },
+                }],
+            },
+        )
+        .unwrap();
+
+        let image = VfsBlobRepo::store_blob_with_conn(
+            &conn,
+            db.blobs_dir(),
+            PNG_1X1,
+            Some("image/png"),
+            Some("png"),
+        )
+        .unwrap();
+        let old_manifest_hash: String = conn
+            .query_row(
+                "SELECT blob_hash FROM files WHERE id = ?1",
+                [&manifest.document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let mut image_manifest = manifest.clone();
+        image_manifest.pages[0].background = InkBackground::Image {
+            blob_hash: image.hash.clone(),
+        };
+        let image_manifest_bytes = serde_json::to_vec(&image_manifest).unwrap();
+        let image_manifest_blob = VfsBlobRepo::store_blob_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &image_manifest_bytes,
+            Some(crate::vfs::ink::INK_MIME),
+            Some("dsink"),
+        )
+        .unwrap();
+        let mut blob_refs = vec![
+            image_manifest.pages[0].page_blob_hash.clone(),
+            image.hash.clone(),
+        ];
+        blob_refs.sort();
+        blob_refs.dedup();
+        let preview = serde_json::json!({
+            "ink": {
+                "schema_version": 1,
+                "document_id": image_manifest.document_id,
+                "revision": image_manifest.revision,
+                "manifest_blob_hash": image_manifest_blob.hash,
+                "blob_refs": blob_refs,
+            }
+        })
+        .to_string();
+        conn.execute(
+            "UPDATE files SET blob_hash = ?1, sha256 = ?1, size = ?2, preview_json = ?3 WHERE id = ?4",
+            rusqlite::params![
+                image_manifest_blob.hash,
+                image_manifest_bytes.len() as i64,
+                preview,
+                image_manifest.document_id,
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE resources SET hash = ?1 WHERE source_id = ?2 AND source_table = 'files'",
+            rusqlite::params![image_manifest_blob.hash, image_manifest.document_id],
+        )
+        .unwrap();
+        VfsBlobRepo::decrement_ref_with_conn(&conn, db.blobs_dir(), &old_manifest_hash).unwrap();
+
+        let artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &conn,
+            db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "backup-render-immutable".to_owned(),
+                render_id: "backup-render-immutable".to_owned(),
+                document_id: image_manifest.document_id.clone(),
+                page_id: page_id.clone(),
+                revision: image_manifest.revision.clone(),
+                source_hash: Some(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned(),
+                ),
+                source_annotation_revision: Some("annotations-backup".to_owned()),
+                conversion_revision: Some("conversion-backup".to_owned()),
+                crop: None,
+                width_px: 1,
+                height_px: 1,
+            },
+            PNG_1X1,
+        )
+        .unwrap();
+        let source_pin_count: i64 = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                [&artifact.blob_hash],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            source_pin_count, 3,
+            "manifest background + visible image + artifact pin"
+        );
+        assert_eq!(
+            db.get_schema_version().unwrap(),
+            dstu_storage::migration::vfs::VFS_SCHEMA_VERSION
+        );
+        drop(conn);
+        drop(db);
+
+        let backup_root = backup_dir.path().join("ink-artifact-full-backup");
+        fs::create_dir(&backup_root).unwrap();
+        let source_vfs_path = active_dir.join("databases").join("vfs.db");
+        manager
+            .backup_single_database(&DatabaseId::Vfs, &source_vfs_path, &backup_root, 0, 1)
+            .unwrap();
+        let asset_result = assets::backup_assets(
+            &active_dir,
+            &backup_root,
+            &AssetBackupConfig {
+                asset_types: vec![AssetType::VfsBlobs],
+                ..AssetBackupConfig::default()
+            },
+        )
+        .unwrap();
+        assert!(asset_result.files.iter().any(|asset| {
+            asset.asset_type == AssetType::VfsBlobs
+                && asset
+                    .relative_path
+                    .ends_with(&format!("{}.png", artifact.blob_hash))
+        }));
+
+        let restored_dir = app_data_dir.path().join("restored-slot");
+        manager
+            .restore_single_database_to_dir(&DatabaseId::Vfs, &backup_root, &restored_dir)
+            .unwrap();
+        let restored_vfs = VfsDatabase::new(&restored_dir).unwrap();
+        {
+            let restored_conn = restored_vfs.get_conn_safe().unwrap();
+            let database_pin_count: i64 = restored_conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&artifact.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(database_pin_count, 3);
+            let missing_png = VfsBlobRepo::get_blob_path_with_conn(
+                &restored_conn,
+                restored_vfs.blobs_dir(),
+                &artifact.blob_hash,
+            )
+            .unwrap()
+            .unwrap();
+            assert!(
+                !missing_png.exists(),
+                "the database snapshot does not contain VFS blob files"
+            );
+        }
+        drop(restored_vfs);
+        assets::restore_assets(&backup_root, &restored_dir, &asset_result.files).unwrap();
+
+        let restored_db = VfsDatabase::new(&restored_dir).unwrap();
+        assert_eq!(
+            restored_db.get_schema_version().unwrap(),
+            dstu_storage::migration::vfs::VFS_SCHEMA_VERSION
+        );
+        {
+            let restored_conn = restored_db.get_conn_safe().unwrap();
+            let restored_manifest = VfsInkRepo::get_manifest_with_conn(
+                &restored_conn,
+                restored_db.blobs_dir(),
+                &image_manifest.document_id,
+            )
+            .unwrap();
+            assert_eq!(restored_manifest, image_manifest);
+            let restored_page = VfsInkRepo::get_page_with_conn(
+                &restored_conn,
+                restored_db.blobs_dir(),
+                &image_manifest.document_id,
+                &page_id,
+            )
+            .unwrap();
+            assert!(matches!(
+                restored_page.objects[0].content,
+                InkObjectContent::Text { ref text, .. } if text == "saved page text"
+            ));
+            assert_eq!(
+                VfsInkArtifactRepo::load_for_document_with_conn(
+                    &restored_conn,
+                    restored_db.blobs_dir(),
+                    &artifact.render_id,
+                    &image_manifest.document_id,
+                    &image_manifest.revision,
+                )
+                .unwrap(),
+                (artifact.clone(), PNG_1X1.to_vec())
+            );
+            let restored_pin_count: i64 = restored_conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&artifact.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(restored_pin_count, 3);
+            for trigger in [
+                "trg__change_log_ink_render_artifacts_insert",
+                "trg_ink_render_artifacts_immutable_update",
+                "trg_ink_render_artifacts_immutable_delete",
+            ] {
+                let exists: i64 = restored_conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                        [trigger],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(exists, 1, "missing restored artifact trigger {trigger}");
+            }
+            assert!(restored_conn
+                .execute(
+                    "UPDATE ink_render_artifacts SET metadata_json = '{}' WHERE render_id = ?1",
+                    [&artifact.render_id],
+                )
+                .is_err());
+            assert!(restored_conn
+                .execute(
+                    "DELETE FROM ink_render_artifacts WHERE render_id = ?1",
+                    [&artifact.render_id],
+                )
+                .is_err());
+        }
+        drop(restored_db);
+
+        let reopened_db = VfsDatabase::new(&restored_dir).unwrap();
+        let reopened_conn = reopened_db.get_conn_safe().unwrap();
+        let (reopened_artifact, reopened_png) = VfsInkArtifactRepo::load_with_conn(
+            &reopened_conn,
+            reopened_db.blobs_dir(),
+            &artifact.render_id,
+        )
+        .unwrap();
+        assert_eq!(reopened_artifact, artifact);
+        assert_eq!(reopened_png, PNG_1X1);
+        let backed_up_image = VfsBlobRepo::get_blob_path_with_conn(
+            &reopened_conn,
+            reopened_db.blobs_dir(),
+            &image.hash,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(fs::read(backed_up_image).unwrap(), PNG_1X1);
+    }
+
+    #[test]
     fn test_backup_and_restore_single_database() {
         let (manager, backup_dir, app_data_dir) = setup_test_env();
 

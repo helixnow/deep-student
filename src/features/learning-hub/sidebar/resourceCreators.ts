@@ -1,6 +1,7 @@
 import type React from 'react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createEmpty } from '@/dstu';
+import { createInk } from '@/features/ink';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { dstuNodeToResourceListItem } from '../types';
@@ -225,6 +226,38 @@ export function createResourceCreators({
     }
   };
 
+  const handleNewInk = async (folderId = currentCreatableFolderId) => {
+    if (!ensureCreatableView()) return;
+
+    try {
+      const manifest = await createInk({
+        title: t('finder.toolbar.newInk'),
+        ruling: 'blank',
+        width: 794,
+        height: 1123,
+        operation_id: crypto.randomUUID(),
+        folder_id: folderId,
+      });
+      if (!isMountedRef.current) return;
+
+      showGlobalNotification('success', t('finder.create.inkSuccess'));
+      void handleRefresh();
+      setSelectedIds(new Set([manifest.document_id]));
+      onOpenApp?.({
+        id: manifest.document_id,
+        title: manifest.title,
+        type: 'file',
+        previewType: 'ink',
+        updatedAt: Date.now(),
+        sourceDb: 'attachments',
+      });
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      debugLog.error('[LearningHubSidebar] handleNewInk error:', error);
+      showGlobalNotification('error', t('finder.create.inkError'));
+    }
+  };
+
   return {
     handleNewNote,
     handleNewExam,
@@ -232,5 +265,6 @@ export function createResourceCreators({
     handleNewTranslation,
     handleNewEssay,
     handleNewMindMap,
+    handleNewInk,
   };
 }

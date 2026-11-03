@@ -36,6 +36,7 @@ export interface SidebarFinderToolbarProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
+  handleNewInk: () => Promise<void>;
   toolbarPortalTarget: LearningHubSidebarProps['toolbarPortalTarget'];
   toolbarPortalMode: NonNullable<LearningHubSidebarProps['toolbarPortalMode']>;
 }
@@ -71,6 +72,7 @@ export function SidebarFinderToolbar({
   handleNewTranslation,
   handleNewEssay,
   handleNewMindMap,
+  handleNewInk,
   toolbarPortalTarget,
   toolbarPortalMode,
 }: SidebarFinderToolbarProps) {
@@ -111,6 +113,7 @@ export function SidebarFinderToolbar({
         onNewTranslation={handleNewTranslation}
         onNewEssay={handleNewEssay}
         onNewMindMap={handleNewMindMap}
+        onNewInk={() => { void handleNewInk(); }}
       />
     ) : undefined}
     titlebarMode={toolbarPortalTarget ? toolbarPortalMode : false}

@@ -136,4 +136,50 @@ describe('restoreFromBackend — 保留加载前加入的未保存引用', () =>
     await flushAsync();
     expect(other.getState().pendingContextRefs.map((r) => r.resourceId)).toEqual(['res_saved00001']);
   });
+
+  it('restores persisted camelCase inkArtifacts on variant tool blocks', async () => {
+    const { actions, getState } = createHarness({ sessionId: 'sess_parallel' });
+    const artifact = {
+      artifactId: 'artifact-1',
+      renderId: 'render-1',
+      sessionId: 'sess_parallel',
+      toolCallId: 'call-1',
+      roundLastToolCallId: 'call-last',
+      documentId: 'doc-1',
+      pageId: 'page-2',
+      revision: 'r_7',
+      blobHash: 'a'.repeat(64),
+      resourceId: 'res_artifact_1',
+      contentHash: 'b'.repeat(64),
+      mimeType: 'image/png',
+      widthPx: 640,
+      heightPx: 480,
+    };
+    const backend = buildResponse([]);
+    backend.messages = [{
+      id: 'msg_ink',
+      sessionId: 'sess_parallel',
+      role: 'assistant',
+      blockIds: ['blk_ink'],
+      timestamp: 100,
+      activeVariantId: 'var_ink',
+      variants: [{ id: 'var_ink', modelId: 'model-1', blockIds: ['blk_ink'], status: 'success', createdAt: 100 }],
+    }];
+    backend.blocks = [{
+      id: 'blk_ink',
+      messageId: 'msg_ink',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName: 'builtin-ink_render',
+      toolOutput: { status: 'success' },
+      inkArtifacts: [artifact],
+    } as LoadSessionResponseType['blocks'][number]];
+
+    actions.restoreFromBackend(backend);
+
+    await vi.waitFor(() => expect(getState().isDataLoaded).toBe(true));
+    expect(getState().blocks.get('blk_ink')?.type).toBe('mcp_tool');
+    expect((getState().blocks.get('blk_ink') as { inkArtifacts?: unknown[] } | undefined)?.inkArtifacts).toEqual([artifact]);
+    expect(getState().messageMap.get('msg_ink')?.variants?.[0].blockIds).toEqual(['blk_ink']);
+  });
 });

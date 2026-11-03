@@ -261,6 +261,8 @@ impl CoordinatorSleepExecutor {
                 ended_at: None,
                 first_chunk_at: Some(now_ms),
                 block_index: 0,
+
+                ink_artifacts: Vec::new(),
             };
 
             if let Ok(conn) = chat_v2_db.get_conn_safe() {

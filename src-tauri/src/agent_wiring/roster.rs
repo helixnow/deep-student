@@ -17,12 +17,12 @@ use crate::chat_v2::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
     DstuToolExecutor, FetchExecutor, FileManagerExecutor, FsrsSettingsExecutor,
-    ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
-    LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
-    McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor,
-    SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
-    ToolExecutor, ToolExecutorRegistry, TranslationToolExecutor, UserTodoExecutor,
-    WorkspaceFsExecutor, WorkspaceToolExecutor,
+    ImageGenerationExecutor, IndexWebpageToolExecutor, InkToolExecutor, KnowledgeExecutor,
+    LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
+    LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor,
+    OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor,
+    TextbookPdfToolExecutor, ToolExecutor, ToolExecutorRegistry, TranslationToolExecutor,
+    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 use crate::chat_v2::workspace::WorkspaceCoordinator;
 
@@ -75,6 +75,7 @@ impl ExecutorRoster for AppExecutorRoster {
         executors.push(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         executors.push(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
         executors.push(Arc::new(TextbookPdfToolExecutor::new()));
+        executors.push(Arc::new(InkToolExecutor::new()));
         executors.push(Arc::new(IndexWebpageToolExecutor::new()));
         executors.push(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
         executors.push(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器

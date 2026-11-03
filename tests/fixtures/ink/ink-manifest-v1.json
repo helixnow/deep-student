@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "document_id": "doc-ink-demo-0001",
+  "revision": "r-000007",
+  "title": "手写批注示例",
+  "source": {
+    "kind": "resource",
+    "resource_id": "res-pdf-src-0042",
+    "source_hash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "conversion_revision": "conv-1"
+  },
+  "pages": [
+    {
+      "page_id": "page-0001",
+      "width": 800.0,
+      "height": 1000.0,
+      "background": { "kind": "blank", "ruling": "lined" },
+      "page_blob_hash": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809"
+    }
+  ],
+  "last_operation": {
+    "operation_id": "op-000007",
+    "input_hash": "deadbeefcafebabe0123456789abcdefdeadbeefcafebabe0123456789abcdef",
+    "previous_revision": "r-000006",
+    "result_revision": "r-000007"
+  }
+}

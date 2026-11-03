@@ -1167,19 +1167,7 @@ impl ChatV2Pipeline {
 
         ctx.start_streaming();
 
-        // issue #464：VL 变体在工具环内注入检索命中页图（与单变体路径同一实现）
-        let retrieval_page_image_seed = compile_ctx
-            .execution_snapshot
-            .as_ref()
-            .filter(|snapshot| snapshot.resolved_model_is_multimodal)
-            .map(|snapshot| {
-                (
-                    snapshot.generation_plan.image_budget,
-                    super::context_compiler::canonical_image_blob_hashes(
-                        &compile_ctx.canonical_content,
-                    ),
-                )
-            });
+        // History and live ink rendering share one request-local image budget per variant.
         let system_prompt = prompt_parts.stable_system;
         let turn_volatile = prompt_parts.turn_volatile;
         let chat_history = std::mem::take(&mut compile_ctx.chat_history);
@@ -1208,13 +1196,34 @@ impl ChatV2Pipeline {
         let mut messages = chat_history;
         messages.push(current_user_message);
         let mut retrieval_page_image_budget =
-            retrieval_page_image_seed.map(|(image_budget, referenced_blobs)| {
-                super::context_compiler::RetrievalPageImageBudget::new(
-                    image_budget,
+            compile_ctx.execution_snapshot.as_ref().map(|snapshot| {
+                let mut existing_blobs = super::context_compiler::canonical_image_blob_hashes(
+                    &compile_ctx.canonical_content,
+                );
+                for message in &messages {
+                    if let Some(canonical) = message
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("canonicalContent"))
+                        .and_then(|value| {
+                            serde_json::from_value::<
+                            Vec<crate::chat_v2::types::CanonicalContentPart>,
+                        >(value.clone()).ok()
+                        })
+                    {
+                        existing_blobs.extend(
+                            super::context_compiler::canonical_image_blob_hashes(&canonical),
+                        );
+                    }
+                }
+                super::context_compiler::RetrievalPageImageBudget::new_with_bytes(
+                    snapshot.generation_plan.image_budget,
                     super::context_compiler::count_request_images(&messages),
-                    referenced_blobs,
+                    super::context_compiler::count_request_image_bytes(&messages),
+                    existing_blobs,
                 )
             });
+        let mut ink_visual_image_batches: Vec<(String, LegacyChatMessage)> = Vec::new();
 
         let wrap_token_policy = self
             .resolve_api_config_by_id(options.model_id.as_deref())
@@ -1684,12 +1693,76 @@ impl ChatV2Pipeline {
                 )
                 .await?
             };
+            let prior_ink_visual_batch_count = ink_visual_image_batches.len();
             // 合成失败结果按原始 tool_calls 顺序归并（保证协议完整性与历史确定性）
-            let tool_results = super::tool_loop::merge_round_results_in_call_order(
+            let mut tool_results = super::tool_loop::merge_round_results_in_call_order(
                 &tool_calls,
                 executed_results,
                 doom_synthetic,
             );
+            if tool_results.iter().any(|result| {
+                super::ink_visual_rounds::is_trusted_ink_renderer(&result.tool_name)
+                    && result.success
+            }) {
+                let image_budget = compile_ctx
+                    .execution_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.generation_plan.image_budget)
+                    .unwrap_or(0);
+                let budget = retrieval_page_image_budget.get_or_insert_with(|| {
+                    super::context_compiler::RetrievalPageImageBudget::new_with_bytes(
+                        image_budget,
+                        super::context_compiler::count_request_images(&messages),
+                        super::context_compiler::count_request_image_bytes(&messages),
+                        super::context_compiler::canonical_image_blob_hashes(
+                            &compile_ctx.canonical_content,
+                        ),
+                    )
+                });
+                {
+                    match super::ink_visual_rounds::prepare_live_ink_visual_round(
+                        &self.db,
+                        self.vfs_db.as_deref(),
+                        &session_id,
+                        ctx.message_id(),
+                        &mut tool_results,
+                        budget,
+                        compile_ctx
+                            .execution_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.resolved_model_is_multimodal),
+                    ) {
+                        Ok(Some((round_last_call_id, image_message))) => {
+                            ink_visual_image_batches.push((round_last_call_id, image_message));
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            let message = error.to_string();
+                            let mut interleaved_blocks = ctx.get_interleaved_blocks();
+                            let outcome = super::tool_loop::handle_live_ink_delivery_error(
+                                &self.db,
+                                &mut tool_results,
+                                &mut interleaved_blocks,
+                                &message,
+                            );
+                            for result in tool_results.iter().filter(|result| {
+                                super::ink_visual_rounds::is_trusted_ink_renderer(&result.tool_name)
+                            }) {
+                                if let Some(block_id) = result.block_id.as_deref() {
+                                    if let Some(block) = interleaved_blocks.iter().find(|block| {
+                                        block.id == block_id
+                                            && block.status == block_status::ERROR
+                                            && block.error.as_deref() == Some(message.as_str())
+                                    }) {
+                                        ctx.add_interleaved_block(block.clone());
+                                    }
+                                }
+                            }
+                            outcome?;
+                        }
+                    }
+                }
+            }
 
             let success_count = tool_results.iter().filter(|r| r.success).count();
             log::info!(
@@ -1939,23 +2012,33 @@ impl ChatV2Pipeline {
                     batch,
                 );
             }
+            super::tool_loop::insert_live_ink_visual_batches(
+                &mut messages,
+                &ink_visual_image_batches[prior_ink_visual_batch_count..],
+            )?;
 
             // issue #464：检索命中页图插在本轮尾（技能之后）；messages 逐轮追加，
             // 插入一次即在后续轮次保持逐字节不变
-            if let Some(budget) = retrieval_page_image_budget.as_mut() {
-                if let Some(round_last_call_id) = tool_results
-                    .last()
-                    .and_then(|r| r.tool_call_id.clone())
-                    .filter(|id| !id.is_empty())
-                {
-                    if let Some(page_message) =
-                        self.build_retrieval_page_image_injection(&tool_results, budget)
+            if compile_ctx
+                .execution_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.resolved_model_is_multimodal)
+            {
+                if let Some(budget) = retrieval_page_image_budget.as_mut() {
+                    if let Some(round_last_call_id) = tool_results
+                        .last()
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty())
                     {
-                        super::context_compiler::insert_retrieval_page_image_message(
-                            &mut messages,
-                            &round_last_call_id,
-                            page_message,
-                        );
+                        if let Some(page_message) =
+                            self.build_retrieval_page_image_injection(&tool_results, budget)
+                        {
+                            super::context_compiler::insert_retrieval_page_image_message(
+                                &mut messages,
+                                &round_last_call_id,
+                                page_message,
+                            );
+                        }
                     }
                 }
             }
@@ -3372,6 +3455,8 @@ impl ChatV2Pipeline {
                         // 🔧 检索块使用 now_ms 作为 first_chunk_at
                         first_chunk_at: Some(now_ms),
                         block_index: block_index_counter,
+
+                        ink_artifacts: Vec::new(),
                     };
                     pending_blocks.push(rag_block);
                     all_block_ids.push(block_id.clone());
@@ -3402,6 +3487,8 @@ impl ChatV2Pipeline {
                         // 🔧 检索块使用 now_ms 作为 first_chunk_at
                         first_chunk_at: Some(now_ms),
                         block_index: block_index_counter,
+
+                        ink_artifacts: Vec::new(),
                     };
                     pending_blocks.push(memory_block);
                     all_block_ids.push(block_id.clone());
@@ -3432,6 +3519,8 @@ impl ChatV2Pipeline {
                         // 🔧 检索块使用 now_ms 作为 first_chunk_at
                         first_chunk_at: Some(now_ms),
                         block_index: block_index_counter,
+
+                        ink_artifacts: Vec::new(),
                     };
                     pending_blocks.push(web_block);
                     all_block_ids.push(block_id.clone());

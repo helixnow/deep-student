@@ -320,8 +320,10 @@ fn get_resource_ref_with_conn(
         }
     };
 
-    // ★ 附件类型需要查询数据库获取精确类型（image 或 file）
-    if source_id.starts_with("att_") {
+    // ★ 附件/文件类型需要查询数据库获取精确类型（image 或 file）
+    //   Ink 渲染产物等 `file_` 资源也可能以 files.type='image' 存储，
+    //   不能只按前缀当作普通文件，否则解析会走文本提取并丢失图片字节。
+    if source_id.starts_with("att_") || source_id.starts_with("file_") {
         resource_type = get_attachment_type_with_conn(conn, source_id);
     }
 
@@ -1882,6 +1884,29 @@ pub fn extract_file_text_with_strategy(
 ) -> Option<String> {
     const TEXT_THRESHOLD: usize = 1000;
 
+    let is_dsink_extension = file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.eq_ignore_ascii_case(crate::vfs::ink::INK_EXTENSION))
+        .unwrap_or(false);
+    let is_dsink_mime = conn
+        .query_row(
+            "SELECT mime_type FROM files WHERE id = ?1 OR resource_id = ?1 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END LIMIT 1",
+            params![source_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+        .flatten()
+        .as_deref()
+        == Some(crate::vfs::ink::INK_MIME);
+    if is_dsink_extension || is_dsink_mime {
+        return Some(format!(
+            "[手写文档: {}。当前不支持将 .dsink 当作普通文件读取；请使用 ink_get 或 ink_render 工具查看。]",
+            file_name
+        ));
+    }
+
     // 1. 获取 OCR 结果 (ocr_pages_json)
     let ocr_text = get_ocr_pages_text_with_conn(conn, source_id);
     let ocr_len = ocr_text.as_ref().map(|t| t.len()).unwrap_or(0);
@@ -2012,7 +2037,8 @@ mod tests {
                 file_name TEXT NOT NULL,
                 extracted_text TEXT,
                 ocr_pages_json TEXT,
-                resource_id TEXT
+                resource_id TEXT,
+                mime_type TEXT
             )
             "#,
             [],
@@ -2040,6 +2066,24 @@ mod tests {
         .expect("Failed to insert test file");
     }
 
+    fn insert_test_file_with_mime(
+        conn: &Connection,
+        id: &str,
+        file_name: &str,
+        mime_type: &str,
+        extracted_text: Option<&str>,
+        ocr_pages_json: Option<&str>,
+    ) {
+        conn.execute(
+            r#"
+            INSERT INTO files (id, file_name, mime_type, extracted_text, ocr_pages_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+            params![id, file_name, mime_type, extracted_text, ocr_pages_json],
+        )
+        .expect("Failed to insert test file with MIME type");
+    }
+
     fn insert_test_file_with_resource_id(
         conn: &Connection,
         id: &str,
@@ -2061,6 +2105,59 @@ mod tests {
     // ------------------------------------------------------------------------
     // extract_file_text_with_strategy 测试
     // ------------------------------------------------------------------------
+
+    #[test]
+    fn dsink_manifest_is_not_file_text_or_ocr() {
+        let conn = create_test_db();
+        let manifest_json = r#"{"schema_version":1,"document_id":"ink_1","revision":"r1","title":"Ink title","source":{"kind":"blank"},"pages":[{"page_id":"p1","width":800,"height":1000,"background":{"kind":"blank","ruling":"blank"},"page_blob_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"#;
+        insert_test_file_with_mime(
+            &conn,
+            "file_dsink",
+            "Managed drawing.dsink",
+            "application/vnd.deepstudent.ink+json",
+            Some(manifest_json),
+            Some(manifest_json),
+        );
+
+        let result = extract_file_text_with_strategy(
+            &conn,
+            "file_dsink",
+            "Managed drawing.dsink",
+            Some("eyJzY2hlbWFfdmVyc2lvbiI6MX0="),
+        );
+
+        let text = result.expect("unsupported .dsink must yield an explicit read notice");
+        assert!(
+            text.contains("不支持"),
+            "expected an explicit unsupported notice"
+        );
+        assert!(
+            !text.contains("schema_version"),
+            "raw manifest JSON must not be exposed"
+        );
+
+        for (id, name, mime, extracted) in [
+            (
+                "file_json",
+                "ordinary.json",
+                "application/json",
+                "ordinary JSON text",
+            ),
+            (
+                "file_markdown",
+                "ordinary.md",
+                "text/markdown",
+                "ordinary Markdown text",
+            ),
+        ] {
+            insert_test_file_with_mime(&conn, id, name, mime, Some(extracted), None);
+            assert_eq!(
+                extract_file_text_with_strategy(&conn, id, name, None).as_deref(),
+                Some(extracted),
+                "ordinary JSON and Markdown extraction must remain available"
+            );
+        }
+    }
 
     #[test]
     fn test_extract_file_text_ocr_priority() {
@@ -2642,5 +2739,127 @@ mod tests {
         let input: GetResourceRefsInput = serde_json::from_str(json).unwrap();
         assert!(!input.include_folder_contents);
         assert_eq!(input.max_items, 50); // default
+    }
+
+    // Complete 1x1 RGBA PNG (same fixture as ink_artifact_repo tests).
+    const INK_RENDER_PNG_1X1: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8,
+        0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00,
+        0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+
+    /// Regression: Ink render artifacts are stored by `VfsFileRepo` with a
+    /// `file_` id and `files.type = 'image'`. The ref resolver must keep them
+    /// typed as images, otherwise `vfs_resolve_resource_refs` runs the file
+    /// text-extraction path and returns `[文档: ink-render.png]` instead of the
+    /// PNG bytes, so `imageDefinition.formatToBlocks` reports the image invalid.
+    #[test]
+    fn ink_render_artifact_refs_keep_image_type_and_png_content() {
+        use crate::vfs::{
+            database::setup_migrated_test_db,
+            repos::{InkArtifactDraft, VfsFileRepo, VfsInkArtifactRepo},
+        };
+        use base64::Engine;
+
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &conn,
+            db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "render-ref-1".to_owned(),
+                render_id: "render-ref-1".to_owned(),
+                document_id: "doc-ref-1".to_owned(),
+                page_id: "page-1".to_owned(),
+                revision: "revision-1".to_owned(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: None,
+                width_px: 1,
+                height_px: 1,
+            },
+            INK_RENDER_PNG_1X1,
+        )
+        .unwrap();
+
+        // 0. Control: the Image branch itself already returns the artifact PNG.
+        //    Proves the ref classification below is the only lost-type point.
+        let image_typed_ref = VfsResourceRef {
+            source_id: artifact.file_id.clone(),
+            resource_hash: artifact.content_hash.clone(),
+            resource_type: VfsResourceType::Image,
+            name: "ink-render.png".to_owned(),
+            resource_id: Some(artifact.resource_id.clone()),
+            snippet: None,
+            inject_modes: None,
+        };
+        let image_resolved = resolve_single_ref_with_conn(&conn, db.blobs_dir(), &image_typed_ref)
+            .expect("resolving pre-typed image ref failed");
+        assert!(image_resolved.found);
+        assert_eq!(image_resolved.resource_type, VfsResourceType::Image);
+        let image_content = image_resolved
+            .content
+            .expect("pre-typed image ref must carry base64 content");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(image_content.trim())
+                .expect("pre-typed image content must be base64"),
+            INK_RENDER_PNG_1X1
+        );
+
+        // 1. vfs_get_resource_refs helper: the canonical artifact file id must
+        //    produce an image ref, not a generic file ref.
+        let reference = get_resource_ref_with_conn(&conn, &artifact.file_id)
+            .expect("ref lookup failed")
+            .expect("canonical ink artifact file must be referenceable");
+        assert_eq!(reference.source_id, artifact.file_id);
+        assert_eq!(reference.name, "ink-render.png");
+        assert_eq!(
+            reference.resource_type,
+            VfsResourceType::Image,
+            "ink artifacts use file_ ids; files.type='image' must win over the file_ prefix"
+        );
+
+        // 2. vfs_resolve_resource_refs helper: the image ref must carry the
+        //    original PNG bytes, not the file text-extraction placeholder.
+        let resolved = resolve_single_ref_with_conn(&conn, db.blobs_dir(), &reference)
+            .expect("resolving ink artifact ref failed");
+        assert!(resolved.found);
+        assert_eq!(resolved.resource_type, VfsResourceType::Image);
+        let content = resolved
+            .content
+            .expect("image ref must carry base64 content");
+        assert!(
+            !content.starts_with("[文档:"),
+            "image ref must not fall back to the file text-extraction placeholder: {content}"
+        );
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(content.trim())
+            .expect("image ref content must be base64");
+        assert_eq!(decoded, INK_RENDER_PNG_1X1);
+
+        // 3. Ordinary file_ documents must stay File after the DB lookup.
+        let plain_text = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "notes.txt",
+            4,
+            "file",
+            Some("text/plain"),
+            None,
+            None,
+        )
+        .unwrap();
+        let plain_ref = get_resource_ref_with_conn(&conn, &plain_text.id)
+            .expect("plain file ref lookup failed")
+            .expect("plain file must be referenceable");
+        assert_eq!(
+            plain_ref.resource_type,
+            VfsResourceType::File,
+            "ordinary file_ documents must remain typed as File"
+        );
     }
 }

@@ -258,6 +258,22 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260911,
+      "name": "chat_block_ink_artifacts",
+      "path": "chat_v2/V20260911__chat_block_ink_artifacts.sql",
+      "sha256": "36f74c669259d2be3efff5bc5eec43c7f1067177097961535df3fe615027933e",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260912,
+      "name": "ink_tool_undo",
+      "path": "chat_v2/V20260912__ink_tool_undo.sql",
+      "sha256": "316226fdfd6f2a6286f6d53a03e1b85679f1e1aab42294b0e20c93efafa77f44",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
@@ -1111,6 +1127,14 @@
       "name": "practice_sessions",
       "path": "vfs/V20261027__practice_sessions.sql",
       "sha256": "c3e8ac79833a91c5baedaa97a6f577b8d04d8975c094a13939d66bbc8940fe6e",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261103,
+      "name": "ink_render_artifacts",
+      "path": "vfs/V20261103__ink_render_artifacts.sql",
+      "sha256": "e6ce8747a6ba52882782477b5ec7b440449b4e6b13f93c03ec7818a3ebc7ca2b",
       "dangers": []
     }
   ]

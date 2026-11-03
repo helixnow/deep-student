@@ -27,6 +27,7 @@ import {
   StarHalf,
   CheckCircle,
   Cards,
+  PenNib,
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,8 @@ export interface LearningHubContextMenuProps {
   // ========== 回调函数 ==========
   /** 新建文件夹 */
   onCreateFolder?: (parentId: string | null) => void;
+  /** 新建手写笔记 */
+  onCreateInk?: (folderId: string | null) => void;
   /** 新建内容（笔记、题目集识别等） */
   onCreateItem?: (type: 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap', folderId: string | null) => void;
   /** 导入 Markdown 笔记 */
@@ -93,6 +96,8 @@ export interface LearningHubContextMenuProps {
   onDeleteFolder?: (folderId: string) => void;
   /** 打开资源/内容项 */
   onOpenResource?: (resource: ResourceListItem | VfsFolderItem) => void;
+  /** 从选中的受支持文件准备并打开笔迹批注 */
+  onAnnotateSource?: (resource: ResourceListItem) => void;
   /** 重命名资源 */
   onRenameResource?: (resource: ResourceListItem) => void;
   /** 删除资源 */
@@ -182,6 +187,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   canMove = true,
   canAddToChat = true,
   onCreateFolder,
+  onCreateInk,
   onCreateItem,
   onImportMarkdownNote,
   onRefresh,
@@ -189,6 +195,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onRenameFolder,
   onDeleteFolder,
   onOpenResource,
+  onAnnotateSource,
   onRenameResource,
   onDeleteResource,
   onReferenceToChat,
@@ -498,6 +505,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.importMarkdown')}
       </MenuItem>
       <MenuItem
+        icon={<PenNib size={15} weight="duotone" />}
+        onClick={() => {
+          onCreateInk?.(currentFolderId ?? null);
+          closeMenu();
+        }}
+      >
+        {t('finder.toolbar.newInk')}
+      </MenuItem>
+      <MenuItem
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
           closeMenu();
@@ -596,6 +612,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         }}
       >
         {t('contextMenu.importMarkdownHere')}
+      </MenuItem>
+      <MenuItem
+        icon={<PenNib size={15} weight="duotone" />}
+        onClick={() => {
+          onCreateInk?.(folder.folder.id);
+          closeMenu();
+        }}
+      >
+        {t('finder.toolbar.newInk')}
       </MenuItem>
       <MenuSeparator />
         </>
@@ -700,6 +725,17 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         >
           {t('contextMenu.open')}
         </MenuItem>
+        {resourceItem && onAnnotateSource && ['pdf', 'image', 'docx', 'pptx'].includes(resourceItem.previewType) && (
+          <MenuItem
+            icon={<PenNib size={15} weight="duotone" />}
+            onClick={() => {
+              closeMenu();
+              setTimeout(() => onAnnotateSource(resourceItem), 50);
+            }}
+          >
+            {t('contextMenu.annotateWithInk')}
+          </MenuItem>
+        )}
         <MenuSeparator />
         
         {/* 引用到对话 */}

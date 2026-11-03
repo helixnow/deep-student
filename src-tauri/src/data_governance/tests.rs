@@ -1058,7 +1058,7 @@ mod integration_tests {
         );
         assert_eq!(
             CHAT_V2_MIGRATION_SET.latest_version(),
-            20260910,
+            20260912,
             "ChatV2 latest version mismatch"
         );
 
