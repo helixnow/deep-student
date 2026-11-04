@@ -40,6 +40,8 @@ pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod migration;
 #[cfg(feature = "data_governance")]
 pub mod schema_registry;
+/// SQLite 连接级 VFS writer capability 与 board writer guard。
+pub mod sqlite_capability;
 pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub mod startup_cleanup;
 #[allow(dead_code)]

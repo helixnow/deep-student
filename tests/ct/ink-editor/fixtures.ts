@@ -68,7 +68,7 @@ export function createInkEditorBackend(
   saveMode: InkEditorSaveMode = 'success',
   documentId = inkEditorDocumentId,
   background: InkEditorBackgroundFixture = 'none',
-  options: { pdfPageHighlights?: boolean } = {},
+  options: { pdfPageHighlights?: boolean; largePage?: boolean } = {},
 ) {
   const pdfPageHighlights = options.pdfPageHighlights !== false;
   const manifestPages = structuredClone(pageRefs);
@@ -77,6 +77,13 @@ export function createInkEditorBackend(
     manifestPages[1].width = 160;
     manifestPages[1].height = 120;
     manifestPages[1].background = { kind: 'pdf_page', blob_hash: 'ink-editor-background-blob', source_page_index: 0 };
+  }
+  // CT-only larger surface for scroll/zoom viewport placement tests.
+  if (options.largePage) {
+    for (const pageRef of manifestPages) {
+      pageRef.width = 1200;
+      pageRef.height = 1600;
+    }
   }
   let manifest: InkManifest = {
     schema_version: 1,
@@ -111,6 +118,7 @@ export function createInkEditorBackend(
     [pageRefs[0].page_id, { schema_version: 1, page_id: pageRefs[0].page_id, objects: [redOtherPageStroke] }],
     [inkEditorPageId, { schema_version: 1, page_id: inkEditorPageId, objects: [bluePageStroke] }],
   ]);
+  let selectedPageId = inkEditorPageId;
   let saveAttempted = false;
   let saveCalls = 0;
   let getCalls = 0;
@@ -144,6 +152,7 @@ export function createInkEditorBackend(
       getPageCalls += 1;
       const page = request.page_id ? pages.get(request.page_id) : undefined;
       if (!page) throw new Error('Unknown fixture page');
+      selectedPageId = page.page_id;
       return structuredClone(page);
     },
     vfs_ink_get_render_inputs: (_command, payload) => {
@@ -173,7 +182,11 @@ export function createInkEditorBackend(
         height?: number;
         ruling?: InkRuling;
       } | undefined;
-      if (request?.document_id !== manifest.document_id || request.width !== 120 || request.height !== 160 || !request.ruling) {
+      const currentPageRef = manifest.pages.find((pageRef) => pageRef.page_id === selectedPageId);
+      if (!currentPageRef || request?.document_id !== manifest.document_id
+        || request.width !== currentPageRef.width || request.height !== currentPageRef.height
+        || !request.ruling || !['blank', 'lined', 'grid'].includes(request.ruling)
+        || typeof request.operation_id !== 'string' || !request.operation_id.trim()) {
         throw new Error('Invalid fixture append-page request');
       }
       if (request.expected_revision !== manifest.revision) throw new Error('Fixture revision conflict');
@@ -182,13 +195,14 @@ export function createInkEditorBackend(
       const pageId = `ink-editor-ct-page-${manifest.pages.length + 1}`;
       const pageRef: InkPageRef = {
         page_id: pageId,
-        width: request.width,
-        height: request.height,
+        width: currentPageRef.width,
+        height: currentPageRef.height,
         background: { kind: 'blank', ruling: request.ruling },
         page_blob_hash: `appended-${pageId}`,
       };
       pages.set(pageId, { schema_version: 1, page_id: pageId, objects: [] });
       manifest = { ...manifest, revision: `revision-${Number(manifest.revision.replace('revision-', '')) + 1}`, pages: [...manifest.pages, pageRef] };
+      selectedPageId = pageId;
       return structuredClone(manifest);
     },
     vfs_ink_rename: (_command, payload) => {

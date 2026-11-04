@@ -17,13 +17,16 @@ use crate::vfs::upload_saga::with_savepoint;
 use crate::vfs::{
     error::{VfsError, VfsResult},
     ink::{
-        parse_manifest, parse_page, validate_manifest, validate_page, InkBackground, InkManifest,
-        InkOperationReceipt, InkPage, InkPageRef, InkRuling, InkSource, INK_EXTENSION,
-        INK_MANIFEST_MAX_BYTES, INK_MIME, INK_PAGES_MAX, INK_PAGE_MAX_BYTES, INK_SCHEMA_VERSION,
+        parse_manifest, parse_page, validate_board_chunk, validate_manifest, validate_page,
+        InkBackground, InkBoardChunkRef, InkBoardSurface, InkManifest, InkOperationReceipt,
+        InkPage, InkPageRef, InkRuling, InkSource, INK_BOARD_CHUNK_MAX_BYTES,
+        INK_BOARD_SCHEMA_VERSION, INK_EXTENSION, INK_MANIFEST_MAX_BYTES, INK_MIME, INK_PAGES_MAX,
+        INK_PAGE_MAX_BYTES, INK_SCHEMA_VERSION,
     },
     repos::{
         blob_repo::{acquire_blob_mutation_guard, BlobMutationGuard, VfsBlobRepo},
         folder_repo::VfsFolderRepo,
+        ink_board_repo::{ensure_board_writer_guard, VfsInkBoardRepo},
     },
     types::VfsFolderItem,
 };
@@ -74,10 +77,10 @@ struct RenameInput<'a> {
     title: &'a str,
 }
 
-struct InkFileState {
-    resource_id: String,
-    manifest_hash: String,
-    resource_hash: String,
+pub(super) struct InkFileState {
+    pub(super) resource_id: String,
+    pub(super) manifest_hash: String,
+    pub(super) resource_hash: String,
 }
 
 pub struct VfsInkRepo;
@@ -203,6 +206,8 @@ impl VfsInkRepo {
                 previous_revision: None,
                 result_revision: revision,
             }),
+            surface: None,
+            chunks: Vec::new(),
         };
 
         with_savepoint(conn, "ink_create", || {
@@ -287,6 +292,13 @@ impl VfsInkRepo {
 
         let source = if file_id_exists(conn, &copy_id)? {
             let current = Self::get_manifest_with_conn(conn, blobs_dir, &copy_id)?;
+            // An exact copy retry may return an already-published v2 copy
+            // without writing. Repair the guard before that early return; the
+            // caller still holds the blob mutation guard, so this does not
+            // re-acquire it.
+            if current.schema_version == INK_BOARD_SCHEMA_VERSION {
+                ensure_board_writer_guard(conn)?;
+            }
             let receipt = current.last_operation.as_ref().ok_or_else(|| {
                 conflict(
                     OPERATION_UNKNOWN,
@@ -332,29 +344,61 @@ impl VfsInkRepo {
             }
         }
 
-        let mut pages = Vec::with_capacity(source.pages.len());
-        let mut copied_page_bytes = Vec::with_capacity(source.pages.len());
-        for source_ref in &source.pages {
-            let source_page =
-                Self::get_page_with_conn(conn, blobs_dir, document_id, &source_ref.page_id)?;
-            let mut page = source_page;
-            page.page_id = format!("p_{}", nanoid::nanoid!(12));
-            for object in &mut page.objects {
-                object.id = format!("o_{}", nanoid::nanoid!(12));
-            }
-            let bytes = serialize_page(&page)?;
-            let page_hash = VfsBlobRepo::compute_hash(&bytes);
-            copied_page_bytes.push(bytes);
-            pages.push(InkPageRef {
-                page_id: page.page_id,
-                width: source_ref.width,
-                height: source_ref.height,
-                background: source_ref.background.clone(),
-                page_blob_hash: page_hash,
-            });
+        // Only a v2 board copy publishes guarded board data. The repo blob
+        // mutation guard is already held; ensure reuses it and does not
+        // re-acquire the lock.
+        if source.schema_version == INK_BOARD_SCHEMA_VERSION {
+            ensure_board_writer_guard(conn)?;
         }
+
         let revision = format!("r_{}", nanoid::nanoid!(16));
         let source_revision = source.revision.clone();
+        let mut pages: Vec<InkPageRef> = Vec::new();
+        let mut copied_page_bytes: Vec<Vec<u8>> = Vec::new();
+        let mut surface: Option<InkBoardSurface> = None;
+
+        if source.schema_version == INK_BOARD_SCHEMA_VERSION {
+            // A v2 board copy keeps the source objects/style/order verbatim but
+            // publishes fresh document, surface page and chunk identities. It
+            // reuses the already-held mutation guard instead of calling the
+            // public board create/save paths, which would re-acquire it.
+            // Chunk payloads are not collected here: they are read, re-identified
+            // and stored one at a time inside the copy savepoint, so a legal
+            // board larger than one 16 MiB read batch never becomes a single
+            // read or a full in-memory copy.
+            let source_surface = source.surface.clone().ok_or_else(|| {
+                invalid_ink_argument("surface", "Ink board copy source has no board surface")
+            })?;
+            let InkBoardSurface::Board { ruling, bounds, .. } = source_surface;
+            surface = Some(InkBoardSurface::Board {
+                page_id: format!("p_{}", nanoid::nanoid!(12)),
+                ruling,
+                bounds,
+            });
+        } else {
+            pages = Vec::with_capacity(source.pages.len());
+            copied_page_bytes = Vec::with_capacity(source.pages.len());
+            for source_ref in &source.pages {
+                let source_page =
+                    Self::get_page_with_conn(conn, blobs_dir, document_id, &source_ref.page_id)?;
+                let mut page = source_page;
+                page.page_id = format!("p_{}", nanoid::nanoid!(12));
+                for object in &mut page.objects {
+                    object.id = format!("o_{}", nanoid::nanoid!(12));
+                }
+                let bytes = serialize_page(&page)?;
+                let page_hash = VfsBlobRepo::compute_hash(&bytes);
+                copied_page_bytes.push(bytes);
+                pages.push(InkPageRef {
+                    page_id: page.page_id,
+                    width: source_ref.width,
+                    height: source_ref.height,
+                    background: source_ref.background.clone(),
+                    page_blob_hash: page_hash,
+                });
+            }
+        }
+
         let mut manifest = InkManifest {
             schema_version: source.schema_version,
             document_id: copy_id.clone(),
@@ -368,6 +412,8 @@ impl VfsInkRepo {
                 previous_revision: Some(source_revision),
                 result_revision: revision,
             }),
+            surface,
+            chunks: Vec::new(),
         };
         validate_manifest(&manifest).map_err(map_ink_error)?;
 
@@ -384,6 +430,60 @@ impl VfsInkRepo {
                 )?;
                 *temporary_refs.entry(stored.hash.clone()).or_default() += 1;
                 manifest.pages[index].page_blob_hash = stored.hash;
+            }
+            if source.schema_version == INK_BOARD_SCHEMA_VERSION {
+                // Stream one source chunk at a time. Each legal source chunk is
+                // at most 8 MiB, so every single-chunk read fits the 16 MiB
+                // batch budget, and the serialized replacement is released
+                // before the next chunk is read.
+                for source_ref in &source.chunks {
+                    let mut chunk = VfsInkBoardRepo::get_chunks_with_conn(
+                        conn,
+                        blobs_dir,
+                        document_id,
+                        std::slice::from_ref(&source_ref.chunk_id),
+                    )?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| VfsError::NotFound {
+                        resource_type: "ink board chunk".to_owned(),
+                        id: source_ref.chunk_id.clone(),
+                    })?;
+                    chunk.chunk_id = format!("c_{}", nanoid::nanoid!(12));
+                    let bytes = serde_json::to_vec(&chunk)
+                        .map_err(|error| VfsError::Serialization(error.to_string()))?;
+                    if bytes.len() > INK_BOARD_CHUNK_MAX_BYTES {
+                        return Err(conflict(
+                            "ink.limit_exceeded",
+                            "Ink board chunk exceeds the byte limit",
+                        ));
+                    }
+                    let chunk_ref = InkBoardChunkRef {
+                        chunk_id: chunk.chunk_id.clone(),
+                        blob_hash: VfsBlobRepo::compute_hash(&bytes),
+                        byte_length: bytes.len() as u64,
+                        object_count: source_ref.object_count,
+                        sample_count: source_ref.sample_count,
+                        // Objects are copied unchanged, so the source bounds
+                        // remain an exact conservative enclosure.
+                        bounds: source_ref.bounds,
+                    };
+                    validate_board_chunk(&chunk, &chunk_ref).map_err(map_ink_error)?;
+                    let stored = VfsBlobRepo::store_blob_with_conn_guarded(
+                        conn,
+                        blobs_dir,
+                        &bytes,
+                        Some("application/json"),
+                        Some("json"),
+                        &guard,
+                    )?;
+                    *temporary_refs.entry(stored.hash.clone()).or_default() += 1;
+                    manifest.chunks.push(InkBoardChunkRef {
+                        blob_hash: stored.hash,
+                        ..chunk_ref
+                    });
+                    // `chunk` and `bytes` drop here, before the next read.
+                }
             }
             validate_manifest(&manifest).map_err(map_ink_error)?;
             let manifest_bytes = serialize_manifest(&manifest)?;
@@ -1104,7 +1204,7 @@ impl VfsInkRepo {
         })
     }
 
-    fn load_manifest(
+    pub(super) fn load_manifest(
         conn: &Connection,
         blobs_dir: &Path,
         document_id: &str,
@@ -1212,7 +1312,7 @@ fn acquire_mutation_guard(conn: &Connection) -> VfsResult<BlobMutationGuard> {
     acquire_blob_mutation_guard()
 }
 
-fn validate_operation_id(operation_id: &str) -> VfsResult<()> {
+pub(super) fn validate_operation_id(operation_id: &str) -> VfsResult<()> {
     let length = operation_id.chars().count();
     if length == 0
         || length > 128
@@ -1229,7 +1329,7 @@ fn validate_operation_id(operation_id: &str) -> VfsResult<()> {
     Ok(())
 }
 
-fn file_id_exists(conn: &Connection, document_id: &str) -> VfsResult<bool> {
+pub(super) fn file_id_exists(conn: &Connection, document_id: &str) -> VfsResult<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM files WHERE id = ?1)",
         [document_id],
@@ -1249,7 +1349,7 @@ fn serialize_page(page: &InkPage) -> VfsResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn serialize_manifest(manifest: &InkManifest) -> VfsResult<Vec<u8>> {
+pub(super) fn serialize_manifest(manifest: &InkManifest) -> VfsResult<Vec<u8>> {
     let bytes =
         serde_json::to_vec(manifest).map_err(|error| VfsError::Serialization(error.to_string()))?;
     if bytes.len() > INK_MANIFEST_MAX_BYTES {
@@ -1261,16 +1361,16 @@ fn serialize_manifest(manifest: &InkManifest) -> VfsResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn hash_json<T: Serialize>(value: &T) -> VfsResult<String> {
+pub(super) fn hash_json<T: Serialize>(value: &T) -> VfsResult<String> {
     let bytes =
         serde_json::to_vec(value).map_err(|error| VfsError::Serialization(error.to_string()))?;
     Ok(VfsBlobRepo::compute_hash(&bytes))
 }
 
-fn preview_json(manifest: &InkManifest, manifest_hash: &str) -> VfsResult<String> {
+pub(super) fn preview_json(manifest: &InkManifest, manifest_hash: &str) -> VfsResult<String> {
     serde_json::to_string(&json!({
         "ink": {
-            "schema_version": INK_SCHEMA_VERSION,
+            "schema_version": manifest.schema_version,
             "document_id": manifest.document_id,
             "revision": manifest.revision,
             "manifest_blob_hash": manifest_hash,
@@ -1289,7 +1389,7 @@ fn preview_matches(
         .map_err(|error| VfsError::Serialization(error.to_string()))?;
     let expected = json!({
         "ink": {
-            "schema_version": INK_SCHEMA_VERSION,
+            "schema_version": manifest.schema_version,
             "document_id": manifest.document_id,
             "revision": manifest.revision,
             "manifest_blob_hash": manifest_hash,
@@ -1299,7 +1399,7 @@ fn preview_matches(
     Ok(actual == expected)
 }
 
-fn blob_refs(manifest: &InkManifest) -> Vec<String> {
+pub(super) fn blob_refs(manifest: &InkManifest) -> Vec<String> {
     let mut hashes = manifest
         .pages
         .iter()
@@ -1313,13 +1413,22 @@ fn blob_refs(manifest: &InkManifest) -> Vec<String> {
             }
             hashes
         })
+        .chain(
+            manifest
+                .chunks
+                .iter()
+                .map(|chunk_ref| chunk_ref.blob_hash.clone()),
+        )
         .collect::<Vec<_>>();
     hashes.sort();
     hashes.dedup();
     hashes
 }
 
-fn reference_counts(manifest: &InkManifest, manifest_hash: &str) -> BTreeMap<String, i32> {
+pub(super) fn reference_counts(
+    manifest: &InkManifest,
+    manifest_hash: &str,
+) -> BTreeMap<String, i32> {
     let mut counts = BTreeMap::new();
     *counts.entry(manifest_hash.to_owned()).or_default() += 1;
     for hash in blob_refs(manifest) {
@@ -1372,7 +1481,7 @@ fn hash_blob_file(path: &Path) -> VfsResult<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn read_verified_blob(
+pub(super) fn read_verified_blob(
     conn: &Connection,
     blobs_dir: &Path,
     hash: &str,
@@ -1411,7 +1520,7 @@ fn read_verified_blob(
     Ok(bytes)
 }
 
-fn map_ink_error(error: crate::vfs::ink::InkError) -> VfsError {
+pub(super) fn map_ink_error(error: crate::vfs::ink::InkError) -> VfsError {
     match error.code {
         crate::vfs::ink::InkErrorCode::InvalidArgument => {
             invalid_ink_argument("ink", &error.message)
@@ -1425,14 +1534,14 @@ fn map_ink_error(error: crate::vfs::ink::InkError) -> VfsError {
     }
 }
 
-fn invalid_ink_argument(param: &str, reason: &str) -> VfsError {
+pub(super) fn invalid_ink_argument(param: &str, reason: &str) -> VfsError {
     VfsError::InvalidArgument {
         param: param.to_owned(),
         reason: reason.to_owned(),
     }
 }
 
-fn conflict(key: &str, message: &str) -> VfsError {
+pub(super) fn conflict(key: &str, message: &str) -> VfsError {
     VfsError::Conflict {
         key: key.to_owned(),
         message: message.to_owned(),
@@ -1441,19 +1550,23 @@ fn conflict(key: &str, message: &str) -> VfsError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use rusqlite::{params, Connection};
     use tempfile::TempDir;
 
     use crate::vfs::{
         database::{setup_migrated_test_db, VfsDatabase},
         ink::{
-            InkAuthor, InkBackground, InkObject, InkObjectContent, InkPage, InkRuling, InkSample,
-            InkStrokeStyle, InkTool, INK_MIME,
+            InkAuthor, InkBackground, InkBoardChunk, InkBoardObject, InkBoardSurface, InkObject,
+            InkObjectContent, InkPage, InkRect, InkRuling, InkSample, InkStrokeStyle, InkTool,
+            INK_BOARD_CHUNK_MAX_BYTES, INK_BOARD_CONTENT_MAX_BYTES, INK_BOARD_SCHEMA_VERSION,
+            INK_MIME,
         },
         repos::{blob_repo::VfsBlobRepo, file_repo::VfsFileRepo},
     };
 
-    use super::VfsInkRepo;
+    use super::{VfsInkBoardRepo, VfsInkRepo};
 
     fn setup() -> (TempDir, VfsDatabase) {
         setup_migrated_test_db()
@@ -2089,6 +2202,396 @@ mod tests {
             )
             .unwrap(),
             edited
+        );
+    }
+
+    /// Copying a real board must repair a missing guard, including the exact
+    /// copy retry that returns an already-published copy without writing.
+    /// Clearing the marker and triggers again before the retry proves the retry
+    /// path itself verifies/installs the guard.
+    ///
+    /// Regression: `copy_with_conn` has no guard ensure at all, so both the
+    /// fresh copy and the exact retry publish/return a v2 board with zero
+    /// guard triggers.
+    #[test]
+    fn copy_restores_guard_after_it_was_cleared_including_exact_retry() {
+        let (_temp_dir, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let created = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Board copy guard",
+            InkRuling::Blank,
+            "board-copy-guard-create",
+            None,
+        )
+        .expect("fixture board must migrate to schema v2");
+
+        let source_chunk = InkBoardChunk {
+            schema_version: INK_BOARD_SCHEMA_VERSION,
+            chunk_id: "chunk-copy-guard".to_owned(),
+            objects: vec![InkBoardObject {
+                id: "obj-copy-guard".to_owned(),
+                author: InkAuthor::User,
+                created_at: 0,
+                z_index: 0,
+                content: InkObjectContent::Rect {
+                    rect: InkRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    color: "#000000".to_owned(),
+                    width: 2.0,
+                },
+            }],
+        };
+        let source = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &created.revision,
+            "board-copy-guard-save",
+            &[source_chunk],
+            &[],
+        )
+        .expect("tiny source chunk must save");
+        assert_eq!(guard_trigger_count(&conn), 9);
+        assert_eq!(guard_marker_installed(&conn), 1);
+
+        clear_board_writer_guard(&conn);
+        assert_eq!(guard_trigger_count(&conn), 0);
+        assert_eq!(guard_marker_installed(&conn), 0);
+
+        let copy = VfsInkRepo::copy_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &source.document_id,
+            "Board copy guard copy",
+            "copy-board-guard-op",
+            None,
+        )
+        .expect("v2 board copy must succeed");
+        assert_eq!(copy.schema_version, INK_BOARD_SCHEMA_VERSION);
+        assert_eq!(
+            guard_trigger_count(&conn),
+            9,
+            "copy must install all nine guard triggers before publishing"
+        );
+        assert_eq!(guard_marker_installed(&conn), 1);
+        assert_raw_blob_insert_rejected(&db, "copy-guard-probe-1");
+
+        clear_board_writer_guard(&conn);
+        assert_eq!(guard_trigger_count(&conn), 0);
+        assert_eq!(guard_marker_installed(&conn), 0);
+
+        let retried = VfsInkRepo::copy_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &source.document_id,
+            "Board copy guard copy",
+            "copy-board-guard-op",
+            None,
+        )
+        .expect("exact copy retry must succeed");
+        assert_eq!(retried, copy);
+        assert_eq!(
+            guard_trigger_count(&conn),
+            9,
+            "exact copy retry must restore all nine guard triggers"
+        );
+        assert_eq!(guard_marker_installed(&conn), 1);
+        assert_raw_blob_insert_rejected(&db, "copy-guard-probe-2");
+    }
+
+    /// Regression: copying a migrated v2 board whose chunks together exceed the
+    /// 16 MiB read-batch budget must page the read, not reject the whole board.
+    /// The fixture stays a legal board: three chunks of 600 text objects with
+    /// 10,000 ASCII chars each serialize to roughly 6.1 MiB per chunk and about
+    /// 18.4 MiB in total, within the 8 MiB chunk and 64 MiB document budgets
+    /// while exceeding the single 16 MiB batch the RED copy requests.
+    #[test]
+    fn copy_reads_migrated_board_over_one_read_batch_without_losing_chunks() {
+        const CHUNK_COUNT: usize = 3;
+        const OBJECTS_PER_CHUNK: usize = 600;
+        const TEXT_CHARS: usize = 10_000;
+        const HALF_OF_ELEVEN_MIB: u64 = 5_767_168; // 5.5 MiB
+        const SIXTEEN_MIB: u64 = 16 * 1024 * 1024;
+
+        let (_temp_dir, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let created = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Big board",
+            InkRuling::Blank,
+            "big-board-create",
+            None,
+        )
+        .expect("fixture board must migrate to schema v2");
+        assert_eq!(created.schema_version, INK_BOARD_SCHEMA_VERSION);
+
+        let chunks: Vec<InkBoardChunk> = (0..CHUNK_COUNT)
+            .map(|chunk_index| InkBoardChunk {
+                schema_version: INK_BOARD_SCHEMA_VERSION,
+                chunk_id: format!("chunk-{chunk_index}"),
+                objects: (0..OBJECTS_PER_CHUNK)
+                    .map(|index| InkBoardObject {
+                        id: format!("o_{chunk_index}_{index}"),
+                        author: InkAuthor::User,
+                        created_at: 0,
+                        // Globally unique across all chunks, as save requires.
+                        z_index: (chunk_index * OBJECTS_PER_CHUNK + index) as i64,
+                        content: InkObjectContent::Text {
+                            rect: InkRect {
+                                x: chunk_index as f64 * 1_000_000.0 + index as f64 * 200.0,
+                                y: 10.0,
+                                width: 100.0,
+                                height: 20.0,
+                            },
+                            text: "a".repeat(TEXT_CHARS),
+                            font_size: 16.0,
+                            color: "#000000".to_owned(),
+                        },
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        let mut fixture_bytes: Vec<Vec<u8>> = Vec::with_capacity(CHUNK_COUNT);
+        for chunk in &chunks {
+            let bytes = serde_json::to_vec(chunk).expect("fixture chunk must serialize");
+            assert!(
+                bytes.len() as u64 > HALF_OF_ELEVEN_MIB,
+                "fixture chunk {} must be legal but larger than 5.5 MiB, got {} bytes",
+                chunk.chunk_id,
+                bytes.len()
+            );
+            assert!(
+                bytes.len() <= INK_BOARD_CHUNK_MAX_BYTES,
+                "fixture chunk {} must stay within the 8 MiB chunk budget",
+                chunk.chunk_id
+            );
+            fixture_bytes.push(bytes);
+        }
+        let fixture_total: u64 = fixture_bytes.iter().map(|bytes| bytes.len() as u64).sum();
+        assert!(
+            fixture_total > SIXTEEN_MIB,
+            "fixture must exceed one 16 MiB read batch, got {fixture_total} bytes"
+        );
+        assert!(
+            fixture_total < INK_BOARD_CONTENT_MAX_BYTES,
+            "fixture must stay within the 64 MiB board budget, got {fixture_total} bytes"
+        );
+
+        let source = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &created.revision,
+            "big-board-save",
+            &chunks,
+            &[],
+        )
+        .expect("fixture board save must accept the legal chunk layout");
+        assert_eq!(source.chunks.len(), CHUNK_COUNT);
+        for (index, chunk_ref) in source.chunks.iter().enumerate() {
+            assert_eq!(chunk_ref.chunk_id, chunks[index].chunk_id);
+            assert_eq!(chunk_ref.byte_length, fixture_bytes[index].len() as u64);
+            assert_eq!(chunk_ref.object_count as usize, OBJECTS_PER_CHUNK);
+            assert_eq!(chunk_ref.sample_count, 0);
+            assert_eq!(
+                chunk_ref.blob_hash,
+                VfsBlobRepo::compute_hash(&fixture_bytes[index])
+            );
+        }
+        let source_before = source.clone();
+        let source_chunk_ids: HashSet<&str> = source
+            .chunks
+            .iter()
+            .map(|chunk_ref| chunk_ref.chunk_id.as_str())
+            .collect();
+
+        let copy = VfsInkRepo::copy_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &source.document_id,
+            "Big board copy",
+            "big-board-copy",
+            None,
+        )
+        .expect("copy must page a board larger than one 16 MiB read batch");
+
+        assert_eq!(copy.schema_version, INK_BOARD_SCHEMA_VERSION);
+        assert_ne!(copy.document_id, source.document_id);
+        assert_ne!(copy.revision, source.revision);
+        assert!(copy.pages.is_empty());
+        assert_eq!(copy.source, source.source);
+        assert_eq!(copy.chunks.len(), CHUNK_COUNT);
+        let (copy_page_id, copy_ruling, copy_bounds) = match copy.surface.as_ref() {
+            Some(InkBoardSurface::Board {
+                page_id,
+                ruling,
+                bounds,
+            }) => (page_id, ruling, bounds),
+            _ => panic!("copy must carry a board surface"),
+        };
+        let (source_page_id, source_ruling, source_bounds) = match source.surface.as_ref() {
+            Some(InkBoardSurface::Board {
+                page_id,
+                ruling,
+                bounds,
+            }) => (page_id, ruling, bounds),
+            _ => panic!("source must carry a board surface"),
+        };
+        assert_ne!(copy_page_id, source_page_id);
+        assert_eq!(copy_ruling, source_ruling);
+        assert_eq!(copy_bounds, source_bounds);
+
+        let mut copy_chunk_ids = HashSet::with_capacity(CHUNK_COUNT);
+        let read_one = |document_id: &str, chunk_id: &str| -> InkBoardChunk {
+            let mut loaded = VfsInkBoardRepo::get_chunks_with_conn(
+                &conn,
+                db.blobs_dir(),
+                document_id,
+                &[chunk_id.to_owned()],
+            )
+            .expect("a single board chunk must fit the read batch budget");
+            assert_eq!(loaded.len(), 1);
+            loaded.pop().unwrap()
+        };
+        for (source_ref, copy_ref) in source.chunks.iter().zip(&copy.chunks) {
+            assert_ne!(copy_ref.chunk_id, source_ref.chunk_id);
+            assert!(!source_chunk_ids.contains(copy_ref.chunk_id.as_str()));
+            assert!(copy_chunk_ids.insert(copy_ref.chunk_id.clone()));
+            assert_ne!(copy_ref.blob_hash, source_ref.blob_hash);
+            assert_eq!(copy_ref.object_count, source_ref.object_count);
+            assert_eq!(copy_ref.sample_count, source_ref.sample_count);
+            assert_eq!(copy_ref.bounds, source_ref.bounds);
+            assert_eq!(copy_ref.object_count as usize, OBJECTS_PER_CHUNK);
+            assert_eq!(copy_ref.sample_count, 0);
+            assert!(copy_ref.byte_length > HALF_OF_ELEVEN_MIB);
+            assert!(copy_ref.byte_length <= INK_BOARD_CHUNK_MAX_BYTES as u64);
+
+            let source_chunk = read_one(&source.document_id, &source_ref.chunk_id);
+            let copied_chunk = read_one(&copy.document_id, &copy_ref.chunk_id);
+            assert_eq!(copied_chunk.chunk_id, copy_ref.chunk_id);
+            assert_eq!(copied_chunk.schema_version, INK_BOARD_SCHEMA_VERSION);
+            assert_eq!(copied_chunk.objects, source_chunk.objects);
+            let copied_bytes =
+                serde_json::to_vec(&copied_chunk).expect("copied chunk must serialize");
+            assert_eq!(copied_bytes.len() as u64, copy_ref.byte_length);
+            assert_eq!(VfsBlobRepo::compute_hash(&copied_bytes), copy_ref.blob_hash);
+            let blob_refs: i64 = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&copy_ref.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(blob_refs, 1);
+        }
+        assert_eq!(
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &copy.document_id).unwrap(),
+            copy
+        );
+        assert_eq!(
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &source.document_id).unwrap(),
+            source_before
+        );
+        for chunk_ref in &source.chunks {
+            let blob_refs: i64 = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&chunk_ref.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(blob_refs, 1);
+        }
+
+        let after_copy_counts = database_counts(&conn);
+        let retry = VfsInkRepo::copy_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &source.document_id,
+            "Big board copy",
+            "big-board-copy",
+            None,
+        )
+        .expect("copy retry must stay idempotent");
+        assert_eq!(retry, copy);
+        assert_eq!(database_counts(&conn), after_copy_counts);
+        assert_eq!(
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &source.document_id).unwrap(),
+            source_before
+        );
+    }
+
+    fn guard_trigger_count(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'trigger' AND name LIKE 'trg_vfs_writer_guard_%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    fn guard_marker_installed(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT COALESCE(
+                 (SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1),
+                 0
+             )",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    fn clear_board_writer_guard(conn: &Connection) {
+        conn.execute_batch("DELETE FROM __vfs_writer_guard WHERE id = 1;")
+            .expect("clear guard marker");
+        let names: Vec<String> = {
+            let mut statement = conn
+                .prepare(
+                    "SELECT name FROM sqlite_master
+                     WHERE type = 'trigger' AND name LIKE 'trg_vfs_writer_guard_%'",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        for name in names {
+            conn.execute(&format!("DROP TRIGGER \"{name}\""), [])
+                .unwrap();
+        }
+    }
+
+    fn assert_raw_blob_insert_rejected(db: &VfsDatabase, hash: &str) {
+        let old = Connection::open(db.db_path()).expect("open unregistered connection");
+        assert!(
+            old.execute(
+                "INSERT INTO blobs (hash, relative_path, size, ref_count, created_at)
+                 VALUES (?1, ?1, 0, 0, 0)",
+                [hash],
+            )
+            .is_err(),
+            "unregistered connection must not insert blobs while the guard exists"
+        );
+        assert_eq!(
+            old.query_row(
+                "SELECT COUNT(*) FROM blobs WHERE hash = ?1",
+                [hash],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            0
         );
     }
 

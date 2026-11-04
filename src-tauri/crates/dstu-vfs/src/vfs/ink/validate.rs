@@ -4,10 +4,10 @@ use std::collections::HashSet;
 
 use super::{
     InkBackground, InkError, InkErrorCode, InkManifest, InkObjectContent, InkPage, InkPageRef,
-    InkPoint, InkRect, InkSource, INK_DIMENSION_MAX, INK_DIMENSION_MIN, INK_FONT_SIZE_MAX,
-    INK_FONT_SIZE_MIN, INK_ID_MAX_CHARS, INK_PAGES_MAX, INK_PAGES_MIN, INK_PAGE_OBJECTS_MAX,
-    INK_PAGE_SAMPLES_MAX, INK_SCHEMA_VERSION, INK_STROKE_MIN_SAMPLES, INK_TEXT_MAX_CHARS,
-    INK_TITLE_MAX_CHARS, INK_WIDTH_MAX,
+    InkPoint, InkRect, InkSource, INK_BOARD_SCHEMA_VERSION, INK_DIMENSION_MAX, INK_DIMENSION_MIN,
+    INK_FONT_SIZE_MAX, INK_FONT_SIZE_MIN, INK_ID_MAX_CHARS, INK_PAGES_MAX, INK_PAGES_MIN,
+    INK_PAGE_OBJECTS_MAX, INK_PAGE_SAMPLES_MAX, INK_SCHEMA_VERSION, INK_STROKE_MIN_SAMPLES,
+    INK_TEXT_MAX_CHARS, INK_TITLE_MAX_CHARS, INK_WIDTH_MAX,
 };
 
 fn invalid_argument(message: &'static str) -> InkError {
@@ -31,7 +31,7 @@ fn unsupported_schema() -> InkError {
     }
 }
 
-fn validate_id(value: &str) -> Result<(), InkError> {
+pub(super) fn validate_id(value: &str) -> Result<(), InkError> {
     let length = value.chars().count();
     if length == 0 || value.trim().is_empty() {
         return Err(invalid_argument("Ink identifier must be nonempty"));
@@ -50,7 +50,7 @@ fn validate_id(value: &str) -> Result<(), InkError> {
     Ok(())
 }
 
-fn validate_revision(value: &str) -> Result<(), InkError> {
+pub(super) fn validate_revision(value: &str) -> Result<(), InkError> {
     if value.trim().is_empty() {
         return Err(invalid_argument("Ink revision must be nonempty"));
     }
@@ -60,7 +60,7 @@ fn validate_revision(value: &str) -> Result<(), InkError> {
     Ok(())
 }
 
-fn validate_hash(value: &str) -> Result<(), InkError> {
+pub(super) fn validate_hash(value: &str) -> Result<(), InkError> {
     if value.len() != 64
         || !value
             .bytes()
@@ -71,7 +71,7 @@ fn validate_hash(value: &str) -> Result<(), InkError> {
     Ok(())
 }
 
-fn validate_color(value: &str) -> Result<(), InkError> {
+pub(super) fn validate_color(value: &str) -> Result<(), InkError> {
     if !matches!(value.len(), 7 | 9)
         || !value.starts_with('#')
         || !value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
@@ -107,7 +107,7 @@ fn validate_page_ref(page_ref: &InkPageRef) -> Result<(), InkError> {
     validate_hash(&page_ref.page_blob_hash)
 }
 
-fn validate_width(width: f64) -> Result<(), InkError> {
+pub(super) fn validate_width(width: f64) -> Result<(), InkError> {
     if !width.is_finite() || width <= 0.0 || width > INK_WIDTH_MAX {
         return Err(invalid_argument(
             "Ink stroke width is outside the allowed range",
@@ -159,8 +159,17 @@ fn validate_shape(
 
 /// Validate all fields and cross-field constraints in a loaded manifest.
 pub fn validate_manifest(manifest: &InkManifest) -> Result<(), InkError> {
+    if manifest.schema_version == INK_BOARD_SCHEMA_VERSION {
+        return super::board::validate_board_manifest(manifest);
+    }
     if manifest.schema_version != INK_SCHEMA_VERSION {
         return Err(unsupported_schema());
+    }
+    // v1 严格契约：直接构造的域值也不得携带 board 字段。
+    if manifest.surface.is_some() || !manifest.chunks.is_empty() {
+        return Err(invalid_argument(
+            "Ink v1 manifest must not contain board fields",
+        ));
     }
     if manifest.pages.len() < INK_PAGES_MIN {
         return Err(invalid_argument(

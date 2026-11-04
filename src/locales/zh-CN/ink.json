@@ -1,4 +1,63 @@
 {
+  "notebook": {
+    "title": "笔记库",
+    "subtitle": "把想法写下来，打开笔记即可全屏书写。",
+    "createSection": "新建笔记",
+    "newPaged": "新建分页笔记",
+    "pagedDescription": "一页一页书写，整理课堂与学习笔记",
+    "newBoard": "新建自由画布",
+    "boardDescription": "不受纸张限制，自由展开思路",
+    "newText": "文字笔记",
+    "untitledPaged": "未命名手写笔记",
+    "untitledBoard": "未命名自由画布",
+    "untitledText": "未命名文字笔记",
+    "recent": "最近笔记",
+    "searchResults": "搜索结果",
+    "count": "{{count}} 本",
+    "loadedCount": "已找到 {{count}} 本",
+    "searchLabel": "搜索笔记",
+    "searchPlaceholder": "搜索笔记名称或所在文件夹",
+    "clearSearch": "清除搜索",
+    "filterLabel": "笔记类型",
+    "filters": {
+      "all": "全部",
+      "ink": "手写",
+      "text": "文字"
+    },
+    "types": {
+      "ink": "手写笔记",
+      "text": "文字笔记"
+    },
+    "openNote": "打开笔记：{{title}}",
+    "updatedOn": "更新于 {{date}}",
+    "rootFolder": "资源库根目录",
+    "refresh": "刷新笔记库",
+    "retry": "重试",
+    "loading": "正在加载笔记…",
+    "searching": "正在查找所有文件夹中的笔记…",
+    "opening": "正在打开笔记…",
+    "showMore": "显示更多笔记",
+    "emptyTitle": "开始你的第一本笔记",
+    "emptyHint": "选择分页笔记或自由画布，进入全屏书写；已有文字笔记也会显示在这里。",
+    "noResults": "没有找到匹配的笔记",
+    "noResultsHint": "换个关键词，或清除类型筛选后再试。",
+    "clearFilters": "清除搜索与筛选",
+    "drawerEmpty": "最近的笔记会显示在这里",
+    "loadFailed": "笔记库未能完整加载",
+    "incompleteHint": "以下列表可能不完整，重试后继续查找；不会把加载失败当作没有笔记。",
+    "paginationStalled": "资源列表分页未向前推进，请刷新重试。",
+    "createFailed": "创建笔记失败",
+    "backToLibrary": "返回笔记库",
+    "backToNote": "返回笔记",
+    "saveBeforeCloseFailed": "笔记尚未安全保存。请保持页面打开，处理保存错误后重试返回。",
+    "storageHint": "与资源库共用原有笔记和文件，不搬迁、不创建第二份副本。"
+  },
+  "workspace": {
+    "documentMismatch": "读取到的笔记与当前文件不一致，请重试。",
+    "unsupportedSchema": "不支持此手写笔记版本（{{version}}），请更新应用后重试。",
+    "openFullscreen": "重新打开全屏书写",
+    "exitBlocked": "保存未完成，当前编辑页面和草稿已保留。请重试保存后再返回或切换笔记。"
+  },
   "status": {
     "loading": "正在加载页面…",
     "saved": "已保存",
@@ -27,6 +86,11 @@
     "panRight": "向右平移",
     "panUp": "向上平移",
     "panDown": "向下平移",
+    "selectRectangle": "矩形选择",
+    "selectLasso": "套索选择",
+    "askSelectionAi": "询问 AI（选区）",
+    "copySelection": "复制选区",
+    "pasteSelection": "粘贴选区",
     "askAi": "询问 AI",
     "export": "导出"
   },
@@ -36,14 +100,41 @@
     "eraser": "橡皮擦"
   },
   "colors": {
+    "label": "颜色",
     "black": "黑色",
+    "dark-gray": "深灰",
+    "white": "白色",
     "red": "红色",
-    "blue": "蓝色"
+    "orange": "橙色",
+    "yellow": "黄色",
+    "green": "绿色",
+    "cyan": "青色",
+    "blue": "蓝色",
+    "indigo": "靛蓝",
+    "purple": "紫色",
+    "pink": "粉色",
+    "customHex": "十六进制颜色",
+    "picker": "颜色选择器"
   },
   "width": {
+    "label": "笔迹粗细",
+    "valueLabel": "粗细",
     "small": "细",
     "medium": "中",
     "large": "粗"
+  },
+  "opacity": {
+    "label": "荧光笔不透明度",
+    "valueLabel": "不透明度"
+  },
+  "eraser": {
+    "label": "橡皮擦设置",
+    "sizeLabel": "橡皮大小",
+    "sizeValue": "橡皮直径"
+  },
+  "styleSettings": {
+    "open": "样式设置",
+    "title": "样式设置"
   },
   "toolbar": {
     "label": "手写编辑器"
@@ -51,9 +142,29 @@
   "canvas": {
     "label": "手写页面"
   },
+  "board": {
+    "save": "保存画板",
+    "summaryUnavailable": "无法校验画板层级摘要，本次未保存新内容。请保持画板打开后重试。",
+    "askAiUnavailable": "画板 AI 截图尚未接入。",
+    "exportUnavailable": "画板导出尚未接入。",
+    "exportTitle": "导出画板",
+    "exportPng": "PNG",
+    "exportPdf": "PDF",
+    "pageWidth": "页面宽度",
+    "pageHeight": "页面高度",
+    "exportPreview": "共 {{count}} 页，{{columns}} × {{rows}}，行优先",
+    "exportTooManyPages": "页面网格超过 500 页。",
+    "exportInvalidGrid": "页面尺寸必须为有限正数。",
+    "exportRegionUnavailable": "当前没有可导出的有限画板区域。",
+    "exportSubmit": "导出",
+    "canvasLabel": "无限手写画板",
+    "navigationDesktop": "按住空格拖动平移，滚轮缩放，或直接使用钢笔书写。",
+    "navigationTouch": "开启触摸书写后单指书写，双指平移和缩放。"
+  },
   "errors": {
     "loadFailed": "无法加载此页面。",
     "backgroundLoadFailed": "无法加载页面背景。",
-    "operationFailed": "无法完成此编辑操作。"
+    "operationFailed": "无法完成此编辑操作。",
+    "selectionTooLarge": "选区内容超出当前页面，请改用自由画布后粘贴。"
   }
 }

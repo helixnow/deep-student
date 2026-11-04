@@ -102,6 +102,7 @@ pub use handlers::{
     dstu_parse_path,
     dstu_purge,
     dstu_purge_all,
+    dstu_reclassify_file,
     // E4: 路径缓存
     dstu_refresh_path_cache,
     dstu_restore,

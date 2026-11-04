@@ -1312,10 +1312,20 @@ impl TableClassification {
     /// delete trigger would replay a local prune onto every other device. Pins do
     /// sync through the dedicated `trg__change_log_note_document_revisions_pin`
     /// UPDATE trigger. Every other RowSync table must carry insert/update/delete.
+    ///
+    /// `ink_render_artifacts` is insert-only history sync: the table is immutable
+    /// by construction (its `BEFORE UPDATE/DELETE` triggers `RAISE(ABORT, ...)`),
+    /// so there is deliberately no update/delete change-log trigger to record a
+    /// mutation. Sync still propagates a mutation attempt as a quarantined
+    /// delete/update, but the local table never stores it, so mutation
+    /// quarantine must not require a trigger that can never fire. Insert remains
+    /// covered by `trg__change_log_ink_render_artifacts_insert`.
     pub fn change_log_trigger_exempt(database: &str, table_name: &str, operation: &str) -> bool {
         matches!(
             (database, table_name, operation),
             ("vfs", "note_document_revisions", "delete")
+                | ("vfs", "ink_render_artifacts", "update")
+                | ("vfs", "ink_render_artifacts", "delete")
         )
     }
 
@@ -1460,5 +1470,29 @@ mod tests {
             entry.merge_notes.contains("row-level LWW"),
             "receipt columns must be registered as row-level LWW"
         );
+    }
+
+    #[test]
+    fn ink_render_artifacts_exempts_only_immutable_update_and_delete_triggers() {
+        assert!(TableClassification::change_log_trigger_exempt(
+            "vfs",
+            "ink_render_artifacts",
+            "update"
+        ));
+        assert!(TableClassification::change_log_trigger_exempt(
+            "vfs",
+            "ink_render_artifacts",
+            "delete"
+        ));
+        assert!(!TableClassification::change_log_trigger_exempt(
+            "vfs",
+            "ink_render_artifacts",
+            "insert"
+        ));
+        assert!(!TableClassification::change_log_trigger_exempt(
+            "chat",
+            "ink_render_artifacts",
+            "delete"
+        ));
     }
 }

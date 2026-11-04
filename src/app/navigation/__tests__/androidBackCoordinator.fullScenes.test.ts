@@ -27,7 +27,7 @@
  *   （jsdom 下默认 body）并冒泡到 document——本文件用 document 级 keydown
  *   监听器模拟 Radix 的关闭行为。
  *
- * 本轮只写不跑（禁 vitest 执行）；基线 androidBackCoordinator.ts@0f5435a7。
+ * 原始场景基线：androidBackCoordinator.ts@0f5435a7。
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -39,9 +39,15 @@ import {
   registerBackHandler,
   registerVisibilityGuardedBackHandler,
 } from '../androidBackCoordinator';
+import {
+  BACK_PRIORITY as PLATFORM_BACK_PRIORITY,
+  isElementVisibleForBack as isPlatformElementVisibleForBack,
+  registerBackHandler as registerPlatformBackHandler,
+  registerVisibilityGuardedBackHandler as registerPlatformVisibilityGuardedBackHandler,
+} from '@/services/androidBackRegistry';
 
 // ---------------------------------------------------------------------------
-// 协调器持有模块级 handler 栈；每个用例注册的 handler 统一登记、用例结束后
+// 平台 registry 持有唯一 handler 栈；每个用例注册的 handler 统一登记、用例结束后
 // 全部注销。DOM 侧（Radix 假浮层、document 监听器）同样统一回收，
 // 避免跨用例污染（断言失败提前 return 时也能清干净）。
 // ---------------------------------------------------------------------------
@@ -116,6 +122,79 @@ function mountRadixDialog() {
     isOpen: () => el.getAttribute('data-state') === 'open',
   };
 }
+
+describe('平台注册与 app 协调器共用状态', () => {
+  it('旧 app 出口原样转发平台 API', () => {
+    expect(BACK_PRIORITY).toBe(PLATFORM_BACK_PRIORITY);
+    expect(registerBackHandler).toBe(registerPlatformBackHandler);
+    expect(registerVisibilityGuardedBackHandler).toBe(registerPlatformVisibilityGuardedBackHandler);
+    expect(isElementVisibleForBack).toBe(isPlatformElementVisibleForBack);
+  });
+
+  it('跨新旧路径注册仍按同一栈 LIFO 分发，并可幂等注销', () => {
+    const calls: string[] = [];
+    const unregisterLegacy = track(registerBackHandler(() => {
+      calls.push('legacy');
+      return true;
+    }));
+    const unregisterPlatform = track(registerPlatformBackHandler(() => {
+      calls.push('platform');
+      return true;
+    }));
+
+    expect(handleAndroidBack()).toBe(true);
+    expect(calls).toEqual(['platform']);
+    unregisterPlatform();
+    unregisterPlatform();
+    expect(handleAndroidBack()).toBe(true);
+    expect(calls).toEqual(['platform', 'legacy']);
+    unregisterLegacy();
+    expect(handleAndroidBack()).toBe(false);
+  });
+
+  it('平台可见性守卫在每次 app 分发时读取最新 ref', () => {
+    const calls: string[] = [];
+    const elementRef: { current: Element | null } = { current: null };
+    track(registerBackHandler(() => {
+      calls.push('navigation');
+      return true;
+    }, BACK_PRIORITY.navigation));
+    track(registerPlatformVisibilityGuardedBackHandler(elementRef, () => {
+      calls.push('guarded');
+      return true;
+    }));
+
+    expect(handleAndroidBack()).toBe(true);
+    elementRef.current = mountVisibleElement();
+    expect(handleAndroidBack()).toBe(true);
+    elementRef.current = null;
+    expect(handleAndroidBack()).toBe(true);
+    expect(calls).toEqual(['navigation', 'guarded', 'navigation']);
+  });
+
+  it('平台注册的 view handler 仍让未注册的 Radix 浮层先处理', () => {
+    const dialog = mountRadixDialog();
+    const view = vi.fn(() => true);
+    track(registerPlatformBackHandler(view, PLATFORM_BACK_PRIORITY.view));
+
+    expect(handleAndroidBack()).toBe(true);
+    expect(dialog.isOpen()).toBe(false);
+    expect(view).not.toHaveBeenCalled();
+    expect(handleAndroidBack()).toBe(true);
+    expect(view).toHaveBeenCalledTimes(1);
+  });
+
+  it('平台 handler 抛错后继续分发旧 app 注册的 fallback', () => {
+    const fallback = vi.fn(() => true);
+    track(registerBackHandler(fallback, BACK_PRIORITY.navigation));
+    track(registerPlatformBackHandler(() => {
+      throw new Error('handler failed');
+    }));
+
+    expect(handleAndroidBack()).toBe(true);
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // 场景 1 / 2：单一 overlay（仅面板 / 仅菜单）

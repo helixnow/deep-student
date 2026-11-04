@@ -22,6 +22,7 @@
 |------|------|
 | `src/features/chat/BLOCK_RENDERING_GUIDE.md` | Chat V2 块渲染开发者手册（就地文档） |
 | `src-tauri/migrations/README.md` | 数据库迁移规范（就地文档） |
+| [handwriting-annotation/README.md](./handwriting-annotation/README.md) | 手写／文件批注当前架构、真机问题及扩展总体计划；过程材料已归档 |
 
 ## 法务
 

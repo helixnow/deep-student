@@ -11,12 +11,16 @@ use std::{
 use dstu_vfs::vfs::{
     database::VfsDatabase,
     error::VfsError,
-    ink::{InkBackground, InkManifest, InkPage, InkPageRef, InkSource},
+    ink::{
+        InkBackground, InkBoardChunk, InkBoardSurface, InkManifest, InkPage, InkPageRef, InkRect,
+        InkSource, INK_BOARD_SCHEMA_VERSION, INK_BOARD_WORLD_LIMIT, INK_PAGES_MAX,
+    },
     repos::{
         blob_repo::VfsBlobRepo,
         file_repo::VfsFileRepo,
         ink_prepare_repo::{InkPreparedPage, VfsInkPrepareRepo},
         ink_repo::VfsInkRepo,
+        ink_source::{read_ink_source_with_conn, validate_ink_source_with_conn},
     },
     upload_saga::UploadSaga,
 };
@@ -68,6 +72,8 @@ pub enum InkJobPayload {
         page_ids: Vec<String>,
         format: InkExportFormat,
         pages: Vec<InkExportPageRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        board: Option<InkExportBoardPayload>,
     },
 }
 
@@ -76,6 +82,19 @@ pub struct InkExportPageRequest {
     pub page_ref: InkPageRef,
     pub page: InkPage,
     pub highlights: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkExportBoardPayload {
+    pub surface: InkBoardSurface,
+    pub region: InkRect,
+    pub page_width: f64,
+    pub page_height: f64,
+    pub paginate: bool,
+    /// Backend-authoritative row-major page rectangles inside `region`.
+    pub pages: Vec<InkRect>,
+    pub chunks: Vec<InkBoardChunk>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -328,6 +347,8 @@ const SOURCE_PAGE_MAX_EDGE: u32 = 2048;
 const SOURCE_PAGE_MAX_PIXELS: u64 = 16_000_000;
 const EXPORT_PNG_MAX_BYTES: u64 = 128 * 1024 * 1024;
 const EXPORT_PDF_MAX_BYTES: u64 = 200 * 1024 * 1024;
+const BOARD_EXPORT_MAX_EDGE: f64 = 4096.0;
+const BOARD_EXPORT_MAX_PIXELS: f64 = SOURCE_PAGE_MAX_PIXELS as f64;
 
 fn job_error(code: &str, message: impl Into<String>) -> InkJobError {
     InkJobError {
@@ -402,7 +423,7 @@ fn source_format(
         .unwrap_or("")
         .to_ascii_lowercase();
     match (ext.as_str(), mime_type, file_type) {
-        ("pdf", "application/pdf", "document") => Ok("pdf"),
+        ("pdf", "application/pdf", "document" | "file") => Ok("pdf"),
         ("png", "image/png", "image")
         | ("jpg" | "jpeg", "image/jpeg", "image")
         | ("webp", "image/webp", "image")
@@ -410,12 +431,12 @@ fn source_format(
         (
             "docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "document",
+            "document" | "file",
         ) => Ok("docx"),
         (
             "pptx",
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "document",
+            "document" | "file",
         ) => Ok("pptx"),
         ("xls" | "xlsx" | "ppt" | "doc" | "docm" | "pptm", _, _) => Err(job_error(
             "UNSUPPORTED_FORMAT",
@@ -432,65 +453,30 @@ fn load_source_bytes(
     db: &VfsDatabase,
     resource_id: &str,
 ) -> Result<(String, String, String, String, Vec<u8>), InkJobError> {
-    let conn = db.get_conn_safe().map_err(vfs_error)?;
-    let row = conn.query_row(
-        r#"SELECT r.hash, r.source_id, r.source_table, f.file_name, f.mime_type, f."type", f.blob_hash, f.sha256, f.status
-           FROM resources r JOIN files f ON f.id = r.source_id WHERE r.id = ?1"#,
-        [resource_id],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?, row.get::<_, String>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, String>(5)?, row.get::<_, Option<String>>(6)?, row.get::<_, Option<String>>(7)?, row.get::<_, Option<String>>(8)?)),
-    ).optional().map_err(vfs_error)?.ok_or_else(|| source_changed("Source resource is missing."))?;
-    let (
-        resource_hash,
-        source_id,
-        source_table,
-        file_name,
-        mime,
-        file_type,
-        blob_hash,
-        sha256,
-        status,
-    ) = row;
-    let source_id = source_id.ok_or_else(|| source_changed("Source file identity is missing."))?;
-    let source_table =
-        source_table.ok_or_else(|| source_changed("Source resource linkage is missing."))?;
-    let mime =
-        mime.ok_or_else(|| job_error("UNSUPPORTED_FORMAT", "Source file MIME type is missing."))?;
-    let blob_hash = blob_hash.ok_or_else(|| source_changed("Source blob identity is missing."))?;
-    let sha256 = sha256.ok_or_else(|| source_changed("Source SHA-256 is missing."))?;
-    if source_table != "files"
-        || status.as_deref() != Some("active")
-        || resource_hash != blob_hash
-        || blob_hash != sha256
-    {
-        return Err(source_changed(
-            "Source VFS identity or hash fields disagree.",
-        ));
-    }
-    let kind = source_format(&file_name, &mime, &file_type)?;
-    let blob = VfsBlobRepo::get_blob_with_conn(&conn, &blob_hash)
+    let mut conn = db.get_conn_safe().map_err(vfs_error)?;
+    let tx = conn.transaction().map_err(vfs_error)?;
+    let source = read_ink_source_with_conn(&tx, db.blobs_dir(), resource_id, None)
         .map_err(vfs_error)?
-        .ok_or_else(|| source_changed("Source VFS blob is missing."))?;
-    if blob.ref_count < 1 || blob.size < 0 || blob.size > 128 * 1024 * 1024 {
+        .ok_or_else(|| source_changed("Source resource is missing."))?;
+    let identity = source.identity;
+    if VfsInkRepo::is_ink_file_candidate_with_conn(&tx, &identity.file_id).map_err(vfs_error)? {
         return Err(job_error(
-            "LIMIT_EXCEEDED",
-            "Source file exceeds the preparation limit.",
+            "UNSUPPORTED_FORMAT",
+            "An Ink document cannot be prepared as a source.",
         ));
     }
-    let path = Path::new(&blob.relative_path);
-    if path.is_absolute()
-        || path
-            .components()
-            .any(|part| !matches!(part, std::path::Component::Normal(_)))
-    {
-        return Err(source_changed("Source blob path is invalid."));
-    }
-    let bytes = std::fs::read(db.blobs_dir().join(path)).map_err(vfs_error)?;
-    if bytes.len() as i64 != blob.size || VfsBlobRepo::compute_hash(&bytes) != blob_hash {
-        return Err(source_changed(
-            "Source blob bytes no longer match the VFS hash.",
-        ));
-    }
-    Ok((blob_hash, kind.to_owned(), file_name, mime, bytes))
+    let mime = identity
+        .mime_type
+        .ok_or_else(|| job_error("UNSUPPORTED_FORMAT", "Source file MIME type is missing."))?;
+    let kind = source_format(&identity.file_name, &mime, &identity.file_type)?;
+    tx.commit().map_err(vfs_error)?;
+    Ok((
+        identity.sha256,
+        kind.to_owned(),
+        identity.file_name,
+        mime,
+        source.bytes,
+    ))
 }
 
 fn reusable_prepared_manifest(
@@ -499,17 +485,13 @@ fn reusable_prepared_manifest(
     source_hash: &str,
     conversion_revision: &str,
 ) -> Result<Option<InkManifest>, InkJobError> {
-    let conn = db.get_conn_safe().map_err(vfs_error)?;
-    let raw: Option<String> = conn
-        .query_row(
-            "SELECT metadata_json FROM resources WHERE id = ?1",
-            [source_resource_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(vfs_error)?
-        .flatten();
-    let Some(raw) = raw else {
+    let mut conn = db.get_conn_safe().map_err(vfs_error)?;
+    let tx = conn.transaction().map_err(vfs_error)?;
+    let source =
+        validate_ink_source_with_conn(&tx, db.blobs_dir(), source_resource_id, Some(source_hash))
+            .map_err(vfs_error)?
+            .ok_or_else(|| source_changed("Source resource is missing."))?;
+    let Some(raw) = source.metadata_json else {
         return Ok(None);
     };
     let metadata: Value = serde_json::from_str(&raw).map_err(vfs_error)?;
@@ -520,7 +502,7 @@ fn reusable_prepared_manifest(
         return Ok(None);
     };
     let manifest =
-        VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), default_id).map_err(vfs_error)?;
+        VfsInkRepo::get_manifest_with_conn(&tx, db.blobs_dir(), default_id).map_err(vfs_error)?;
     match &manifest.source {
         InkSource::Resource {
             resource_id,
@@ -530,6 +512,7 @@ fn reusable_prepared_manifest(
             && existing_hash == source_hash
             && existing_profile == conversion_revision =>
         {
+            tx.commit().map_err(vfs_error)?;
             Ok(Some(manifest))
         }
         InkSource::Resource {
@@ -593,13 +576,18 @@ fn load_export_receipt_for_retry(
     page_ids: &[String],
     format: InkExportFormat,
     operation_id: &str,
+    board: Option<&InkExportBoardRequest>,
 ) -> Result<Option<InkExportArtifact>, InkJobError> {
+    if let Some(board) = board {
+        validate_board_export_request(board, format, page_ids)?;
+    }
     let input_hash = export_input_hash(
         document_id,
         expected_revision,
         page_ids,
         format,
         operation_id,
+        board,
     )?;
     let mut conn = db.get_conn_safe().map_err(vfs_error)?;
     let tx = conn.transaction().map_err(vfs_error)?;
@@ -616,11 +604,19 @@ fn load_export_receipt_for_retry(
     .map_err(vfs_error)?;
     let manifest =
         VfsInkRepo::get_manifest_with_conn(&tx, db.blobs_dir(), document_id).map_err(vfs_error)?;
-    if manifest.revision != expected_revision
-        || page_ids
+    let selection_matches = if board.is_some() {
+        manifest.schema_version == INK_BOARD_SCHEMA_VERSION
+            && page_ids.len() == 1
+            && matches!(
+                manifest.surface.as_ref(),
+                Some(InkBoardSurface::Board { page_id, .. }) if page_id == &page_ids[0]
+            )
+    } else {
+        page_ids
             .iter()
-            .any(|id| !manifest.pages.iter().any(|page| &page.page_id == id))
-    {
+            .all(|id| manifest.pages.iter().any(|page| &page.page_id == id))
+    };
+    if manifest.revision != expected_revision || !selection_matches {
         return Err(job_error(
             "REVISION_CONFLICT",
             "Ink document revision or page selection changed before export retry.",
@@ -884,7 +880,7 @@ fn commit_ink_export_cancellable(
             "Ink export was cancelled before the blocking commit.",
         ));
     }
-    commit_ink_export_with_snapshot(
+    commit_ink_export_with_snapshot_inner(
         db,
         document_id,
         expected_revision,
@@ -893,6 +889,43 @@ fn commit_ink_export_cancellable(
         operation_id,
         staged_upload_id,
         expected_snapshot,
+        None,
+    )
+}
+
+fn commit_ink_board_export_cancellable(
+    db: &VfsDatabase,
+    document_id: &str,
+    expected_revision: &str,
+    page_ids: &[String],
+    format: InkExportFormat,
+    operation_id: &str,
+    staged_upload_id: &str,
+    expected_snapshot: Option<&str>,
+    cancellation: &CancellationToken,
+    board: &InkExportBoardRequest,
+) -> Result<InkExportArtifact, InkJobError> {
+    if cancellation.is_cancelled() {
+        crate::staged_upload::abort(staged_upload_id);
+        return Err(job_error(
+            "CANCELLED",
+            "Ink export was cancelled before the blocking commit.",
+        ));
+    }
+    if let Err(error) = validate_board_export_request(board, format, page_ids) {
+        crate::staged_upload::abort(staged_upload_id);
+        return Err(error);
+    }
+    commit_ink_export_with_snapshot_inner(
+        db,
+        document_id,
+        expected_revision,
+        page_ids,
+        format,
+        operation_id,
+        staged_upload_id,
+        expected_snapshot,
+        Some(board),
     )
 }
 
@@ -923,17 +956,28 @@ fn export_input_hash(
     page_ids: &[String],
     format: InkExportFormat,
     operation_id: &str,
+    board: Option<&InkExportBoardRequest>,
 ) -> Result<String, InkJobError> {
-    Ok(sha256_hex(
-        &serde_json::to_vec(&(
+    let bytes = if let Some(board) = board {
+        serde_json::to_vec(&(
+            document_id,
+            expected_revision,
+            page_ids,
+            format,
+            operation_id,
+            board,
+        ))
+    } else {
+        serde_json::to_vec(&(
             document_id,
             expected_revision,
             page_ids,
             format,
             operation_id,
         ))
-        .map_err(vfs_error)?,
-    ))
+    }
+    .map_err(vfs_error)?;
+    Ok(sha256_hex(&bytes))
 }
 
 fn commit_ink_export_with_snapshot(
@@ -945,6 +989,30 @@ fn commit_ink_export_with_snapshot(
     operation_id: &str,
     staged_upload_id: &str,
     expected_snapshot: Option<&str>,
+) -> Result<InkExportArtifact, InkJobError> {
+    commit_ink_export_with_snapshot_inner(
+        db,
+        document_id,
+        expected_revision,
+        page_ids,
+        format,
+        operation_id,
+        staged_upload_id,
+        expected_snapshot,
+        None,
+    )
+}
+
+fn commit_ink_export_with_snapshot_inner(
+    db: &VfsDatabase,
+    document_id: &str,
+    expected_revision: &str,
+    page_ids: &[String],
+    format: InkExportFormat,
+    operation_id: &str,
+    staged_upload_id: &str,
+    expected_snapshot: Option<&str>,
+    board: Option<&InkExportBoardRequest>,
 ) -> Result<InkExportArtifact, InkJobError> {
     if document_id.trim().is_empty()
         || expected_revision.trim().is_empty()
@@ -1005,7 +1073,16 @@ fn commit_ink_export_with_snapshot(
         }
     };
     if let Some(expected) = expected_snapshot {
-        let current = load_export_inputs(db, document_id, expected_revision, page_ids)?;
+        let current = match board {
+            Some(board) => vec![load_board_export_inputs(
+                db,
+                document_id,
+                expected_revision,
+                page_ids,
+                board,
+            )?],
+            None => load_export_inputs(db, document_id, expected_revision, page_ids)?,
+        };
         if frozen_snapshot_hash(&current)? != expected {
             return Err(job_error(
                 "REVISION_CONFLICT",
@@ -1017,11 +1094,19 @@ fn commit_ink_export_with_snapshot(
         let conn = db.get_conn_safe().map_err(vfs_error)?;
         VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), document_id).map_err(vfs_error)?
     };
-    if manifest.revision != expected_revision
-        || page_ids
+    let selection_matches = if board.is_some() {
+        manifest.schema_version == INK_BOARD_SCHEMA_VERSION
+            && page_ids.len() == 1
+            && matches!(
+                manifest.surface.as_ref(),
+                Some(InkBoardSurface::Board { page_id, .. }) if page_id == &page_ids[0]
+            )
+    } else {
+        page_ids
             .iter()
-            .any(|id| !manifest.pages.iter().any(|page| &page.page_id == id))
-    {
+            .all(|id| manifest.pages.iter().any(|page| &page.page_id == id))
+    };
+    if manifest.revision != expected_revision || !selection_matches {
         return Err(job_error(
             "REVISION_CONFLICT",
             "Ink document revision or selected pages changed before export.",
@@ -1041,6 +1126,7 @@ fn commit_ink_export_with_snapshot(
         page_ids,
         format,
         operation_id,
+        board,
     )?;
     let receipt_id = format!("ink-export-{}", input_hash);
     let content_hash = VfsBlobRepo::compute_hash(&bytes);
@@ -1090,6 +1176,7 @@ fn commit_ink_export_with_snapshot(
                 document_id,
                 expected_revision,
                 page_ids,
+                board,
             )?;
             if current_snapshot != expected_snapshot {
                 return Err(job_error(
@@ -1337,6 +1424,21 @@ pub struct InkPrepareCommandRequest {
     pub operation_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkExportBoardRequest {
+    /// Explicit absolute world rectangle. Board export never falls back to
+    /// `surface.bounds`.
+    pub region: InkRect,
+    /// Logical world tile/page width.
+    pub page_width: f64,
+    /// Logical world tile/page height.
+    pub page_height: f64,
+    /// PDF only: tile `region` into row-major pages. PNG is always one frame.
+    #[serde(default)]
+    pub paginate: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InkExportCommandRequest {
@@ -1345,6 +1447,8 @@ pub struct InkExportCommandRequest {
     pub page_ids: Vec<String>,
     pub format: InkExportFormat,
     pub operation_id: String,
+    #[serde(default)]
+    pub board: Option<InkExportBoardRequest>,
 }
 
 fn prepare_profile(kind: &str) -> Result<(String, String), InkJobError> {
@@ -1363,23 +1467,48 @@ fn prepare_profile(kind: &str) -> Result<(String, String), InkJobError> {
 fn frozen_snapshot_hash(
     inputs: &[crate::ink_bridge::FrozenRenderInputs],
 ) -> Result<String, InkJobError> {
-    let bytes = serde_json::to_vec(
-        &inputs
-            .iter()
-            .map(|input| {
-                (
-                    &input.manifest.document_id,
-                    &input.manifest.revision,
-                    &input.page_ref,
-                    &input.page,
-                    &input.highlights,
-                    &input.source_annotation_revision,
-                    &input.source_hash,
-                    &input.conversion_revision,
-                )
-            })
-            .collect::<Vec<_>>(),
-    )
+    // Keep the v1 paged hash byte-for-byte stable. Board inputs opt into an
+    // extended identity that includes the real crop and chunk snapshot.
+    let has_board = inputs.iter().any(|input| input.board.is_some());
+    let bytes = if has_board {
+        serde_json::to_vec(
+            &inputs
+                .iter()
+                .map(|input| {
+                    let board = input.board.as_ref().map(|board| {
+                        (&board.surface, board.crop, &board.chunk_refs, &board.chunks)
+                    });
+                    (
+                        &input.manifest.document_id,
+                        &input.manifest.revision,
+                        board,
+                        &input.highlights,
+                        &input.source_annotation_revision,
+                        &input.source_hash,
+                        &input.conversion_revision,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        serde_json::to_vec(
+            &inputs
+                .iter()
+                .map(|input| {
+                    (
+                        &input.manifest.document_id,
+                        &input.manifest.revision,
+                        &input.page_ref,
+                        &input.page,
+                        &input.highlights,
+                        &input.source_annotation_revision,
+                        &input.source_hash,
+                        &input.conversion_revision,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    }
     .map_err(vfs_error)?;
     Ok(sha256_hex(&bytes))
 }
@@ -1390,7 +1519,30 @@ fn frozen_snapshot_hash_with_conn(
     document_id: &str,
     revision: &str,
     page_ids: &[String],
+    board: Option<&InkExportBoardRequest>,
 ) -> Result<String, InkJobError> {
+    if let Some(board) = board {
+        if page_ids.len() != 1 {
+            return Err(job_error(
+                "INVALID_ARGUMENT",
+                "Board export requires exactly one surface page ID.",
+            ));
+        }
+        let spec = crate::ink_bridge::InkRenderSpec {
+            document_id: document_id.to_owned(),
+            expected_revision: revision.to_owned(),
+            page_id: page_ids[0].clone(),
+            crop: None,
+            board: Some(crate::ink_bridge::InkBoardRenderSpec {
+                crop: board.region,
+                chunk_ids: Vec::new(),
+            }),
+            long_edge: None,
+        };
+        let input = crate::ink_bridge::load_frozen_inputs_with_conn(conn, blobs_dir, &spec)
+            .map_err(|error| job_error(&error.code, error.message))?;
+        return frozen_snapshot_hash(&[input]);
+    }
     let mut inputs = Vec::with_capacity(page_ids.len());
     for page_id in page_ids {
         let spec = crate::ink_bridge::InkRenderSpec {
@@ -1398,6 +1550,7 @@ fn frozen_snapshot_hash_with_conn(
             expected_revision: revision.to_owned(),
             page_id: page_id.clone(),
             crop: None,
+            board: None,
             long_edge: None,
         };
         let input = crate::ink_bridge::load_frozen_inputs_with_conn(conn, blobs_dir, &spec)
@@ -1430,6 +1583,17 @@ fn load_export_inputs(
             "Export page IDs must be nonempty and unique.",
         ));
     }
+    {
+        let conn = db.get_conn_safe().map_err(vfs_error)?;
+        let manifest = VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), document_id)
+            .map_err(vfs_error)?;
+        if manifest.schema_version == INK_BOARD_SCHEMA_VERSION {
+            return Err(job_error(
+                "INVALID_ARGUMENT",
+                "Board export requires an explicit region.",
+            ));
+        }
+    }
     let mut inputs = Vec::with_capacity(page_ids.len());
     for page_id in page_ids {
         let spec = crate::ink_bridge::InkRenderSpec {
@@ -1437,6 +1601,7 @@ fn load_export_inputs(
             expected_revision: revision.to_owned(),
             page_id: page_id.clone(),
             crop: None,
+            board: None,
             long_edge: None,
         };
         inputs.push(
@@ -1445,6 +1610,191 @@ fn load_export_inputs(
         );
     }
     Ok(inputs)
+}
+
+/// Planned pure geometry for exporting an explicit v2 board region.
+///
+/// - `paginate == false` returns exactly one frame covering `region`.
+/// - `paginate == true` returns tiles in row-major order: left-to-right, then
+///   top-to-bottom, clipped to `region`.
+/// - More than 500 tiles is a typed `LIMIT_EXCEEDED` failure.
+fn board_export_grid(
+    region: InkRect,
+    page_width: f64,
+    page_height: f64,
+    paginate: bool,
+) -> Result<Vec<InkRect>, InkJobError> {
+    validate_board_region(region)?;
+    validate_board_tile(page_width, page_height)?;
+    if !paginate {
+        return Ok(vec![region]);
+    }
+    validate_board_tile_budget(page_width, page_height)?;
+    let columns = (region.width / page_width).ceil();
+    let rows = (region.height / page_height).ceil();
+    if !columns.is_finite() || !rows.is_finite() || columns < 1.0 || rows < 1.0 {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export page geometry is invalid.",
+        ));
+    }
+    if columns > INK_PAGES_MAX as f64 || rows > INK_PAGES_MAX as f64 {
+        return Err(job_error(
+            "LIMIT_EXCEEDED",
+            "Board export exceeds the 500-page limit.",
+        ));
+    }
+    let columns = columns as usize;
+    let rows = rows as usize;
+    let page_count = columns
+        .checked_mul(rows)
+        .ok_or_else(|| job_error("LIMIT_EXCEEDED", "Board export exceeds the 500-page limit."))?;
+    if page_count > INK_PAGES_MAX {
+        return Err(job_error(
+            "LIMIT_EXCEEDED",
+            "Board export exceeds the 500-page limit.",
+        ));
+    }
+    let mut pages = Vec::with_capacity(page_count);
+    for row in 0..rows {
+        let y = region.y + row as f64 * page_height;
+        let height = (region.y + region.height - y).min(page_height);
+        for column in 0..columns {
+            let x = region.x + column as f64 * page_width;
+            let width = (region.x + region.width - x).min(page_width);
+            if width <= 0.0 || height <= 0.0 {
+                return Err(job_error(
+                    "INVALID_ARGUMENT",
+                    "Board export page geometry is invalid.",
+                ));
+            }
+            pages.push(InkRect {
+                x,
+                y,
+                width,
+                height,
+            });
+        }
+    }
+    Ok(pages)
+}
+
+fn validate_board_region(region: InkRect) -> Result<(), InkJobError> {
+    if !region.x.is_finite()
+        || !region.y.is_finite()
+        || !region.width.is_finite()
+        || !region.height.is_finite()
+        || region.width <= 0.0
+        || region.height <= 0.0
+        || region.x < -INK_BOARD_WORLD_LIMIT
+        || region.y < -INK_BOARD_WORLD_LIMIT
+        || region.x + region.width > INK_BOARD_WORLD_LIMIT
+        || region.y + region.height > INK_BOARD_WORLD_LIMIT
+    {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export region must be explicit, finite, positive, and inside the board world.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_board_tile(page_width: f64, page_height: f64) -> Result<(), InkJobError> {
+    if !page_width.is_finite()
+        || !page_height.is_finite()
+        || page_width <= 0.0
+        || page_height <= 0.0
+    {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export page size must be finite and positive.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_board_tile_budget(page_width: f64, page_height: f64) -> Result<(), InkJobError> {
+    if page_width > BOARD_EXPORT_MAX_EDGE
+        || page_height > BOARD_EXPORT_MAX_EDGE
+        || page_width * page_height > BOARD_EXPORT_MAX_PIXELS
+    {
+        return Err(job_error(
+            "LIMIT_EXCEEDED",
+            "Board export page size exceeds the raster budget.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_board_export_request(
+    board: &InkExportBoardRequest,
+    format: InkExportFormat,
+    page_ids: &[String],
+) -> Result<(), InkJobError> {
+    if page_ids.len() != 1 || page_ids[0].trim().is_empty() {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export requires exactly one surface page ID.",
+        ));
+    }
+    if format == InkExportFormat::Png && board.paginate {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "PNG board export is a single frame and cannot paginate.",
+        ));
+    }
+    validate_board_region(board.region)?;
+    validate_board_tile(board.page_width, board.page_height)?;
+    if !board.paginate {
+        if board.region.width > BOARD_EXPORT_MAX_EDGE
+            || board.region.height > BOARD_EXPORT_MAX_EDGE
+            || board.region.width * board.region.height > BOARD_EXPORT_MAX_PIXELS
+        {
+            return Err(job_error(
+                "LIMIT_EXCEEDED",
+                "Board export frame exceeds the raster budget.",
+            ));
+        }
+    } else {
+        board_export_grid(board.region, board.page_width, board.page_height, true)?;
+    }
+    Ok(())
+}
+
+fn load_board_export_inputs(
+    db: &VfsDatabase,
+    document_id: &str,
+    revision: &str,
+    page_ids: &[String],
+    board: &InkExportBoardRequest,
+) -> Result<crate::ink_bridge::FrozenRenderInputs, InkJobError> {
+    if page_ids.len() != 1 {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export requires exactly one surface page ID.",
+        ));
+    }
+    validate_board_region(board.region)?;
+    let spec = crate::ink_bridge::InkRenderSpec {
+        document_id: document_id.to_owned(),
+        expected_revision: revision.to_owned(),
+        page_id: page_ids[0].clone(),
+        crop: None,
+        board: Some(crate::ink_bridge::InkBoardRenderSpec {
+            crop: board.region,
+            chunk_ids: Vec::new(),
+        }),
+        long_edge: None,
+    };
+    let input = crate::ink_bridge::load_frozen_inputs(db, &spec)
+        .map_err(|error| job_error(error.code.as_str(), error.message))?;
+    if input.board.is_none() {
+        return Err(job_error(
+            "INVALID_ARGUMENT",
+            "Board export requires a v2 board surface.",
+        ));
+    }
+    Ok(input)
 }
 
 pub async fn prepare_source_ink(
@@ -1654,12 +2004,16 @@ pub async fn export_ink_document(
     session_id: Option<&str>,
     tool_call_id: Option<&str>,
     cancellation: Option<CancellationToken>,
+    board: Option<InkExportBoardRequest>,
 ) -> Result<InkExportArtifact, InkJobError> {
     if session_id.is_some() != tool_call_id.is_some() {
         return Err(job_error(
             "INVALID_ARGUMENT",
             "Tool Ink jobs require session_id and tool_call_id together.",
         ));
+    }
+    if let Some(board) = board.as_ref() {
+        validate_board_export_request(board, format, page_ids)?;
     }
     let cancellation = cancellation.unwrap_or_default();
     if cancellation.is_cancelled() {
@@ -1682,6 +2036,7 @@ pub async fn export_ink_document(
     let revision_for_receipt = expected_revision.to_owned();
     let page_ids_for_receipt = page_ids.to_vec();
     let operation_for_receipt = operation_id.to_owned();
+    let board_for_receipt = board.clone();
     if let Some(artifact) = tauri::async_runtime::spawn_blocking(move || {
         load_export_receipt_for_retry(
             &db_for_receipt,
@@ -1690,6 +2045,7 @@ pub async fn export_ink_document(
             &page_ids_for_receipt,
             format,
             &operation_for_receipt,
+            board_for_receipt.as_ref(),
         )
     })
     .await
@@ -1707,31 +2063,86 @@ pub async fn export_ink_document(
     let document_for_snapshot = document_id.to_owned();
     let revision_for_snapshot = expected_revision.to_owned();
     let page_ids_for_snapshot = page_ids.to_vec();
-    let before = tauri::async_runtime::spawn_blocking(move || {
-        load_export_inputs(
+    let board_for_snapshot = board.clone();
+    let before = tauri::async_runtime::spawn_blocking(move || match board_for_snapshot.as_ref() {
+        Some(board) => Ok(vec![load_board_export_inputs(
             &db_for_snapshot,
             &document_for_snapshot,
             &revision_for_snapshot,
             &page_ids_for_snapshot,
-        )
+            board,
+        )?]),
+        None => load_export_inputs(
+            &db_for_snapshot,
+            &document_for_snapshot,
+            &revision_for_snapshot,
+            &page_ids_for_snapshot,
+        ),
     })
     .await
     .map_err(vfs_error)??;
     let snapshot = frozen_snapshot_hash(&before)?;
-    let pages = before
-        .iter()
-        .map(|input| InkExportPageRequest {
-            page_ref: input.page_ref.clone(),
-            page: input.page.clone(),
-            highlights: input.highlights.clone(),
-        })
-        .collect();
+    let (pages, board_payload) = if let Some(board) = board.as_ref() {
+        let input = before.first().ok_or_else(|| {
+            job_error(
+                "RENDER_UNAVAILABLE",
+                "Frozen board export input is missing.",
+            )
+        })?;
+        let frozen = input.board.as_ref().ok_or_else(|| {
+            job_error(
+                "RENDER_UNAVAILABLE",
+                "Ink export only supports v2 board inputs with an explicit region.",
+            )
+        })?;
+        let pages = board_export_grid(
+            board.region,
+            board.page_width,
+            board.page_height,
+            board.paginate,
+        )?;
+        (
+            Vec::new(),
+            Some(InkExportBoardPayload {
+                surface: frozen.surface.clone(),
+                region: board.region,
+                page_width: board.page_width,
+                page_height: board.page_height,
+                paginate: board.paginate,
+                pages,
+                chunks: frozen.chunks.clone(),
+            }),
+        )
+    } else {
+        let pages = before
+            .iter()
+            .map(|input| -> Result<InkExportPageRequest, InkJobError> {
+                Ok(InkExportPageRequest {
+                    page_ref: input.page_ref.clone().ok_or_else(|| {
+                        job_error(
+                            "RENDER_UNAVAILABLE",
+                            "Ink export only supports paged v1 inputs.",
+                        )
+                    })?,
+                    page: input.page.clone().ok_or_else(|| {
+                        job_error(
+                            "RENDER_UNAVAILABLE",
+                            "Ink export only supports paged v1 inputs.",
+                        )
+                    })?,
+                    highlights: input.highlights.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        (pages, None)
+    };
     let payload = InkJobPayload::Export {
         document_id: document_id.to_owned(),
         revision: expected_revision.to_owned(),
         page_ids: page_ids.to_vec(),
         format,
         pages,
+        board: board_payload,
     };
     if cancellation.is_cancelled() {
         return Err(job_error(
@@ -1770,13 +2181,21 @@ pub async fn export_ink_document(
     let document_for_check = document_id.to_owned();
     let revision_for_check = expected_revision.to_owned();
     let pages_for_check = page_ids.to_vec();
-    let after = match tauri::async_runtime::spawn_blocking(move || {
-        load_export_inputs(
+    let board_for_check = board.clone();
+    let after = match tauri::async_runtime::spawn_blocking(move || match board_for_check.as_ref() {
+        Some(board) => Ok(vec![load_board_export_inputs(
             &db_for_check,
             &document_for_check,
             &revision_for_check,
             &pages_for_check,
-        )
+            board,
+        )?]),
+        None => load_export_inputs(
+            &db_for_check,
+            &document_for_check,
+            &revision_for_check,
+            &pages_for_check,
+        ),
     })
     .await
     {
@@ -1810,8 +2229,9 @@ pub async fn export_ink_document(
     let page_ids_for_commit = page_ids.to_vec();
     let operation_for_commit = operation_id.to_owned();
     let cancellation_for_commit = cancellation.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        commit_ink_export_cancellable(
+    let board_for_commit = board.clone();
+    tauri::async_runtime::spawn_blocking(move || match board_for_commit.as_ref() {
+        Some(board) => commit_ink_board_export_cancellable(
             &db_for_commit,
             &document_for_commit,
             &revision_for_commit,
@@ -1821,7 +2241,19 @@ pub async fn export_ink_document(
             &staged_upload_id,
             Some(&snapshot),
             &cancellation_for_commit,
-        )
+            board,
+        ),
+        None => commit_ink_export_cancellable(
+            &db_for_commit,
+            &document_for_commit,
+            &revision_for_commit,
+            &page_ids_for_commit,
+            format,
+            &operation_for_commit,
+            &staged_upload_id,
+            Some(&snapshot),
+            &cancellation_for_commit,
+        ),
     })
     .await
     .map_err(vfs_error)?
@@ -1883,6 +2315,7 @@ pub async fn vfs_ink_export(
         session_id.as_deref(),
         tool_call_id.as_deref(),
         None,
+        request.board,
     )
     .await?;
     crate::vfs::hooks::notify_resource_created(&app, &artifact.file_id);
@@ -1908,6 +2341,7 @@ mod bus_tests;
 mod tests {
     use std::{
         io::Cursor,
+        path::Path,
         sync::{
             atomic::{AtomicBool, Ordering},
             Arc,
@@ -1917,23 +2351,32 @@ mod tests {
 
     use dstu_vfs::vfs::{
         database::{setup_migrated_test_db, VfsDatabase},
-        ink::{InkBackground, InkManifest},
+        ink::{
+            InkAuthor, InkBackground, InkBoardChunk, InkBoardObject, InkBoardSurface, InkManifest,
+            InkObject, InkObjectContent, InkRect, InkRuling, INK_BOARD_SCHEMA_VERSION,
+        },
         repos::{
             blob_repo::VfsBlobRepo,
             file_repo::VfsFileRepo,
+            ink_board_repo::VfsInkBoardRepo,
             ink_prepare_repo::{InkPreparedPage, VfsInkPrepareRepo},
             ink_repo::VfsInkRepo,
+            VfsAttachmentRepo,
         },
+        types::VfsUploadAttachmentParams,
     };
     use image::ImageEncoder;
     use tokio_util::sync::CancellationToken;
 
     use super::{
-        commit_ink_export, commit_ink_export_cancellable, commit_ink_export_with_snapshot,
+        board_export_grid, commit_ink_board_export_cancellable, commit_ink_export,
+        commit_ink_export_cancellable, commit_ink_export_with_snapshot,
         commit_prepared_source_pages, commit_prepared_source_pages_cancellable,
-        frozen_snapshot_hash, load_export_inputs, load_export_receipt_for_retry,
-        wait_pending_ink_job_with_timeout_notify, InkExportFormat, InkJobBusError, InkJobIdentity,
-        InkJobKind, InkJobResponse, InkJobResponseValue, InkStagedPage, PendingInkJobBus,
+        frozen_snapshot_hash, load_board_export_inputs, load_export_inputs,
+        load_export_receipt_for_retry, load_source_bytes, wait_pending_ink_job_with_timeout_notify,
+        InkExportBoardRequest, InkExportCommandRequest, InkExportFormat, InkJobBusError,
+        InkJobIdentity, InkJobKind, InkJobResponse, InkJobResponseValue, InkStagedPage,
+        PendingInkJobBus,
     };
 
     const PNG_1X1: &[u8] = &[
@@ -1964,6 +2407,10 @@ mod tests {
     }
 
     fn minimal_pdf() -> Vec<u8> {
+        pdf_with_padding(0)
+    }
+
+    fn pdf_with_padding(padding: usize) -> Vec<u8> {
         let objects = [
             "<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -1974,6 +2421,11 @@ mod tests {
         for (index, object) in objects.iter().enumerate() {
             offsets.push(pdf.len());
             pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        if padding > 0 {
+            pdf.extend_from_slice(b"% ");
+            pdf.resize(pdf.len() + padding, b' ');
+            pdf.push(b'\n');
         }
         let xref_offset = pdf.len();
         pdf.extend_from_slice(
@@ -2073,6 +2525,389 @@ mod tests {
         .unwrap();
         VfsBlobRepo::decrement_ref_with_conn(&conn, db.blobs_dir(), &background.hash).unwrap();
         manifest
+    }
+
+    fn board_chunk_fixture() -> InkBoardChunk {
+        InkBoardChunk {
+            schema_version: INK_BOARD_SCHEMA_VERSION,
+            chunk_id: "board-export-chunk".to_owned(),
+            objects: vec![InkBoardObject {
+                id: "board-export-object".to_owned(),
+                author: InkAuthor::User,
+                created_at: 0,
+                z_index: 0,
+                content: InkObjectContent::Rect {
+                    rect: InkRect {
+                        x: -20.0,
+                        y: -10.0,
+                        width: 40.0,
+                        height: 20.0,
+                    },
+                    color: "#000000".to_owned(),
+                    width: 2.0,
+                },
+            }],
+        }
+    }
+
+    /// Create and save a real v2 board through the migrated repositories so the
+    /// export tests observe the same frozen surface/chunk refs production does.
+    fn saved_board_fixture(db: &VfsDatabase) -> (InkManifest, InkBoardChunk) {
+        let conn = db.get_conn_safe().unwrap();
+        let created = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Ink export board fixture",
+            InkRuling::Blank,
+            "board-export-create",
+            None,
+        )
+        .expect("migrated board create");
+        let chunk = board_chunk_fixture();
+        let saved = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &created.revision,
+            "board-export-save",
+            std::slice::from_ref(&chunk),
+            &[],
+        )
+        .expect("migrated board save");
+        let reread = VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &saved.document_id)
+            .expect("reget saved board manifest");
+        (reread, chunk)
+    }
+
+    fn board_surface_page_id(manifest: &InkManifest) -> String {
+        match manifest.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        }
+    }
+
+    fn board_export_request(region: InkRect) -> InkExportBoardRequest {
+        InkExportBoardRequest {
+            region,
+            page_width: 20.0,
+            page_height: 20.0,
+            paginate: false,
+        }
+    }
+
+    fn uploaded_source_snapshot(
+        conn: &rusqlite::Connection,
+        resource_id: &str,
+    ) -> (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        i64,
+    ) {
+        conn.query_row(
+            "SELECT r.hash, r.data, r.external_hash, f.blob_hash, f.sha256, f.size FROM resources r JOIN files f ON f.id = r.source_id WHERE r.id = ?1",
+            [resource_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn real_attachment_uploads_prepare_reopen_save_and_load_frozen_render_inputs() {
+        for (name, mime, external, is_pdf) in [
+            ("课堂讲义.pdf", PDF_MIME, false, true),
+            ("课堂图片.png", PNG_MIME, false, false),
+            ("external-source.pdf", PDF_MIME, true, true),
+            ("external-image.png", PNG_MIME, true, false),
+        ] {
+            let (temp_dir, db) = setup_migrated_test_db();
+            let conn = db.get_conn_safe().unwrap();
+            let mut bytes = if is_pdf {
+                pdf_with_padding(if external { 1024 * 1024 } else { 0 })
+            } else {
+                PNG_1X1.to_vec()
+            };
+            if external && !is_pdf {
+                bytes.resize(1024 * 1024, 0);
+            }
+            let upload = VfsAttachmentRepo::upload_bytes_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &VfsUploadAttachmentParams {
+                    name: name.to_owned(),
+                    mime_type: mime.to_owned(),
+                    base64_content: String::new(),
+                    attachment_type: Some(if is_pdf { "file" } else { "image" }.to_owned()),
+                },
+                &bytes,
+            )
+            .expect("real attachment upload");
+            let resource_id = upload.attachment.resource_id.unwrap();
+            let source_hash = VfsBlobRepo::compute_hash(&bytes);
+            let before = uploaded_source_snapshot(&conn, &resource_id);
+            assert_eq!(before.4, source_hash);
+            assert_eq!(before.3.is_some(), external);
+            if external {
+                assert_eq!(before.0, source_hash);
+            } else {
+                assert_ne!(before.0, source_hash);
+            }
+            conn.execute(
+                "UPDATE resources SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.custom', 'kept', '$.extra.highlights', json(?1)) WHERE id = ?2",
+                rusqlite::params![serde_json::json!([{"id": "source-highlight", "pageIndex": 0}]).to_string(), resource_id],
+            )
+            .unwrap();
+            drop(conn);
+
+            let (hash, kind, loaded_name, loaded_mime, loaded_bytes) =
+                load_source_bytes(&db, &resource_id).expect("uploaded source bytes must load");
+            assert_eq!(hash, source_hash);
+            assert_eq!(kind, if is_pdf { "pdf" } else { "image" });
+            assert_eq!(loaded_name, name);
+            assert_eq!(loaded_mime, mime);
+            assert_eq!(loaded_bytes, bytes);
+            let staged = InkStagedPage {
+                staged_upload_id: stage_bytes(temp_dir.path(), "prepared-page.png", PNG_1X1),
+                width_px: 1,
+                height_px: 1,
+                source_page_index: is_pdf.then_some(0),
+            };
+            let manifest = commit_prepared_source_pages(
+                &db,
+                &resource_id,
+                &source_hash,
+                "uploaded-source-test-v1",
+                &[staged],
+                "prepare-uploaded-source",
+            )
+            .expect("real uploaded source must prepare");
+            assert_eq!(
+                manifest.title,
+                Path::new(name).file_stem().unwrap().to_str().unwrap(),
+            );
+            let conn = db.get_conn_safe().unwrap();
+            let reopened =
+                VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &manifest.document_id)
+                    .unwrap();
+            assert_eq!(reopened, manifest);
+            let mut page = VfsInkRepo::get_page_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &manifest.document_id,
+                &manifest.pages[0].page_id,
+            )
+            .unwrap();
+            page.objects.push(InkObject {
+                id: "uploaded-annotation".to_owned(),
+                author: InkAuthor::User,
+                created_at: 0,
+                content: InkObjectContent::Rect {
+                    rect: InkRect {
+                        x: 0.1,
+                        y: 0.1,
+                        width: 0.5,
+                        height: 0.5,
+                    },
+                    color: "#000000".to_owned(),
+                    width: 1.0,
+                },
+            });
+            let saved = VfsInkRepo::save_page_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &manifest.document_id,
+                &manifest.revision,
+                "save-uploaded-annotation",
+                &page,
+            )
+            .expect("uploaded source annotation must save");
+            assert_eq!(uploaded_source_snapshot(&conn, &resource_id), before);
+            let metadata: String = conn
+                .query_row(
+                    "SELECT metadata_json FROM resources WHERE id = ?1",
+                    [&resource_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+            assert_eq!(metadata["custom"], "kept");
+            assert_eq!(metadata["default_ink_document_id"], saved.document_id);
+            drop(conn);
+
+            let inputs = load_export_inputs(
+                &db,
+                &saved.document_id,
+                &saved.revision,
+                &[saved.pages[0].page_id.clone()],
+            )
+            .expect("frozen render inputs must accept inline and external uploads");
+            assert_eq!(inputs[0].page.as_ref().unwrap(), &page);
+            assert_eq!(inputs[0].source_hash.as_deref(), Some(source_hash.as_str()));
+            assert_eq!(inputs[0].highlights[0]["id"], "source-highlight");
+            assert!(inputs[0].source_annotation_revision.is_some());
+            let retry_stage = InkStagedPage {
+                staged_upload_id: stage_bytes(temp_dir.path(), "retry-page.png", PNG_1X1),
+                width_px: 1,
+                height_px: 1,
+                source_page_index: is_pdf.then_some(0),
+            };
+            let retried = commit_prepared_source_pages(
+                &db,
+                &resource_id,
+                &source_hash,
+                "uploaded-source-test-v1",
+                &[retry_stage],
+                "prepare-uploaded-retry",
+            )
+            .unwrap();
+            assert_eq!(retried, saved);
+
+            let conn = db.get_conn_safe().unwrap();
+            if external {
+                let path =
+                    VfsBlobRepo::get_blob_path_with_conn(&conn, db.blobs_dir(), &source_hash)
+                        .unwrap()
+                        .unwrap();
+                let mut corrupted = bytes.clone();
+                corrupted[20] ^= 1;
+                std::fs::write(path, corrupted).unwrap();
+            } else {
+                conn.execute(
+                    "UPDATE resources SET data = 'AAAA' WHERE id = ?1",
+                    [&resource_id],
+                )
+                .unwrap();
+            }
+            drop(conn);
+            assert_eq!(
+                load_source_bytes(&db, &resource_id).unwrap_err().code,
+                "SOURCE_CHANGED",
+            );
+            match load_export_inputs(
+                &db,
+                &saved.document_id,
+                &saved.revision,
+                &[saved.pages[0].page_id.clone()],
+            ) {
+                Err(error) => assert_eq!(error.code, "SOURCE_CHANGED"),
+                Ok(_) => {
+                    panic!("corrupt uploaded source must not provide frozen annotation inputs")
+                }
+            }
+            let conn = db.get_conn_safe().unwrap();
+            if external {
+                let path =
+                    VfsBlobRepo::get_blob_path_with_conn(&conn, db.blobs_dir(), &source_hash)
+                        .unwrap()
+                        .unwrap();
+                std::fs::write(path, &bytes).unwrap();
+            } else {
+                conn.execute(
+                    "UPDATE resources SET data = ?1 WHERE id = ?2",
+                    rusqlite::params![before.1, resource_id],
+                )
+                .unwrap();
+            }
+            VfsFileRepo::purge_file_with_conn(&conn, db.blobs_dir(), &upload.source_id).unwrap();
+            drop(conn);
+            let purged_inputs = load_export_inputs(
+                &db,
+                &saved.document_id,
+                &saved.revision,
+                &[saved.pages[0].page_id.clone()],
+            )
+            .expect("prepared background must survive a real uploaded source purge");
+            assert_eq!(purged_inputs[0].page.as_ref().unwrap(), &page);
+            assert!(purged_inputs[0].highlights.is_empty());
+            assert!(purged_inputs[0].source_annotation_revision.is_none());
+        }
+    }
+
+    #[test]
+    fn real_inline_upload_rejects_changed_hash_and_wrong_link_without_prepare_writes() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let upload = VfsAttachmentRepo::upload_bytes_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &VfsUploadAttachmentParams {
+                name: "inline-source.png".to_owned(),
+                mime_type: PNG_MIME.to_owned(),
+                base64_content: String::new(),
+                attachment_type: Some("image".to_owned()),
+            },
+            PNG_1X1,
+        )
+        .unwrap();
+        let resource_id = upload.attachment.resource_id.unwrap();
+        let source_hash = VfsBlobRepo::compute_hash(PNG_1X1);
+        let before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+        let stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "changed-source-page.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        assert_eq!(
+            commit_prepared_source_pages(
+                &db,
+                &resource_id,
+                &"a".repeat(64),
+                "uploaded-source-test-v1",
+                &[stage],
+                "reject-stale-source",
+            )
+            .unwrap_err()
+            .code,
+            "SOURCE_CHANGED",
+        );
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "UPDATE resources SET source_id = 'wrong-file' WHERE id = ?1",
+            [&resource_id],
+        )
+        .unwrap();
+        drop(conn);
+        assert_eq!(
+            load_source_bytes(&db, &resource_id).unwrap_err().code,
+            "SOURCE_CHANGED",
+        );
+        let stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "wrong-source-page.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        assert_eq!(
+            commit_prepared_source_pages(
+                &db,
+                &resource_id,
+                &source_hash,
+                "uploaded-source-test-v1",
+                &[stage],
+                "reject-wrong-source",
+            )
+            .unwrap_err()
+            .code,
+            "SOURCE_CHANGED",
+        );
+        let conn = db.get_conn_safe().unwrap();
+        let after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(before, after);
+        let pointer: Option<String> = conn
+            .query_row(
+                "SELECT json_extract(metadata_json, '$.default_ink_document_id') FROM resources WHERE id = ?1",
+                [&resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(pointer.is_none());
     }
 
     #[test]
@@ -2752,6 +3587,7 @@ mod tests {
             &page_ids,
             InkExportFormat::Pdf,
             "stable-pdf-operation",
+            None,
         )
         .unwrap();
 
@@ -2801,6 +3637,394 @@ mod tests {
             result.is_ok(),
             "export must apply the shared source-purged frozen-input policy: {:?}",
             result.err()
+        );
+    }
+
+    // Board export is still RED on purpose: these tests pin the smallest
+    // backward-compatible contract before the request/load/render path exists.
+
+    #[test]
+    fn board_export_request_keeps_page_only_requests_and_accepts_optional_board_payload() {
+        let page_only = serde_json::json!({
+            "document_id": "file_ink_board_fixture",
+            "expected_revision": "r_board_1",
+            "page_ids": ["board-surface-page"],
+            "format": "pdf",
+            "operation_id": "board-export-page-only",
+        });
+        serde_json::from_value::<InkExportCommandRequest>(page_only)
+            .expect("legacy page-only export requests must remain accepted");
+
+        let board = serde_json::json!({
+            "document_id": "file_ink_board_fixture",
+            "expected_revision": "r_board_1",
+            "page_ids": ["board-surface-page"],
+            "format": "pdf",
+            "operation_id": "board-export-region",
+            "board": {
+                "region": { "x": -20.0, "y": -10.0, "width": 40.0, "height": 20.0 },
+                "page_width": 20.0,
+                "page_height": 10.0,
+                "paginate": true
+            }
+        });
+        serde_json::from_value::<InkExportCommandRequest>(board)
+            .expect("board export requests must accept the optional finite region, page size, and paginate flag");
+    }
+
+    #[test]
+    fn board_export_without_explicit_region_is_typed_rejected_and_leaves_manifest_unchanged() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let surface_page_id = match manifest.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        };
+        let manifest_before = manifest.clone();
+
+        let error = match load_export_inputs(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            std::slice::from_ref(&surface_page_id),
+        ) {
+            Ok(_) => panic!(
+                "board export without an explicit region must not fall back to surface bounds"
+            ),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.code == "INVALID_ARGUMENT" || error.code == "UNSUPPORTED",
+            "board export without explicit region must fail as a typed argument/unsupported error, got {error:?}"
+        );
+
+        let conn = db.get_conn_safe().unwrap();
+        let after =
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &manifest.document_id)
+                .expect("board manifest must reopen unchanged");
+        assert_eq!(
+            after, manifest_before,
+            "rejected board export must not mutate the canonical board"
+        );
+    }
+
+    #[test]
+    fn board_export_grid_is_row_major_and_clips_edge_tiles_to_the_explicit_region() {
+        let region = InkRect {
+            x: -15.0,
+            y: -5.0,
+            width: 35.0,
+            height: 20.0,
+        };
+
+        let pages = board_export_grid(region, 20.0, 10.0, true)
+            .expect("paginated board export must produce a finite row-major grid");
+
+        assert_eq!(
+            pages.as_slice(),
+            &[
+                InkRect {
+                    x: -15.0,
+                    y: -5.0,
+                    width: 20.0,
+                    height: 10.0,
+                },
+                InkRect {
+                    x: 5.0,
+                    y: -5.0,
+                    width: 15.0,
+                    height: 10.0,
+                },
+                InkRect {
+                    x: -15.0,
+                    y: 5.0,
+                    width: 20.0,
+                    height: 10.0,
+                },
+                InkRect {
+                    x: 5.0,
+                    y: 5.0,
+                    width: 15.0,
+                    height: 10.0,
+                },
+            ],
+            "board grid must walk left-to-right, then top-to-bottom, clipping the final column"
+        );
+    }
+
+    #[test]
+    fn board_export_grid_returns_one_frame_without_pagination_and_rejects_more_than_500_pages() {
+        let region = InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        };
+        let single = board_export_grid(region, 20.0, 20.0, false)
+            .expect("a non-paginated board export must be exactly one frame");
+        assert_eq!(single.as_slice(), &[region]);
+
+        let over_budget = InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 501.0,
+            height: 1.0,
+        };
+        let error = board_export_grid(over_budget, 1.0, 1.0, true)
+            .expect_err("501 board pages must exceed the export page budget");
+        assert_eq!(error.code, "LIMIT_EXCEEDED");
+    }
+
+    #[test]
+    fn board_export_same_operation_with_different_region_is_conflict_and_writes_nothing() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let page_ids = vec![board_surface_page_id(&manifest)];
+        let region_a = InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        };
+        let region_b = InkRect {
+            x: 1.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        };
+        let board_a = board_export_request(region_a);
+        let board_b = board_export_request(region_b);
+        let operation_id = "board-export-same-operation";
+
+        let first_stage = stage_bytes(temp_dir.path(), "board-a.png", &distinct_png());
+        let first = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            operation_id,
+            &first_stage,
+            None,
+            &CancellationToken::new(),
+            &board_a,
+        )
+        .expect("first board export should commit");
+        assert_eq!(first.page_ids, page_ids);
+
+        let conn = db.get_conn_safe().unwrap();
+        let files_after_first: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        let document_resource_id = VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+            .unwrap()
+            .unwrap()
+            .resource_id
+            .unwrap();
+        drop(conn);
+
+        let second_stage = stage_bytes(temp_dir.path(), "board-b.png", &distinct_png());
+        let rejected = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            operation_id,
+            &second_stage,
+            None,
+            &CancellationToken::new(),
+            &board_b,
+        );
+        assert_eq!(rejected.unwrap_err().code, "OPERATION_CONFLICT");
+        assert!(
+            crate::staged_upload::take_staged_upload(&second_stage).is_err(),
+            "conflicting board export must consume its staged upload"
+        );
+
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_after_first,
+            "conflicting board export must not write another file"
+        );
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&document_resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let metadata: serde_json::Value = serde_json::from_str(raw.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            metadata["ink_export_receipts"].as_array().unwrap().len(),
+            1,
+            "conflicting board export must not add a receipt"
+        );
+    }
+
+    #[test]
+    fn board_commit_rejects_crop_and_chunk_drift_without_an_artifact() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let page_ids = vec![board_surface_page_id(&manifest)];
+        let board = board_export_request(InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        });
+        let before = load_board_export_inputs(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            &board,
+        )
+        .expect("frozen board inputs");
+        let snapshot = frozen_snapshot_hash(&[before]).unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        let files_before_crop: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+
+        let crop_drift = board_export_request(InkRect {
+            x: 1.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        });
+        let crop_stage = stage_bytes(temp_dir.path(), "board-crop-drift.png", &distinct_png());
+        let rejected = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            "board-crop-drift",
+            &crop_stage,
+            Some(&snapshot),
+            &CancellationToken::new(),
+            &crop_drift,
+        );
+        assert_eq!(rejected.unwrap_err().code, "REVISION_CONFLICT");
+        assert!(
+            crate::staged_upload::take_staged_upload(&crop_stage).is_err(),
+            "drifted board crop must consume its staged upload"
+        );
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_before_crop,
+            "drifted board crop must not create an artifact file"
+        );
+        drop(conn);
+
+        let mut drifted_chunk = board_chunk_fixture();
+        drifted_chunk.chunk_id = "board-export-chunk-drift".to_owned();
+        drifted_chunk.objects[0].id = "board-export-object-drift".to_owned();
+        drifted_chunk.objects[0].z_index = 1;
+        let conn = db.get_conn_safe().unwrap();
+        VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            "board-drift-save",
+            std::slice::from_ref(&drifted_chunk),
+            &[],
+        )
+        .expect("board chunk drift");
+        let files_before_chunk: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+
+        let chunk_stage = stage_bytes(temp_dir.path(), "board-chunk-drift.png", &distinct_png());
+        let rejected = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            "board-chunk-drift",
+            &chunk_stage,
+            Some(&snapshot),
+            &CancellationToken::new(),
+            &board,
+        );
+        assert_eq!(rejected.unwrap_err().code, "REVISION_CONFLICT");
+        assert!(
+            crate::staged_upload::take_staged_upload(&chunk_stage).is_err(),
+            "drifted board chunk must consume its staged upload"
+        );
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_before_chunk,
+            "drifted board chunk must not create an artifact file"
+        );
+    }
+
+    #[test]
+    fn board_commit_entry_failures_consume_the_stage() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let page_ids = vec![board_surface_page_id(&manifest)];
+        let valid = board_export_request(InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+        });
+        let invalid = InkExportBoardRequest {
+            page_width: 0.0,
+            ..valid.clone()
+        };
+
+        let invalid_stage = stage_bytes(temp_dir.path(), "board-invalid.png", &distinct_png());
+        let rejected = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            "board-invalid-request",
+            &invalid_stage,
+            None,
+            &CancellationToken::new(),
+            &invalid,
+        );
+        assert_eq!(rejected.unwrap_err().code, "INVALID_ARGUMENT");
+        assert!(
+            crate::staged_upload::take_staged_upload(&invalid_stage).is_err(),
+            "invalid board request must abort its staged upload before returning"
+        );
+
+        let cancelled_stage = stage_bytes(temp_dir.path(), "board-cancelled.png", &distinct_png());
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let rejected = commit_ink_board_export_cancellable(
+            &db,
+            &manifest.document_id,
+            &manifest.revision,
+            &page_ids,
+            InkExportFormat::Png,
+            "board-cancelled-request",
+            &cancelled_stage,
+            None,
+            &cancellation,
+            &valid,
+        );
+        assert_eq!(rejected.unwrap_err().code, "CANCELLED");
+        assert!(
+            crate::staged_upload::take_staged_upload(&cancelled_stage).is_err(),
+            "cancelled board commit must abort its staged upload"
         );
     }
 }

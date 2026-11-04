@@ -123,6 +123,10 @@ export const LazyLearningHubPage = React.lazy(() =>
   import('./features/learning-hub/LearningHubPage').then(m => ({ default: m.LearningHubPage }))
 );
 
+export const LazyNotebookPage = React.lazy(() =>
+  import('./features/ink/NotebookPage').then(m => ({ default: m.NotebookPage }))
+);
+
 // Sandbox 工作台
 export const LazySandboxWorkbenchPage = React.lazy(() =>
   import('./features/sandbox/pages/SandboxWorkbenchPage').then(m => ({ default: m.SandboxWorkbenchPage }))

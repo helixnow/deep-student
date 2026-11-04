@@ -1,8 +1,7 @@
+import { INK_DRAFT_PAGES_STORE, openInkDraftDatabase } from './inkDraftDatabase';
 import type { InkPage } from './types';
 
-const DB_NAME = 'deepstudent-ink-drafts';
-const DB_VERSION = 1;
-const STORE_NAME = 'pages';
+const STORE_NAME = INK_DRAFT_PAGES_STORE;
 
 export interface InkDraftKey {
   document_id: string;
@@ -35,17 +34,7 @@ function storageKey(key: InkDraftKey): string {
 }
 
 function openDatabase(): Promise<IDBDatabase> {
-  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB is unavailable.'));
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) database.createObjectStore(STORE_NAME, { keyPath: 'key' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Could not open the ink draft store.'));
-    request.onblocked = () => reject(new Error('The ink draft store is blocked.'));
-  });
+  return openInkDraftDatabase();
 }
 
 async function runTransaction<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {

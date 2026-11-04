@@ -58,6 +58,7 @@
     "launcher": {
       "chat_v2": "Chat",
       "learning_hub": "Hub",
+      "notes": "Notes",
       "media": "Media",
       "todo": "Todo",
       "skills_management": "Skills",

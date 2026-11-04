@@ -4,10 +4,9 @@
  * 根据文档20《统一资源库与访达层改造任务分配》实现
  */
 
-// Prompt 4: 访达侧栏容器
-export { LearningHubSidebar } from './LearningHubSidebar';
-// 全屏页面组件
-export { LearningHubPage } from './LearningHubPage';
+export { LearningHubSidebar, LearningHubPage } from './LazyLearningHubEntry';
+export { LazyNoteContentView } from './LazyNoteContentView';
+export type { ContentViewProps as NoteContentViewProps } from './apps/UnifiedAppPanel';
 // ★ 2026-06-12（审阅问题 FE-M6）：移除死代码导出
 // （LearningHubToolbar/LearningHubActionBar/ResourceGridView/FolderTreeView 已删除）
 export type {

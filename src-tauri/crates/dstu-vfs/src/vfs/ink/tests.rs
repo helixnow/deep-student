@@ -12,6 +12,10 @@ const PAGE_FIXTURE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../tests/fixtures/ink/page-v1.json"
 ));
+const BOARD_V2_FIXTURE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../tests/fixtures/ink/valid-board-v2.json"
+));
 
 fn fixture_page_ref() -> InkPageRef {
     let manifest: InkManifest = serde_json::from_slice(MANIFEST_FIXTURE)
@@ -218,6 +222,10 @@ fn page_fixture_value() -> serde_json::Value {
     serde_json::from_slice(PAGE_FIXTURE).expect("page fixture JSON is valid")
 }
 
+fn board_v2_fixture_value() -> serde_json::Value {
+    serde_json::from_slice(BOARD_V2_FIXTURE).expect("board v2 fixture JSON is valid")
+}
+
 fn set_json(value: &mut serde_json::Value, pointer: &str, replacement: serde_json::Value) {
     *value.pointer_mut(pointer).expect("mutation pointer exists") = replacement;
 }
@@ -284,7 +292,7 @@ fn ink_manifest_constraints_reject_invalid_cases() {
         (
             "unsupported_schema",
             "/schema_version",
-            serde_json::json!(2),
+            serde_json::json!(3),
         ),
         ("zero_pages", "/pages", serde_json::json!([])),
         (
@@ -971,4 +979,177 @@ fn ink_manifest_and_page_accept_limit_boundaries() {
         parse_page(&page_bytes, &fixture_page_ref()).is_ok(),
         "page object/sample/text/style maxima are inclusive"
     );
+}
+
+#[test]
+fn ink_board_v2_fixture_parses_and_round_trips_surface_contract() {
+    // Raw serde gate: isolate the surface adapter from the manifest and domain
+    // validation, so any regression surfaces serde's exact error (this crate
+    // enables serde_json/arbitrary_precision; see InkBoardSurface Deserialize).
+    let fixture: serde_json::Value =
+        serde_json::from_slice(BOARD_V2_FIXTURE).expect("board v2 fixture JSON is valid");
+    let surface_bytes =
+        serde_json::to_vec(&fixture["surface"]).expect("board v2 surface serializes");
+    let direct_surface: InkBoardSurface = serde_json::from_slice(&surface_bytes)
+        .unwrap_or_else(|error| panic!("board v2 surface must deserialize directly: {error}"));
+    assert_eq!(
+        direct_surface,
+        InkBoardSurface::Board {
+            page_id: "page-board-0001".to_owned(),
+            ruling: InkRuling::Blank,
+            bounds: InkBoardBounds {
+                x: -100.0,
+                y: -80.0,
+                width: 200.0,
+                height: 160.0,
+            },
+        }
+    );
+
+    let manifest = parse_manifest(BOARD_V2_FIXTURE).expect("valid board v2 fixture must parse");
+    let serialized =
+        serde_json::to_vec(&manifest).expect("board v2 manifest serialization must succeed");
+    let wire: serde_json::Value =
+        serde_json::from_slice(&serialized).expect("serialized JSON is valid");
+
+    assert_eq!(wire["schema_version"].as_u64(), Some(2));
+    assert_eq!(wire["document_id"].as_str(), Some("doc-board-demo-0001"));
+    assert_eq!(wire["revision"].as_str(), Some("r-000001"));
+    assert_eq!(wire["title"].as_str(), Some("空白无限画布"));
+    assert_eq!(wire["source"]["kind"].as_str(), Some("blank"));
+    assert_eq!(
+        wire["pages"].as_array().map(|pages| pages.len()),
+        Some(0),
+        "v2 board manifests carry chunks instead of fixed pages"
+    );
+
+    assert_eq!(wire["surface"]["kind"].as_str(), Some("board"));
+    assert_eq!(wire["surface"]["page_id"].as_str(), Some("page-board-0001"));
+    assert_eq!(wire["surface"]["ruling"].as_str(), Some("blank"));
+    assert_eq!(wire["surface"]["bounds"]["x"].as_f64(), Some(-100.0));
+    assert_eq!(wire["surface"]["bounds"]["y"].as_f64(), Some(-80.0));
+    assert_eq!(wire["surface"]["bounds"]["width"].as_f64(), Some(200.0));
+    assert_eq!(wire["surface"]["bounds"]["height"].as_f64(), Some(160.0));
+    assert_eq!(
+        wire["surface"]["bounds"]
+            .as_object()
+            .map(|bounds| bounds.len()),
+        Some(4),
+        "surface bounds must be exactly x/y/width/height"
+    );
+    assert_eq!(
+        wire["chunks"].as_array().map(|chunks| chunks.len()),
+        Some(0)
+    );
+    assert!(wire.get("last_operation").is_none());
+
+    let reparsed = parse_manifest(&serialized).expect("round-tripped board v2 manifest must parse");
+    assert_eq!(reparsed, manifest);
+}
+
+#[test]
+fn ink_board_v2_rejects_resource_source_and_empty_ids() {
+    let mut resource_source = board_v2_fixture_value();
+    set_json(
+        &mut resource_source,
+        "/source",
+        serde_json::json!({
+            "kind": "resource",
+            "resource_id": "res-pdf-src-0042",
+            "source_hash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+            "conversion_revision": "conv-1"
+        }),
+    );
+    assert!(
+        parse_manifest(&serde_json::to_vec(&resource_source).expect("JSON serializes")).is_err(),
+        "v2 boards must not mix a resource source into a blank board"
+    );
+
+    let mut malformed_resource_source = board_v2_fixture_value();
+    set_json(
+        &mut malformed_resource_source,
+        "/source",
+        serde_json::json!({"kind": "resource", "resource_id": "res-pdf-src-0042"}),
+    );
+    assert!(
+        parse_manifest(&serde_json::to_vec(&malformed_resource_source).expect("JSON serializes"))
+            .is_err(),
+        "malformed v2 resource source must be rejected"
+    );
+
+    for (name, pointer) in [
+        ("empty_document_id", "/document_id"),
+        ("empty_surface_page_id", "/surface/page_id"),
+    ] {
+        let mut value = board_v2_fixture_value();
+        set_json(&mut value, pointer, serde_json::json!(""));
+        let error =
+            parse_manifest(&serde_json::to_vec(&value).expect("JSON serializes")).expect_err(name);
+        assert_eq!(error.code, InkErrorCode::InvalidArgument, "{name}");
+    }
+}
+
+#[test]
+fn ink_board_v2_rejects_invalid_surface_geometry() {
+    let cases = [
+        (
+            "negative_width",
+            "/surface/bounds/width",
+            serde_json::json!(-1.0),
+        ),
+        (
+            "zero_width",
+            "/surface/bounds/width",
+            serde_json::json!(0.0),
+        ),
+        (
+            "x_below_signed_safe_range",
+            "/surface/bounds/x",
+            serde_json::json!(-10_000_001.0),
+        ),
+        (
+            "y_above_signed_safe_range",
+            "/surface/bounds/y",
+            serde_json::json!(10_000_001.0),
+        ),
+    ];
+
+    for (name, pointer, replacement) in cases {
+        let mut value = board_v2_fixture_value();
+        set_json(&mut value, pointer, replacement);
+        let error =
+            parse_manifest(&serde_json::to_vec(&value).expect("JSON serializes")).expect_err(name);
+        assert_eq!(error.code, InkErrorCode::InvalidArgument, "{name}");
+    }
+}
+
+#[test]
+fn ink_board_v2_rejects_unknown_surface_fields() {
+    for (name, pointer) in [
+        ("surface_struct", "/surface"),
+        ("bounds_struct", "/surface/bounds"),
+    ] {
+        let value = add_unknown_field(board_v2_fixture_value(), pointer);
+        let error =
+            parse_manifest(&serde_json::to_vec(&value).expect("JSON serializes")).expect_err(name);
+        assert_eq!(error.code, InkErrorCode::InvalidArgument, "{name}");
+    }
+}
+
+#[test]
+fn ink_v1_manifest_rejects_surface_and_chunks_fields() {
+    let board_surface = board_v2_fixture_value()["surface"].clone();
+    for (name, field, field_value) in [
+        ("v1_surface_field", "surface", board_surface),
+        ("v1_chunks_field", "chunks", serde_json::json!([])),
+    ] {
+        let mut value = manifest_fixture_value();
+        value
+            .as_object_mut()
+            .expect("manifest fixture is an object")
+            .insert(field.to_owned(), field_value);
+        let error =
+            parse_manifest(&serde_json::to_vec(&value).expect("JSON serializes")).expect_err(name);
+        assert_eq!(error.code, InkErrorCode::InvalidArgument, "{name}");
+    }
 }

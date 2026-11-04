@@ -16,6 +16,7 @@
  *                       → NAVIGATE_TO_VIEW learning-hub + openResource=/{resourceId}
  * - files / notes       → NAVIGATE_TO_VIEW learning-hub（notes 工作区是 OS 专属壳，
  *                         legacy 下资源仍在资源库中打开）
+ * - notebook            → NAVIGATE_TO_VIEW notes（独立手写笔记库）
  * - settings/todo/skills/templates/taskDashboard/sandbox → NAVIGATE_TO_VIEW 对应视图
  * - pomodoro             → 显式 no-op（GlobalPomodoroWidget 常驻，静默即可）
  * - browser / flashcards → no-op + 全局通知「仅桌面端可用」（OS 模式专属，
@@ -57,6 +58,7 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   files: 'learning-hub',
   // OS notes 工作区（应用 typeId）：legacy 无对应工作区页，落资源库
   notes: 'learning-hub',
+  notebook: 'notes',
   settings: 'settings',
   todo: 'todo',
   skills: 'skills-management',

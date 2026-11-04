@@ -18,6 +18,8 @@ import {
   EssayIcon,
   MindmapIcon,
 } from '../icons';
+import { INK_BOARD_CREATE_ENABLED } from '@/features/ink';
+import { visibleInkCreateChoices, type InkCreateMode } from '../inkCreateChoices';
 import type { SidebarT } from './sidebarConstants';
 
 export interface SidebarMobileToolbarProps {
@@ -41,7 +43,7 @@ export interface SidebarMobileToolbarProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
-  handleNewInk: () => Promise<void>;
+  handleNewInk: (folderId?: string | null, mode?: InkCreateMode) => Promise<void>;
   isTrashView: boolean;
   handleEmptyTrash: () => void;
   items: DstuNode[];
@@ -190,9 +192,17 @@ export function SidebarMobileToolbar({
               >
                 {t('finder.toolbar.newMindMap')}
               </AppMenuItem>
-              <AppMenuItem icon={<PenNib size={16} />} onClick={() => { void handleNewInk(); }}>
-                {t('finder.toolbar.newInk')}
-              </AppMenuItem>
+              {visibleInkCreateChoices(INK_BOARD_CREATE_ENABLED).map((choice) => (
+                <AppMenuItem
+                  key={choice.mode}
+                  data-testid={choice.testId}
+                  data-ink-mode={choice.mode}
+                  icon={<PenNib size={16} />}
+                  onClick={() => { void handleNewInk(undefined, choice.mode); }}
+                >
+                  {t(choice.labelKey)}
+                </AppMenuItem>
+              ))}
             </AppMenuContent>
           </AppMenu>
           {/* 回收站视图显示清空按钮 */}

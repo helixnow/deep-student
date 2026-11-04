@@ -7,14 +7,12 @@ const id = (description?: string): JsonSchemaProperty => ({
   ...(description ? { description } : {}),
 });
 
-const revision = (description = '最近一次 get/render 返回的不透明 revision'): JsonSchemaProperty =>
-  id(description);
+const revision = (description?: string): JsonSchemaProperty => id(description);
 
 const pageIndex: JsonSchemaProperty = {
   type: 'integer',
   minimum: 0,
   maximum: 499,
-  description: '页索引，0-based；第 1 页的索引为 0',
 };
 
 const color: JsonSchemaProperty = {
@@ -38,7 +36,6 @@ const normalizedRect: JsonSchemaProperty = {
   type: 'object',
   additionalProperties: false,
   required: ['x', 'y', 'width', 'height'],
-  description: '归一化页面区域；坐标和尺寸在 0..1，区域须完整位于页面范围内',
   properties: {
     x: { type: 'number', minimum: 0, maximum: 1 },
     y: { type: 'number', minimum: 0, maximum: 1 },
@@ -51,7 +48,6 @@ const pageSize: JsonSchemaProperty = {
   type: 'object',
   additionalProperties: false,
   required: ['width', 'height'],
-  description: '逻辑页宽高；每边 1–16384，默认采用 A4 纵向比例',
   properties: {
     width: { type: 'integer', minimum: 1, maximum: 16384 },
     height: { type: 'integer', minimum: 1, maximum: 16384 },
@@ -60,7 +56,18 @@ const pageSize: JsonSchemaProperty = {
 
 const crop: JsonSchemaProperty = {
   ...normalizedRect,
-  description: '可选页面裁剪区域；归一化坐标，完整位于页面 0..1 范围',
+};
+
+const boardWorldRect: JsonSchemaProperty = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['x', 'y', 'width', 'height'],
+  properties: {
+    x: { type: 'number', minimum: -10_000_000, maximum: 10_000_000 },
+    y: { type: 'number', minimum: -10_000_000, maximum: 10_000_000 },
+    width: { type: 'number', exclusiveMinimum: 0 },
+    height: { type: 'number', exclusiveMinimum: 0 },
+  },
 };
 
 const contentProperties: Record<string, JsonSchemaProperty> = {
@@ -92,13 +99,12 @@ const operationContent: JsonSchemaProperty = {
 };
 
 const localizedOperationCommon = {
-  page_id: id('目标稳定 page_id'),
+  page_id: id(),
   coordinate_space: {
     type: 'string' as const,
     enum: ['page', 'render_crop'],
-    description: '几何坐标相对于整页或指定 render_id 的裁剪图',
   },
-  based_on_render_id: id('必须来自最近一次对应文档/页面/revision 的 render'),
+  based_on_render_id: id(),
 };
 
 const inkOperationProperties: Record<string, JsonSchemaProperty> = {
@@ -116,7 +122,7 @@ const inkOperationProperties: Record<string, JsonSchemaProperty> = {
   color,
   from: normalizedPoint,
   to: normalizedPoint,
-  object_id: id('明确指定既有对象；修改或删除需精确范围用户确认'),
+  object_id: id('精确范围用户确认'),
   content: operationContent,
 };
 
@@ -152,7 +158,6 @@ const inkOperations: JsonSchemaProperty = {
   type: 'array',
   minItems: 1,
   maxItems: 100,
-  description: '有序的原子操作批次，最多 100 项',
   items: {
     type: 'object',
     additionalProperties: false,
@@ -163,9 +168,9 @@ const inkOperations: JsonSchemaProperty = {
 
 const getSelectors = {
   document_id: id(),
-  page_id: id('可选稳定页 ID；与 page_index 至多提供一个'),
+  page_id: id(),
   page_index: pageIndex,
-  operation_id: id('可选的既有操作状态查询 ID'),
+  operation_id: id(),
   object_limit: { type: 'integer' as const, minimum: 1, maximum: 100, default: 50 },
 };
 const getInputSchema = {
@@ -179,41 +184,52 @@ const getInputSchema = {
 const toolSchemas = [
   {
     name: 'builtin-ink_prepare',
-    description: '为现有 PDF、图片或已支持预览格式创建/复用默认批注文档；本地固定转换不保证 Office 原生排版，返回状态与质量警告。',
+    description: '为现有 PDF/图片创建或复用默认 Ink 批注文档；返回状态与质量警告。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       required: ['source_resource_id', 'operation_id'],
       properties: {
-        source_resource_id: id('现有 VFS 文件资源 ID'),
-        operation_id: id('用于幂等 prepare 的调用 ID'),
+        source_resource_id: id(),
+        operation_id: id(),
       },
     },
   },
   {
     name: 'builtin-ink_create',
-    description: '创建至少包含一页的空白分页手写笔记；默认 A4 纵向，返回文档 ID、revision 与打开定位。',
+    description: '创建空白分页手写笔记或 board 无限画布。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       required: ['title', 'operation_id'],
       properties: {
         title: { type: 'string', minLength: 1, maxLength: 256 },
-        folder_id: id('可选目标 VFS 文件夹 ID'),
+        folder_id: id(),
+        mode: {
+          type: 'string',
+          enum: ['paged', 'board'],
+          default: 'paged',
+        },
         page_size: pageSize,
         ruling: { type: 'string', enum: ['blank', 'lined', 'grid'], default: 'blank' },
-        operation_id: id('用于幂等创建的调用 ID'),
+        operation_id: id(),
       },
+      allOf: [
+        {
+          if: { properties: { mode: { const: 'board' } }, required: ['mode'] },
+          then: { not: { required: ['page_size'] } },
+        },
+      ],
     },
   },
   {
     name: 'builtin-ink_get',
-    description: '只读读取文档 manifest、revision 和单页有限对象摘要，或查询既有 operation_id；返回页索引为 0-based。',
+    description: '只读读取 manifest/revision/有限摘要或 operation 状态。',
     inputSchema: getInputSchema,
   },
   {
     name: 'builtin-ink_render',
-    description: '按固定 document revision/page 合成含批注页图，返回 render_id、坐标映射和可打开产物；送模需要实际会话授权并注入真实图片。',
+    description: '按固定 revision 合成含批注页图，返回 render_id 与产物。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -223,12 +239,14 @@ const toolSchemas = [
         expected_revision: revision(),
         page_id: id(),
         crop,
+        board_crop: boardWorldRect,
       },
+      allOf: [{ not: { required: ['crop', 'board_crop'] } }],
     },
   },
   {
     name: 'builtin-ink_apply_ops',
-    description: '受控、revision-bound 批量批注；单次 1–100 项，几何定位必须使用当前 based_on_render_id。更新/删除既有对象按精确对象范围要求用户确认。',
+    description: '受控、revision-bound 批量批注（1–100 项）；修改/删除须精确确认。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -236,14 +254,14 @@ const toolSchemas = [
       properties: {
         document_id: id(),
         expected_revision: revision(),
-        operation_id: id('用于幂等提交的调用 ID'),
+        operation_id: id(),
         ops: inkOperations,
       },
     },
   },
   {
     name: 'builtin-ink_export',
-    description: '按固定 revision 生成新 PNG 或扁平栅格 PDF 产物，返回资源 ID/页数；不会覆盖来源文件或可编辑手写源。',
+    description: '按固定 revision 生成 PNG/扁平 PDF，不覆盖源文件。',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -256,11 +274,28 @@ const toolSchemas = [
           minItems: 1,
           maxItems: 500,
           uniqueItems: true,
-          items: id('选定页面的稳定 page_id'),
+          items: id(),
         },
         format: { type: 'string', enum: ['png', 'pdf'] },
-        operation_id: id('用于幂等导出的调用 ID'),
+        board: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['region', 'page_width', 'page_height'],
+          properties: {
+            region: boardWorldRect,
+            page_width: { type: 'number', exclusiveMinimum: 0 },
+            page_height: { type: 'number', exclusiveMinimum: 0 },
+            paginate: { type: 'boolean' },
+          },
+        },
+        operation_id: id(),
       },
+      allOf: [
+        {
+          if: { required: ['board'] },
+          then: { properties: { page_ids: { maxItems: 1 } } },
+        },
+      ],
     },
   },
 ] satisfies NonNullable<SkillDefinition['embeddedTools']>;

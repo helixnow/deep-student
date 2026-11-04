@@ -1,5 +1,6 @@
 import type React from 'react';
 import { createPortal } from 'react-dom';
+import { INK_BOARD_CREATE_ENABLED } from '@/features/ink';
 import { FinderToolbar, FinderCreateMenuItems } from '../components/finder';
 import type { FinderPath, QuickAccessType, SortBy, SortOrder, ViewMode } from '../stores/finderStore';
 import type { LearningHubSidebarProps } from '../types';
@@ -36,7 +37,7 @@ export interface SidebarFinderToolbarProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
-  handleNewInk: () => Promise<void>;
+  handleNewInk: (folderId?: string | null, mode?: 'paged' | 'board') => Promise<void>;
   toolbarPortalTarget: LearningHubSidebarProps['toolbarPortalTarget'];
   toolbarPortalMode: NonNullable<LearningHubSidebarProps['toolbarPortalMode']>;
 }
@@ -113,7 +114,8 @@ export function SidebarFinderToolbar({
         onNewTranslation={handleNewTranslation}
         onNewEssay={handleNewEssay}
         onNewMindMap={handleNewMindMap}
-        onNewInk={() => { void handleNewInk(); }}
+        onNewInk={(mode) => { void handleNewInk(undefined, mode); }}
+        boardInkEnabled={INK_BOARD_CREATE_ENABLED}
       />
     ) : undefined}
     titlebarMode={toolbarPortalTarget ? toolbarPortalMode : false}

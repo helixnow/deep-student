@@ -28,13 +28,17 @@ export async function loadInkBackground(pageRef: InkPageRef): Promise<InkBackgro
     throw new Error('Frozen Ink PNG background is missing or exceeds the 4 MiB limit.');
   }
 
-  let bytes: Uint8Array;
-  try {
-    const binary = atob(blob.base64);
-    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  } catch {
-    throw new Error('Frozen Ink PNG background is not valid base64.');
-  }
+  // Let `Uint8Array.from` infer `Uint8Array<ArrayBuffer>`; an explicit bare
+  // `Uint8Array` annotation widens the buffer to ArrayBufferLike and is not a
+  // BlobPart under TS 5.7+/tsgo.
+  const bytes = (() => {
+    try {
+      const binary = atob(blob.base64);
+      return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    } catch {
+      throw new Error('Frozen Ink PNG background is not valid base64.');
+    }
+  })();
   if (bytes.byteLength !== blob.size || bytes.length < 24
     || !PNG_SIGNATURE.every((value, index) => bytes[index] === value)) {
     throw new Error('Frozen Ink background bytes do not match the declared PNG blob.');

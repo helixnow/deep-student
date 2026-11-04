@@ -26,8 +26,8 @@
  *   下一个 handler，而不是被吞掉。
  * - 全部浮层关闭后 handleAndroidBack() 返回 false，交还 native。
  *
- * 本轮只写不跑（禁 vitest 执行）；断言基于 androidBackCoordinator.ts@98bbf3f1
- * 的导出签名（registerBackHandler / handleAndroidBack / BACK_PRIORITY）。
+ * 兼容 androidBackCoordinator.ts@98bbf3f1 起的导出签名
+ * （registerBackHandler / handleAndroidBack / BACK_PRIORITY）。
  */
 
 import { readFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ import {
 } from '../androidBackCoordinator';
 
 // ---------------------------------------------------------------------------
-// 协调器持有模块级 handler 栈；每个用例注册的 handler 统一登记、用例结束后
+// 平台 registry 持有唯一 handler 栈；每个用例注册的 handler 统一登记、用例结束后
 // 全部注销，避免跨用例污染（断言失败提前 return 时也能清干净）。
 // ---------------------------------------------------------------------------
 const cleanups: Array<() => void> = [];

@@ -2,7 +2,7 @@ import type React from 'react';
 import { LearningHubContextMenu, type ContextMenuTarget } from '../components/LearningHubContextMenu';
 import type { LearningHubSidebarProps, ResourceListItem } from '../types';
 import type { EffectiveFinderPath } from './sidebarConstants';
-import { prepareSourceInk } from '@/features/ink';
+import { INK_BOARD_CREATE_ENABLED, prepareSourceInk } from '@/features/ink';
 
 export interface SidebarContextMenuProps {
   mode: LearningHubSidebarProps['mode'];
@@ -23,7 +23,7 @@ export interface SidebarContextMenuProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
-  handleNewInk: (folderId?: string | null) => Promise<void>;
+  handleNewInk: (folderId?: string | null, mode?: 'paged' | 'board') => Promise<void>;
   handleImportMarkdownNote: (folderId?: string | null) => Promise<void>;
   handleRefresh: () => Promise<void>;
   handleOpenFolder: (folderId: string) => void;
@@ -110,7 +110,8 @@ export function SidebarContextMenu({
       canMove={canMoveInCurrentView}
       canAddToChat={canAddToChatInCurrentView}
       onCreateFolder={canCreateInCurrentView ? () => handleNewFolder() : undefined}
-      onCreateInk={canCreateInCurrentView ? (folderId) => { void handleNewInk(folderId); } : undefined}
+      onCreateInk={canCreateInCurrentView ? (folderId, mode) => { void handleNewInk(folderId, mode); } : undefined}
+      boardInkEnabled={INK_BOARD_CREATE_ENABLED}
       onCreateItem={canCreateInCurrentView ? (type, _folderId) => {
         switch (type) {
           case 'note':

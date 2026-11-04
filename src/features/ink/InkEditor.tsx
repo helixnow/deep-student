@@ -2,59 +2,140 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { InkPageView, type InkPageViewHandle, type InkToolSettings } from './InkPageView';
+import { cn } from '@/lib/utils';
+import {
+  InkPageView,
+  type InkPageViewHandle,
+  type InkSelectionMode,
+  type InkSelectionRegion,
+  type InkToolSettings,
+} from './InkPageView';
 import { InkToolbar } from './InkToolbar';
 import { flushInkEditor, registerInkEditorSession, type InkEditorSession } from './editorSession';
 import { useInkDocument } from './useInkDocument';
 import { loadInkBackground, type InkBackgroundLease } from './background';
 import { getFrozenInkRenderInputs } from './renderBridge';
 import { composeSourceHighlights } from './sourceHighlights';
-import type { InkPage, InkRuling } from './types';
+import {
+  clampEraserSize,
+  clampInkOpacity,
+  clampInkWidth,
+  inkStyleColor,
+  loadInkToolPreferences,
+  normalizeHexColor,
+  saveInkToolPreferences,
+  type InkToolName,
+  type InkToolStyleSettings,
+} from './toolSettings';
+import { selectedInkObjects } from './selection';
+import {
+  InkPasteGeometryError,
+  parseInkClipboard,
+  pasteInkClipboard,
+  serializeInkClipboard,
+} from './clipboard';
+import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
+import type { InkPage, InkRect, InkRuling } from './types';
+
+export interface InkAskAiRequest {
+  documentId: string;
+  pageId: string;
+  revision: string;
+  crop?: InkRect;
+}
 
 export interface InkEditorProps {
   documentId: string;
   className?: string;
   initialPageId?: string;
-  onAskAi?: (documentId: string, pageId: string, revision: string) => void;
+  exportControls?: React.ReactNode;
+  onAskAi?: (request: InkAskAiRequest) => void;
   onExport?: (documentId: string, pageId: string, revision: string) => void;
 }
 
 type InkHistory = { undo: InkPage[]; redo: InkPage[] };
-type InkTool = 'pen' | 'highlighter';
-type InkColor = 'black' | 'red' | 'blue';
-type InkWidth = 'small' | 'medium' | 'large';
-const COLORS: Record<InkColor, { pen: string; highlighter: string }> = {
-  black: { pen: '#000000', highlighter: '#00000080' },
-  red: { pen: '#ff0000', highlighter: '#ff000080' },
-  blue: { pen: '#0000ff', highlighter: '#0000ff80' },
-};
-const WIDTHS: Record<InkWidth, number> = { small: 2, medium: 8, large: 12 };
 
-export function InkEditor({ documentId, className, initialPageId, onAskAi, onExport }: InkEditorProps) {
+export function InkEditor({ documentId, className, initialPageId, exportControls, onAskAi, onExport }: InkEditorProps) {
   const { t } = useTranslation('ink');
   const docState = useInkDocument(documentId, initialPageId);
   const pageViewRef = useRef<InkPageViewHandle>(null);
   const activeStrokeRef = useRef(false);
+  const interactionEpochRef = useRef(0);
   const documentRef = useRef(docState);
   documentRef.current = docState;
   const historiesRef = useRef(new Map<string, InkHistory>());
   const [historyRevision, setHistoryRevision] = useState(0);
   const seenRemoteReloadRef = useRef(docState.remoteReloadSequence);
-  const [tool, setTool] = useState<InkTool>('pen');
-  const [color, setColor] = useState<InkColor>('black');
-  const [width, setWidth] = useState<InkWidth>('medium');
+  const [tool, setTool] = useState<InkToolName>('pen');
+  const [initialToolPreferences] = useState(() => loadInkToolPreferences());
+  const [settingsByTool, setSettingsByTool] = useState<Record<InkToolName, InkToolStyleSettings>>(() => ({
+    pen: { ...initialToolPreferences.settings.pen },
+    highlighter: { ...initialToolPreferences.settings.highlighter },
+  }));
   const [erasing, setErasing] = useState(false);
+  const [eraserSize, setEraserSize] = useState(initialToolPreferences.eraserSize);
   const [touchDrawing, setTouchDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const viewportIntentRef = useRef({ documentId, manual: false, resetPan: false, fitZoom: 1 });
+  if (viewportIntentRef.current.documentId !== documentId) {
+    viewportIntentRef.current = { documentId, manual: false, resetPan: true, fitZoom: 1 };
+  }
+  const preserveViewport = useCallback(() => {
+    viewportIntentRef.current.manual = true;
+  }, []);
+  const handleViewportWidthChange = useCallback((width: number) => {
+    const current = documentRef.current;
+    const intent = viewportIntentRef.current;
+    if (current.manifest?.document_id !== documentId || !current.pageRef || !Number.isFinite(width) || width <= 0) return;
+    const fitZoom = Math.min(1, width / current.pageRef.width);
+    if (intent.manual || activeStrokeRef.current) return;
+    intent.fitZoom = fitZoom;
+    setZoom(fitZoom);
+    if (intent.resetPan) {
+      intent.resetPan = false;
+      setPan({ x: 0, y: 0 });
+    }
+  }, [documentId]);
   const [renameValue, setRenameValue] = useState('');
   const [publishedBackground, setPublishedBackground] = useState<InkBackgroundLease>();
   const [backgroundError, setBackgroundError] = useState(false);
   const [pageError, setPageError] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<InkSelectionMode>('none');
+  const [selection, setSelection] = useState<InkSelectionRegion | null>(null);
+  const [pasteError, setPasteError] = useState<'too-large' | null>(null);
+  const selectionRef = useRef<InkSelectionRegion | null>(null);
+  selectionRef.current = selection;
+  const clipboardQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueClipboard = useCallback((task: () => Promise<void>) => {
+    const run = clipboardQueueRef.current.then(task, task);
+    clipboardQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
+  const clipboardSourceRef = useRef<{
+    documentId: string;
+    pageId: string;
+    text: string;
+  } | null>(null);
+  const toolPreferencesInitializedRef = useRef(false);
+
+  // The first effect run only reflects the lazy load above; later style or
+  // eraser changes are persisted by the best-effort preference helper.
+  useEffect(() => {
+    if (!toolPreferencesInitializedRef.current) {
+      toolPreferencesInitializedRef.current = true;
+      return;
+    }
+    saveInkToolPreferences({ settings: settingsByTool, eraserSize });
+  }, [settingsByTool, eraserSize]);
 
   const pageId = docState.page?.page_id;
   const historyFor = (page: InkPage): InkHistory => historiesRef.current.get(page.page_id) ?? { undo: [], redo: [] };
   const history = docState.page ? historyFor(docState.page) : { undo: [], redo: [] };
+  const selectedObjectsForCopy = useMemo(() => {
+    if (!docState.page || !selection) return [];
+    return selectedInkObjects(docState.page, selection.polygon);
+  }, [docState.page, selection]);
 
   useEffect(() => {
     if (seenRemoteReloadRef.current === docState.remoteReloadSequence || !pageId) return;
@@ -66,10 +147,106 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
     setHistoryRevision((revision) => revision + 1);
   }, [pageId, docState.remoteReloadSequence]);
 
+  // 选区是 transient UI state：翻页或远端 epoch 变化后失效，绝不写入页面/manifest。
+  useEffect(() => {
+    setSelection(null);
+    setSelectionMode('none');
+    setPasteError(null);
+  }, [pageId, docState.remoteReloadSequence]);
+
+  // 目标对象被编辑/粘贴/删除（page 引用变化）后，旧选区也不应继续生效。
+  useEffect(() => {
+    setSelection(null);
+  }, [docState.page]);
+
+  // 远端保存冲突后旧选区/旧对象不再可信；正常保存路径保持不变。
+  useEffect(() => {
+    if (docState.saveStatus === 'conflict') setSelection(null);
+  }, [docState.saveStatus]);
+
+  // 翻页 / 工具 / 橡皮 / 选择模式 / remote epoch 变化都会让旧的 paste 交互失效。
+  useEffect(() => {
+    interactionEpochRef.current += 1;
+  }, [pageId, docState.remoteReloadSequence, selectionMode, erasing, tool]);
+
+  useEffect(() => () => {
+    interactionEpochRef.current += 1;
+  }, []);
+
   const finishAndFlush = useCallback(async () => {
     await pageViewRef.current?.finishStroke();
     await documentRef.current.flush();
   }, []);
+
+  const toggleSelectionMode = useCallback((mode: InkSelectionMode) => {
+    setSelection(null);
+    setErasing(false);
+    setSelectionMode((current) => (current === mode ? 'none' : mode));
+  }, []);
+
+  const handleSelectionChange = useCallback((next: InkSelectionRegion | null) => {
+    setSelection(next);
+  }, []);
+
+  const handleSelectionCopy = useCallback(() => {
+    const page = documentRef.current.page;
+    const region = selectionRef.current;
+    if (!region || !page) return;
+    if (selectedInkObjects(page, region.polygon).length === 0) return;
+    const pageIdAtClick = page.page_id;
+
+    void enqueueClipboard(async () => {
+      try {
+        const current = documentRef.current;
+        if (!current.page || current.page.page_id !== pageIdAtClick) return;
+        const region = selectionRef.current;
+        if (!region) return;
+        const objects = selectedInkObjects(current.page, region.polygon);
+        if (objects.length === 0) return;
+
+        setPageError(false);
+        const text = serializeInkClipboard(objects);
+        await copyTextToClipboard(text);
+        // Source identity is published only after the write actually succeeds.
+        clipboardSourceRef.current = {
+          documentId,
+          pageId: current.page.page_id,
+          text,
+        };
+      } catch {
+        setPageError(true);
+      }
+    });
+  }, [documentId, enqueueClipboard]);
+
+  const handleSelectionAskAi = useCallback(async () => {
+    if (!onAskAi) return;
+    const activeSelection = selectionRef.current;
+    const startPageId = pageId;
+    const startRemoteSequence = docState.remoteReloadSequence;
+    if (!activeSelection || !startPageId) return;
+
+    try {
+      setPageError(false);
+      // 先结束活动手势并 flush；保存失败时不截旧图、不把旧选区发给 Chat。
+      await finishAndFlush();
+    } catch {
+      setPageError(true);
+      return;
+    }
+
+    const latest = documentRef.current;
+    if (!latest.page || !latest.manifest
+      || latest.page.page_id !== startPageId
+      || latest.remoteReloadSequence !== startRemoteSequence) return;
+
+    onAskAi({
+      documentId,
+      pageId: latest.page.page_id,
+      revision: latest.manifest.revision,
+      crop: activeSelection.bounds,
+    });
+  }, [documentId, docState.remoteReloadSequence, finishAndFlush, onAskAi, pageId]);
 
   const persistCurrentDraft = useCallback(async () => {
     await pageViewRef.current?.finishStroke();
@@ -161,16 +338,108 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
   // redraw a closed ImageBitmap in the same commit.
   useEffect(() => () => publishedBackground?.dispose(), [publishedBackground]);
 
-  const onPageChange = useCallback(async (page: InkPage) => {
+  const onPageChange = useCallback(async (page: InkPage, expectedRevision?: string) => {
     const previous = documentRef.current.page;
     if (!previous || previous.page_id !== page.page_id || previous === page) return;
+    if (expectedRevision !== undefined && documentRef.current.manifest?.revision !== expectedRevision) {
+      throw new Error('Ink page revision changed before commit');
+    }
     const currentHistory = historyFor(previous);
     if (currentHistory.undo[currentHistory.undo.length - 1] !== page) {
       historiesRef.current.set(page.page_id, { undo: [...currentHistory.undo, previous], redo: [] });
       setHistoryRevision((revision) => revision + 1);
     }
-    await documentRef.current.savePage(page);
+    await documentRef.current.savePage(page, expectedRevision);
   }, []);
+
+  const handleSelectionPaste = useCallback(() => {
+    const target = documentRef.current;
+    if (!target.page || !target.pageRef || !target.manifest || target.status !== 'ready') return;
+    const captured = {
+      documentId,
+      pageId: target.page.page_id,
+      remoteReloadSequence: target.remoteReloadSequence,
+      revision: target.manifest.revision,
+      epoch: interactionEpochRef.current,
+    };
+    const isStillTarget = () => {
+      const current = documentRef.current;
+      return captured.documentId === documentId
+        && interactionEpochRef.current === captured.epoch
+        && current.status === 'ready'
+        && current.page?.page_id === captured.pageId
+        && current.remoteReloadSequence === captured.remoteReloadSequence
+        && current.manifest?.revision === captured.revision
+        && current.saveStatus !== 'conflict'
+        && current.saveStatus !== 'storage-error'
+        && !activeStrokeRef.current;
+    };
+
+    void enqueueClipboard(async () => {
+      if (!isStillTarget()) return;
+      try {
+        setPageError(false);
+        setPasteError(null);
+        const text = await readTextFromClipboard();
+        if (!isStillTarget() || !text) return;
+        const payload = parseInkClipboard(text);
+
+        if (!isStillTarget()) return;
+        const current = documentRef.current;
+        if (!current.page || !current.pageRef) return;
+        const source = clipboardSourceRef.current;
+        const samePage = Boolean(
+          source
+          && source.documentId === documentId
+          && source.pageId === current.page.page_id
+          && source.text === text,
+        );
+        const crossPageCenter = pageViewRef.current?.getViewportCenter() ?? {
+          x: Math.max(0, Math.min(current.pageRef.width, current.pageRef.width / 2)),
+          y: Math.max(0, Math.min(current.pageRef.height, current.pageRef.height / 2)),
+        };
+        const nextPage = pasteInkClipboard(payload, {
+          page: current.page,
+          pageRef: current.pageRef,
+          ...(samePage
+            ? { offset: { x: 16, y: 16 } }
+            : { center: crossPageCenter }),
+        });
+        // Target may have changed while building the page; never commit a stale paste.
+        if (!isStillTarget()) return;
+        // 一次粘贴 = 一次 onPageChange（历史/草稿/CAS 保存各一次），
+        // 并用点击时 revision 做原子校验，不能以 queued 最新 revision 替旧页。
+        await onPageChange(nextPage, captured.revision);
+        setSelection(null);
+      } catch (error) {
+        if (error instanceof InkPasteGeometryError) {
+          setPasteError('too-large');
+        } else {
+          setPageError(true);
+        }
+      }
+    });
+  }, [documentId, enqueueClipboard, onPageChange]);
+
+  const handleEditorKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.repeat) return;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
+    const key = event.key.toLowerCase();
+    if (key === 'c') {
+      if (!selectionRef.current) return;
+      event.preventDefault();
+      void handleSelectionCopy();
+      return;
+    }
+    if (key === 'v') {
+      if (selectionMode === 'none') return;
+      event.preventDefault();
+      void handleSelectionPaste();
+    }
+  }, [handleSelectionCopy, handleSelectionPaste, selectionMode]);
 
   const applyHistory = useCallback(async (direction: 'undo' | 'redo') => {
     const current = documentRef.current.page;
@@ -220,18 +489,30 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
   }, [renameValue]);
 
   const setZoomClamped = (next: number) => {
-    setZoom(Math.min(4, Math.max(0.5, Number(next.toFixed(2)))));
+    preserveViewport();
+    const minimum = Math.min(0.5, viewportIntentRef.current.fitZoom);
+    setZoom(Math.min(4, Math.max(minimum, Number(next.toFixed(2)))));
   };
+  const movePage = (x: number, y: number) => {
+    preserveViewport();
+    setPan((current) => ({ x: current.x + x, y: current.y + y }));
+  };
+
+  const currentSettings = settingsByTool[tool];
+  const updateToolSettings = useCallback((patch: Partial<InkToolStyleSettings>) => {
+    setSettingsByTool((current) => ({ ...current, [tool]: { ...current[tool], ...patch } }));
+  }, [tool]);
 
   const toolSettings: InkToolSettings = {
     tool,
-    color: COLORS[color][tool],
-    width: WIDTHS[width],
+    color: inkStyleColor(currentSettings, tool),
+    width: currentSettings.width,
     pressure_enabled: true,
     touchDrawing,
     zoom,
     panX: pan.x,
     panY: pan.y,
+    eraserSize,
   };
 
   const content = docState.status === 'loading' ? (
@@ -239,7 +520,7 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
   ) : docState.status === 'error' ? (
     <div className="p-3 text-sm text-destructive" role="alert">{t('errors.loadFailed')}</div>
   ) : docState.page && docState.pageRef && docState.manifest ? (
-    <div className="flex min-h-0 flex-col gap-2">
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <InkToolbar
         status={docState.saveStatus}
         pageIndex={docState.manifest.pages.findIndex((pageRef) => pageRef.page_id === docState.page?.page_id)}
@@ -248,21 +529,44 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
         canUndo={history.undo.length > 0}
         canRedo={history.redo.length > 0}
         tool={tool}
-        color={color}
-        width={width}
+        color={currentSettings.color}
+        width={currentSettings.width}
+        opacity={currentSettings.opacity}
+        eraserSize={eraserSize}
         erasing={erasing}
         touchDrawing={touchDrawing}
         zoom={zoom}
+        selectionMode={selectionMode}
+        selectionActive={selection !== null}
+        selectionCanCopy={selectedObjectsForCopy.length > 0}
         renameValue={renameValue}
         onRenameValue={setRenameValue}
         onReloadRemote={() => { void docState.reloadRemote(); }}
         onKeepDraft={() => { void persistCurrentDraft(); }}
         onRetrySave={() => { void docState.retrySave(); }}
         onRetryStorage={() => { void docState.retryDraftStorage(); }}
-        onSelectTool={(nextTool) => { setTool(nextTool); setErasing(false); }}
-        onSelectColor={(nextColor) => { setColor(nextColor); setErasing(false); }}
-        onSelectWidth={setWidth}
-        onToggleEraser={() => setErasing((value) => !value)}
+        onSelectTool={(nextTool) => {
+          setTool(nextTool);
+          setErasing(false);
+          setSelectionMode('none');
+          setSelection(null);
+        }}
+        onSelectColor={(nextColor) => {
+          updateToolSettings({ color: normalizeHexColor(nextColor) ?? nextColor });
+          setErasing(false);
+        }}
+        onSelectWidth={(nextWidth) => updateToolSettings({ width: clampInkWidth(tool, nextWidth) })}
+        onSelectOpacity={(nextOpacity) => updateToolSettings({ opacity: clampInkOpacity(nextOpacity) })}
+        onSelectEraserSize={(nextSize) => setEraserSize(clampEraserSize(nextSize))}
+        onToggleEraser={() => {
+          setErasing((value) => !value);
+          setSelectionMode('none');
+          setSelection(null);
+        }}
+        onSelectSelectionMode={toggleSelectionMode}
+        onSelectionCopy={() => { void handleSelectionCopy(); }}
+        onSelectionPaste={() => { void handleSelectionPaste(); }}
+        onSelectionAskAi={onAskAi ? () => { void handleSelectionAskAi(); } : undefined}
         onUndo={() => { void applyHistory('undo'); }}
         onRedo={() => { void applyHistory('redo'); }}
         onPreviousPage={() => { void changePage(-1); }}
@@ -272,7 +576,13 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
         onAskAi={onAskAi ? () => {
           void finishAndFlush().then(() => {
             const current = documentRef.current;
-            if (current.page && current.manifest) onAskAi(documentId, current.page.page_id, current.manifest.revision);
+            if (current.page && current.manifest) {
+              onAskAi({
+                documentId,
+                pageId: current.page.page_id,
+                revision: current.manifest.revision,
+              });
+            }
           }).catch(() => setPageError(true));
         } : undefined}
         onExport={onExport ? () => {
@@ -281,17 +591,23 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
             if (current.page && current.manifest) onExport(documentId, current.page.page_id, current.manifest.revision);
           }).catch(() => setPageError(true));
         } : undefined}
+        exportControls={exportControls}
         onZoomIn={() => setZoomClamped(zoom + 0.25)}
         onZoomOut={() => setZoomClamped(zoom - 0.25)}
-        onPanLeft={() => setPan((current) => ({ ...current, x: current.x - 20 }))}
-        onPanRight={() => setPan((current) => ({ ...current, x: current.x + 20 }))}
-        onPanUp={() => setPan((current) => ({ ...current, y: current.y - 20 }))}
-        onPanDown={() => setPan((current) => ({ ...current, y: current.y + 20 }))}
+        onPanLeft={() => movePage(-20, 0)}
+        onPanRight={() => movePage(20, 0)}
+        onPanUp={() => movePage(0, -20)}
+        onPanDown={() => movePage(0, 20)}
         onToggleTouchDrawing={() => setTouchDrawing((value) => !value)}
         translate={(key) => t(key)}
       />
-      {backgroundError && <div role="alert" className="text-sm text-destructive">{t('errors.backgroundLoadFailed')}</div>}
-      {pageError && <div role="alert" className="text-sm text-destructive">{t('errors.operationFailed')}</div>}
+      {backgroundError && <div role="alert" className="shrink-0 px-3 py-1 text-sm text-destructive">{t('errors.backgroundLoadFailed')}</div>}
+      {pageError && <div role="alert" className="shrink-0 px-3 py-1 text-sm text-destructive">{t('errors.operationFailed')}</div>}
+      {pasteError === 'too-large' && (
+        <div role="alert" data-testid="ink-selection-too-large" className="shrink-0 px-3 py-1 text-sm text-destructive">
+          {t('errors.selectionTooLarge')}
+        </div>
+      )}
       <InkPageView
         ref={pageViewRef}
         documentId={documentId}
@@ -300,7 +616,13 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
         background={publishedBackground?.background}
         tool={toolSettings}
         erasing={erasing}
+        selectionMode={selectionMode}
+        selectionBounds={selection?.bounds ?? null}
+        onSelectionChange={handleSelectionChange}
+        onViewportWidthChange={handleViewportWidthChange}
+        onViewportInteraction={preserveViewport}
         onPageChange={onPageChange}
+        onError={() => setPageError(true)}
         onActiveStrokeChange={(active) => {
           activeStrokeRef.current = active;
           documentRef.current.setActiveStroke(active);
@@ -313,7 +635,13 @@ export function InkEditor({ documentId, className, initialPageId, onAskAi, onExp
 
   return (
     <ErrorBoundary name="ink-editor" fallback={<div className="p-3 text-sm text-destructive" role="alert">{t('errors.loadFailed')}</div>}>
-      <section className={className} data-testid="ink-editor" data-document-id={documentId} aria-busy={docState.status === 'loading'}>
+      <section
+        className={cn('relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden', className)}
+        data-testid="ink-editor"
+        data-document-id={documentId}
+        aria-busy={docState.status === 'loading'}
+        onKeyDown={handleEditorKeyDown}
+      >
         {content}
         <output className="sr-only" data-testid="ink-editor-flush-state" aria-live="polite">
           {docState.status === 'ready' ? 'ready' : docState.status}

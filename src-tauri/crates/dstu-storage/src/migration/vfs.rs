@@ -1158,6 +1158,27 @@ pub const V20261103_INK_RENDER_ARTIFACTS: MigrationDef = MigrationDef::new(
     "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_ink_render_artifacts_immutable_delete'",
 ]);
 
+/// V20261104: VFS writer capability guard metadata.
+///
+/// Creates only the marker table. The write-blocking triggers are installed
+/// later, inside the savepoint that publishes the first ink board, so a v1
+/// database that never uses boards keeps its normal read/write behaviour.
+pub const V20261104_VFS_WRITER_GUARD: MigrationDef = MigrationDef::new(
+    20261104,
+    "vfs_writer_guard",
+    include_str!("../../../../migrations/vfs/V20261104__vfs_writer_guard.sql"),
+)
+.with_expected_tables(&["__vfs_writer_guard"])
+.with_expected_columns(&[
+    ("__vfs_writer_guard", "id"),
+    ("__vfs_writer_guard", "min_writer_capability"),
+    ("__vfs_writer_guard", "guard_installed"),
+])
+.with_expected_queries(&[
+    "SELECT min_writer_capability, guard_installed FROM __vfs_writer_guard WHERE id = 1",
+])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1231,6 +1252,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20261023_QUESTION_AUTHORING_V2,
     V20261027_PRACTICE_SESSIONS,
     V20261103_INK_RENDER_ARTIFACTS,
+    V20261104_VFS_WRITER_GUARD,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1330,6 +1352,8 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "__asset_deletion_queue",
     "__file_deletion_journal",
     "__lance_orphan_queue",
+    // VFS writer capability guard metadata（V20261104）
+    "__vfs_writer_guard",
     // FTS5 虚拟表
     "questions_fts",
     "notes_fts",
@@ -1339,7 +1363,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 68;
+pub const VFS_TABLE_COUNT: usize = 69;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1412,15 +1436,19 @@ mod tests {
     }
 
     #[test]
-    fn test_ink_render_artifacts_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20261103);
+    fn test_vfs_writer_guard_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20261104);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("ink_render_artifacts")
+            Some("vfs_writer_guard")
+        );
+        assert_eq!(
+            V20261104_VFS_WRITER_GUARD.expected_tables,
+            &["__vfs_writer_guard"]
         );
         assert_eq!(
             V20261103_INK_RENDER_ARTIFACTS.expected_tables,

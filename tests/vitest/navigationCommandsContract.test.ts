@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const bus = vi.hoisted(() => ({ enabled: false, launch: vi.fn() }));
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
+  workbenchBus: { isEnabled: () => bus.enabled, launch: bus.launch },
+}));
 
 import { getNavigationCommands } from '@/command-palette/modules/navigation.commands';
 import type { CurrentView } from '@/types/navigation';
@@ -7,7 +12,6 @@ import type { DependencyResolver } from '@/command-palette/registry/types';
 const deprecatedTargets = new Set<string>([
   'analysis',
   'chat',
-  'notes',
   'review',
   'exam-sheet',
   'textbook-library',
@@ -16,6 +20,11 @@ const deprecatedTargets = new Set<string>([
 ]);
 
 describe('navigation commands contract', () => {
+  beforeEach(() => {
+    bus.enabled = false;
+    bus.launch.mockClear();
+  });
+
   it('does not navigate to deprecated views', async () => {
     const navigatedViews: CurrentView[] = [];
     const navigationCommands = getNavigationCommands();
@@ -46,10 +55,24 @@ describe('navigation commands contract', () => {
     }
   });
 
-  it('removes note/review direct navigation commands', () => {
+  it('navigates directly to the notes library while keeping the deprecated review command removed', async () => {
     const navigationCommands = getNavigationCommands();
-    const ids = new Set(navigationCommands.map((cmd) => cmd.id));
-    expect(ids.has('nav.goto.notes')).toBe(false);
-    expect(ids.has('nav.goto.review')).toBe(false);
+    const command = navigationCommands.find((cmd) => cmd.id === 'nav.goto.notes');
+    const navigate = vi.fn();
+
+    expect(command).toBeDefined();
+    await command!.execute({ navigate } as DependencyResolver);
+    expect(navigate).toHaveBeenCalledWith('notes');
+    expect(navigationCommands.some((cmd) => cmd.id === 'nav.goto.review')).toBe(false);
+  });
+
+  it('opens the notebook app instead of a hidden classic view when the desktop OS is active', async () => {
+    bus.enabled = true;
+    const command = getNavigationCommands().find((cmd) => cmd.id === 'nav.goto.notes');
+    const navigate = vi.fn();
+
+    await command!.execute({ navigate } as DependencyResolver);
+    expect(bus.launch).toHaveBeenCalledWith({ typeId: 'notebook', reason: 'command' });
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

@@ -348,4 +348,165 @@ describe('ink builtin tool schemas', () => {
     expect(valid({ op: 'remove_object', page_id: 'page-1' })).toBe(false);
     expect(schemaAccepts(applyOps, { ...base, ops: Array(101).fill({ op: 'append_blank_page', width: 1, height: 1, ruling: 'blank' }) })).toBe(false);
   });
+
+  // Proposed E2 wire contract: `mode` is optional and defaults to paged.
+  // A board create has no fixed page, so it must not require `page_size`.
+  it('accepts an explicit board create mode without page_size and keeps unknown fields rejected', () => {
+    const skill = getInkSkill();
+    const create = getTool(skill, 'builtin-ink_create').inputSchema;
+
+    expect(create.properties.mode, 'create.mode is the proposed optional paged|board discriminator').toBeDefined();
+    expect(create.properties.mode).toMatchObject({
+      type: 'string',
+      enum: ['paged', 'board'],
+      default: 'paged',
+    });
+    expect(create.required).not.toContain('mode');
+    expect(create.required).not.toContain('page_size');
+    expect(schemaAccepts(create, {
+      title: 'Paged default',
+      operation_id: 'create-paged',
+    })).toBe(true);
+    expect(schemaAccepts(create, {
+      title: 'Board',
+      operation_id: 'create-board',
+      mode: 'board',
+    })).toBe(true);
+    expect(schemaAccepts(create, {
+      title: 'Board',
+      operation_id: 'create-board',
+      mode: 'viewport',
+    })).toBe(false);
+    expect(schemaAccepts(create, {
+      title: 'Board',
+      operation_id: 'create-board',
+      mode: 'board',
+      surprise: true,
+    })).toBe(false);
+    expect(schemaAccepts(create, {
+      title: 'Board',
+      operation_id: 'create-board',
+      page_size: { width: 595, height: 842 },
+    })).toBe(true);
+  });
+
+  // Proposed E2 wire contract: paged render keeps normalized `crop`; board
+  // render adds an absolute world `board_crop`. The two are exclusive.
+  it('accepts a finite absolute board_crop on render while keeping normalized crop paged', () => {
+    const skill = getInkSkill();
+    const render = getTool(skill, 'builtin-ink_render').inputSchema;
+    const base = {
+      document_id: 'doc-1',
+      expected_revision: 'rev-1',
+      page_id: 'page-1',
+    };
+
+    expect(render.properties.board_crop, 'render.board_crop is the proposed absolute world rect').toBeDefined();
+    expect(render.properties.board_crop).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['x', 'y', 'width', 'height'],
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+      },
+    });
+    expect(schemaAccepts(render, {
+      ...base,
+      board_crop: { x: -100, y: -50, width: 800, height: 600 },
+    })).toBe(true);
+    expect(schemaAccepts(render, {
+      ...base,
+      crop: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+    })).toBe(true);
+    expect(schemaAccepts(render, {
+      ...base,
+      crop: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+      board_crop: { x: 0, y: 0, width: 800, height: 600 },
+    })).toBe(false);
+    expect(schemaAccepts(render, {
+      ...base,
+      board_crop: { x: 0, y: 0, width: 0, height: 600 },
+    })).toBe(false);
+    expect(schemaAccepts(render, {
+      ...base,
+      board_crop: { x: 0, y: 0, width: 800, height: 600, scale: 2 },
+    })).toBe(false);
+  });
+
+  // Proposed E2 wire contract: board export carries a finite world region and
+  // exactly one surface page id. Old paged export remains valid unchanged.
+  it('accepts a finite board export region with a single surface page and preserves paged export', () => {
+    const skill = getInkSkill();
+    const exportSchema = getTool(skill, 'builtin-ink_export').inputSchema;
+    const base = {
+      document_id: 'doc-1',
+      expected_revision: 'rev-1',
+      page_ids: ['surface-1'],
+      format: 'pdf',
+      operation_id: 'export-1',
+    };
+    const board = {
+      region: { x: -100, y: -50, width: 800, height: 600 },
+      page_width: 800,
+      page_height: 600,
+      paginate: true,
+    };
+
+    expect(exportSchema.properties.board, 'export.board is the proposed finite board region payload').toBeDefined();
+    expect(exportSchema.properties.board).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        region: { type: 'object' },
+        page_width: { type: 'number' },
+        page_height: { type: 'number' },
+        paginate: { type: 'boolean' },
+      },
+    });
+    expect(exportSchema.properties.board?.required).toContain('region');
+    expect(exportSchema.properties.board?.properties?.region).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['x', 'y', 'width', 'height'],
+    });
+    expect(schemaAccepts(exportSchema, { ...base, board })).toBe(true);
+    expect(schemaAccepts(exportSchema, {
+      ...base,
+      board: {
+        region: { x: 0, y: 0, width: 800, height: 600 },
+        page_width: 800,
+        page_height: 600,
+      },
+    })).toBe(true);
+    expect(schemaAccepts(exportSchema, {
+      ...base,
+      page_ids: ['surface-1', 'surface-2'],
+      board,
+    })).toBe(false);
+    expect(schemaAccepts(exportSchema, {
+      ...base,
+      board: { ...board, region: { x: 0, y: 0, width: 0, height: 600 } },
+    })).toBe(false);
+    expect(schemaAccepts(exportSchema, {
+      ...base,
+      board: { ...board, unexpected: 1 },
+    })).toBe(false);
+    expect(schemaAccepts(exportSchema, base)).toBe(true);
+  });
+
+  // Budget guard: measure the real serialized schema payload. Do not raise the
+  // independent Ink cap or delete strict schemas to fit it.
+  it('measures the real ink schema payload against the independent <=3000 token budget', () => {
+    const skill = getInkSkill();
+    const serialized = JSON.stringify(skill.embeddedTools);
+    const estimatedTokens = Math.ceil(serialized.length / 4);
+
+    expect(
+      estimatedTokens,
+      `Ink schema payload is ${serialized.length} chars ≈ ${estimatedTokens} tokens; the independent cap is 3000`,
+    ).toBeLessThanOrEqual(3000);
+  });
 });

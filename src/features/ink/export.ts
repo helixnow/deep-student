@@ -1,5 +1,13 @@
 import { renderInkPage } from './renderer';
-import { INK_LIMITS, type InkPage, type InkPageRef, type InkRect } from './types';
+import { renderInkBoard } from './boardRenderer';
+import {
+  INK_LIMITS,
+  type InkBoardObject,
+  type InkBoardSurface,
+  type InkPage,
+  type InkPageRef,
+  type InkRect,
+} from './types';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 
 export interface InkExportPage {
@@ -180,5 +188,115 @@ export async function exportInkPdf(
   const bytes = new Uint8Array(await pdfMake.createPdf(definition).getBuffer());
   checkAbort(options.signal);
   if (bytes.byteLength > MAX_ESTIMATED_BYTES) throw new RangeError('PDF output exceeds the 200 MiB byte limit');
+  return new Blob([bytes], { type: 'application/pdf' });
+}
+
+export interface InkBoardExportOptions {
+  signal?: AbortSignal;
+}
+
+export interface InkBoardExportSource {
+  surface: InkBoardSurface;
+  objects: InkBoardObject[];
+}
+
+export interface InkBoardPngInput extends InkBoardExportSource {
+  /** Explicit world frame. Board export never derives this from surface bounds. */
+  region: InkRect;
+}
+
+export interface InkBoardPdfInput extends InkBoardExportSource {
+  /** Backend-authoritative row-major page rectangles. */
+  pages: InkRect[];
+}
+
+function boardRasterSize(rect: InkRect): { width: number; height: number } {
+  if (
+    ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
+    || rect.width <= 0 || rect.height <= 0
+  ) throw new RangeError('Board export page must be finite and positive');
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (width > MAX_LONG_EDGE || height > MAX_LONG_EDGE || width * height > MAX_PIXELS) {
+    throw new RangeError('Board export page exceeds the raster budget');
+  }
+  return { width, height };
+}
+
+function renderBoardCanvas(input: InkBoardExportSource, rect: InkRect): HTMLCanvasElement {
+  const { width, height } = boardRasterSize(rect);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  renderInkBoard(canvas, input.surface, input.objects, { x: rect.x, y: rect.y, zoom: 1 }, {
+    viewport: { width, height },
+    worldRect: rect,
+    dpr: 1,
+    maxPixels: MAX_PIXELS,
+  });
+  return canvas;
+}
+
+async function renderBoardPng(
+  input: InkBoardExportSource,
+  rect: InkRect,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  checkAbort(signal);
+  const canvas = renderBoardCanvas(input, rect);
+  try {
+    const blob = await canvasPng(canvas);
+    checkAbort(signal);
+    return blob;
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+export async function exportInkBoardPng(
+  input: InkBoardPngInput,
+  options: InkBoardExportOptions = {},
+): Promise<Blob> {
+  checkAbort(options.signal);
+  return renderBoardPng(input, input.region, options.signal);
+}
+
+export async function exportInkBoardPdf(
+  input: InkBoardPdfInput,
+  options: InkBoardExportOptions = {},
+): Promise<Blob> {
+  checkAbort(options.signal);
+  if (!Array.isArray(input.pages) || input.pages.length === 0 || input.pages.length > INK_LIMITS.pages_max) {
+    throw new RangeError(`Board PDF export requires 1 to ${INK_LIMITS.pages_max} pages`);
+  }
+  const sizes = input.pages.map(boardRasterSize);
+  const estimatedBytes = sizes.reduce((total, size) => total + size.width * size.height * 10, 0);
+  if (!Number.isSafeInteger(estimatedBytes) || estimatedBytes > MAX_ESTIMATED_BYTES) {
+    throw new RangeError('Board PDF export exceeds the 200 MiB estimated byte limit');
+  }
+
+  const sections: Content[] = [];
+  let retainedBytes = 0;
+  for (let index = 0; index < input.pages.length; index += 1) {
+    checkAbort(options.signal);
+    const blob = await renderBoardPng(input, input.pages[index], options.signal);
+    const image = await blobDataUrl(blob);
+    retainedBytes += image.length;
+    if (retainedBytes > MAX_ESTIMATED_BYTES) throw new RangeError('Board PDF export exceeds the 200 MiB encoded raster byte limit');
+    const { width, height } = sizes[index];
+    sections.push({
+      section: { image, width, height },
+      pageSize: { width, height },
+      pageMargins: [0, 0, 0, 0],
+    });
+  }
+
+  checkAbort(options.signal);
+  const { default: pdfMake } = await import('pdfmake/build/pdfmake');
+  const definition: TDocumentDefinitions = { content: sections, pageMargins: [0, 0, 0, 0] };
+  const bytes = new Uint8Array(await pdfMake.createPdf(definition).getBuffer());
+  checkAbort(options.signal);
+  if (bytes.byteLength > MAX_ESTIMATED_BYTES) throw new RangeError('Board PDF output exceeds the 200 MiB byte limit');
   return new Blob([bytes], { type: 'application/pdf' });
 }

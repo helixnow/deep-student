@@ -10,6 +10,7 @@
     "analyze": "ANALYZE=1 npm run build",
     "prebuild": "npm run version:generate",
     "build": "vite build",
+    "build:ink-e2e": "vite build --config vite.ink-e2e.config.ts",
     "build:all": "bash ./scripts/build_all.sh",
     "build:ios": "npm run icons:ios && npm run icons:ios:opaque && tauri ios build",
     "build:mac:oneclick": "bash ./scripts/build_mac.sh",

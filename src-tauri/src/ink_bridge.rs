@@ -1,16 +1,22 @@
 #[cfg(test)]
 mod tests {
     use super::{
-        background_blob_hash, build_render_request, load_frozen_inputs, render_id_for,
-        InkArtifactDraft, InkBridgeError, InkRenderIdentity, InkRenderResult, InkRenderSpec,
-        PendingFlushBus, PendingRenderBus,
+        background_blob_hash, build_board_render_request, build_render_request, load_frozen_inputs,
+        render_id_for, InkArtifactDraft, InkBoardRenderSpec, InkBridgeError, InkRenderCommandError,
+        InkRenderIdentity, InkRenderResult, InkRenderSpec, PendingFlushBus, PendingRenderBus,
     };
     use crate::vfs::{
         database::{setup_migrated_test_db, VfsDatabase},
-        ink::{InkBackground, InkManifest, InkPage, InkPageRef, InkSource},
+        ink::{
+            InkAuthor, InkBackground, InkBoardBounds, InkBoardChunk, InkBoardObject,
+            InkBoardSurface, InkManifest, InkObjectContent, InkPage, InkPageRef, InkRect,
+            InkRuling, InkSource, INK_BOARD_SCHEMA_VERSION, INK_BOARD_WORLD_LIMIT,
+        },
         repos::{
             blob_repo::VfsBlobRepo,
             file_repo::VfsFileRepo,
+            ink_artifact_repo::VfsInkArtifactRepo,
+            ink_board_repo::VfsInkBoardRepo,
             ink_prepare_repo::{InkPreparedPage, VfsInkPrepareRepo},
             ink_repo::VfsInkRepo,
         },
@@ -177,7 +183,122 @@ mod tests {
             expected_revision: manifest.revision.clone(),
             page_id: manifest.pages[0].page_id.clone(),
             crop: None,
+            board: None,
             long_edge: Some(160),
+        }
+    }
+
+    fn board_chunk_fixture() -> InkBoardChunk {
+        InkBoardChunk {
+            schema_version: INK_BOARD_SCHEMA_VERSION,
+            chunk_id: "chunk-negative-origin".to_owned(),
+            objects: vec![InkBoardObject {
+                id: "obj-negative-origin".to_owned(),
+                author: InkAuthor::User,
+                created_at: 0,
+                z_index: 0,
+                content: InkObjectContent::Rect {
+                    rect: InkRect {
+                        x: -20.0,
+                        y: -10.0,
+                        width: 40.0,
+                        height: 20.0,
+                    },
+                    color: "#000000".to_owned(),
+                    width: 2.0,
+                },
+            }],
+        }
+    }
+
+    /// Create and save a real v2 board through the migrated repositories, then
+    /// re-read the canonical manifest so callers use the committed revision.
+    fn saved_board_fixture(db: &VfsDatabase) -> (InkManifest, InkBoardChunk) {
+        let conn = db.get_conn_safe().unwrap();
+        let created = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Bridge board fixture",
+            InkRuling::Blank,
+            "board-bridge-create",
+            None,
+        )
+        .expect("migrated board create");
+        let chunk = board_chunk_fixture();
+        let saved = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &created.revision,
+            "board-bridge-save",
+            std::slice::from_ref(&chunk),
+            &[],
+        )
+        .expect("migrated board save");
+        assert_ne!(saved.revision, created.revision);
+        let reread = VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &saved.document_id)
+            .expect("reget saved board manifest");
+        assert_eq!(reread.revision, saved.revision);
+        assert_eq!(reread.chunks.len(), 1);
+        (reread, chunk)
+    }
+
+    fn board_render_spec(
+        manifest: &InkManifest,
+        expected_revision: &str,
+        crop: InkRect,
+    ) -> InkRenderSpec {
+        let page_id = match manifest.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        };
+        InkRenderSpec {
+            document_id: manifest.document_id.clone(),
+            expected_revision: expected_revision.to_owned(),
+            page_id,
+            crop: None,
+            board: Some(InkBoardRenderSpec {
+                crop,
+                chunk_ids: Vec::new(),
+            }),
+            long_edge: Some(2048),
+        }
+    }
+
+    fn board_crop() -> InkRect {
+        InkRect {
+            x: -100.0,
+            y: -100.0,
+            width: 200.0,
+            height: 200.0,
+        }
+    }
+
+    fn load_frozen_board_error(db: &VfsDatabase, spec: &InkRenderSpec) -> InkRenderCommandError {
+        match load_frozen_inputs(db, spec) {
+            Ok(_) => panic!("expected the frozen board inputs to be rejected"),
+            Err(error) => error,
+        }
+    }
+
+    fn artifact_draft(
+        frozen: &super::FrozenRenderInputs,
+        page_id: &str,
+        revision: &str,
+        render_id: &str,
+        crop: InkRect,
+    ) -> InkArtifactDraft {
+        InkArtifactDraft {
+            artifact_id: render_id.to_owned(),
+            render_id: render_id.to_owned(),
+            document_id: frozen.manifest.document_id.clone(),
+            page_id: page_id.to_owned(),
+            revision: revision.to_owned(),
+            source_hash: frozen.source_hash.clone(),
+            source_annotation_revision: frozen.source_annotation_revision.clone(),
+            conversion_revision: frozen.conversion_revision.clone(),
+            crop: Some(crop),
+            width_px: 1,
+            height_px: 1,
         }
     }
 
@@ -200,6 +321,8 @@ mod tests {
             source: InkSource::Blank {},
             pages: vec![page_ref.clone()],
             last_operation: None,
+            surface: None,
+            chunks: Vec::new(),
         };
         let page = InkPage {
             schema_version: 1,
@@ -212,9 +335,44 @@ mod tests {
 
         assert_eq!(request.document_id, "doc-1");
         assert_eq!(request.revision, "revision-7");
-        assert_eq!(request.page_ref, page_ref);
-        assert_eq!(request.page, page);
+        assert_eq!(request.page_ref.as_ref(), Some(&page_ref));
+        assert_eq!(request.page.as_ref(), Some(&page));
         assert_eq!(request.render_id, "render-7");
+    }
+
+    #[test]
+    fn invalid_board_or_missing_frozen_inputs_fail_before_webview_dispatch() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (_resource_id, _source_file_id, manifest, _background_hash) =
+            create_prepared_pdf(&db, "bridge-invalid-board-dispatch");
+        let paged = load_frozen_inputs(&db, &frozen_spec(&manifest)).expect("paged frozen inputs");
+        let board_spec = InkRenderSpec {
+            document_id: manifest.document_id.clone(),
+            expected_revision: manifest.revision.clone(),
+            page_id: manifest.pages[0].page_id.clone(),
+            crop: None,
+            board: Some(InkBoardRenderSpec {
+                crop: board_crop(),
+                chunk_ids: Vec::new(),
+            }),
+            long_edge: None,
+        };
+
+        let mixed = InkRenderSpec {
+            crop: Some(InkRect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            ..board_spec.clone()
+        };
+        let error = super::validate_render_spec(&mixed).expect_err("mixed paged/board mode");
+        assert_eq!(error.code, "INVALID_ARGUMENT");
+
+        let error = super::build_frozen_render_request(&board_spec, &paged, "render-board-missing")
+            .expect_err("board request without frozen board inputs");
+        assert_eq!(error.code, "RENDER_UNAVAILABLE");
     }
 
     #[test]
@@ -236,6 +394,8 @@ mod tests {
             source: InkSource::Blank {},
             pages: vec![],
             last_operation: None,
+            surface: None,
+            chunks: Vec::new(),
         };
         let page = InkPage {
             schema_version: 1,
@@ -357,7 +517,14 @@ mod tests {
         let first = load_frozen_inputs(&db, &spec)
             .expect("prepared frozen PNG and source highlight should load");
         assert_eq!(first.highlights, wire.as_array().unwrap().clone());
-        assert_eq!(first.page_ref.background, manifest.pages[0].background);
+        assert_eq!(
+            first
+                .page_ref
+                .as_ref()
+                .expect("paged v1 fixture")
+                .background,
+            manifest.pages[0].background
+        );
         assert_eq!(
             first.source_hash.as_deref(),
             match &manifest.source {
@@ -458,8 +625,9 @@ mod tests {
             frozen.highlights.is_empty(),
             "purged source annotations should no longer be read from the deleted resource"
         );
+        let frozen_page_ref = frozen.page_ref.as_ref().expect("paged v1 fixture");
         let frozen_background =
-            background_blob_hash(&frozen.page_ref.background).expect("prepared page background");
+            background_blob_hash(&frozen_page_ref.background).expect("prepared page background");
         assert_eq!(frozen_background, background_hash);
         let frozen_path =
             VfsBlobRepo::get_blob_path_with_conn(&conn, db.blobs_dir(), frozen_background)
@@ -468,7 +636,14 @@ mod tests {
         assert!(std::fs::read(frozen_path)
             .unwrap()
             .starts_with(b"\x89PNG\r\n\x1a\n"));
-        assert_eq!(frozen.page_ref.background, manifest.pages[0].background);
+        assert_eq!(
+            frozen
+                .page_ref
+                .as_ref()
+                .expect("paged v1 fixture")
+                .background,
+            manifest.pages[0].background
+        );
     }
 
     fn mutate_frozen_snapshot(
@@ -637,13 +812,342 @@ mod tests {
         assert!(!response.ok);
         assert_eq!(response.error_code.as_deref(), Some("EDITOR_BUSY"));
     }
+
+    #[test]
+    fn board_frozen_inputs_map_negative_origin_chunk_and_expected_revision() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, chunk) = saved_board_fixture(&db);
+        let spec = board_render_spec(&manifest, &manifest.revision, board_crop());
+
+        let first = load_frozen_inputs(&db, &spec).expect("frozen board inputs");
+        assert!(first.page_ref.is_none(), "board mode has no page_ref");
+        assert!(first.page.is_none(), "board mode has no page");
+        let board = first.board.as_ref().expect("frozen board payload");
+        assert_eq!(board.crop, board_crop());
+        assert_eq!(board.chunk_refs, manifest.chunks);
+        assert_eq!(board.chunk_refs.len(), 1);
+        let chunk_ref = &board.chunk_refs[0];
+        let chunk_bytes = serde_json::to_vec(&chunk).unwrap();
+        assert_eq!(chunk_ref.chunk_id, chunk.chunk_id);
+        assert_eq!(chunk_ref.blob_hash, VfsBlobRepo::compute_hash(&chunk_bytes));
+        assert_eq!(chunk_ref.blob_hash.len(), 64);
+        assert_eq!(chunk_ref.byte_length, chunk_bytes.len() as u64);
+        assert_eq!(chunk_ref.object_count, 1);
+        assert_eq!(chunk_ref.sample_count, 0);
+        assert_eq!(
+            chunk_ref.bounds,
+            InkBoardBounds {
+                x: -21.0,
+                y: -11.0,
+                width: 42.0,
+                height: 22.0,
+            }
+        );
+        assert_eq!(board.chunks, vec![chunk], "chunk objects stay unaltered");
+        let first_render_id = render_id_for(&spec, &first).unwrap();
+
+        let second = load_frozen_inputs(&db, &spec).expect("repeated frozen board inputs");
+        assert_eq!(render_id_for(&spec, &second).unwrap(), first_render_id);
+    }
+
+    #[test]
+    fn board_render_request_uses_frozen_board_payload_without_page_ref() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let spec = board_render_spec(&manifest, &manifest.revision, board_crop());
+        let frozen = load_frozen_inputs(&db, &spec).expect("frozen board inputs");
+        let board = frozen.board.clone().expect("frozen board payload");
+
+        let request = build_board_render_request(
+            &frozen.manifest,
+            &board.surface,
+            board.crop,
+            board.chunks.clone(),
+            "render-board-1",
+        )
+        .expect("frozen board request");
+
+        assert_eq!(request.render_id, "render-board-1");
+        assert_eq!(request.document_id, frozen.manifest.document_id);
+        assert_eq!(request.revision, frozen.manifest.revision);
+        assert!(request.page_ref.is_none());
+        assert!(request.page.is_none());
+        assert!(request.background.is_none());
+        assert!(request.highlights.is_empty());
+        assert!(request.source_annotation_revision.is_none());
+        assert!(request.crop.is_none());
+        assert_eq!(request.long_edge, 2048);
+        let payload = request.board.expect("board payload");
+        assert_eq!(payload.schema_version, INK_BOARD_SCHEMA_VERSION);
+        assert_eq!(payload.surface, board.surface);
+        assert_eq!(payload.crop, board.crop);
+        assert_eq!(payload.chunks, board.chunks);
+    }
+
+    #[test]
+    fn board_frozen_inputs_reject_stale_revision_and_out_of_world_crop() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+
+        let stale_spec = board_render_spec(&manifest, "r_stale_before_save", board_crop());
+        let error = load_frozen_board_error(&db, &stale_spec);
+        assert_eq!(error.code, "REVISION_CONFLICT");
+        assert_eq!(
+            error.current_revision.as_deref(),
+            Some(manifest.revision.as_str())
+        );
+
+        let cases = [
+            (
+                "x below world limit",
+                InkRect {
+                    x: -INK_BOARD_WORLD_LIMIT - 1.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+            (
+                "y below world limit",
+                InkRect {
+                    x: 0.0,
+                    y: -INK_BOARD_WORLD_LIMIT - 1.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+            (
+                "right edge beyond world limit",
+                InkRect {
+                    x: INK_BOARD_WORLD_LIMIT,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 10.0,
+                },
+            ),
+            (
+                "bottom edge beyond world limit",
+                InkRect {
+                    x: 0.0,
+                    y: INK_BOARD_WORLD_LIMIT,
+                    width: 10.0,
+                    height: 1.0,
+                },
+            ),
+            (
+                "zero width",
+                InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 10.0,
+                },
+            ),
+            (
+                "negative height",
+                InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: -1.0,
+                },
+            ),
+            (
+                "NaN x",
+                InkRect {
+                    x: f64::NAN,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+            (
+                "infinite width",
+                InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: f64::INFINITY,
+                    height: 10.0,
+                },
+            ),
+        ];
+        for (label, crop) in cases {
+            let spec = board_render_spec(&manifest, &manifest.revision, crop);
+            let error = load_frozen_board_error(&db, &spec);
+            assert_eq!(error.code, "INVALID_ARGUMENT", "{label}: {error:?}");
+        }
+    }
+
+    #[test]
+    fn board_frozen_render_request_selector_returns_board_payload_and_signed_crop() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let spec = board_render_spec(&manifest, &manifest.revision, board_crop());
+        let frozen = load_frozen_inputs(&db, &spec).expect("frozen board inputs");
+        let render_id = render_id_for(&spec, &frozen).unwrap();
+        let mut default_spec = spec.clone();
+        default_spec.long_edge = None;
+        assert_eq!(
+            render_id_for(&default_spec, &frozen).unwrap(),
+            render_id,
+            "unspecified long edge must normalize to the 2048 default"
+        );
+
+        let (request, page_id, crop) =
+            super::build_frozen_render_request(&spec, &frozen, &render_id)
+                .expect("shared selector must preserve board dispatch");
+        let surface_page_id = match frozen.board.as_ref().expect("board").surface.clone() {
+            InkBoardSurface::Board { page_id, .. } => page_id,
+        };
+        assert_eq!(page_id, surface_page_id);
+        assert_eq!(crop, Some(board_crop()));
+        assert!(request.page_ref.is_none());
+        assert!(request.page.is_none());
+        let payload = request.board.expect("board payload");
+        assert_eq!(payload.surface, frozen.board.as_ref().unwrap().surface);
+        assert_eq!(payload.crop, board_crop());
+        assert_eq!(payload.chunks, frozen.board.as_ref().unwrap().chunks);
+
+        let mut scaled_spec = spec.clone();
+        scaled_spec.long_edge = Some(200);
+        let scaled_render_id = render_id_for(&scaled_spec, &frozen).unwrap();
+        let (scaled_request, _, _) =
+            super::build_frozen_render_request(&scaled_spec, &frozen, &scaled_render_id)
+                .expect("shared selector must honor the board long edge");
+        assert_eq!(scaled_request.long_edge, 200);
+
+        let mut large_spec = spec.clone();
+        large_spec.long_edge = Some(400);
+        let large_render_id = render_id_for(&large_spec, &frozen).unwrap();
+        assert_ne!(scaled_render_id, large_render_id);
+        let (large_request, _, _) =
+            super::build_frozen_render_request(&large_spec, &frozen, &large_render_id)
+                .expect("shared selector must honor a distinct board long edge");
+        assert_eq!(large_request.long_edge, 400);
+    }
+
+    #[test]
+    fn board_artifact_publish_persists_signed_world_crop_and_renderer_render_id() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let spec = board_render_spec(&manifest, &manifest.revision, board_crop());
+        let frozen = load_frozen_inputs(&db, &spec).expect("frozen board inputs");
+        let page_id = match frozen.board.as_ref().expect("board").surface.clone() {
+            InkBoardSurface::Board { page_id, .. } => page_id,
+        };
+        let render_id = render_id_for(&spec, &frozen).unwrap();
+        let draft = artifact_draft(
+            &frozen,
+            &page_id,
+            &manifest.revision,
+            &render_id,
+            board_crop(),
+        );
+        let png = rendered_png_fixture();
+
+        let stored = super::publish_ink_snapshot(&db, &spec, &frozen, draft, &png)
+            .expect("board artifact publish");
+        assert_eq!(stored.render_id, render_id);
+        assert_eq!(stored.render_id, render_id_for(&spec, &frozen).unwrap());
+        assert_eq!(stored.page_id, page_id);
+        assert_eq!(stored.revision, manifest.revision);
+        assert_eq!(stored.crop, Some(board_crop()));
+
+        let conn = db.get_conn_safe().unwrap();
+        let (reopened, bytes) =
+            VfsInkArtifactRepo::load_with_conn(&conn, db.blobs_dir(), &render_id).unwrap();
+        assert_eq!(reopened, stored);
+        assert_eq!(bytes, png);
+        assert_eq!(reopened.crop, Some(board_crop()));
+        assert_eq!(reopened.page_id, page_id);
+        assert_eq!(reopened.revision, manifest.revision);
+    }
+
+    #[test]
+    fn board_artifact_publish_rejects_stale_expected_revision_without_artifact() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (manifest, _chunk) = saved_board_fixture(&db);
+        let current_spec = board_render_spec(&manifest, &manifest.revision, board_crop());
+        let frozen = load_frozen_inputs(&db, &current_spec).expect("frozen board inputs");
+        let page_id = match frozen.board.as_ref().expect("board").surface.clone() {
+            InkBoardSurface::Board { page_id, .. } => page_id,
+        };
+        let render_id = render_id_for(&current_spec, &frozen).unwrap();
+        let draft = artifact_draft(
+            &frozen,
+            &page_id,
+            &manifest.revision,
+            &render_id,
+            board_crop(),
+        );
+        let stale_spec = board_render_spec(&manifest, "r_stale_before_render", board_crop());
+
+        let error =
+            super::publish_ink_snapshot(&db, &stale_spec, &frozen, draft, &rendered_png_fixture())
+                .unwrap_err();
+        assert_eq!(error.code, "REVISION_CONFLICT");
+        let conn = db.get_conn_safe().unwrap();
+        let artifacts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ink_render_artifacts WHERE render_id = ?1",
+                [&render_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(artifacts, 0);
+    }
+
+    #[test]
+    fn paged_artifact_publish_still_rejects_negative_crop() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let (_resource_id, _source_file_id, manifest, _background_hash) =
+            create_prepared_pdf(&db, "bridge-paged-negative-crop");
+        let spec = frozen_spec(&manifest);
+        let frozen = load_frozen_inputs(&db, &spec).expect("frozen paged inputs");
+        let page_id = manifest.pages[0].page_id.clone();
+        let render_id = render_id_for(&spec, &frozen).unwrap();
+        let negative_crop = InkRect {
+            x: -1.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let draft = artifact_draft(
+            &frozen,
+            &page_id,
+            &manifest.revision,
+            &render_id,
+            negative_crop,
+        );
+
+        let error =
+            super::publish_ink_snapshot(&db, &spec, &frozen, draft, &rendered_png_fixture())
+                .unwrap_err();
+        assert_eq!(error.code, "INVALID_RENDER");
+        let conn = db.get_conn_safe().unwrap();
+        let artifacts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ink_render_artifacts WHERE render_id = ?1",
+                [&render_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(artifacts, 0);
+    }
 }
 
 use crate::vfs::{
     database::VfsDatabase,
     error::VfsError,
-    ink::{InkBackground, InkManifest, InkPage, InkPageRef, InkRect, InkSource},
-    repos::{InkArtifact, InkArtifactDraft, VfsBlobRepo, VfsInkArtifactRepo, VfsInkRepo},
+    ink::{
+        InkBackground, InkBoardBounds, InkBoardChunk, InkBoardChunkRef, InkBoardSurface,
+        InkManifest, InkPage, InkPageRef, InkRect, InkRuling, InkSource, INK_BOARD_SCHEMA_VERSION,
+        INK_BOARD_WORLD_LIMIT,
+    },
+    repos::{
+        ink_board_repo::VfsInkBoardRepo, ink_source::validate_ink_source_with_conn, InkArtifact,
+        InkArtifactDraft, VfsBlobRepo, VfsInkArtifactRepo, VfsInkRepo,
+    },
 };
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
@@ -665,6 +1169,24 @@ const FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 const PNG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_IMAGE_BLOB_BYTES: i64 = 64 * 1024 * 1024;
 const RENDERER_PROFILE: &str = "deepstudent-ink-canvas-v1";
+/// Renderer profile for the explicit v2 board payload (signed world crop +
+/// ordered chunk mapping). Kept separate so existing v1 render ids stay stable.
+const RENDERER_PROFILE_BOARD_V2: &str = "deepstudent-ink-canvas-v2-board";
+/// One board render may materialize at most 16 MiB of chunk JSON.
+const BOARD_RENDER_JSON_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Explicit board render payload. Absence of this field means paged v1 mode;
+/// board mode never reuses `InkRenderSpec::crop` or a synthetic fixed page.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardRenderSpec {
+    /// Absolute signed world rectangle represented by the output raster.
+    pub crop: InkRect,
+    /// Optional canonical chunk subset in caller order. Empty means all chunks
+    /// whose bounds intersect `crop`, bounded by the batch budget.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chunk_ids: Vec<String>,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -672,13 +1194,17 @@ pub struct InkRenderSpec {
     pub document_id: String,
     pub expected_revision: String,
     pub page_id: String,
+    /// v1 paged crop; always nonnegative and inside the frozen page.
     #[serde(default)]
     pub crop: Option<InkRect>,
+    /// Explicit v2 board render payload; mutually exclusive with `crop`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<InkBoardRenderSpec>,
     #[serde(default)]
     pub long_edge: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InkRenderBackground {
     Image {
@@ -690,6 +1216,18 @@ pub enum InkRenderBackground {
     },
 }
 
+/// Explicit v2 board payload for the renderer event. Board objects stay in
+/// their canonical chunks; they are never coerced into an `InkPage`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardRenderPayload {
+    pub schema_version: u32,
+    pub surface: InkBoardSurface,
+    /// Absolute signed world rectangle to rasterize.
+    pub crop: InkRect,
+    pub chunks: Vec<InkBoardChunk>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InkRenderRequest {
@@ -697,8 +1235,12 @@ pub struct InkRenderRequest {
     pub render_id: String,
     pub document_id: String,
     pub revision: String,
-    pub page_ref: InkPageRef,
-    pub page: InkPage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_ref: Option<InkPageRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<InkPage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<InkBoardRenderPayload>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<InkRect>,
     pub long_edge: u32,
@@ -733,8 +1275,9 @@ pub fn build_render_request(
         render_id: render_id.to_owned(),
         document_id: manifest.document_id.clone(),
         revision: manifest.revision.clone(),
-        page_ref: page_ref.clone(),
-        page,
+        page_ref: Some(page_ref.clone()),
+        page: Some(page),
+        board: None,
         crop: None,
         long_edge: 2048,
         highlights: Vec::new(),
@@ -752,6 +1295,49 @@ pub fn build_render_request(
                 source_page_index: *source_page_index,
             }),
         },
+        session_id: None,
+        tool_call_id: None,
+    })
+}
+
+/// Build an explicit v2 board event payload from immutable chunk snapshots.
+pub fn build_board_render_request(
+    manifest: &InkManifest,
+    surface: &InkBoardSurface,
+    crop: InkRect,
+    chunks: Vec<InkBoardChunk>,
+    render_id: &str,
+) -> Result<InkRenderRequest, InkBridgeError> {
+    let page_id = match surface {
+        InkBoardSurface::Board { page_id, .. } => page_id,
+    };
+    if render_id.trim().is_empty()
+        || manifest.revision.trim().is_empty()
+        || manifest.document_id.trim().is_empty()
+        || manifest.schema_version != INK_BOARD_SCHEMA_VERSION
+        || manifest.surface.as_ref() != Some(surface)
+        || manifest.chunks.is_empty() && !chunks.is_empty()
+    {
+        return Err(InkBridgeError::InvalidIdentity);
+    }
+    Ok(InkRenderRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        render_id: render_id.to_owned(),
+        document_id: manifest.document_id.clone(),
+        revision: manifest.revision.clone(),
+        page_ref: None,
+        page: None,
+        board: Some(InkBoardRenderPayload {
+            schema_version: manifest.schema_version,
+            surface: surface.clone(),
+            crop,
+            chunks,
+        }),
+        crop: None,
+        long_edge: 2048,
+        highlights: Vec::new(),
+        source_annotation_revision: None,
+        background: None,
         session_id: None,
         tool_call_id: None,
     })
@@ -1206,15 +1792,43 @@ impl From<InkBridgeError> for InkRenderCommandError {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct FrozenBoardInputs {
+    pub(crate) surface: InkBoardSurface,
+    pub(crate) crop: InkRect,
+    pub(crate) chunk_refs: Vec<InkBoardChunkRef>,
+    pub(crate) chunks: Vec<InkBoardChunk>,
+}
+
 #[derive(Clone)]
 pub(crate) struct FrozenRenderInputs {
     pub(crate) manifest: InkManifest,
-    pub(crate) page_ref: InkPageRef,
-    pub(crate) page: InkPage,
+    pub(crate) page_ref: Option<InkPageRef>,
+    pub(crate) page: Option<InkPage>,
+    pub(crate) board: Option<FrozenBoardInputs>,
     pub(crate) highlights: Vec<Value>,
     pub(crate) source_annotation_revision: Option<String>,
     pub(crate) source_hash: Option<String>,
     pub(crate) conversion_revision: Option<String>,
+}
+
+impl FrozenRenderInputs {
+    fn page_id(&self) -> Result<&str, InkRenderCommandError> {
+        if let Some(page_ref) = &self.page_ref {
+            return Ok(&page_ref.page_id);
+        }
+        self.board
+            .as_ref()
+            .map(|board| match &board.surface {
+                InkBoardSurface::Board { page_id, .. } => page_id.as_str(),
+            })
+            .ok_or_else(|| {
+                InkRenderCommandError::new(
+                    "RENDER_UNAVAILABLE",
+                    "Frozen Ink inputs have no page or board surface.",
+                )
+            })
+    }
 }
 
 #[derive(Serialize)]
@@ -1222,8 +1836,12 @@ pub(crate) struct FrozenRenderInputs {
 pub(crate) struct InkFrozenRenderInputs {
     revision: String,
     source: InkSource,
-    page_ref: InkPageRef,
-    page: InkPage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page_ref: Option<InkPageRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    page: Option<InkPage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    board: Option<InkBoardRenderPayload>,
     highlights: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_annotation_revision: Option<String>,
@@ -1294,6 +1912,9 @@ pub(crate) fn load_frozen_inputs_with_conn(
             manifest.revision,
         )));
     }
+    if let Some(board_spec) = &spec.board {
+        return load_frozen_board_inputs_with_conn(conn, blobs_dir, spec, manifest, board_spec);
+    }
     let page_ref = manifest
         .pages
         .iter()
@@ -1311,7 +1932,7 @@ pub(crate) fn load_frozen_inputs_with_conn(
             source_hash,
             conversion_revision,
         } => {
-            if source_resource_matches(conn, resource_id, source_hash)? {
+            if source_resource_matches(conn, blobs_dir, resource_id, source_hash)? {
                 (
                     Some(source_hash.clone()),
                     Some(conversion_revision.clone()),
@@ -1349,8 +1970,9 @@ pub(crate) fn load_frozen_inputs_with_conn(
     };
     Ok(FrozenRenderInputs {
         manifest,
-        page_ref,
-        page,
+        page_ref: Some(page_ref),
+        page: Some(page),
+        board: None,
         highlights,
         source_annotation_revision,
         source_hash,
@@ -1358,57 +1980,127 @@ pub(crate) fn load_frozen_inputs_with_conn(
     })
 }
 
+fn load_frozen_board_inputs_with_conn(
+    conn: &rusqlite::Connection,
+    blobs_dir: &std::path::Path,
+    spec: &InkRenderSpec,
+    manifest: InkManifest,
+    board_spec: &InkBoardRenderSpec,
+) -> Result<FrozenRenderInputs, InkRenderCommandError> {
+    if manifest.schema_version != INK_BOARD_SCHEMA_VERSION {
+        return Err(InkRenderCommandError::new(
+            "INVALID_ARGUMENT",
+            "Board render requires a v2 board document.",
+        ));
+    }
+    let surface = manifest.surface.clone().ok_or_else(|| {
+        InkRenderCommandError::new("RESOURCE_NOT_FOUND", "Ink board surface is missing.")
+    })?;
+    let surface_page_id = match &surface {
+        InkBoardSurface::Board { page_id, .. } => page_id,
+    };
+    if surface_page_id != &spec.page_id {
+        return Err(InkRenderCommandError::new(
+            "RESOURCE_NOT_FOUND",
+            "Ink board surface page was not found.",
+        ));
+    }
+    let crop = board_spec.crop;
+    let refs_by_id = manifest
+        .chunks
+        .iter()
+        .map(|chunk_ref| (chunk_ref.chunk_id.as_str(), chunk_ref))
+        .collect::<HashMap<_, _>>();
+    let selected = if board_spec.chunk_ids.is_empty() {
+        manifest
+            .chunks
+            .iter()
+            .filter(|chunk_ref| board_bounds_intersect(chunk_ref.bounds, crop))
+            .collect::<Vec<_>>()
+    } else {
+        let mut seen = std::collections::HashSet::new();
+        let mut selected = Vec::with_capacity(board_spec.chunk_ids.len());
+        for chunk_id in &board_spec.chunk_ids {
+            if !seen.insert(chunk_id.as_str()) {
+                return Err(InkRenderCommandError::new(
+                    "INVALID_ARGUMENT",
+                    "Ink board render chunk selection contains duplicates.",
+                ));
+            }
+            let chunk_ref = refs_by_id.get(chunk_id.as_str()).ok_or_else(|| {
+                InkRenderCommandError::new(
+                    "RESOURCE_NOT_FOUND",
+                    "Requested Ink board chunk was not found.",
+                )
+            })?;
+            selected.push(*chunk_ref);
+        }
+        selected
+    };
+    let total_bytes = selected.iter().try_fold(0u64, |total, chunk_ref| {
+        total.checked_add(chunk_ref.byte_length)
+    });
+    if total_bytes.map_or(true, |total| total > BOARD_RENDER_JSON_MAX_BYTES) {
+        return Err(InkRenderCommandError::new(
+            "LIMIT_EXCEEDED",
+            "Ink board render chunk batch exceeds the 16 MiB budget.",
+        ));
+    }
+    let chunk_ids = selected
+        .iter()
+        .map(|chunk_ref| chunk_ref.chunk_id.clone())
+        .collect::<Vec<_>>();
+    let chunks =
+        VfsInkBoardRepo::get_chunks_with_conn(conn, blobs_dir, &spec.document_id, &chunk_ids)
+            .map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))?;
+    if chunks.len() != chunk_ids.len() {
+        return Err(InkRenderCommandError::new(
+            "RENDER_UNAVAILABLE",
+            "Ink board chunk snapshot was incomplete.",
+        ));
+    }
+    let chunk_refs = selected.into_iter().cloned().collect::<Vec<_>>();
+    Ok(FrozenRenderInputs {
+        manifest,
+        page_ref: None,
+        page: None,
+        board: Some(FrozenBoardInputs {
+            surface,
+            crop,
+            chunk_refs,
+            chunks,
+        }),
+        highlights: Vec::new(),
+        source_annotation_revision: None,
+        source_hash: None,
+        conversion_revision: None,
+    })
+}
+
+fn board_bounds_intersect(bounds: InkBoardBounds, crop: InkRect) -> bool {
+    bounds.x < crop.x + crop.width
+        && bounds.x + bounds.width > crop.x
+        && bounds.y < crop.y + crop.height
+        && bounds.y + bounds.height > crop.y
+}
+
 fn source_resource_matches(
     conn: &rusqlite::Connection,
+    blobs_dir: &std::path::Path,
     resource_id: &str,
     frozen_hash: &str,
 ) -> Result<bool, InkRenderCommandError> {
-    let source = conn.query_row(
-        r#"SELECT r.hash, r.type, r.source_id, r.source_table, f.resource_id, f.blob_hash, f.sha256, f.status
-           FROM resources r LEFT JOIN files f ON f.id = r.source_id WHERE r.id = ?1"#,
-        [resource_id],
-        |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, Option<String>>(7)?,
-        )),
-    ).optional().map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))?;
-    let Some((
-        resource_hash,
-        resource_type,
-        source_id,
-        source_table,
-        file_resource_id,
-        blob_hash,
-        sha256,
-        status,
-    )) = source
-    else {
-        return Ok(false);
-    };
-    if resource_hash != frozen_hash
-        || resource_type != "file"
-        || source_id.is_none()
-        || source_table.as_deref() != Some("files")
-        || file_resource_id.as_deref() != Some(resource_id)
-        || blob_hash.as_deref() != Some(frozen_hash)
-        || sha256.as_deref() != Some(frozen_hash)
-        || status.as_deref() != Some("active")
-        || !VfsBlobRepo::get_blob_with_conn(conn, frozen_hash)
-            .map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))?
-            .is_some_and(|blob| blob.hash == frozen_hash && blob.ref_count > 0 && blob.size >= 0)
-    {
-        return Err(InkRenderCommandError::new(
-            "SOURCE_CHANGED",
-            "The prepared source no longer matches the frozen Ink document.",
-        ));
-    }
-    Ok(true)
+    validate_ink_source_with_conn(conn, blobs_dir, resource_id, Some(frozen_hash))
+        .map(|source| source.is_some())
+        .map_err(|error| match &error {
+            VfsError::Conflict { key, .. } if key == "ink.source_changed" => {
+                InkRenderCommandError::new("SOURCE_CHANGED", error.to_string())
+            }
+            VfsError::Conflict { key, .. } if key == "ink.limit_exceeded" => {
+                InkRenderCommandError::new("LIMIT_EXCEEDED", error.to_string())
+            }
+            _ => InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()),
+        })
 }
 
 fn background_blob_hash(background: &InkBackground) -> Option<&str> {
@@ -1440,6 +2132,12 @@ fn validate_render_spec(spec: &InkRenderSpec) -> Result<(), InkRenderCommandErro
         ));
     }
     if let Some(crop) = spec.crop {
+        if spec.board.is_some() {
+            return Err(InkRenderCommandError::new(
+                "INVALID_ARGUMENT",
+                "Paged crop and board render cannot be combined.",
+            ));
+        }
         if !crop.x.is_finite()
             || !crop.y.is_finite()
             || !crop.width.is_finite()
@@ -1455,6 +2153,42 @@ fn validate_render_spec(spec: &InkRenderSpec) -> Result<(), InkRenderCommandErro
             ));
         }
     }
+    if let Some(board) = &spec.board {
+        if spec.crop.is_some() {
+            return Err(InkRenderCommandError::new(
+                "INVALID_ARGUMENT",
+                "Paged crop and board render cannot be combined.",
+            ));
+        }
+        let crop = board.crop;
+        if !crop.x.is_finite()
+            || !crop.y.is_finite()
+            || !crop.width.is_finite()
+            || !crop.height.is_finite()
+            || crop.width <= 0.0
+            || crop.height <= 0.0
+            || crop.x < -INK_BOARD_WORLD_LIMIT
+            || crop.y < -INK_BOARD_WORLD_LIMIT
+            || crop.x + crop.width > INK_BOARD_WORLD_LIMIT
+            || crop.y + crop.height > INK_BOARD_WORLD_LIMIT
+        {
+            return Err(InkRenderCommandError::new(
+                "INVALID_ARGUMENT",
+                "Ink board render crop is outside the finite world range.",
+            ));
+        }
+        if board.chunk_ids.len() > 256
+            || board
+                .chunk_ids
+                .iter()
+                .any(|chunk_id| chunk_id.trim().is_empty())
+        {
+            return Err(InkRenderCommandError::new(
+                "INVALID_ARGUMENT",
+                "Ink board render chunk selection is invalid.",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1462,14 +2196,41 @@ fn render_id_for(
     spec: &InkRenderSpec,
     inputs: &FrozenRenderInputs,
 ) -> Result<String, InkRenderCommandError> {
-    let identity = serde_json::to_vec(&(
-        spec,
-        &inputs.manifest.revision,
-        &inputs.source_hash,
-        &inputs.conversion_revision,
-        &inputs.source_annotation_revision,
-        RENDERER_PROFILE,
-    ))
+    let identity = if let Some(board) = &inputs.board {
+        let chunk_mapping = board
+            .chunk_refs
+            .iter()
+            .map(|chunk_ref| {
+                (
+                    chunk_ref.chunk_id.as_str(),
+                    chunk_ref.blob_hash.as_str(),
+                    chunk_ref.byte_length,
+                    chunk_ref.object_count,
+                    chunk_ref.sample_count,
+                    chunk_ref.bounds,
+                )
+            })
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&(
+            &spec.document_id,
+            &spec.expected_revision,
+            &board.crop,
+            inputs.manifest.schema_version,
+            &inputs.manifest.revision,
+            chunk_mapping,
+            spec.long_edge.unwrap_or(2048),
+            RENDERER_PROFILE_BOARD_V2,
+        ))
+    } else {
+        serde_json::to_vec(&(
+            spec,
+            &inputs.manifest.revision,
+            &inputs.source_hash,
+            &inputs.conversion_revision,
+            &inputs.source_annotation_revision,
+            RENDERER_PROFILE,
+        ))
+    }
     .map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))?;
     Ok(hex::encode(Sha256::digest(identity)))
 }
@@ -1478,6 +2239,7 @@ fn same_frozen_inputs(left: &FrozenRenderInputs, right: &FrozenRenderInputs) -> 
     left.manifest.revision == right.manifest.revision
         && left.page_ref == right.page_ref
         && left.page == right.page
+        && left.board == right.board
         && left.highlights == right.highlights
         && left.source_annotation_revision == right.source_annotation_revision
         && left.source_hash == right.source_hash
@@ -1585,6 +2347,56 @@ pub(crate) async fn flush_ink_editor(
     flush_editor_before_render(app, &flush_bus, document_id).await
 }
 
+fn build_frozen_render_request(
+    spec: &InkRenderSpec,
+    inputs: &FrozenRenderInputs,
+    render_id: &str,
+) -> Result<(InkRenderRequest, String, Option<InkRect>), InkRenderCommandError> {
+    if spec.board.is_some() != inputs.board.is_some() {
+        return Err(InkRenderCommandError::new(
+            "RENDER_UNAVAILABLE",
+            "Frozen Ink inputs do not match the render mode.",
+        ));
+    }
+    if let Some(board_inputs) = inputs.board.as_ref() {
+        let mut request = build_board_render_request(
+            &inputs.manifest,
+            &board_inputs.surface,
+            board_inputs.crop,
+            board_inputs.chunks.clone(),
+            render_id,
+        )
+        .map_err(InkRenderCommandError::from)?;
+        request.long_edge = spec.long_edge.unwrap_or(2048);
+        let page_id = match &board_inputs.surface {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        };
+        return Ok((request, page_id, Some(board_inputs.crop)));
+    }
+    let page_ref = inputs.page_ref.as_ref().ok_or_else(|| {
+        InkRenderCommandError::new("RENDER_UNAVAILABLE", "Paged Ink render inputs are missing.")
+    })?;
+    let page = inputs.page.clone().ok_or_else(|| {
+        InkRenderCommandError::new("RENDER_UNAVAILABLE", "Paged Ink render inputs are missing.")
+    })?;
+    let page_id = page_ref.page_id.clone();
+    if let Some(crop) = spec.crop {
+        if crop.x + crop.width > page_ref.width || crop.y + crop.height > page_ref.height {
+            return Err(InkRenderCommandError::new(
+                "INVALID_ARGUMENT",
+                "Ink render crop must be inside the frozen page.",
+            ));
+        }
+    }
+    let mut request = build_render_request(&inputs.manifest, page_ref, page, render_id)
+        .map_err(InkRenderCommandError::from)?;
+    request.crop = spec.crop;
+    request.long_edge = spec.long_edge.unwrap_or(2048);
+    request.highlights = inputs.highlights.clone();
+    request.source_annotation_revision = inputs.source_annotation_revision.clone();
+    Ok((request, page_id, spec.crop))
+}
+
 pub async fn render_ink_snapshot(
     app: &AppHandle,
     db: Arc<VfsDatabase>,
@@ -1608,16 +2420,6 @@ pub async fn render_ink_snapshot(
     })
     .await
     .map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))??;
-    if let Some(crop) = spec.crop {
-        if crop.x + crop.width > inputs.page_ref.width
-            || crop.y + crop.height > inputs.page_ref.height
-        {
-            return Err(InkRenderCommandError::new(
-                "INVALID_ARGUMENT",
-                "Ink render crop must be inside the frozen page.",
-            ));
-        }
-    }
     let render_id = render_id_for(&spec, &inputs)?;
     let identity = InkRenderIdentity {
         request_id: uuid::Uuid::new_v4().to_string(),
@@ -1625,18 +2427,8 @@ pub async fn render_ink_snapshot(
         session_id: session_id.map(str::to_owned),
         tool_call_id: tool_call_id.map(str::to_owned),
     };
-    let mut request = build_render_request(
-        &inputs.manifest,
-        &inputs.page_ref,
-        inputs.page.clone(),
-        &render_id,
-    )
-    .map_err(InkRenderCommandError::from)?;
+    let (mut request, page_id, crop) = build_frozen_render_request(&spec, &inputs, &render_id)?;
     request.request_id = identity.request_id.clone();
-    request.crop = spec.crop;
-    request.long_edge = spec.long_edge.unwrap_or(2048);
-    request.highlights = inputs.highlights.clone();
-    request.source_annotation_revision = inputs.source_annotation_revision.clone();
     request.session_id = identity.session_id.clone();
     request.tool_call_id = identity.tool_call_id.clone();
 
@@ -1685,12 +2477,12 @@ pub async fn render_ink_snapshot(
             artifact_id: rendered.render_id.clone(),
             render_id: rendered.render_id,
             document_id: expected_inputs.manifest.document_id.clone(),
-            page_id: expected_inputs.page_ref.page_id.clone(),
+            page_id,
             revision: expected_inputs.manifest.revision.clone(),
             source_hash: expected_inputs.source_hash.clone(),
             source_annotation_revision: expected_inputs.source_annotation_revision.clone(),
             conversion_revision: expected_inputs.conversion_revision.clone(),
-            crop: publish_spec.crop,
+            crop,
             width_px: rendered.width_px,
             height_px: rendered.height_px,
         };
@@ -1707,6 +2499,7 @@ pub async fn vfs_ink_get_render_inputs(
     document_id: String,
     expected_revision: String,
     page_id: String,
+    board: Option<InkBoardRenderSpec>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<InkFrozenRenderInputs, InkRenderCommandError> {
     if configured_main_label(&app) != Some(window.label()) {
@@ -1720,17 +2513,26 @@ pub async fn vfs_ink_get_render_inputs(
         expected_revision,
         page_id,
         crop: None,
+        board,
         long_edge: None,
     };
     let db = vfs_db.inner().clone();
     let inputs = tauri::async_runtime::spawn_blocking(move || load_frozen_inputs(&db, &request))
         .await
         .map_err(|error| InkRenderCommandError::new("RENDER_UNAVAILABLE", error.to_string()))??;
+    let schema_version = inputs.manifest.schema_version;
+    let board = inputs.board.map(|board| InkBoardRenderPayload {
+        schema_version,
+        surface: board.surface,
+        crop: board.crop,
+        chunks: board.chunks,
+    });
     Ok(InkFrozenRenderInputs {
         revision: inputs.manifest.revision,
         source: inputs.manifest.source,
         page_ref: inputs.page_ref,
         page: inputs.page,
+        board,
         highlights: inputs.highlights,
         source_annotation_revision: inputs.source_annotation_revision,
     })

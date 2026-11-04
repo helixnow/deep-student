@@ -2,6 +2,8 @@
 
 日期：2026-11-03。执行／审阅：主 agent。本地测试产物，不是正式发布，无上传／推送／发布。
 
+> 本文冻结构建时的核验结论。后续已在连接的ARM64真机核对安装APK SHA256完全一致、启动应用并观察到资源预览unsupported；见 [当前问题](../issues/android-import-preview.md)。下方“未在真机运行”描述构建交付时点，不再代表现在没有连接设备，也不把后来启动等同于真机完整验收。
+
 ## 最终产物
 
 - APK：`build-android/DeepStudent-0.11.0-arm64-mobile-slim-ink-test.apk`。
@@ -76,4 +78,4 @@ npx --no-install tauri android build --target aarch64 --apk --ci \
 
 先完成API36 x86_64模拟器诊断与PDF／图片来源背景缺陷修复，主agent测试并本地提交bc48e6eb后才重建此包。模拟器运行的是单独x86_64诊断包，**最终ARM64包未在真实ARM64设备安装运行**，不能伪称运行验收。
 
-真机压感／手掌误触／延迟内存、API24实际运行与Android内模型调用仍未验证。首轮ARM64候选虽exit0，但因发现背景缺陷不交付；其历史证据见 [首轮记录](closure-arm64-first-build.md)。
+真机压感／手掌误触／延迟内存、API24实际运行与Android内模型调用仍未验证。首轮ARM64候选虽exit0，但因发现背景缺陷不交付；其历史证据 `closure-arm64-first-build.md` 已移至本地归档，查询见 [治理说明](../governance.md)。

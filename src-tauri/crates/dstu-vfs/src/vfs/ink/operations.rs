@@ -454,6 +454,10 @@ pub struct InkObjectChange {
     pub object_id: String,
     pub before: Option<InkObject>,
     pub after: Option<InkObject>,
+    /// Board-only storage order. Paged documents always use `None`; a board
+    /// receipt carries the trusted z-index so undo can restore the exact layer
+    /// position without inventing a page or parsing object arrays again.
+    pub z_index: Option<i64>,
 }
 
 /// New logical page state after applying an operation or undo batch.
@@ -718,12 +722,6 @@ fn map_point(
     page_ref: &InkPageRef,
     mapping: &InkRenderMapping,
 ) -> Result<InkPoint, InkOperationError> {
-    if !normalized_point_valid(point) {
-        return Err(operation_error(
-            InkOperationErrorCode::GeometryInvalid,
-            "Normalized point is outside the coordinate space",
-        ));
-    }
     let (origin_x, origin_y, extent_width, extent_height) = match space {
         InkCoordinateSpace::Page => (0.0, 0.0, page_ref.width, page_ref.height),
         InkCoordinateSpace::RenderCrop => (
@@ -733,6 +731,25 @@ fn map_point(
             mapping.crop.height,
         ),
     };
+    map_point_from_extent(point, origin_x, origin_y, extent_width, extent_height)
+}
+
+/// Map a normalized point into an explicit origin/extent. The v1 page path
+/// derives the extent from the page; the board path derives it from the
+/// verified signed world crop. Normalization rules stay shared and strict.
+pub(crate) fn map_point_from_extent(
+    point: InkNormalizedPoint,
+    origin_x: f64,
+    origin_y: f64,
+    extent_width: f64,
+    extent_height: f64,
+) -> Result<InkPoint, InkOperationError> {
+    if !normalized_point_valid(point) {
+        return Err(operation_error(
+            InkOperationErrorCode::GeometryInvalid,
+            "Normalized point is outside the coordinate space",
+        ));
+    }
     Ok(InkPoint {
         x: origin_x + point.x * extent_width,
         y: origin_y + point.y * extent_height,
@@ -745,12 +762,6 @@ fn map_rect(
     page_ref: &InkPageRef,
     mapping: &InkRenderMapping,
 ) -> Result<InkRect, InkOperationError> {
-    if !normalized_rect_valid(rect) {
-        return Err(operation_error(
-            InkOperationErrorCode::GeometryInvalid,
-            "Normalized rectangle is outside the coordinate space",
-        ));
-    }
     let (origin_x, origin_y, extent_width, extent_height) = match space {
         InkCoordinateSpace::Page => (0.0, 0.0, page_ref.width, page_ref.height),
         InkCoordinateSpace::RenderCrop => (
@@ -760,6 +771,25 @@ fn map_rect(
             mapping.crop.height,
         ),
     };
+    map_rect_from_extent(rect, origin_x, origin_y, extent_width, extent_height)
+}
+
+/// Map a normalized rectangle into an explicit origin/extent. Negative origins
+/// are only supplied by the board path; paged callers still use nonnegative
+/// page coordinates and their existing bounds checks.
+pub(crate) fn map_rect_from_extent(
+    rect: InkNormalizedRect,
+    origin_x: f64,
+    origin_y: f64,
+    extent_width: f64,
+    extent_height: f64,
+) -> Result<InkRect, InkOperationError> {
+    if !normalized_rect_valid(rect) {
+        return Err(operation_error(
+            InkOperationErrorCode::GeometryInvalid,
+            "Normalized rectangle is outside the coordinate space",
+        ));
+    }
     Ok(InkRect {
         x: origin_x + rect.x * extent_width,
         y: origin_y + rect.y * extent_height,
@@ -774,6 +804,28 @@ fn map_content(
     page_ref: &InkPageRef,
     mapping: &InkRenderMapping,
 ) -> Result<InkObjectContent, InkOperationError> {
+    let (origin_x, origin_y, extent_width, extent_height) = match space {
+        InkCoordinateSpace::Page => (0.0, 0.0, page_ref.width, page_ref.height),
+        InkCoordinateSpace::RenderCrop => (
+            mapping.crop.x,
+            mapping.crop.y,
+            mapping.crop.width,
+            mapping.crop.height,
+        ),
+    };
+    map_content_from_extent(content, origin_x, origin_y, extent_width, extent_height)
+}
+
+/// Shared controlled-content mapping for explicit origin/extent. Stroke content
+/// is intentionally absent from `InkOperationContent`, so this never creates a
+/// new stroke from AI input.
+pub(crate) fn map_content_from_extent(
+    content: InkOperationContent,
+    origin_x: f64,
+    origin_y: f64,
+    extent_width: f64,
+    extent_height: f64,
+) -> Result<InkObjectContent, InkOperationError> {
     Ok(match content {
         InkOperationContent::Text {
             rect,
@@ -781,24 +833,24 @@ fn map_content(
             font_size,
             color,
         } => InkObjectContent::Text {
-            rect: map_rect(rect, space, page_ref, mapping)?,
+            rect: map_rect_from_extent(rect, origin_x, origin_y, extent_width, extent_height)?,
             text,
             font_size,
             color,
         },
         InkOperationContent::Rect { rect, color, width } => InkObjectContent::Rect {
-            rect: map_rect(rect, space, page_ref, mapping)?,
+            rect: map_rect_from_extent(rect, origin_x, origin_y, extent_width, extent_height)?,
             color,
             width,
         },
         InkOperationContent::Ellipse { rect, color, width } => InkObjectContent::Ellipse {
-            rect: map_rect(rect, space, page_ref, mapping)?,
+            rect: map_rect_from_extent(rect, origin_x, origin_y, extent_width, extent_height)?,
             color,
             width,
         },
         InkOperationContent::RegionHighlight { rect, color, width } => {
             InkObjectContent::RegionHighlight {
-                rect: map_rect(rect, space, page_ref, mapping)?,
+                rect: map_rect_from_extent(rect, origin_x, origin_y, extent_width, extent_height)?,
                 color,
                 width,
             }
@@ -809,8 +861,8 @@ fn map_content(
             color,
             width,
         } => InkObjectContent::Arrow {
-            from: map_point(from, space, page_ref, mapping)?,
-            to: map_point(to, space, page_ref, mapping)?,
+            from: map_point_from_extent(from, origin_x, origin_y, extent_width, extent_height)?,
+            to: map_point_from_extent(to, origin_x, origin_y, extent_width, extent_height)?,
             color,
             width,
         },
@@ -828,6 +880,7 @@ fn record_change(changes: &mut Vec<InkObjectChange>, change: InkObjectChange) {
         existing.page_id == change.page_id && existing.object_id == change.object_id
     }) {
         existing.after = change.after;
+        existing.z_index = change.z_index;
     } else {
         changes.push(change);
     }
@@ -1117,6 +1170,7 @@ pub fn apply_operations(
                         object_id: object_id.clone(),
                         before: Some(before),
                         after: Some(object.clone()),
+                        z_index: None,
                     },
                 );
                 push_affected(&mut affected_page_ids, page_id);
@@ -1141,6 +1195,7 @@ pub fn apply_operations(
                         object_id: object_id.clone(),
                         before: Some(before),
                         after: None,
+                        z_index: None,
                     },
                 );
                 push_affected(&mut affected_page_ids, page_id);
@@ -1200,6 +1255,7 @@ fn add_object(
             object_id: object.id.clone(),
             before: None,
             after: Some(object.clone()),
+            z_index: None,
         },
     );
     page.objects.push(object);

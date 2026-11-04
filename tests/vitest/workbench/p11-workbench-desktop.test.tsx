@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, act, fireEvent } from '@testing-library/react';
 
 const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -26,6 +26,33 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));
+vi.mock('@/features/ink', async () => ({
+  ...(await vi.importActual('@/features/ink')),
+  LazyNotebookPage: ({ isActive }: { isActive?: boolean }) => <div data-testid="os-notebook-page" data-active={String(isActive)} />,
+}));
+vi.mock('react-i18next', async () => {
+  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
+  const hooks = new Map<string, ReturnType<typeof actual.useTranslation>>();
+  return {
+    ...actual,
+    useTranslation: (namespace?: string | string[]) => {
+      const key = JSON.stringify(namespace ?? null);
+      let hook = hooks.get(key);
+      if (!hook) {
+        const original = actual.useTranslation(namespace);
+        hook = {
+          ...original,
+          t: ((translationKey: string, options?: unknown, values?: Record<string, unknown>) => original.t(
+            translationKey,
+            typeof options === 'string' ? { ...values, defaultValue: options } : options,
+          )) as typeof original.t,
+        };
+        hooks.set(key, hook);
+      }
+      return hook;
+    },
+  };
+});
 // 壁纸管理面板由并行任务实现：总装冒烟只依赖事件常量契约，用最小 mock 隔离其内部实现
 vi.mock('@/features/workbench/components/WallpaperManagerDialog', () => ({
   OPEN_WALLPAPER_MANAGER_EVENT: 'workbench:open-wallpaper-manager',
@@ -151,6 +178,31 @@ describe('P11 WorkbenchDesktop 总装', () => {
 
     const workArea = document.querySelector<HTMLElement>('[data-wb-workarea]')!;
     expect(screen.getByTestId('wb-apps-panel').parentElement).toBe(workArea);
+  });
+
+  it('全部应用可见手写笔记入口，启动独立单例并在最小化后恢复同一笔记库', async () => {
+    render(<WorkbenchDesktop />);
+    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('wb-dock-apps-button'));
+    const notebookEntry = await screen.findByTestId('wb-apps-item-notebook');
+    expect(notebookEntry).toHaveTextContent('手写笔记');
+    expect(screen.getByTestId('wb-apps-item-notes')).toHaveTextContent('笔记');
+    fireEvent.click(notebookEntry);
+
+    expect(await screen.findByTestId('os-notebook-page')).toHaveAttribute('data-active', 'true');
+    const windows = () => Object.values(useWindowStore.getState().windows).filter((win) => win.typeId === 'notebook');
+    expect(windows()).toHaveLength(1);
+    const windowId = windows()[0].id;
+    expect(windows()[0].title).toBe('手写笔记');
+    act(() => useWindowStore.getState().minimizeWindow(windowId));
+    await waitFor(() => expect(screen.getByTestId('os-notebook-page')).toHaveAttribute('data-active', 'false'));
+
+    fireEvent.click(screen.getByTestId('wb-dock-apps-button'));
+    fireEvent.click(await screen.findByTestId('wb-apps-item-notebook'));
+    await waitFor(() => expect(screen.getByTestId('os-notebook-page')).toHaveAttribute('data-active', 'true'));
+    expect(windows()).toHaveLength(1);
+    expect(windows()[0].id).toBe(windowId);
   });
 
   it('快照落盘：flushSnapshot 写 localStorage 并派发 workbench:snapshot-saved', async () => {

@@ -1,3 +1,4 @@
+import { pressureWidth } from './geometryPrimitives';
 import type { InkObject, InkPage, InkPageRef, InkRect, InkSample } from './types';
 
 export interface RenderInkPageOptions {
@@ -42,11 +43,6 @@ function applyFillColor(context: CanvasRenderingContext2D, color: string, defaul
 function applyStrokeColor(context: CanvasRenderingContext2D, color: string, defaultAlpha = 1): void {
   context.strokeStyle = color;
   context.globalAlpha = colorHasAlpha(color) ? 1 : defaultAlpha;
-}
-
-function pressureWidth(sample: InkSample, baseWidth: number, pressureEnabled: boolean): number {
-  const pressure = finite(sample.pressure) ? Math.max(0, Math.min(1, sample.pressure)) : 0.5;
-  return Math.max(0.01, baseWidth * (pressureEnabled ? 0.25 + 0.75 * pressure : 1));
 }
 
 function drawStrokePath(
@@ -190,7 +186,8 @@ function drawText(context: CanvasRenderingContext2D, content: Extract<InkObject[
   context.restore();
 }
 
-function drawObject(context: CanvasRenderingContext2D, object: InkObject): void {
+/** Shared object drawing used by the paged renderer and the board viewport renderer. */
+export function drawObject(context: CanvasRenderingContext2D, object: InkObject): void {
   const content = object.content;
   switch (content.kind) {
     case 'stroke':

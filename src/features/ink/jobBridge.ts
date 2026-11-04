@@ -1,12 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-import { exportInkPdf, exportInkPng } from './export';
+import { exportInkBoardPdf, exportInkBoardPng, exportInkPdf, exportInkPng } from './export';
 import { loadInkBackground } from './background';
 import { withSourceHighlights } from './sourceHighlights';
 import { prepareSourcePages, type SourceFormat } from './prepare/source';
 import { stageBlobUpload, abortStagedUpload } from '@/utils/stagedUpload';
-import type { InkPage, InkPageRef } from './types';
+import type { InkBoardChunk, InkBoardSurface, InkPage, InkPageRef, InkRect } from './types';
 
 export type InkJobKind = 'prepare' | 'export';
 export type InkExportFormat = 'png' | 'pdf';
@@ -35,6 +35,15 @@ export interface InkJobRequest {
         page_ids: string[];
         format: InkExportFormat;
         pages: Array<{ page_ref: InkPageRef; page: InkPage; highlights: Array<Record<string, unknown>> }>;
+        board?: {
+          surface: InkBoardSurface;
+          region: InkRect;
+          page_width: number;
+          page_height: number;
+          paginate: boolean;
+          pages: InkRect[];
+          chunks: InkBoardChunk[];
+        };
       };
 }
 
@@ -130,7 +139,34 @@ async function profileFor(version: string): Promise<string> {
   return `${format}-${Array.from(digest, (value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
+async function publishExport(
+  request: InkJobRequest & { payload: Extract<InkJobRequest['payload'], { kind: 'export' }> },
+  blob: Blob,
+  signal: AbortSignal,
+): Promise<InkJobResponse> {
+  const maxBytes = request.payload.format === 'png' ? 128 * 1024 * 1024 : 200 * 1024 * 1024;
+  if (!blob.size || blob.size > maxBytes) throw Object.assign(new Error('Ink export exceeds the byte limit.'), { code: 'LIMIT_EXCEEDED' });
+  const stagedUploadId = await stageBlobUpload(blob, { name: request.payload.format === 'png' ? 'ink-export.png' : 'ink-export.pdf', signal });
+  return {
+    request_id: request.request_id,
+    operation_id: request.operation_id,
+    kind: request.kind,
+    session_id: request.session_id,
+    tool_call_id: request.tool_call_id,
+    value: { kind: 'exported', staged_upload_id: stagedUploadId },
+  };
+}
+
 async function handleExport(request: InkJobRequest & { payload: Extract<InkJobRequest['payload'], { kind: 'export' }> }, signal: AbortSignal): Promise<InkJobResponse> {
+  const board = request.payload.board;
+  if (board) {
+    if (signal.aborted) throw Object.assign(new Error('Ink export was cancelled.'), { code: 'CANCELLED' });
+    const objects = board.chunks.flatMap((chunk) => chunk.objects);
+    const blob = request.payload.format === 'png'
+      ? await exportInkBoardPng({ surface: board.surface, objects, region: board.region }, { signal })
+      : await exportInkBoardPdf({ surface: board.surface, objects, pages: board.pages }, { signal });
+    return publishExport(request, blob, signal);
+  }
   const pages = [];
   const leases: Array<Awaited<ReturnType<typeof loadInkBackground>>> = [];
   try {
@@ -149,17 +185,7 @@ async function handleExport(request: InkJobRequest & { payload: Extract<InkJobRe
     const blob = request.payload.format === 'png'
       ? await exportInkPng(selected[0], { signal })
       : await exportInkPdf(selected, { page_ids: request.payload.page_ids, signal });
-    const maxBytes = request.payload.format === 'png' ? 128 * 1024 * 1024 : 200 * 1024 * 1024;
-    if (!blob.size || blob.size > maxBytes) throw Object.assign(new Error('Ink export exceeds the byte limit.'), { code: 'LIMIT_EXCEEDED' });
-    const stagedUploadId = await stageBlobUpload(blob, { name: request.payload.format === 'png' ? 'ink-export.png' : 'ink-export.pdf', signal });
-    return {
-      request_id: request.request_id,
-      operation_id: request.operation_id,
-      kind: request.kind,
-      session_id: request.session_id,
-      tool_call_id: request.tool_call_id,
-      value: { kind: 'exported', staged_upload_id: stagedUploadId },
-    };
+    return publishExport(request, blob, signal);
   } finally {
     leases.forEach((lease) => lease.dispose());
   }

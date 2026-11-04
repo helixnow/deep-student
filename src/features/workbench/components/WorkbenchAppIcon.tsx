@@ -50,6 +50,7 @@ const IllustratedTile: React.FC<{ typeId: string }> = ({ typeId }) => (
 
 const artwork: Record<string, React.FC> = {
   notes: () => <IllustratedTile typeId="notes" />,
+  notebook: () => <IllustratedTile typeId="notebook" />,
   todo: () => <IllustratedTile typeId="todo" />,
   chat: () => <IllustratedTile typeId="chat" />,
   pomodoro: () => <IllustratedTile typeId="pomodoro" />,

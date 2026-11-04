@@ -1,7 +1,7 @@
 import type React from 'react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createEmpty } from '@/dstu';
-import { createInk } from '@/features/ink';
+import { createInk, createInkBoard } from '@/features/ink';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { dstuNodeToResourceListItem } from '../types';
@@ -226,18 +226,32 @@ export function createResourceCreators({
     }
   };
 
-  const handleNewInk = async (folderId = currentCreatableFolderId) => {
+  const handleNewInk = async (
+    folderId = currentCreatableFolderId,
+    mode: 'paged' | 'board' = 'paged',
+  ) => {
+    if (mode !== 'paged' && mode !== 'board') {
+      showGlobalNotification('error', t('finder.create.inkError'));
+      return;
+    }
     if (!ensureCreatableView()) return;
 
     try {
-      const manifest = await createInk({
-        title: t('finder.toolbar.newInk'),
-        ruling: 'blank',
-        width: 794,
-        height: 1123,
-        operation_id: crypto.randomUUID(),
-        folder_id: folderId,
-      });
+      const manifest = mode === 'board'
+        ? await createInkBoard({
+            title: t('finder.toolbar.newInk'),
+            ruling: 'blank',
+            operation_id: crypto.randomUUID(),
+            folder_id: folderId,
+          })
+        : await createInk({
+            title: t('finder.toolbar.newInk'),
+            ruling: 'blank',
+            width: 794,
+            height: 1123,
+            operation_id: crypto.randomUUID(),
+            folder_id: folderId,
+          });
       if (!isMountedRef.current) return;
 
       showGlobalNotification('success', t('finder.create.inkSuccess'));

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -11,7 +12,8 @@ use sha2::{Digest, Sha256};
 use super::{ChangeOperation, SyncChangeWithData, SyncError, SyncManager};
 use crate::vfs::{
     ink::{
-        parse_manifest, parse_page, InkManifest, INK_EXTENSION, INK_MANIFEST_MAX_BYTES, INK_MIME,
+        parse_board_chunk, parse_manifest, parse_page, InkManifest, INK_BOARD_CHUNK_MAX_BYTES,
+        INK_BOARD_SCHEMA_VERSION, INK_EXTENSION, INK_MANIFEST_MAX_BYTES, INK_MIME,
         INK_PAGE_MAX_BYTES, INK_SCHEMA_VERSION,
     },
     repos::{ink_artifact_repo::validate_png_bytes, InkArtifact, VfsBlobRepo},
@@ -61,7 +63,10 @@ pub(super) fn validate_ink_change(data: &Value) -> Result<(), SyncError> {
         .get("ink")
         .and_then(Value::as_object)
         .ok_or_else(|| invalid("preview_json.ink is missing"))?;
-    if ink.get("schema_version").and_then(Value::as_u64) != Some(INK_SCHEMA_VERSION as u64) {
+    if ink.get("schema_version").and_then(Value::as_u64) != Some(INK_SCHEMA_VERSION as u64)
+        && ink.get("schema_version").and_then(Value::as_u64)
+            != Some(INK_BOARD_SCHEMA_VERSION as u64)
+    {
         return Err(invalid("unsupported preview schema_version"));
     }
     if ink.get("document_id").and_then(Value::as_str) != Some(id) {
@@ -95,6 +100,61 @@ pub(super) fn validate_ink_change(data: &Value) -> Result<(), SyncError> {
     if hashes != canonical {
         return Err(invalid("blob_refs must be sorted and unique"));
     }
+    Ok(())
+}
+
+/// A board v2 change is any files-row upsert whose canonical preview says
+/// `ink.schema_version = 2`. Upload paths use this to require `ink_board_v2`
+/// before the first board row/blob is published.
+pub(super) fn is_board_v2_change(change: &SyncChangeWithData) -> bool {
+    change.table_name == "files" && change.data.as_ref().is_some_and(is_board_v2_row)
+}
+
+pub(super) fn is_board_v2_row(row: &Value) -> bool {
+    row.get("preview_json")
+        .and_then(Value::as_str)
+        .and_then(|preview| serde_json::from_str::<Value>(preview).ok())
+        .and_then(|preview| {
+            preview
+                .get("ink")
+                .and_then(|ink| ink.get("schema_version"))
+                .and_then(Value::as_u64)
+        })
+        == Some(INK_BOARD_SCHEMA_VERSION as u64)
+}
+
+/// Install the VFS board writer guard after a canonical board v2 row has been
+/// verified and published inside the caller's apply transaction.
+///
+/// The caller must invoke this only after [`validate_change`] verified the full
+/// manifest/page/chunk closure and after the files row write succeeded for an
+/// actually applied board v2 change. Missing chunks therefore quarantine before
+/// this point, and v1 changes never install the guard.
+///
+/// The connection must already have the VFS writer capability registered by
+/// `VfsDatabase` initialization. An unregistered connection fails closed
+/// (`enable_vfs_board_writer_guard` cannot call the capability function) rather
+/// than being silently registered as an unknown legacy writer here.
+pub(super) fn ensure_board_writer_guard_after_publish(
+    conn: &Connection,
+    change: &SyncChangeWithData,
+) -> Result<(), SyncError> {
+    if !matches!(
+        change.operation,
+        ChangeOperation::Insert | ChangeOperation::Update
+    ) || !is_board_v2_change(change)
+    {
+        return Ok(());
+    }
+
+    let installed = dstu_storage::sqlite_capability::vfs_board_writer_guard_installed(conn)
+        .map_err(|error| SyncError::Database(format!("inspect VFS board writer guard: {error}")))?;
+    if installed {
+        return Ok(());
+    }
+
+    dstu_storage::sqlite_capability::enable_vfs_board_writer_guard(conn)
+        .map_err(|error| SyncError::Database(format!("install VFS board writer guard: {error}")))?;
     Ok(())
 }
 
@@ -249,13 +309,38 @@ fn identifies_ink(
             .is_some_and(|value| value.get("ink").is_some())
 }
 
+/// Result of verifying one canonical Ink row.
+pub(crate) struct VerifiedInkRow {
+    pub refs: Vec<String>,
+    pub is_board: bool,
+}
+
+/// Verified Ink closure of one VFS database.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InkDatabaseClosureSummary {
+    pub verified_rows: usize,
+    pub board_rows: usize,
+}
+
 /// Verify manifest and dependency bytes, then return hashes derived from the manifest itself.
 fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncError> {
+    let database_path = database_path(conn)?;
+    let blobs_dir = blob_directory(&database_path)?;
+    Ok(verify_ink_row_with_blobs(conn, row, &blobs_dir)?.refs)
+}
+
+/// Verify a canonical Ink row against an explicit blob directory.
+///
+/// Backup reuses this exact pointer/hash/byte-budget validator for an archived
+/// or freshly restored VFS database instead of duplicating the contract.
+pub(crate) fn verify_ink_row_with_blobs(
+    conn: &Connection,
+    row: &Value,
+    blobs_dir: &Path,
+) -> Result<VerifiedInkRow, SyncError> {
     let invalid =
         |reason: &str| SyncError::Database(format!("dsink blob closure unavailable: {reason}"));
     validate_ink_change(row)?;
-    let database_path = database_path(conn)?;
-    let blobs_dir = blob_directory(&database_path)?;
     let id = row["id"]
         .as_str()
         .ok_or_else(|| invalid("missing file id"))?;
@@ -264,7 +349,7 @@ fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncErr
         .ok_or_else(|| invalid("missing manifest hash"))?;
     let manifest_bytes = read_verified_blob(
         conn,
-        &blobs_dir,
+        blobs_dir,
         manifest_hash,
         INK_MANIFEST_MAX_BYTES.saturating_add(1),
     )?;
@@ -272,6 +357,14 @@ fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncErr
         parse_manifest(&manifest_bytes).map_err(|error| invalid(&error.to_string()))?;
     let preview: Value = serde_json::from_str(row["preview_json"].as_str().unwrap_or_default())
         .map_err(|_| invalid("invalid preview JSON"))?;
+    let preview_schema = preview["ink"]["schema_version"]
+        .as_u64()
+        .unwrap_or_default();
+    if manifest.schema_version as u64 != preview_schema {
+        return Err(invalid(
+            "manifest schema_version does not match preview_json.ink",
+        ));
+    }
     if manifest.document_id != id
         || manifest.revision != preview["ink"]["revision"].as_str().unwrap_or_default()
     {
@@ -280,10 +373,40 @@ fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncErr
         ));
     }
 
+    // A v2 board document must never be replaced by a v1 manifest. Legacy
+    // writers can still be in flight when the board descriptor is published;
+    // this logical guard preserves the board pointer instead of claiming the
+    // old writer was retroactively blocked at the format gate.
+    if manifest.schema_version != INK_BOARD_SCHEMA_VERSION {
+        let local_preview: Option<Option<String>> = conn
+            .query_row(
+                "SELECT preview_json FROM files WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| invalid(&format!("read local board identity: {error}")))?;
+        let local_is_board = local_preview
+            .flatten()
+            .and_then(|preview| serde_json::from_str::<Value>(&preview).ok())
+            .and_then(|preview| {
+                preview
+                    .get("ink")
+                    .and_then(|ink| ink.get("schema_version"))
+                    .and_then(Value::as_u64)
+            })
+            == Some(INK_BOARD_SCHEMA_VERSION as u64);
+        if local_is_board {
+            return Err(invalid(
+                "an existing board v2 document cannot be downgraded to v1",
+            ));
+        }
+    }
+
     for page_ref in &manifest.pages {
         let bytes = read_verified_blob(
             conn,
-            &blobs_dir,
+            blobs_dir,
             &page_ref.page_blob_hash,
             INK_PAGE_MAX_BYTES,
         )?;
@@ -292,11 +415,45 @@ fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncErr
             crate::vfs::ink::InkBackground::Blank { .. } => {}
             crate::vfs::ink::InkBackground::Image { blob_hash }
             | crate::vfs::ink::InkBackground::PdfPage { blob_hash, .. } => {
-                verify_blob_hash(conn, &blobs_dir, blob_hash)?;
+                verify_blob_hash(conn, blobs_dir, blob_hash)?;
             }
         }
     }
 
+    let mut board_object_ids: HashSet<String> = HashSet::new();
+    let mut board_z_indices: HashSet<i64> = HashSet::new();
+    for chunk_ref in &manifest.chunks {
+        let bytes = read_verified_blob(
+            conn,
+            blobs_dir,
+            &chunk_ref.blob_hash,
+            INK_BOARD_CHUNK_MAX_BYTES,
+        )?;
+        let chunk =
+            parse_board_chunk(&bytes, chunk_ref).map_err(|error| invalid(&error.to_string()))?;
+        for object in &chunk.objects {
+            if !board_object_ids.insert(object.id.clone()) {
+                return Err(invalid("board object IDs must be unique across chunks"));
+            }
+            if !board_z_indices.insert(object.z_index) {
+                return Err(invalid("board z-index values must be unique across chunks"));
+            }
+            if let Some((min_x, min_y, max_x, max_y)) = board_object_bounds(&object.content) {
+                let bounds = &chunk_ref.bounds;
+                if min_x < bounds.x - BOARD_BOUNDS_EPSILON
+                    || min_y < bounds.y - BOARD_BOUNDS_EPSILON
+                    || max_x > bounds.x + bounds.width + BOARD_BOUNDS_EPSILON
+                    || max_y > bounds.y + bounds.height + BOARD_BOUNDS_EPSILON
+                {
+                    return Err(invalid(
+                        "board chunk bounds do not enclose the actual object geometry",
+                    ));
+                }
+            }
+        }
+    }
+
+    let is_board = manifest.schema_version == INK_BOARD_SCHEMA_VERSION;
     let refs = manifest_blob_refs(&manifest);
     let expected = Value::Array(refs.iter().cloned().map(Value::String).collect());
     if preview["ink"]["blob_refs"] != expected {
@@ -304,7 +461,85 @@ fn verify_ink_row(conn: &Connection, row: &Value) -> Result<Vec<String>, SyncErr
             "preview blob_refs do not match manifest dependencies",
         ));
     }
-    Ok(refs)
+    Ok(VerifiedInkRow { refs, is_board })
+}
+
+/// Verify every canonical Ink pointer in one VFS database against an explicit
+/// blob directory.
+///
+/// A database without a `files` table predates Ink and is a legitimate no-op.
+/// Once the table exists, every required closure column must be present: a
+/// missing column is a broken database, not an empty one.
+///
+/// This is the shared closure entry point for backup publication and restore:
+/// it reuses [`verify_ink_row_with_blobs`] so manifest/page/background/chunk
+/// pointers, hashes and declared byte budgets are checked by the same code as
+/// sync. It never scans unrelated user file bodies. `board_rows` is derived
+/// from the verified manifest, never from the preview mirror alone.
+pub(crate) fn verify_ink_database_closure(
+    conn: &Connection,
+    blobs_dir: &Path,
+) -> Result<InkDatabaseClosureSummary, SyncError> {
+    const REQUIRED_COLUMNS: [&str; 7] = [
+        "id",
+        "file_name",
+        "mime_type",
+        "type",
+        "blob_hash",
+        "sha256",
+        "preview_json",
+    ];
+    if !table_exists(conn, "files")? {
+        if vfs_has_installed_writer_guard(conn)? || vfs_has_known_migration_history(conn)? {
+            return Err(SyncError::Database(
+                "files table is missing from a VFS database with guard or migration evidence"
+                    .to_string(),
+            ));
+        }
+        return Ok(InkDatabaseClosureSummary::default());
+    }
+    for column in REQUIRED_COLUMNS {
+        if !table_has_column(conn, "files", column) {
+            return Err(SyncError::Database(format!(
+                "files table is missing required dsink closure column: {column}"
+            )));
+        }
+    }
+
+    let mut statement = conn
+        .prepare(
+            r#"SELECT id, file_name, mime_type, "type", blob_hash, sha256, preview_json
+               FROM files
+               WHERE mime_type = ?1
+                  OR lower(file_name) LIKE ?2
+                  OR (json_valid(preview_json) AND json_type(preview_json, '$.ink') IS NOT NULL)
+               ORDER BY id"#,
+        )
+        .map_err(|error| SyncError::Database(format!("prepare dsink closure scan: {error}")))?;
+    let rows = statement
+        .query_map(params![DSINK_MIME, format!("%.{INK_EXTENSION}")], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "file_name": row.get::<_, Option<String>>(1)?,
+                "mime_type": row.get::<_, Option<String>>(2)?,
+                "type": row.get::<_, Option<String>>(3)?,
+                "blob_hash": row.get::<_, Option<String>>(4)?,
+                "sha256": row.get::<_, Option<String>>(5)?,
+                "preview_json": row.get::<_, Option<String>>(6)?,
+            }))
+        })
+        .map_err(|error| SyncError::Database(format!("scan dsink closure: {error}")))?;
+
+    let mut summary = InkDatabaseClosureSummary::default();
+    for row in rows {
+        let row = row.map_err(|error| SyncError::Database(format!("read dsink row: {error}")))?;
+        let verified = verify_ink_row_with_blobs(conn, &row, blobs_dir)?;
+        summary.verified_rows += 1;
+        if verified.is_board {
+            summary.board_rows += 1;
+        }
+    }
+    Ok(summary)
 }
 
 /// Recompute the derived unique dsink dependencies for current files and unresolved conflict rows.
@@ -456,6 +691,43 @@ pub(super) fn rebuild_dependency_refs(conn: &Connection) -> Result<bool, SyncErr
     Ok(true)
 }
 
+const BOARD_BOUNDS_EPSILON: f64 = 1e-6;
+
+/// Geometry actually occupied by one board object. Sync must recompute this
+/// instead of trusting `InkBoardChunkRef.bounds`, otherwise a forged bbox can
+/// hide objects from visible-only culling.
+fn board_object_bounds(
+    content: &crate::vfs::ink::InkObjectContent,
+) -> Option<(f64, f64, f64, f64)> {
+    use crate::vfs::ink::InkObjectContent;
+    match content {
+        InkObjectContent::Stroke { samples, .. } => {
+            let mut samples = samples.iter();
+            let first = samples.next()?;
+            let (mut min_x, mut min_y, mut max_x, mut max_y) = (first.x, first.y, first.x, first.y);
+            for sample in samples {
+                min_x = min_x.min(sample.x);
+                min_y = min_y.min(sample.y);
+                max_x = max_x.max(sample.x);
+                max_y = max_y.max(sample.y);
+            }
+            Some((min_x, min_y, max_x, max_y))
+        }
+        InkObjectContent::Text { rect, .. }
+        | InkObjectContent::Rect { rect, .. }
+        | InkObjectContent::Ellipse { rect, .. }
+        | InkObjectContent::RegionHighlight { rect, .. } => {
+            Some((rect.x, rect.y, rect.x + rect.width, rect.y + rect.height))
+        }
+        InkObjectContent::Arrow { from, to, .. } => Some((
+            from.x.min(to.x),
+            from.y.min(to.y),
+            from.x.max(to.x),
+            from.y.max(to.y),
+        )),
+    }
+}
+
 fn manifest_blob_refs(manifest: &InkManifest) -> Vec<String> {
     let mut refs = manifest
         .pages
@@ -472,6 +744,7 @@ fn manifest_blob_refs(manifest: &InkManifest) -> Vec<String> {
             hashes
         })
         .collect::<Vec<_>>();
+    refs.extend(manifest.chunks.iter().map(|chunk| chunk.blob_hash.clone()));
     refs.sort();
     refs.dedup();
     refs
@@ -562,6 +835,48 @@ fn is_sha256(hash: &str) -> bool {
         && hash
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn table_exists(conn: &Connection, table: &str) -> Result<bool, SyncError> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        [table],
+        |row| row.get(0),
+    )
+    .map_err(|error| SyncError::Database(format!("inspect table {table}: {error}")))
+}
+
+/// The VFS init migration is the first one that creates `files`; any later
+/// known migration means a missing `files` table is damage, not an empty DB.
+const VFS_INIT_SCHEMA_VERSION: i64 = 20260130;
+
+fn vfs_has_installed_writer_guard(conn: &Connection) -> Result<bool, SyncError> {
+    if !table_exists(conn, "__vfs_writer_guard")? {
+        return Ok(false);
+    }
+    let installed: Option<i64> = conn
+        .query_row(
+            "SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| SyncError::Database(format!("inspect VFS writer guard: {error}")))?;
+    Ok(installed == Some(1))
+}
+
+fn vfs_has_known_migration_history(conn: &Connection) -> Result<bool, SyncError> {
+    if !table_exists(conn, "refinery_schema_history")? {
+        return Ok(false);
+    }
+    let max_version: Option<i64> = conn
+        .query_row(
+            "SELECT MAX(version) FROM refinery_schema_history",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| SyncError::Database(format!("inspect VFS migration history: {error}")))?;
+    Ok(max_version.is_some_and(|version| version >= VFS_INIT_SCHEMA_VERSION))
 }
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {

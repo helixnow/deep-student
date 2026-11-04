@@ -1,8 +1,48 @@
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import i18next from 'i18next';
 import { TauriAPI } from './tauriApi';
 import { getErrorMessage } from './errorUtils';
+
+/**
+ * Native 解析后的导入描述。
+ *
+ * 分流必须使用该描述，而不是仅看 URI 最后一段：Android SAF 的 opaque
+ * document ID 常不含真实文件名/扩展名。`extension` 由有界内容检测或 provider
+ * 元数据归一化得到；`kind` 是唯一的通道判断依据。
+ */
+export interface ResolvedImportInfo {
+  displayName: string;
+  extension: string | null;
+  mimeType: string;
+  kind: 'document' | 'image' | 'media' | 'file';
+}
+
+/**
+ * 在分类/暂存前解析导入文件描述（native 有界读取文件头，不经 WebView 读全文）。
+ *
+ * 失败时抛错，由调用方决定：带明确后缀的普通路径可回退旧分类；opaque URI
+ * 必须显式报失败，不能以 octet-stream 静默落库。
+ */
+export async function resolveImportFileInfo(path: string): Promise<ResolvedImportInfo> {
+  const raw = await invoke<unknown>('resolve_import_file_info', { path });
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('resolve_import_file_info returned no descriptor');
+  }
+  const value = raw as Record<string, unknown>;
+  const displayName = typeof value.displayName === 'string' ? value.displayName.trim() : '';
+  const mimeType = typeof value.mimeType === 'string' ? value.mimeType.trim() : '';
+  const kind = value.kind;
+  const validKind = kind === 'document' || kind === 'image' || kind === 'media' || kind === 'file';
+  if (!displayName || !mimeType || !validKind) {
+    throw new Error('resolve_import_file_info returned an invalid descriptor');
+  }
+  const extension = typeof value.extension === 'string' && value.extension.trim()
+    ? value.extension.trim().toLowerCase()
+    : null;
+  return { displayName, extension, mimeType, kind };
+}
 
 /**
  * 从任意路径（本地路径或 Android content:// URI）中安全提取文件名。

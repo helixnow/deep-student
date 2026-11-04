@@ -29,6 +29,8 @@ pub const INK_MIME: &str = "application/vnd.deepstudent.ink+json";
 pub const INK_EXTENSION: &str = "dsink";
 /// 当前唯一支持的 schema_version。
 pub const INK_SCHEMA_VERSION: u32 = 1;
+/// v2 无限画布 board 文档的 schema_version。
+pub const INK_BOARD_SCHEMA_VERSION: u32 = 2;
 
 /// 结构化错误码，序列化为 SCREAMING_SNAKE_CASE。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +117,96 @@ pub struct InkPageRef {
     pub page_blob_hash: String,
 }
 
+/// v2 board 世界坐标包围范围；允许负原点，由域验证器限制在数值安全范围内。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardBounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// v2 board surface：稳定 page_id 用于 artifact 定位，bounds 仅描述浏览范围。
+///
+/// Deserialize 手写而非 `#[serde(tag = "kind")]` 派生：internally tagged enum
+/// 会先把整个对象缓冲进 serde 私有的 `Content`，而本 crate 打开了 serde_json
+/// 的 `arbitrary_precision`，此时十进制浮点（如 `-100.0`）以私有 Number 结构
+/// 进入 `Content`，再按 f64 读取必然失败（表现为 InvalidJSON）。与
+/// `InkObjectContent` 相同，先按普通结构体流式读取字段，再按 `kind` 分派，
+/// 让 `bounds` 的 f64 直接由 serde_json 解析。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InkBoardSurface {
+    Board {
+        page_id: String,
+        ruling: InkRuling,
+        bounds: InkBoardBounds,
+    },
+}
+
+impl<'de> Deserialize<'de> for InkBoardSurface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            kind: String,
+            page_id: String,
+            ruling: InkRuling,
+            bounds: InkBoardBounds,
+        }
+
+        let fields = Fields::deserialize(deserializer)?;
+        match fields.kind.as_str() {
+            "board" => Ok(Self::Board {
+                page_id: fields.page_id,
+                ruling: fields.ruling,
+                bounds: fields.bounds,
+            }),
+            _ => Err(<D::Error as serde::de::Error>::custom(
+                "Invalid Ink board surface",
+            )),
+        }
+    }
+}
+
+/// manifest 对一个不可变 board chunk blob 的引用与预算元数据。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardChunkRef {
+    pub chunk_id: String,
+    /// chunk 正文 JSON blob 的 SHA-256 hex64。
+    pub blob_hash: String,
+    /// chunk blob 的精确字节数（JSON 编码后）。
+    pub byte_length: u64,
+    pub object_count: u32,
+    pub sample_count: u32,
+    pub bounds: InkBoardBounds,
+}
+
+/// v2 board 对象；`z_index` 为非负整数绘制顺序。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardObject {
+    pub id: String,
+    pub author: InkAuthor,
+    pub created_at: i64,
+    pub z_index: i64,
+    pub content: InkObjectContent,
+}
+
+/// v2 board chunk blob。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InkBoardChunk {
+    pub schema_version: u32,
+    pub chunk_id: String,
+    pub objects: Vec<InkBoardObject>,
+}
+
 /// 一次操作的成功回执。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -129,8 +221,7 @@ pub struct InkOperationReceipt {
 }
 
 /// `.dsink` manifest（文档头，独立 blob）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InkManifest {
     pub schema_version: u32,
     pub document_id: String,
@@ -139,8 +230,204 @@ pub struct InkManifest {
     pub title: String,
     pub source: InkSource,
     pub pages: Vec<InkPageRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_operation: Option<InkOperationReceipt>,
+    /// 仅 v2 board 使用；v1 序列化时完全省略。
+    pub surface: Option<InkBoardSurface>,
+    /// 仅 v2 board 使用；v1 序列化时完全省略，v2 即使为空也显式输出。
+    pub chunks: Vec<InkBoardChunkRef>,
+}
+
+impl Serialize for InkManifest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct Wire<'a> {
+            schema_version: u32,
+            document_id: &'a str,
+            revision: &'a str,
+            title: &'a str,
+            source: &'a InkSource,
+            pages: &'a [InkPageRef],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            last_operation: Option<&'a InkOperationReceipt>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            surface: Option<&'a InkBoardSurface>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            chunks: Option<&'a [InkBoardChunkRef]>,
+        }
+
+        let is_board = self.schema_version == INK_BOARD_SCHEMA_VERSION;
+        let surface = if is_board {
+            Some(self.surface.as_ref().ok_or_else(|| {
+                <S::Error as serde::ser::Error>::custom("Ink board manifest requires a surface")
+            })?)
+        } else if self.schema_version == INK_SCHEMA_VERSION {
+            None
+        } else {
+            self.surface.as_ref()
+        };
+        let chunks = if is_board {
+            Some(self.chunks.as_slice())
+        } else if self.schema_version == INK_SCHEMA_VERSION || self.chunks.is_empty() {
+            None
+        } else {
+            Some(self.chunks.as_slice())
+        };
+
+        Wire {
+            schema_version: self.schema_version,
+            document_id: &self.document_id,
+            revision: &self.revision,
+            title: &self.title,
+            source: &self.source,
+            pages: self.pages.as_slice(),
+            last_operation: self.last_operation.as_ref(),
+            surface,
+            chunks,
+        }
+        .serialize(serializer)
+    }
+}
+
+/// 区分字段缺失、显式 null 与有值，供版本相关的严格反序列化使用。
+enum Present<T> {
+    Missing,
+    Null,
+    Value(T),
+}
+
+impl<T> Default for Present<T> {
+    fn default() -> Self {
+        Self::Missing
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Present<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Option::<T>::deserialize(deserializer)? {
+            Some(value) => Ok(Self::Value(value)),
+            None => Ok(Self::Null),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InkManifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            schema_version: u32,
+            document_id: String,
+            revision: String,
+            title: String,
+            source: InkSource,
+            #[serde(default)]
+            pages: Present<Vec<InkPageRef>>,
+            #[serde(default)]
+            last_operation: Option<InkOperationReceipt>,
+            #[serde(default)]
+            surface: Present<InkBoardSurface>,
+            #[serde(default)]
+            chunks: Present<Vec<InkBoardChunkRef>>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let invalid = |message: &str| <D::Error as serde::de::Error>::custom(message);
+
+        match wire.schema_version {
+            INK_SCHEMA_VERSION => {
+                // v1 必须完全不含 board 字段，显式 null / 空数组同样拒绝。
+                if !matches!(&wire.surface, Present::Missing) {
+                    return Err(invalid("Ink v1 manifest must not contain a board surface"));
+                }
+                if !matches!(&wire.chunks, Present::Missing) {
+                    return Err(invalid("Ink v1 manifest must not contain board chunks"));
+                }
+                let pages = match wire.pages {
+                    Present::Value(pages) => pages,
+                    Present::Missing | Present::Null => {
+                        return Err(invalid("Invalid Ink manifest pages"))
+                    }
+                };
+                Ok(Self {
+                    schema_version: wire.schema_version,
+                    document_id: wire.document_id,
+                    revision: wire.revision,
+                    title: wire.title,
+                    source: wire.source,
+                    pages,
+                    last_operation: wire.last_operation,
+                    surface: None,
+                    chunks: Vec::new(),
+                })
+            }
+            INK_BOARD_SCHEMA_VERSION => {
+                let pages = match wire.pages {
+                    Present::Value(pages) => pages,
+                    Present::Missing | Present::Null => {
+                        return Err(invalid("Ink board manifest requires pages"))
+                    }
+                };
+                if !pages.is_empty() {
+                    return Err(invalid("Ink board manifest must not contain fixed pages"));
+                }
+                if matches!(&wire.source, InkSource::Resource { .. }) {
+                    return Err(invalid("Ink board manifest must use a blank source"));
+                }
+                let surface = match wire.surface {
+                    Present::Value(surface) => surface,
+                    Present::Missing | Present::Null => {
+                        return Err(invalid("Ink board manifest requires a surface"))
+                    }
+                };
+                let chunks = match wire.chunks {
+                    Present::Value(chunks) => chunks,
+                    Present::Missing | Present::Null => {
+                        return Err(invalid("Ink board manifest requires chunks"))
+                    }
+                };
+                Ok(Self {
+                    schema_version: wire.schema_version,
+                    document_id: wire.document_id,
+                    revision: wire.revision,
+                    title: wire.title,
+                    source: wire.source,
+                    pages,
+                    last_operation: wire.last_operation,
+                    surface: Some(surface),
+                    chunks,
+                })
+            }
+            _ => Ok(Self {
+                schema_version: wire.schema_version,
+                document_id: wire.document_id,
+                revision: wire.revision,
+                title: wire.title,
+                source: wire.source,
+                pages: match wire.pages {
+                    Present::Value(pages) => pages,
+                    Present::Missing | Present::Null => Vec::new(),
+                },
+                last_operation: wire.last_operation,
+                surface: match wire.surface {
+                    Present::Value(surface) => Some(surface),
+                    Present::Missing | Present::Null => None,
+                },
+                chunks: match wire.chunks {
+                    Present::Value(chunks) => chunks,
+                    Present::Missing | Present::Null => Vec::new(),
+                },
+            }),
+        }
+    }
 }
 
 /// 采样点：坐标为逻辑页坐标，全部有限且落在页内。

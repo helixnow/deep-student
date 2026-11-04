@@ -1,7 +1,13 @@
 use super::*;
 use crate::vfs::{
-    ink::{InkBackground, InkObject, InkObjectContent, InkPage, InkRuling, INK_MIME},
-    repos::{InkArtifactDraft, VfsBlobRepo, VfsFileRepo, VfsInkArtifactRepo, VfsInkRepo},
+    ink::{
+        InkAuthor, InkBackground, InkBoardChunk, InkBoardObject, InkObject, InkObjectContent,
+        InkPage, InkRuling, INK_BOARD_SCHEMA_VERSION, INK_MIME,
+    },
+    repos::{
+        ink_board_repo::VfsInkBoardRepo, InkArtifactDraft, VfsBlobRepo, VfsFileRepo,
+        VfsInkArtifactRepo, VfsInkRepo,
+    },
 };
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
@@ -598,6 +604,25 @@ fn set_updated_at(conn: &Connection, document_id: &str, updated_at: &str) {
     .unwrap();
 }
 
+fn guard_trigger_count(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master
+         WHERE type = 'trigger' AND name LIKE 'trg_vfs_writer_guard_%'",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+fn guard_marker_installed(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COALESCE((SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1), 0)",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
 fn copy_closure(
     source_conn: &Connection,
     source_blobs: &std::path::Path,
@@ -630,6 +655,40 @@ fn incoming_row_for_target(
     row["updated_at"] = json!(updated_at);
     let _ = source_blobs;
     row
+}
+
+fn board_chunk(chunk_id: &str, objects: Vec<InkBoardObject>) -> InkBoardChunk {
+    InkBoardChunk {
+        schema_version: INK_BOARD_SCHEMA_VERSION,
+        chunk_id: chunk_id.to_owned(),
+        objects,
+    }
+}
+
+fn board_rect_object(
+    id: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    z_index: i64,
+) -> InkBoardObject {
+    InkBoardObject {
+        id: id.to_owned(),
+        author: InkAuthor::User,
+        created_at: 0,
+        z_index,
+        content: InkObjectContent::Rect {
+            rect: crate::vfs::ink::InkRect {
+                x,
+                y,
+                width,
+                height,
+            },
+            color: "#000000".to_owned(),
+            width: 2.0,
+        },
+    }
 }
 
 #[test]
@@ -1012,6 +1071,659 @@ fn incoming_missing_ink_blob_is_quarantined_and_retries_after_transfer() {
         )
         .unwrap();
     assert_eq!(remaining, 0);
+}
+
+#[test]
+fn board_v2_missing_chunk_quarantines_whole_manifest_and_applies_after_transfer() {
+    let (_source_tmp, source_db) = migrated_db();
+    let (_target_tmp, target_db) = migrated_db();
+    let source_conn = source_db.get_conn().unwrap();
+    let target_conn = target_db.get_conn().unwrap();
+    let operation_id = "paired-board-chunk-closure";
+    let source_created = VfsInkBoardRepo::create_blank_with_conn(
+        &source_conn,
+        source_db.blobs_dir(),
+        "Board chunk closure",
+        InkRuling::Blank,
+        operation_id,
+        None,
+    )
+    .unwrap();
+    let target_created = VfsInkBoardRepo::create_blank_with_conn(
+        &target_conn,
+        target_db.blobs_dir(),
+        "Board chunk closure",
+        InkRuling::Blank,
+        operation_id,
+        None,
+    )
+    .unwrap();
+    let document_id = source_created.document_id.clone();
+    assert_eq!(document_id, target_created.document_id);
+
+    let remote = VfsInkBoardRepo::save_chunks_with_conn(
+        &source_conn,
+        source_db.blobs_dir(),
+        &document_id,
+        &source_created.revision,
+        "board-remote-chunk-save",
+        &[
+            board_chunk(
+                "chunk-a",
+                vec![board_rect_object(
+                    "board-chunk-a",
+                    10.0,
+                    20.0,
+                    40.0,
+                    30.0,
+                    0,
+                )],
+            ),
+            board_chunk(
+                "chunk-b",
+                vec![board_rect_object(
+                    "board-chunk-b",
+                    500.0,
+                    600.0,
+                    20.0,
+                    10.0,
+                    1,
+                )],
+            ),
+        ],
+        &[],
+    )
+    .unwrap();
+    assert_eq!(remote.chunks.len(), 2);
+
+    let row = incoming_row_for_target(
+        &source_conn,
+        source_db.blobs_dir(),
+        &remote,
+        &target_conn,
+        &target_created,
+        "2025-04-02T00:00:00Z",
+    );
+    set_updated_at(&target_conn, &document_id, "2024-04-02T00:00:00Z");
+    let old_row = file_row_json(&target_conn, &document_id);
+
+    let manifest_hash = row["blob_hash"].as_str().unwrap().to_owned();
+    let chunk_hashes = remote
+        .chunks
+        .iter()
+        .map(|chunk| chunk.blob_hash.clone())
+        .collect::<Vec<_>>();
+    let present_hash = chunk_hashes[0].clone();
+    let missing_hash = chunk_hashes[1].clone();
+    for hash in [manifest_hash.as_str(), present_hash.as_str()] {
+        let path = VfsBlobRepo::get_blob_path_with_conn(&source_conn, source_db.blobs_dir(), hash)
+            .unwrap()
+            .expect("source board blob exists");
+        let bytes = std::fs::read(path).unwrap();
+        VfsBlobRepo::store_blob_with_conn(&target_conn, target_db.blobs_dir(), &bytes, None, None)
+            .unwrap();
+    }
+    assert!(blob_exists(
+        &target_conn,
+        target_db.blobs_dir(),
+        &manifest_hash
+    ));
+    assert!(blob_exists(
+        &target_conn,
+        target_db.blobs_dir(),
+        &present_hash
+    ));
+    assert!(!blob_exists(
+        &target_conn,
+        target_db.blobs_dir(),
+        &missing_hash
+    ));
+
+    let exact_error = SyncManager::apply_downloaded_changes_force_exact(
+        &target_conn,
+        &[sync_change(&document_id, row.clone())],
+        None,
+    )
+    .expect_err(
+        "force-exact must not publish a board manifest while one referenced chunk is missing",
+    );
+    assert!(
+        exact_error.to_string().contains("dsink"),
+        "the missing chunk is reported as a dsink closure failure: {exact_error}"
+    );
+    assert_eq!(
+        file_row_json(&target_conn, &document_id),
+        old_row,
+        "force-exact leaves the old board row, manifest hash and preview refs intact"
+    );
+
+    let result = SyncManager::apply_downloaded_changes(
+        &target_conn,
+        [sync_change(&document_id, row.clone())],
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        result.failure_count, 1,
+        "one missing chunk isolates the entire board manifest"
+    );
+    assert_eq!(
+        file_row_json(&target_conn, &document_id),
+        old_row,
+        "quarantine leaves the old board row, manifest hash and preview refs intact"
+    );
+    let quarantine_id: i64 = target_conn
+        .query_row(
+            "SELECT id FROM __sync_quarantine WHERE table_name = 'files' AND record_id = ?1",
+            [&document_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    let path =
+        VfsBlobRepo::get_blob_path_with_conn(&source_conn, source_db.blobs_dir(), &missing_hash)
+            .unwrap()
+            .expect("source chunk bytes exist");
+    let bytes = std::fs::read(path).unwrap();
+    VfsBlobRepo::store_blob_with_conn(&target_conn, target_db.blobs_dir(), &bytes, None, None)
+        .unwrap();
+    assert!(SyncManager::retry_quarantined_change(&target_conn, quarantine_id, None).unwrap());
+
+    let applied = file_row_json(&target_conn, &document_id);
+    assert_eq!(applied["blob_hash"], row["blob_hash"]);
+    assert_eq!(applied["preview_json"], row["preview_json"]);
+    let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+        &target_conn,
+        target_db.blobs_dir(),
+        &document_id,
+        &["chunk-a".to_owned(), "chunk-b".to_owned()],
+    )
+    .unwrap();
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0].objects[0].id, "board-chunk-a");
+    assert_eq!(chunks[1].objects[0].id, "board-chunk-b");
+}
+
+#[test]
+fn incoming_first_board_installs_writer_guard_and_capabilityless_writer_fails_closed() {
+    let (_source_tmp, source_db) = migrated_db();
+    let (_target_tmp, target_db) = migrated_db();
+    let source_conn = source_db.get_conn().unwrap();
+    let target_conn = target_db.get_conn().unwrap();
+    // A valid v1 incoming on a target without any board must not install the
+    // guard and must leave the database writable.
+    let v1_operation_id = "paired-board-first-guard-v1";
+    let v1_source = VfsInkRepo::create_blank_with_conn(
+        &source_conn,
+        source_db.blobs_dir(),
+        "V1 before board",
+        InkRuling::Blank,
+        640.0,
+        480.0,
+        v1_operation_id,
+        None,
+    )
+    .unwrap();
+    let v1_target = VfsInkRepo::create_blank_with_conn(
+        &target_conn,
+        target_db.blobs_dir(),
+        "V1 before board",
+        InkRuling::Blank,
+        640.0,
+        480.0,
+        v1_operation_id,
+        None,
+    )
+    .unwrap();
+    assert_eq!(v1_source.document_id, v1_target.document_id);
+    set_updated_at(&target_conn, &v1_target.document_id, "2024-05-01T00:00:00Z");
+    let v1_row = incoming_row_for_target(
+        &source_conn,
+        source_db.blobs_dir(),
+        &v1_source,
+        &target_conn,
+        &v1_target,
+        "2025-05-01T00:00:00Z",
+    );
+    copy_closure(
+        &source_conn,
+        source_db.blobs_dir(),
+        &target_conn,
+        target_db.blobs_dir(),
+        &v1_row,
+    );
+    let v1_result = SyncManager::apply_downloaded_changes(
+        &target_conn,
+        [sync_change(&v1_target.document_id, v1_row)],
+        None,
+    )
+    .unwrap();
+    assert_eq!(v1_result.failure_count, 0);
+    assert_eq!(v1_result.success_count, 1);
+    assert_eq!(
+        guard_trigger_count(&target_conn),
+        0,
+        "a v1 incoming must not install board guard triggers"
+    );
+    assert_eq!(
+        guard_marker_installed(&target_conn),
+        0,
+        "a v1 incoming must not install the guard marker"
+    );
+    // The v1 document stays writable because no board exists.
+    set_updated_at(&target_conn, &v1_target.document_id, "2024-05-02T00:00:00Z");
+
+    let source_created = VfsInkBoardRepo::create_blank_with_conn(
+        &source_conn,
+        source_db.blobs_dir(),
+        "Board first guard",
+        InkRuling::Blank,
+        "paired-board-first-guard",
+        None,
+    )
+    .unwrap();
+    let document_id = source_created.document_id.clone();
+    assert_eq!(
+        target_conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                [&document_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0,
+        "the target has never held this board identity"
+    );
+
+    let remote = VfsInkBoardRepo::save_chunks_with_conn(
+        &source_conn,
+        source_db.blobs_dir(),
+        &document_id,
+        &source_created.revision,
+        "board-first-guard-save",
+        &[
+            board_chunk(
+                "chunk-a",
+                vec![board_rect_object(
+                    "board-guard-a",
+                    10.0,
+                    20.0,
+                    40.0,
+                    30.0,
+                    0,
+                )],
+            ),
+            board_chunk(
+                "chunk-b",
+                vec![board_rect_object(
+                    "board-guard-b",
+                    500.0,
+                    600.0,
+                    20.0,
+                    10.0,
+                    1,
+                )],
+            ),
+        ],
+        &[],
+    )
+    .unwrap();
+
+    let mut row = file_row_json(&source_conn, &document_id);
+    // Copy the real source resource mirror for this canonical board identity so
+    // the target has the same resource hash as the published manifest. The
+    // target still has no files row (and no board/guard) for this identity.
+    let source_resource_id = row["resource_id"].as_str().unwrap().to_owned();
+    let (resource_type, source_id, source_table, storage_mode, data) = source_conn
+        .query_row(
+            "SELECT type, source_id, source_table, storage_mode, data
+             FROM resources WHERE id = ?1",
+            [&source_resource_id],
+            |resource| {
+                Ok((
+                    resource.get::<_, String>(0)?,
+                    resource.get::<_, Option<String>>(1)?,
+                    resource.get::<_, Option<String>>(2)?,
+                    resource.get::<_, String>(3)?,
+                    resource.get::<_, Option<String>>(4)?,
+                ))
+            },
+        )
+        .unwrap();
+    target_conn
+        .execute(
+            "INSERT INTO resources (
+                 id, hash, type, source_id, source_table, storage_mode, data,
+                 ref_count, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, 0)",
+            params![
+                source_resource_id,
+                row["blob_hash"].as_str().unwrap(),
+                resource_type,
+                source_id,
+                source_table,
+                storage_mode,
+                data,
+            ],
+        )
+        .unwrap();
+    row["resource_id"] = json!(source_resource_id);
+    row["updated_at"] = json!("2025-06-02T00:00:00Z");
+
+    let manifest_hash = row["blob_hash"].as_str().unwrap().to_owned();
+    let chunk_hashes = remote
+        .chunks
+        .iter()
+        .map(|chunk| chunk.blob_hash.clone())
+        .collect::<Vec<_>>();
+    let missing_hash = chunk_hashes[1].clone();
+    for hash in [manifest_hash.as_str(), chunk_hashes[0].as_str()] {
+        let path = VfsBlobRepo::get_blob_path_with_conn(&source_conn, source_db.blobs_dir(), hash)
+            .unwrap()
+            .expect("source board blob exists");
+        let bytes = std::fs::read(path).unwrap();
+        VfsBlobRepo::store_blob_with_conn(&target_conn, target_db.blobs_dir(), &bytes, None, None)
+            .unwrap();
+    }
+    assert!(!blob_exists(
+        &target_conn,
+        target_db.blobs_dir(),
+        &missing_hash
+    ));
+
+    // Before completion: a failed board incoming must neither publish the v2
+    // pointer nor install the writer guard.
+    let failed = SyncManager::apply_downloaded_changes(
+        &target_conn,
+        [sync_change(&document_id, row.clone())],
+        None,
+    )
+    .unwrap();
+    assert_eq!(failed.failure_count, 1);
+    assert_eq!(
+        target_conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                [&document_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0,
+        "a failed board incoming must not publish the board"
+    );
+    assert_eq!(
+        guard_trigger_count(&target_conn),
+        0,
+        "a failed board incoming must not install guard triggers"
+    );
+    assert_eq!(
+        guard_marker_installed(&target_conn),
+        0,
+        "a failed board incoming must not install the guard marker"
+    );
+
+    let quarantine_id: i64 = target_conn
+        .query_row(
+            "SELECT id FROM __sync_quarantine WHERE table_name = 'files' AND record_id = ?1",
+            [&document_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let path =
+        VfsBlobRepo::get_blob_path_with_conn(&source_conn, source_db.blobs_dir(), &missing_hash)
+            .unwrap()
+            .expect("source chunk bytes exist");
+    let bytes = std::fs::read(path).unwrap();
+    VfsBlobRepo::store_blob_with_conn(&target_conn, target_db.blobs_dir(), &bytes, None, None)
+        .unwrap();
+    assert!(SyncManager::retry_quarantined_change(&target_conn, quarantine_id, None).unwrap());
+
+    // Canonical schema 2 plus its chunks are published exactly as before.
+    let applied = file_row_json(&target_conn, &document_id);
+    assert_eq!(applied["blob_hash"], row["blob_hash"]);
+    assert_eq!(applied["preview_json"], row["preview_json"]);
+    let applied_preview: Value =
+        serde_json::from_str(applied["preview_json"].as_str().unwrap()).unwrap();
+    assert_eq!(applied_preview["ink"]["schema_version"], json!(2));
+    let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+        &target_conn,
+        target_db.blobs_dir(),
+        &document_id,
+        &["chunk-a".to_owned(), "chunk-b".to_owned()],
+    )
+    .unwrap();
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0].objects[0].id, "board-guard-a");
+    assert_eq!(chunks[1].objects[0].id, "board-guard-b");
+
+    // Expected RED: the incoming board path currently never enables the writer
+    // guard, so the first successful board publish leaves the database writable
+    // by capability-less connections.
+    assert_eq!(
+        guard_trigger_count(&target_conn),
+        9,
+        "the first board incoming must install all nine guard triggers"
+    );
+    assert_eq!(
+        guard_marker_installed(&target_conn),
+        1,
+        "the first board incoming must mark the guard installed"
+    );
+
+    // A second raw connection with no capability keeps read access but cannot
+    // mutate the board-owned tables.
+    let old = Connection::open(target_db.db_path()).unwrap();
+    let file_name: String = old
+        .query_row(
+            "SELECT file_name FROM files WHERE id = ?1",
+            [&document_id],
+            |row| row.get(0),
+        )
+        .expect("capability-less connection can read files");
+    assert_eq!(file_name, "Board first guard.dsink");
+    let _: i64 = old
+        .query_row(
+            "SELECT ref_count FROM blobs WHERE hash = ?1",
+            [manifest_hash.as_str()],
+            |row| row.get(0),
+        )
+        .expect("capability-less connection can read blobs");
+    assert!(
+        old.execute(
+            "UPDATE files SET file_name = 'old-writer.dsink' WHERE id = ?1",
+            [&document_id],
+        )
+        .is_err(),
+        "capability-less connection must not update files"
+    );
+    assert!(
+        old.execute("DELETE FROM files WHERE id = ?1", [&document_id])
+            .is_err(),
+        "capability-less connection must not delete files"
+    );
+    assert!(
+        old.execute(
+            "UPDATE blobs SET ref_count = 0 WHERE hash = ?1",
+            [manifest_hash.as_str()],
+        )
+        .is_err(),
+        "capability-less connection must not update blobs"
+    );
+    assert!(
+        old.execute(
+            "DELETE FROM blobs WHERE hash = ?1",
+            [manifest_hash.as_str()]
+        )
+        .is_err(),
+        "capability-less connection must not delete blobs"
+    );
+}
+
+#[test]
+fn board_v2_copy_rename_and_source_purge_keep_new_chunk_identity_and_refcounts() {
+    let (_temp_dir, db) = migrated_db();
+    let conn = db.get_conn().unwrap();
+    let created = VfsInkBoardRepo::create_blank_with_conn(
+        &conn,
+        db.blobs_dir(),
+        "Board copy lifecycle",
+        InkRuling::Blank,
+        "board-copy-lifecycle-create",
+        None,
+    )
+    .unwrap();
+    let saved = VfsInkBoardRepo::save_chunks_with_conn(
+        &conn,
+        db.blobs_dir(),
+        &created.document_id,
+        &created.revision,
+        "board-copy-lifecycle-save",
+        &[
+            board_chunk(
+                "chunk-a",
+                vec![board_rect_object("board-copy-a", 10.0, 20.0, 40.0, 30.0, 0)],
+            ),
+            board_chunk(
+                "chunk-b",
+                vec![board_rect_object(
+                    "board-copy-b",
+                    300.0,
+                    400.0,
+                    10.0,
+                    10.0,
+                    1,
+                )],
+            ),
+        ],
+        &[],
+    )
+    .unwrap();
+    assert_eq!(saved.chunks.len(), 2);
+
+    let renamed = VfsInkRepo::rename_with_conn(
+        &conn,
+        db.blobs_dir(),
+        &saved.document_id,
+        &saved.revision,
+        "board-copy-lifecycle-rename",
+        "Board copy renamed",
+    )
+    .unwrap();
+    assert_eq!(
+        renamed.chunks, saved.chunks,
+        "rename keeps every chunk reference unchanged"
+    );
+    let source_manifest_hash: String = conn
+        .query_row(
+            "SELECT blob_hash FROM files WHERE id = ?1",
+            [&renamed.document_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count_for(&conn, &source_manifest_hash), 1);
+    let source_chunk_hashes = renamed
+        .chunks
+        .iter()
+        .map(|chunk| chunk.blob_hash.clone())
+        .collect::<Vec<_>>();
+    for hash in &source_chunk_hashes {
+        assert_eq!(
+            count_for(&conn, hash),
+            1,
+            "rename keeps each source chunk referenced exactly once"
+        );
+    }
+
+    let copy = VfsInkRepo::copy_with_conn(
+        &conn,
+        db.blobs_dir(),
+        &renamed.document_id,
+        "Board copy renamed copy",
+        "board-copy-lifecycle-copy",
+        None,
+    )
+    .expect("copying a v2 board must publish a new board identity with its chunks");
+    assert_ne!(copy.document_id, renamed.document_id);
+    assert!(copy.document_id.starts_with("file_ink_copy_"));
+    assert_eq!(copy.schema_version, INK_BOARD_SCHEMA_VERSION);
+    assert_eq!(copy.chunks.len(), 2);
+
+    let mut copy_chunk_ids = Vec::with_capacity(copy.chunks.len());
+    for chunk_ref in &copy.chunks {
+        assert!(
+            !renamed
+                .chunks
+                .iter()
+                .any(|source| source.chunk_id == chunk_ref.chunk_id),
+            "copied board chunks receive fresh chunk identities"
+        );
+        assert!(blob_exists(&conn, db.blobs_dir(), &chunk_ref.blob_hash));
+        copy_chunk_ids.push(chunk_ref.chunk_id.clone());
+    }
+    let copied_chunks = VfsInkBoardRepo::get_chunks_with_conn(
+        &conn,
+        db.blobs_dir(),
+        &copy.document_id,
+        &copy_chunk_ids,
+    )
+    .unwrap();
+    assert_eq!(copied_chunks.len(), 2);
+    for chunk in &copied_chunks {
+        assert_eq!(
+            chunk.objects.len(),
+            1,
+            "the copied chunks keep the source board content"
+        );
+        assert!(
+            matches!(&chunk.objects[0].content, InkObjectContent::Rect { .. }),
+            "the copied chunks keep the source object kind"
+        );
+    }
+    let copy_manifest_hash: String = conn
+        .query_row(
+            "SELECT blob_hash FROM files WHERE id = ?1",
+            [&copy.document_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count_for(&conn, &copy_manifest_hash), 1);
+
+    VfsFileRepo::purge_file_with_conn(&conn, db.blobs_dir(), &renamed.document_id).unwrap();
+    assert!(VfsFileRepo::get_file_with_conn(&conn, &renamed.document_id)
+        .unwrap()
+        .is_none());
+    assert!(VfsFileRepo::get_file_with_conn(&conn, &copy.document_id)
+        .unwrap()
+        .is_some());
+
+    let copy_chunk_hashes = copy
+        .chunks
+        .iter()
+        .map(|chunk| chunk.blob_hash.clone())
+        .collect::<Vec<_>>();
+    let purged_chunks = VfsInkBoardRepo::get_chunks_with_conn(
+        &conn,
+        db.blobs_dir(),
+        &copy.document_id,
+        &copy_chunk_ids,
+    )
+    .unwrap();
+    assert_eq!(
+        purged_chunks.len(),
+        2,
+        "purging the source keeps both copied chunks readable"
+    );
+    for hash in std::iter::once(&copy_manifest_hash).chain(copy_chunk_hashes.iter()) {
+        assert!(
+            blob_exists(&conn, db.blobs_dir(), hash),
+            "the copy keeps its blob after the source is purged"
+        );
+        assert_eq!(
+            count_for(&conn, hash),
+            1,
+            "the copy keeps exactly one reference after the source is purged"
+        );
+    }
 }
 
 #[test]

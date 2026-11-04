@@ -10,12 +10,14 @@ use tauri::{Emitter, Manager};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::ink::{
-    InkCoordinateSpace, InkNormalizedPoint, InkNormalizedRect, InkObject, InkObjectContent,
-    InkOperation, InkOperationContent, InkPage, InkRect, InkRenderMapping, InkRuling,
+    InkBoardSurface, InkCoordinateSpace, InkNormalizedPoint, InkNormalizedRect, InkObject,
+    InkObjectContent, InkOperation, InkOperationContent, InkPage, InkRect, InkRenderMapping,
+    InkRuling, INK_BOARD_SCHEMA_VERSION,
 };
 use crate::vfs::ink_commands::{
     self, InkCommandError, InkCreateRequest, InkGetPageRequest, InkGetRequest,
 };
+use crate::vfs::repos::ink_board_repo::VfsInkBoardRepo;
 use crate::vfs::repos::{
     InkArtifact, VfsBlobRepo, VfsInkArtifactRepo, VfsInkOperationRepo, VfsInkRepo,
 };
@@ -51,6 +53,8 @@ struct InkRenderArgs {
     page_id: String,
     #[serde(default, deserialize_with = "present_non_null")]
     crop: Option<InkNormalizedRect>,
+    #[serde(default, deserialize_with = "present_non_null")]
+    board_crop: Option<InkRect>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +72,8 @@ struct InkExportArgs {
     page_ids: Vec<String>,
     format: String,
     operation_id: String,
+    #[serde(default, deserialize_with = "present_non_null")]
+    board: Option<crate::ink_jobs::InkExportBoardRequest>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +157,8 @@ pub(crate) struct InkUndoObjectChange {
     pub(crate) object_id: String,
     pub(crate) before: Option<InkObject>,
     pub(crate) after: Option<InkObject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) z_index: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -575,6 +583,20 @@ pub(crate) fn object_changes(receipt: &InkUndoReceipt) -> Vec<crate::vfs::ink::I
             object_id: change.object_id.clone(),
             before: change.before.clone(),
             after: change.after.clone(),
+            z_index: change.z_index,
+        })
+        .collect()
+}
+
+fn undo_object_changes(changes: &[crate::vfs::ink::InkObjectChange]) -> Vec<InkUndoObjectChange> {
+    changes
+        .iter()
+        .map(|change| InkUndoObjectChange {
+            page_id: change.page_id.clone(),
+            object_id: change.object_id.clone(),
+            before: change.before.clone(),
+            after: change.after.clone(),
+            z_index: change.z_index,
         })
         .collect()
 }
@@ -688,8 +710,70 @@ fn load_undo_receipt(
     Ok(found)
 }
 
+fn validate_receipt_migration(
+    expected_old: &InkUndoReceipt,
+    next: &InkUndoReceipt,
+) -> Result<(), String> {
+    if next.session_id != expected_old.session_id
+        || next.document_id != expected_old.document_id
+        || next.operation_id != expected_old.operation_id
+        || next.input_hash != expected_old.input_hash
+        || next.vfs_input_hash != expected_old.vfs_input_hash
+        || next.created_at != expected_old.created_at
+        || next.previous_revision != expected_old.previous_revision
+        || next.object_changes != expected_old.object_changes
+        || next.appended_page_ids != expected_old.appended_page_ids
+    {
+        return Err("Ink receipt migration changed immutable operation data.".to_owned());
+    }
+    if next.block_id == expected_old.block_id {
+        return Err("Ink receipt migration must bind a different Chat block.".to_owned());
+    }
+    if expected_old.committed {
+        return Err("A committed Ink receipt cannot be migrated to another Chat block.".to_owned());
+    }
+    Ok(())
+}
+
+fn persist_retry_undo_receipt(
+    db: &crate::chat_v2::database::ChatV2Database,
+    expected_old: Option<&InkUndoReceipt>,
+    receipt: &InkUndoReceipt,
+    tool_input: &Value,
+) -> Result<(), String> {
+    match expected_old {
+        Some(expected_old)
+            if expected_old.message_id == receipt.message_id
+                && expected_old.block_id == receipt.block_id
+                && expected_old.tool_call_id == receipt.tool_call_id =>
+        {
+            save_undo_receipt(db, receipt, tool_input)
+        }
+        Some(expected_old) => migrate_undo_receipt(db, expected_old, receipt, tool_input),
+        None => save_undo_receipt(db, receipt, tool_input),
+    }
+}
+
+fn migrate_undo_receipt(
+    db: &crate::chat_v2::database::ChatV2Database,
+    expected_old: &InkUndoReceipt,
+    receipt: &InkUndoReceipt,
+    tool_input: &Value,
+) -> Result<(), String> {
+    save_undo_receipt_with_expected_old(db, Some(expected_old), receipt, tool_input)
+}
+
 fn save_undo_receipt(
     db: &crate::chat_v2::database::ChatV2Database,
+    receipt: &InkUndoReceipt,
+    tool_input: &Value,
+) -> Result<(), String> {
+    save_undo_receipt_with_expected_old(db, None, receipt, tool_input)
+}
+
+fn save_undo_receipt_with_expected_old(
+    db: &crate::chat_v2::database::ChatV2Database,
+    expected_old: Option<&InkUndoReceipt>,
     receipt: &InkUndoReceipt,
     tool_input: &Value,
 ) -> Result<(), String> {
@@ -709,7 +793,9 @@ fn save_undo_receipt(
     }
     let input_json = serde_json::to_string(tool_input).map_err(|error| error.to_string())?;
     let mut conn = db.get_conn_safe().map_err(|error| error.to_string())?;
-    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
     tx.execute(
         "INSERT OR IGNORE INTO chat_v2_messages (id,session_id,role,block_ids_json,timestamp) VALUES (?1,?2,'assistant','[]',?3)",
         rusqlite::params![validated.message_id, validated.session_id, validated.created_at],
@@ -724,6 +810,104 @@ fn save_undo_receipt(
         .map_err(|error| error.to_string())?;
     if actual_session.as_deref() != Some(validated.session_id.as_str()) {
         return Err("Ink receipt message does not belong to its trusted session.".to_owned());
+    }
+    let expected_old_block_id = expected_old.map(|receipt| receipt.block_id.as_str());
+    {
+        let mut statement = tx
+            .prepare(
+                "SELECT b.id, b.ink_undo_json FROM chat_v2_blocks b JOIN chat_v2_messages m ON m.id=b.message_id WHERE m.session_id=?1 AND b.ink_undo_json IS NOT NULL",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([&validated.session_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|error| error.to_string())?;
+        for row in rows {
+            let (other_block_id, other_raw) = row.map_err(|error| error.to_string())?;
+            if other_block_id == validated.block_id
+                || expected_old_block_id == Some(other_block_id.as_str())
+            {
+                continue;
+            }
+            let other = parse_stored_undo_receipt(&other_raw)?;
+            if other.operation_id == validated.operation_id {
+                return Err(
+                    "Another Chat block already owns this Ink operation receipt.".to_owned(),
+                );
+            }
+        }
+    }
+    if let Some(expected_old) = expected_old {
+        validate_receipt_migration(expected_old, &validated)?;
+        let old: Option<(
+            Option<String>,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+        )> = tx
+            .query_row(
+                "SELECT b.ink_undo_json,b.message_id,COALESCE(b.tool_name,''),b.tool_call_id,b.tool_input_json,m.session_id FROM chat_v2_blocks b JOIN chat_v2_messages m ON m.id=b.message_id WHERE b.id=?1",
+                [&expected_old.block_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        let Some((old_raw, old_message, old_tool, old_call, old_input, old_session)) = old else {
+            return Err("The expected Ink receipt's Chat block no longer exists.".to_owned());
+        };
+        let Some(old_raw) = old_raw else {
+            return Err("The expected Ink receipt is no longer the stored authority.".to_owned());
+        };
+        if old_session != expected_old.session_id
+            || old_message != expected_old.message_id
+            || old_tool != "builtin-ink_apply_ops"
+            || old_call.as_deref() != Some(expected_old.tool_call_id.as_str())
+        {
+            return Err(
+                "The expected Ink receipt's Chat parent, tool, or call no longer matches."
+                    .to_owned(),
+            );
+        }
+        let stored_old = parse_stored_undo_receipt(&old_raw)?;
+        if stored_old != *expected_old {
+            return Err("The expected Ink receipt is no longer the stored authority.".to_owned());
+        }
+        let old_input = old_input
+            .ok_or_else(|| "The expected Ink receipt's Chat input is missing.".to_owned())?;
+        let old_args: InkApplyArgs = serde_json::from_str(&old_input)
+            .map_err(|error| format!("Existing Chat block input is malformed: {error}"))?;
+        if public_apply_input_hash(&old_args)
+            .map_err(|_| "Existing Chat block input is invalid.".to_owned())?
+            != expected_old.input_hash
+        {
+            return Err("The expected Ink receipt's Chat input changed.".to_owned());
+        }
+        let cleared = tx
+            .execute(
+                "UPDATE chat_v2_blocks SET ink_undo_json=NULL WHERE id=?1 AND message_id=?2 AND tool_call_id=?3 AND ink_undo_json=?4",
+                rusqlite::params![
+                    expected_old.block_id,
+                    expected_old.message_id,
+                    expected_old.tool_call_id,
+                    old_raw
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        if cleared != 1 {
+            return Err("The expected Ink receipt authority changed before migration.".to_owned());
+        }
     }
     let actual: Option<(String, String, Option<String>, Option<String>, Option<String>)> = tx.query_row(
         "SELECT message_id, COALESCE(tool_name,''), tool_call_id, tool_input_json, ink_undo_json FROM chat_v2_blocks WHERE id=?1",
@@ -762,7 +946,6 @@ fn save_undo_receipt(
                 || old.object_changes != validated.object_changes
                 || old.appended_page_ids != validated.appended_page_ids
                 || old.previous_revision != validated.previous_revision
-                || old.created_at != validated.created_at
                 || (old.committed && old != validated)
             {
                 return Err(
@@ -932,7 +1115,20 @@ impl InkToolExecutor {
                 let revision = args.expected_revision.clone();
                 let page_id = args.page_id.clone();
                 let normalized_crop = args.crop;
-                let (crop, mapping_crop) = tauri::async_runtime::spawn_blocking(move || {
+                let board_crop = args.board_crop;
+                if normalized_crop.is_some() && board_crop.is_some() {
+                    return Err(error_output(
+                        "INVALID_ARGUMENT",
+                        "crop and board_crop are mutually exclusive.",
+                        "Use a normalized paged crop or an absolute board world crop.",
+                        false,
+                    ));
+                }
+                let (crop, mapping_crop, board_spec): (
+                    Option<InkRect>,
+                    InkRect,
+                    Option<crate::ink_bridge::InkBoardRenderSpec>,
+                ) = tauri::async_runtime::spawn_blocking(move || {
                     let conn = db_for_crop
                         .get_conn_safe()
                         .map_err(|error| error.to_string())?;
@@ -944,6 +1140,24 @@ impl InkToolExecutor {
                     .map_err(|error| error.to_string())?;
                     if manifest.revision != revision {
                         return Err("REVISION_CONFLICT".to_owned());
+                    }
+                    if let Some(board_crop) = board_crop {
+                        if manifest.schema_version != INK_BOARD_SCHEMA_VERSION {
+                            return Err("INVALID_ARGUMENT".to_owned());
+                        }
+                        let surface_page_id = ink_board_surface_page_id(&manifest)
+                            .ok_or_else(|| "RESOURCE_NOT_FOUND".to_owned())?;
+                        if surface_page_id != page_id.as_str() {
+                            return Err("RESOURCE_NOT_FOUND".to_owned());
+                        }
+                        return Ok::<_, String>((
+                            None,
+                            board_crop,
+                            Some(crate::ink_bridge::InkBoardRenderSpec {
+                                crop: board_crop,
+                                chunk_ids: Vec::new(),
+                            }),
+                        ));
                     }
                     let page = manifest
                         .pages
@@ -962,7 +1176,7 @@ impl InkToolExecutor {
                         width: crop.width * page.width,
                         height: crop.height * page.height,
                     });
-                    Ok::<_, String>((logical, logical.unwrap_or(full)))
+                    Ok((logical, logical.unwrap_or(full), None))
                 })
                 .await
                 .map_err(|error| {
@@ -976,8 +1190,8 @@ impl InkToolExecutor {
                 .map_err(|code| {
                     error_output(
                         &code,
-                        "Ink render target or revision is unavailable.",
-                        "Reload the document and render its current page.",
+                        "Ink render target, mode, or revision is unavailable.",
+                        "Reload the document and render the current paged or board target.",
                         false,
                     )
                 })?;
@@ -989,6 +1203,7 @@ impl InkToolExecutor {
                         expected_revision: args.expected_revision.clone(),
                         page_id: args.page_id.clone(),
                         crop,
+                        board: board_spec,
                         long_edge: None,
                     },
                     Some(&ctx.session_id),
@@ -1064,6 +1279,7 @@ impl InkToolExecutor {
                     Some(&ctx.session_id),
                     Some(tool_call_id),
                     cancellation,
+                    args.board,
                 )
                 .await
                 .map_err(|error| {
@@ -1209,27 +1425,57 @@ impl InkToolExecutor {
             let conn = db_for_apply.get_conn_safe().map_err(|error| error_output("VFS_STORAGE", error.to_string(), "Retry after local VFS storage is available.", true))?;
             let manifest = VfsInkRepo::get_manifest_with_conn(&conn, db_for_apply.blobs_dir(), &document_id)
                 .map_err(|error| command_error(InkCommandError::from(error)))?;
+            let is_board = manifest.schema_version == INK_BOARD_SCHEMA_VERSION;
+            let surface_page_id = if is_board {
+                Some(
+                    ink_board_surface_page_id(&manifest)
+                        .ok_or_else(|| error_output("UNSUPPORTED_SCHEMA", "The Ink board manifest is missing its surface.", "Reload the document before retrying.", false))?
+                        .to_owned(),
+                )
+            } else {
+                None
+            };
             let mut mappings = Vec::new();
             let mut seen = BTreeSet::new();
             for operation in &operations {
-                let (page_id, render_id) = match operation {
-                    InkOperation::AddText { page_id, based_on_render_id, .. }
-                    | InkOperation::AddRect { page_id, based_on_render_id, .. }
-                    | InkOperation::AddEllipse { page_id, based_on_render_id, .. }
-                    | InkOperation::AddArrow { page_id, based_on_render_id, .. }
-                    | InkOperation::AddRegionHighlight { page_id, based_on_render_id, .. }
-                    | InkOperation::UpdateObject { page_id, based_on_render_id, .. } => (page_id, based_on_render_id),
+                let (page_id, render_id, coordinate_space) = match operation {
+                    InkOperation::AddText { page_id, based_on_render_id, coordinate_space, .. }
+                    | InkOperation::AddRect { page_id, based_on_render_id, coordinate_space, .. }
+                    | InkOperation::AddEllipse { page_id, based_on_render_id, coordinate_space, .. }
+                    | InkOperation::AddArrow { page_id, based_on_render_id, coordinate_space, .. }
+                    | InkOperation::AddRegionHighlight { page_id, based_on_render_id, coordinate_space, .. }
+                    | InkOperation::UpdateObject { page_id, based_on_render_id, coordinate_space, .. } => (page_id, based_on_render_id, *coordinate_space),
                     _ => continue,
                 };
-                let page = manifest.pages.iter().find(|page| page.page_id == *page_id).ok_or_else(|| error_output("RESOURCE_NOT_FOUND", "Ink page was not found.", "Use a page ID from the current document.", false))?;
                 if !seen.insert(render_id.clone()) { continue; }
-                let artifact = VfsInkArtifactRepo::load_for_document_with_conn(&conn, db_for_apply.blobs_dir(), render_id, &document_id, &expected_revision)
-                    .map_err(|error| match error {
-                        crate::vfs::error::VfsError::Conflict { key, .. } if key == "ink.artifact.provenance_mismatch" => error_output("REVISION_CONFLICT", "Render artifact does not match this document revision.", "Render the requested page again and retry.", false),
-                        other => command_error(InkCommandError::from(other)),
-                    })?.0;
-                if artifact.page_id != *page_id { return Err(error_output("REVISION_CONFLICT", "Render artifact belongs to a different page.", "Render the target page at the current revision.", false)); }
-                mappings.push(InkRenderMapping { render_id: render_id.clone(), document_id: document_id.clone(), revision: expected_revision.clone(), page_id: page_id.clone(), crop: artifact.crop.unwrap_or(InkRect { x: 0.0, y: 0.0, width: page.width, height: page.height }) });
+                if is_board {
+                    let surface_page_id = surface_page_id.as_ref().expect("board surface checked above");
+                    if page_id.as_str() != surface_page_id.as_str() {
+                        return Err(error_output("INVALID_ARGUMENT", "Board operations must target the board surface page.", "Use the surface page_id returned by ink_get.", false));
+                    }
+                    if coordinate_space != InkCoordinateSpace::RenderCrop {
+                        return Err(error_output("INVALID_ARGUMENT", "Board operations require render_crop coordinates bound to a render_id.", "Render the requested board world crop and retry.", false));
+                    }
+                    let artifact = VfsInkArtifactRepo::load_for_document_with_conn(&conn, db_for_apply.blobs_dir(), render_id, &document_id, &expected_revision)
+                        .map_err(|error| match error {
+                            crate::vfs::error::VfsError::Conflict { key, .. } if key == "ink.artifact.provenance_mismatch" => error_output("REVISION_CONFLICT", "Render artifact does not match this document revision.", "Render the requested board crop again and retry.", false),
+                            other => command_error(InkCommandError::from(other)),
+                        })?.0;
+                    if artifact.page_id.as_str() != surface_page_id.as_str() {
+                        return Err(error_output("REVISION_CONFLICT", "Render artifact belongs to a different board surface.", "Render the board surface at the current revision.", false));
+                    }
+                    let crop = artifact.crop.ok_or_else(|| error_output("REVISION_CONFLICT", "Board render artifact has no world crop.", "Render an explicit finite board_crop and retry.", false))?;
+                    mappings.push(InkRenderMapping { render_id: render_id.clone(), document_id: document_id.clone(), revision: expected_revision.clone(), page_id: surface_page_id.to_string(), crop });
+                } else {
+                    let page = manifest.pages.iter().find(|page| page.page_id == *page_id).ok_or_else(|| error_output("RESOURCE_NOT_FOUND", "Ink page was not found.", "Use a page ID from the current document.", false))?;
+                    let artifact = VfsInkArtifactRepo::load_for_document_with_conn(&conn, db_for_apply.blobs_dir(), render_id, &document_id, &expected_revision)
+                        .map_err(|error| match error {
+                            crate::vfs::error::VfsError::Conflict { key, .. } if key == "ink.artifact.provenance_mismatch" => error_output("REVISION_CONFLICT", "Render artifact does not match this document revision.", "Render the requested page again and retry.", false),
+                            other => command_error(InkCommandError::from(other)),
+                        })?.0;
+                    if artifact.page_id != *page_id { return Err(error_output("REVISION_CONFLICT", "Render artifact belongs to a different page.", "Render the target page at the current revision.", false)); }
+                    mappings.push(InkRenderMapping { render_id: render_id.clone(), document_id: document_id.clone(), revision: expected_revision.clone(), page_id: page_id.clone(), crop: artifact.crop.unwrap_or(InkRect { x: 0.0, y: 0.0, width: page.width, height: page.height }) });
+                }
             }
             let apply_hash = canonical_apply_hash(&document_id, &expected_revision, &operations, &mappings)
                 .map_err(|error| error_output("INTERNAL", error, "Retry after checking local serialization.", true))?;
@@ -1253,18 +1499,20 @@ impl InkToolExecutor {
                 if manifest.revision != expected_revision {
                     if manifest.last_operation.as_ref().is_some_and(|canonical| canonical.operation_id == operation_id_for_db && canonical.input_hash == apply_hash && canonical.result_revision == manifest.revision) {
                         let mut promoted = receipt.clone();
+                        promoted.message_id = message_id.clone();
+                        promoted.block_id = block_id.clone();
+                        promoted.tool_call_id = tool_call_id.clone();
                         promoted.committed = true;
                         promoted.result_revision = Some(manifest.revision.clone());
-                        let saved = chat_db_for_apply.as_ref().is_some_and(|chat_db| save_undo_receipt(chat_db, &promoted, &tool_input).is_ok());
+                        let saved = chat_db_for_apply.as_ref().is_some_and(|chat_db| persist_retry_undo_receipt(chat_db, Some(receipt), &promoted, &tool_input).is_ok());
                         let mut affected = promoted.object_changes.iter().map(|change| change.page_id.clone()).chain(promoted.appended_page_ids.iter().cloned()).collect::<Vec<_>>();
                         affected.dedup();
-                        let same_receipt_block = promoted.message_id == message_id && promoted.block_id == block_id;
                         return Ok((
                             manifest,
                             affected,
                             true,
-                            saved && same_receipt_block,
-                            (!same_receipt_block).then(|| (promoted.message_id, promoted.block_id)),
+                            saved,
+                            None,
                         ));
                     }
                     return Err(error_output("OPERATION_STATE_UNKNOWN", "A prepared Ink operation cannot be proven at the current revision.", "Reload the document before retrying.", false));
@@ -1275,23 +1523,58 @@ impl InkToolExecutor {
             if cancellation.as_ref().is_some_and(|token| token.is_cancelled()) {
                 return Err(error_output("CANCELLED", "Ink apply was cancelled before any VFS mutation.", "Retry if the operation is still needed.", true));
             }
-            let pages = manifest.pages.iter().map(|page_ref| VfsInkRepo::get_page_with_conn(&conn, db_for_apply.blobs_dir(), &document_id, &page_ref.page_id)
-                .map_err(|error| error_output("VFS_STORAGE", error.to_string(), "Retry after local VFS storage is available.", true)))
-                .collect::<Result<Vec<_>, Value>>()?;
-            let preview = crate::vfs::ink::apply_operations(&manifest, &pages, &operations, &mappings)
-                .map_err(|error| error_output("INVALID_ARGUMENT", error.to_string(), "Correct the Ink operations and retry.", false))?;
+            let (preview_changes, preview_appended_page_ids) = if is_board {
+                let preview = VfsInkOperationRepo::preview_board_operations_with_conn(
+                    &conn,
+                    db_for_apply.blobs_dir(),
+                    &document_id,
+                    &expected_revision,
+                    &operations,
+                    &mappings,
+                )
+                .map_err(|error| command_error(InkCommandError::from(error)))?;
+                if preview.document_id != document_id
+                    || preview.expected_revision != expected_revision
+                    || preview.input_hash != apply_hash
+                {
+                    return Err(error_output(
+                        "OPERATION_STATE_UNKNOWN",
+                        "Board preview does not match the prepared operation input.",
+                        "Reload the board and render the current world crop.",
+                        false,
+                    ));
+                }
+                (
+                    undo_object_changes(&preview.object_changes),
+                    preview.appended_page_ids,
+                )
+            } else {
+                let pages = manifest.pages.iter().map(|page_ref| VfsInkRepo::get_page_with_conn(&conn, db_for_apply.blobs_dir(), &document_id, &page_ref.page_id)
+                    .map_err(|error| error_output("VFS_STORAGE", error.to_string(), "Retry after local VFS storage is available.", true)))
+                    .collect::<Result<Vec<_>, Value>>()?;
+                let preview = crate::vfs::ink::apply_operations(&manifest, &pages, &operations, &mappings)
+                    .map_err(|error| error_output("INVALID_ARGUMENT", error.to_string(), "Correct the Ink operations and retry.", false))?;
+                (
+                    undo_object_changes(&preview.object_changes),
+                    preview.appended_page_ids,
+                )
+            };
             let mut receipt = existing_receipt_for_apply.clone().unwrap_or_else(|| InkUndoReceipt {
                 schema_version: INK_UNDO_SCHEMA_VERSION, session_id: session_id.clone(), message_id: message_id.clone(), block_id: block_id.clone(), tool_call_id: tool_call_id.clone(),
                 document_id: document_id.clone(), operation_id: operation_id_for_db.clone(), input_hash: public_input_hash.clone(), created_at,
-                previous_revision: expected_revision.clone(), result_revision: None, vfs_input_hash: apply_hash.clone(), object_changes: preview.object_changes.iter().map(|change| InkUndoObjectChange { page_id: change.page_id.clone(), object_id: change.object_id.clone(), before: change.before.clone(), after: change.after.clone() }).collect(),
-                appended_page_ids: preview.appended_page_ids.clone(), committed: false,
+                previous_revision: expected_revision.clone(), result_revision: None, vfs_input_hash: apply_hash.clone(), object_changes: preview_changes.clone(),
+                appended_page_ids: preview_appended_page_ids.clone(), committed: false,
             });
-            if receipt.object_changes != preview.object_changes.iter().map(|change| InkUndoObjectChange { page_id: change.page_id.clone(), object_id: change.object_id.clone(), before: change.before.clone(), after: change.after.clone() }).collect::<Vec<_>>() || receipt.appended_page_ids != preview.appended_page_ids {
+            if receipt.object_changes != preview_changes || receipt.appended_page_ids != preview_appended_page_ids {
                 return Err(error_output("OPERATION_STATE_UNKNOWN", "Prepared undo data differs from canonical Ink operation preview.", "Do not retry or undo this operation automatically.", false));
             }
             if !receipt.committed {
                 let chat_db = chat_db_for_apply.as_ref().ok_or_else(|| error_output("DEPENDENCY_UNAVAILABLE", "Durable undo receipt storage is unavailable.", "Retry after Chat storage is available.", true))?;
-                save_undo_receipt(chat_db, &receipt, &tool_input).map_err(|error| error_output("RECEIPT_STORAGE_FAILED", error, "No Ink changes were committed; retry after Chat storage is available.", true))?;
+                let expected_old = existing_receipt_for_apply.as_ref();
+                receipt.message_id = message_id.clone();
+                receipt.block_id = block_id.clone();
+                receipt.tool_call_id = tool_call_id.clone();
+                persist_retry_undo_receipt(chat_db, expected_old, &receipt, &tool_input).map_err(|error| error_output("RECEIPT_STORAGE_FAILED", error, "No Ink changes were committed; retry after Chat storage is available.", true))?;
             }
             if cancellation.as_ref().is_some_and(|token| token.is_cancelled()) {
                 return Err(error_output("CANCELLED", "Ink apply was cancelled before any VFS mutation.", "Retry if the operation is still needed.", true));
@@ -1334,11 +1617,59 @@ impl InkToolExecutor {
     ) -> Result<Value, Value> {
         let object = arguments_object(
             arguments,
-            &["title", "operation_id", "folder_id", "page_size", "ruling"],
+            &[
+                "title",
+                "operation_id",
+                "folder_id",
+                "mode",
+                "page_size",
+                "ruling",
+            ],
         )?;
         let title = required_string(object, "title", 256)?;
         let client_operation_id = required_string(object, "operation_id", 128)?;
         let folder_id = optional_string(object, "folder_id", 128)?;
+        let board_requested = match object.get("mode") {
+            None | Some(Value::Null) => false,
+            Some(Value::String(mode)) if mode == "paged" => false,
+            Some(Value::String(mode)) if mode == "board" => true,
+            Some(_) => {
+                return Err(error_output(
+                    "INVALID_ARGUMENT",
+                    "mode must be 'paged' or 'board'.",
+                    "Correct the arguments to match the tool schema.",
+                    false,
+                ));
+            }
+        };
+        if board_requested {
+            if object.get("page_size").is_some() {
+                return Err(error_output(
+                    "INVALID_ARGUMENT",
+                    "Board creation does not accept page_size.",
+                    "Use an explicit world render crop instead of fixed page dimensions.",
+                    false,
+                ));
+            }
+            let operation_id = scoped_operation_id(ctx, "create", &client_operation_id);
+            let manifest = crate::vfs::ink_commands::create_board_gated(
+                db,
+                crate::vfs::ink_commands::InkCreateBoardRequest {
+                    title: title.clone(),
+                    ruling: parse_ink_ruling(object)?,
+                    operation_id: operation_id.clone(),
+                    folder_id: folder_id.clone(),
+                },
+            )
+            .map_err(command_error)?;
+            let mut output = manifest_output(&manifest);
+            output["operation_id"] = json!(operation_id);
+            output["operation_status"] = json!("succeeded");
+            if ctx.is_cancelled() {
+                output["cancellation_status"] = json!("committed");
+            }
+            return Ok(output);
+        }
         let (width, height) = match object.get("page_size") {
             None => (794.0, 1123.0),
             Some(Value::Object(size)) => {
@@ -1470,14 +1801,39 @@ impl InkToolExecutor {
         } else {
             None
         };
-        let selected_page = if let Some(page_id) = page_id.as_deref() {
+        let is_board = manifest.schema_version == INK_BOARD_SCHEMA_VERSION;
+        if is_board && page_index.is_some() {
+            return Err(error_output(
+                "INVALID_ARGUMENT",
+                "page_index is not available for a board document.",
+                "Use the board surface page_id or omit the page selector.",
+                false,
+            ));
+        }
+        if is_board {
+            if let (Some(requested), Some(surface_page_id)) =
+                (page_id.as_deref(), ink_board_surface_page_id(&manifest))
+            {
+                if requested != surface_page_id {
+                    return Err(error_output(
+                        "RESOURCE_NOT_FOUND",
+                        "The requested Ink board surface page was not found.",
+                        "Use the surface page_id returned by the current manifest.",
+                        false,
+                    ));
+                }
+            }
+        }
+        let selected_page = if is_board {
+            None
+        } else if let Some(page_id) = page_id.as_deref() {
             manifest.pages.iter().find(|page| page.page_id == page_id)
         } else if let Some(index) = page_index {
             manifest.pages.get(index as usize)
         } else {
             None
         };
-        if (page_id.is_some() || page_index.is_some()) && selected_page.is_none() {
+        if !is_board && (page_id.is_some() || page_index.is_some()) && selected_page.is_none() {
             return Err(error_output(
                 "RESOURCE_NOT_FOUND",
                 "The requested Ink page was not found.",
@@ -1486,6 +1842,67 @@ impl InkToolExecutor {
             ));
         }
         let mut output = manifest_output(&manifest);
+        if is_board {
+            let surface = manifest.surface.as_ref().ok_or_else(|| {
+                error_output(
+                    "UNSUPPORTED_SCHEMA",
+                    "The Ink board manifest is missing its surface.",
+                    "Reload the document before retrying.",
+                    false,
+                )
+            })?;
+            output["surface"] = serde_json::to_value(surface).map_err(|error| {
+                error_output(
+                    "INTERNAL",
+                    error.to_string(),
+                    "Retry after checking local serialization.",
+                    false,
+                )
+            })?;
+            output["chunks"] = Value::Array(
+                manifest
+                    .chunks
+                    .iter()
+                    .map(|chunk| {
+                        json!({
+                            "chunk_id": chunk.chunk_id,
+                            "object_count": chunk.object_count,
+                            "sample_count": chunk.sample_count,
+                            "byte_length": chunk.byte_length,
+                            "bounds": {
+                                "x": chunk.bounds.x,
+                                "y": chunk.bounds.y,
+                                "width": chunk.bounds.width,
+                                "height": chunk.bounds.height,
+                            },
+                        })
+                    })
+                    .collect(),
+            );
+            output["summary"]["chunk_count"] = json!(manifest.chunks.len());
+            output["summary"]["object_count"] = json!(manifest
+                .chunks
+                .iter()
+                .map(|chunk| chunk.object_count)
+                .sum::<u32>());
+            output["summary"]["sample_count"] = json!(manifest
+                .chunks
+                .iter()
+                .map(|chunk| chunk.sample_count)
+                .sum::<u32>());
+            let conn = db.get_conn_safe().map_err(|error| {
+                error_output(
+                    "VFS_STORAGE",
+                    error.to_string(),
+                    "Retry after local VFS storage is available.",
+                    true,
+                )
+            })?;
+            let overview =
+                VfsInkBoardRepo::overview_with_conn(&conn, db.blobs_dir(), &manifest.document_id)
+                    .map_err(|error| command_error(InkCommandError::from(error)))?;
+            output["summary"]["max_z_index"] = json!(overview.max_z_index);
+        }
         if let Some((operation_id, result_revision)) = operation_result {
             output["operation_id"] = json!(operation_id);
             output["operation_status"] = json!("succeeded");
@@ -1751,6 +2168,29 @@ fn dimension(value: &Value, field: &str) -> Result<f64, Value> {
         })
 }
 
+fn parse_ink_ruling(object: &Map<String, Value>) -> Result<InkRuling, Value> {
+    match object.get("ruling") {
+        None => Ok(InkRuling::Blank),
+        Some(Value::String(ruling)) => match ruling.as_str() {
+            "blank" => Ok(InkRuling::Blank),
+            "lined" => Ok(InkRuling::Lined),
+            "grid" => Ok(InkRuling::Grid),
+            _ => Err(error_output(
+                "INVALID_ARGUMENT",
+                "ruling must be blank, lined, or grid.",
+                "Correct the arguments to match the tool schema.",
+                false,
+            )),
+        },
+        Some(_) => Err(error_output(
+            "INVALID_ARGUMENT",
+            "ruling must be blank, lined, or grid.",
+            "Correct the arguments to match the tool schema.",
+            false,
+        )),
+    }
+}
+
 fn optional_u32(
     object: &Map<String, Value>,
     field: &str,
@@ -1801,6 +2241,12 @@ fn scoped_operation_id(ctx: &ExecutionContext, tool: &str, client_id: &str) -> S
         ctx.session_id
     );
     format!("agent-{}", hex::encode(Sha256::digest(input.as_bytes())))
+}
+
+fn ink_board_surface_page_id(manifest: &crate::vfs::ink::InkManifest) -> Option<&str> {
+    match manifest.surface.as_ref()? {
+        InkBoardSurface::Board { page_id, .. } => Some(page_id.as_str()),
+    }
 }
 
 fn manifest_output(manifest: &crate::vfs::ink::InkManifest) -> Value {
@@ -1969,9 +2415,14 @@ mod tests {
     use crate::chat_v2::types::ToolCall;
     use crate::tools::ToolRegistry;
     use crate::vfs::database::setup_migrated_test_db;
-    use crate::vfs::ink::{InkRect, InkRuling};
+    use crate::vfs::ink::{
+        InkAuthor, InkBoardChunk, InkBoardObject, InkBoardSurface, InkObjectContent, InkRect,
+        InkRuling, InkSample, InkStrokeStyle, InkTool, INK_BOARD_SCHEMA_VERSION,
+    };
     use crate::vfs::ink_commands::{self, InkCreateRequest, InkGetPageRequest, InkRenameRequest};
     use crate::vfs::repos::ink_artifact_repo::{InkArtifactDraft, VfsInkArtifactRepo};
+    use crate::vfs::repos::ink_board_repo::VfsInkBoardRepo;
+    use rusqlite::OptionalExtension;
     use serde_json::{json, Value};
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
@@ -3288,5 +3739,1630 @@ mod tests {
             )
             .expect("count Ink files after cancellation");
         assert_eq!(after, before);
+    }
+
+    fn create_board_with_chunk(
+        db: &crate::vfs::VfsDatabase,
+    ) -> (crate::vfs::ink::InkManifest, InkBoardChunk) {
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let manifest = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Executor board fixture",
+            InkRuling::Blank,
+            &format!("board-executor-create-{}", nanoid::nanoid!(8)),
+            None,
+        )
+        .expect("create an actual v2 board through the migrated repository");
+        let chunk = InkBoardChunk {
+            schema_version: INK_BOARD_SCHEMA_VERSION,
+            chunk_id: "chunk-budget".to_owned(),
+            objects: vec![
+                InkBoardObject {
+                    id: "obj-stroke".to_owned(),
+                    author: InkAuthor::User,
+                    created_at: 1,
+                    z_index: 7,
+                    content: InkObjectContent::Stroke {
+                        samples: vec![
+                            InkSample {
+                                x: -4.0,
+                                y: 2.0,
+                                pressure: 0.5,
+                                elapsed_ms: Some(0.0),
+                            },
+                            InkSample {
+                                x: 6.0,
+                                y: 3.0,
+                                pressure: 0.6,
+                                elapsed_ms: Some(4.0),
+                            },
+                        ],
+                        style: InkStrokeStyle {
+                            tool: InkTool::Pen,
+                            color: "#000000".to_owned(),
+                            width: 2.0,
+                            pressure_enabled: true,
+                        },
+                    },
+                },
+                InkBoardObject {
+                    id: "obj-rect".to_owned(),
+                    author: InkAuthor::User,
+                    created_at: 2,
+                    z_index: 9,
+                    content: InkObjectContent::Rect {
+                        rect: InkRect {
+                            x: 10.0,
+                            y: 20.0,
+                            width: 30.0,
+                            height: 40.0,
+                        },
+                        color: "#000000".to_owned(),
+                        width: 2.0,
+                    },
+                },
+            ],
+        };
+        let saved = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            &format!("board-executor-save-{}", nanoid::nanoid!(8)),
+            std::slice::from_ref(&chunk),
+            &[],
+        )
+        .expect("persist the board chunk with the real repository");
+        (saved, chunk)
+    }
+
+    fn board_render_artifact(
+        db: &crate::vfs::VfsDatabase,
+        manifest: &crate::vfs::ink::InkManifest,
+        surface_page_id: &str,
+    ) -> String {
+        let render_id = format!("board-render-{}", nanoid::nanoid!(8));
+        let conn = db.get_conn_safe().expect("VFS connection");
+        VfsInkArtifactRepo::store_png_with_conn(
+            &conn,
+            db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: render_id.clone(),
+                render_id: render_id.clone(),
+                document_id: manifest.document_id.clone(),
+                page_id: surface_page_id.to_owned(),
+                revision: manifest.revision.clone(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: Some(InkRect {
+                    x: -100.0,
+                    y: -100.0,
+                    width: 400.0,
+                    height: 300.0,
+                }),
+                width_px: 1,
+                height_px: 1,
+            },
+            TEST_PNG,
+        )
+        .expect("publish a verified board render artifact");
+        render_id
+    }
+
+    fn board_add_text_ops(surface_page_id: &str, render_id: &str) -> Value {
+        json!([{
+            "op": "add_text",
+            "page_id": surface_page_id,
+            "coordinate_space": "render_crop",
+            "based_on_render_id": render_id,
+            "rect": {"x":0.25,"y":0.25,"width":0.5,"height":0.1},
+            "text": "board receipt probe",
+            "font_size": 16,
+            "color": "#1f2937",
+        }])
+    }
+
+    fn stored_board_receipt(ctx: &ExecutionContext) -> super::InkUndoReceipt {
+        let chat_db = ctx.chat_v2_db.as_ref().expect("Chat storage");
+        let conn = chat_db.get_conn_safe().expect("Chat connection");
+        let raw: Option<Option<String>> = conn
+            .query_row(
+                "SELECT ink_undo_json FROM chat_v2_blocks WHERE id=?1",
+                [&ctx.block_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .expect("read stored Ink receipt");
+        let raw = raw
+            .flatten()
+            .expect("board PREPARED receipt must be persisted in Chat storage");
+        serde_json::from_str(&raw).expect("stored Ink receipt must deserialize")
+    }
+
+    fn board_surface_page_id(manifest: &crate::vfs::ink::InkManifest) -> String {
+        match manifest.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        }
+    }
+
+    fn collect_json_keys(value: &Value, keys: &mut std::collections::BTreeSet<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    keys.insert(key.clone());
+                    collect_json_keys(child, keys);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    collect_json_keys(item, keys);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Build a fresh Chat message/block/call inside the same persisted session
+    /// so a retry can be exercised across Chat blocks without reusing executor
+    /// identity from the failed attempt.
+    fn cross_block_context(
+        chat_db: Arc<crate::chat_v2::database::ChatV2Database>,
+        db: Arc<crate::vfs::VfsDatabase>,
+        session_id: &str,
+        block_id: &str,
+        call_id: &str,
+    ) -> ExecutionContext {
+        use crate::chat_v2::{repo::ChatV2Repo, types::ChatMessage};
+
+        let message = ChatMessage::new_assistant(session_id.to_owned());
+        ChatV2Repo::create_message_v2(&chat_db, &message)
+            .expect("persist cross-block retry message");
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.to_owned(),
+        ));
+        let mut ctx = ExecutionContext::new(
+            session_id.to_owned(),
+            message.id,
+            block_id.to_owned(),
+            emitter,
+            Arc::new(ToolRegistry::new()),
+            None,
+        )
+        .with_tool_call_id(call_id);
+        ctx.vfs_db = Some(db);
+        ctx.chat_v2_db = Some(chat_db);
+        ctx
+    }
+
+    fn chat_block_state(
+        chat_db: &crate::chat_v2::database::ChatV2Database,
+        block_id: &str,
+    ) -> Option<(String, Option<super::InkUndoReceipt>)> {
+        let conn = chat_db.get_conn_safe().expect("Chat connection");
+        let row: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT status, ink_undo_json FROM chat_v2_blocks WHERE id=?1",
+                [block_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .expect("read Chat block state");
+        row.map(|(status, raw)| {
+            let receipt = raw.map(|raw| {
+                serde_json::from_str::<super::InkUndoReceipt>(&raw)
+                    .expect("stored Ink receipt must deserialize")
+            });
+            (status, receipt)
+        })
+    }
+
+    fn cross_block_authorities(
+        chat_db: &crate::chat_v2::database::ChatV2Database,
+        session_id: &str,
+        operation_id: &str,
+    ) -> Vec<(String, super::InkUndoReceipt)> {
+        let conn = chat_db.get_conn_safe().expect("Chat connection");
+        let mut statement = conn
+            .prepare(
+                "SELECT b.id, b.ink_undo_json FROM chat_v2_blocks b JOIN chat_v2_messages m ON m.id=b.message_id WHERE m.session_id=?1 AND b.ink_undo_json IS NOT NULL",
+            )
+            .expect("prepare receipt authority query");
+        statement
+            .query_map([session_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("query receipt authorities")
+            .filter_map(|row| {
+                let (block_id, raw) = row.ok()?;
+                let receipt = serde_json::from_str::<super::InkUndoReceipt>(&raw).ok()?;
+                (receipt.operation_id == operation_id).then_some((block_id, receipt))
+            })
+            .collect()
+    }
+
+    /// Future E2 contract: v2 board `ink_get` exposes a bounded surface and
+    /// chunk summary, never raw objects or sample arrays. `page_index` is a
+    /// fixed-page selector and must be rejected for a board.
+    #[tokio::test]
+    async fn board_get_returns_bounded_surface_and_chunk_summary_without_raw_samples() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+
+        let fetched = InkToolExecutor::new()
+            .execute(
+                &call(
+                    "builtin-ink_get",
+                    json!({"document_id": manifest.document_id.clone()}),
+                ),
+                &context(db.clone(), "ink-board-get-summary"),
+            )
+            .await
+            .expect("board get should return a normal tool result");
+        assert!(fetched.success, "board get failed: {:?}", fetched.output);
+        assert_eq!(fetched.output["surface"]["kind"], "board");
+        assert_eq!(fetched.output["surface"]["page_id"], surface_page_id);
+        assert_eq!(fetched.output["surface"]["bounds"]["width"], 1.0);
+        assert_eq!(fetched.output["surface"]["bounds"]["height"], 1.0);
+        assert_eq!(fetched.output["summary"]["chunk_count"], 1);
+
+        let chunks = fetched.output["chunks"]
+            .as_array()
+            .expect("board get must return bounded chunk summaries");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0]["chunk_id"], "chunk-budget");
+        assert_eq!(chunks[0]["object_count"], 2);
+        assert_eq!(chunks[0]["sample_count"], 2);
+        assert!(
+            chunks[0]["byte_length"]
+                .as_u64()
+                .is_some_and(|length| length > 0),
+            "chunk summary must carry the stored byte length: {:?}",
+            chunks[0]
+        );
+        assert!(
+            chunks[0]["bounds"]["width"]
+                .as_f64()
+                .is_some_and(|width| width.is_finite() && width > 0.0),
+            "chunk summary must carry finite world bounds: {:?}",
+            chunks[0]
+        );
+
+        let mut keys = std::collections::BTreeSet::new();
+        collect_json_keys(&fetched.output, &mut keys);
+        assert!(
+            !keys.contains("objects"),
+            "board get must not return raw objects: {keys:?}"
+        );
+        assert!(
+            !keys.contains("samples"),
+            "board get must not return raw samples: {keys:?}"
+        );
+
+        let page_index = InkToolExecutor::new()
+            .execute(
+                &call(
+                    "builtin-ink_get",
+                    json!({
+                        "document_id": manifest.document_id,
+                        "page_index": 0,
+                    }),
+                ),
+                &context(db, "ink-board-get-page-index"),
+            )
+            .await
+            .expect("page_index rejection is a normal tool failure");
+        assert!(!page_index.success);
+        assert_eq!(
+            page_index.output["code"], "INVALID_ARGUMENT",
+            "board get must reject page_index with a typed argument error: {:?}",
+            page_index.output
+        );
+    }
+
+    /// The real repository guard also enforces a future writer floor. When the
+    /// database was written by a newer capability (floor 6) and no board guard
+    /// is installed, `ink_create` `mode: "board"` must fail typed without
+    /// publishing any VFS file; this replaces the retired facade switch test.
+    #[tokio::test]
+    async fn board_create_mode_future_floor_is_typed_failure_and_writes_nothing() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let before: i64 = db
+            .get_conn_safe()
+            .expect("VFS connection")
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .expect("count VFS files before board create");
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute(
+                "UPDATE __vfs_writer_guard
+                 SET min_writer_capability = 6, guard_installed = 0
+                 WHERE id = 1",
+                [],
+            )
+            .expect("simulate a database written by a newer capability");
+        }
+
+        let result = InkToolExecutor::new()
+            .execute(
+                &call(
+                    "builtin-ink_create",
+                    json!({
+                        "title": "Board must stay closed",
+                        "operation_id": "board-create-gate",
+                        "mode": "board",
+                    }),
+                ),
+                &context(db.clone(), "ink-board-create-gate"),
+            )
+            .await
+            .expect("future-floor board creation is a normal tool failure");
+        assert!(!result.success, "board create must not claim success");
+        assert_eq!(
+            result.output["code"], "UNSUPPORTED_SCHEMA",
+            "the future-floor guard must fail typed: {:?}",
+            result.output
+        );
+        assert_eq!(result.output["retryable"], false);
+
+        let after: i64 = db
+            .get_conn_safe()
+            .expect("VFS connection")
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .expect("count VFS files after rejected board create");
+        assert_eq!(
+            after, before,
+            "future-floor rejection must not publish a VFS file"
+        );
+    }
+
+    /// Positive regression for the enabled gate: the real `ink_create`
+    /// `mode: "board"` path publishes a v2 board through the same repository as
+    /// the public command facade, accepts arguments without `page_size`, and
+    /// makes an exact create retry return the same document id without a second
+    /// VFS file. No mock replaces the actual repository.
+    #[tokio::test]
+    async fn board_create_mode_enabled_publishes_v2_without_page_size_and_retries_same_id() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let executor = InkToolExecutor::new();
+        let ctx = context(db.clone(), "ink-board-create-enabled");
+        let arguments = json!({
+            "title": "Executor public board",
+            "operation_id": "board-create-enabled",
+            "mode": "board",
+        });
+
+        let result = executor
+            .execute(&call("builtin-ink_create", arguments.clone()), &ctx)
+            .await
+            .expect("enabled board creation is a normal tool result");
+        assert!(
+            result.success,
+            "board creation must succeed once the gate is enabled: {:?}",
+            result.output
+        );
+        assert!(
+            result.output.get("page_size").is_none(),
+            "board output must not synthesize a paged page_size: {:?}",
+            result.output
+        );
+        assert_eq!(result.output["pages"], json!([]));
+        assert_eq!(result.output["summary"]["page_count"], 0);
+        let document_id = result.output["document_id"]
+            .as_str()
+            .expect("board create must return a document id")
+            .to_owned();
+        assert!(
+            document_id.starts_with("file_ink_board_"),
+            "board create must publish a board document, got {document_id}"
+        );
+
+        // The executor result must be the same public v2 document a direct
+        // command read returns: schema 2, no fixed pages, one board surface.
+        let manifest = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: document_id.clone(),
+            },
+        )
+        .expect("load the created board through the public command read path");
+        assert_eq!(manifest.schema_version, INK_BOARD_SCHEMA_VERSION);
+        assert!(manifest.pages.is_empty());
+        assert!(manifest.chunks.is_empty());
+        assert_eq!(manifest.document_id, document_id);
+        assert_eq!(
+            result.output["revision"].as_str(),
+            Some(manifest.revision.as_str())
+        );
+        match manifest.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { .. } => {}
+        }
+
+        // An exact retry produces the same document id and never publishes a
+        // second VFS file.
+        let retry = executor
+            .execute(&call("builtin-ink_create", arguments), &ctx)
+            .await
+            .expect("board create retry is a normal tool result");
+        assert!(
+            retry.success,
+            "exact board create retry must succeed: {:?}",
+            retry.output
+        );
+        assert_eq!(
+            retry.output["document_id"].as_str(),
+            Some(document_id.as_str())
+        );
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let matching: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                [document_id.as_str()],
+                |row| row.get(0),
+            )
+            .expect("count the board file");
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .expect("count all VFS files");
+        assert_eq!(matching, 1);
+        assert_eq!(
+            total, 1,
+            "an exact create retry must not publish a second VFS file"
+        );
+    }
+
+    /// Board apply rejects `append_blank_page` through the repository planner
+    /// with a typed argument error and zero VFS write.
+    #[tokio::test]
+    async fn board_apply_append_blank_page_is_typed_reject_and_not_destructive() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, chunk) = create_board_with_chunk(&db);
+        let before = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board before rejected append");
+
+        let result = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-append-reject",
+                    json!([{
+                        "op": "append_blank_page",
+                        "width": 595,
+                        "height": 842,
+                        "ruling": "blank",
+                    }]),
+                ),
+                &context(db.clone(), "ink-board-append-reject"),
+            )
+            .await
+            .expect("board append rejection is a normal tool failure");
+        assert!(!result.success);
+        assert_eq!(
+            result.output["code"], "INVALID_ARGUMENT",
+            "board append must be a typed non-destructive rejection: {:?}",
+            result.output
+        );
+
+        let after = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after rejected append");
+        assert_eq!(
+            after, before,
+            "rejected board append must not change the canonical revision or receipt"
+        );
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &[chunk.chunk_id.clone()],
+        )
+        .expect("reload board chunks after rejected append");
+        assert_eq!(
+            chunks,
+            vec![chunk],
+            "rejected board append must not rewrite chunk content"
+        );
+    }
+
+    /// Future E2 contract: board `ink_get` with an exact operation id returns
+    /// that receipt's status plus a bounded global-z summary, without objects
+    /// or samples.
+    #[tokio::test]
+    async fn board_get_reports_exact_operation_status_and_global_z_bounded() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let latest_operation_id = manifest
+            .last_operation
+            .as_ref()
+            .expect("board fixture latest receipt")
+            .operation_id
+            .clone();
+
+        let fetched = InkToolExecutor::new()
+            .execute(
+                &call(
+                    "builtin-ink_get",
+                    json!({
+                        "document_id": manifest.document_id.clone(),
+                        "operation_id": latest_operation_id.clone(),
+                        "object_limit": 1,
+                    }),
+                ),
+                &context(db, "ink-board-operation-status"),
+            )
+            .await
+            .expect("board operation status should return a normal tool result");
+        assert!(fetched.success, "board get failed: {:?}", fetched.output);
+        assert_eq!(fetched.output["operation_id"], latest_operation_id);
+        assert_eq!(fetched.output["operation_status"], "succeeded");
+        assert_eq!(fetched.output["result_revision"], manifest.revision);
+        assert_eq!(fetched.output["revision"], manifest.revision);
+        assert_eq!(fetched.output["summary"]["chunk_count"], 1);
+        assert_eq!(
+            fetched.output["summary"]["max_z_index"], "9",
+            "global z must be the exact decimal maximum across chunks"
+        );
+        assert!(
+            fetched.output.get("page").is_none(),
+            "board get must not invent a fixed page payload: {:?}",
+            fetched.output
+        );
+
+        let mut keys = std::collections::BTreeSet::new();
+        collect_json_keys(&fetched.output, &mut keys);
+        assert!(
+            !keys.contains("objects"),
+            "board get leaked objects: {keys:?}"
+        );
+        assert!(
+            !keys.contains("samples"),
+            "board get leaked samples: {keys:?}"
+        );
+    }
+
+    /// Future contract: board apply must persist a PREPARED receipt before the
+    /// VFS commit. If the commit fails, the canonical revision and chunks stay
+    /// unchanged; retrying the same operation resumes and commits once.
+    #[tokio::test]
+    async fn board_apply_prepared_receipt_survives_commit_failure_and_retries_once() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let ctx = context(db.clone(), "ink-board-prepared-retry");
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+
+        let conn = db.get_conn_safe().expect("VFS connection");
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER fail_board_commit BEFORE UPDATE ON files WHEN OLD.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected board commit failure'); END;",
+            manifest.document_id
+        ))
+        .expect("install board commit failure trigger");
+        drop(conn);
+
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-prepared-retry",
+                    ops.clone(),
+                ),
+                &ctx,
+            )
+            .await
+            .expect("commit failure is a normal tool failure");
+        assert!(
+            !first.success,
+            "injected commit failure must fail the apply"
+        );
+
+        let prepared = stored_board_receipt(&ctx);
+        assert!(
+            !prepared.committed,
+            "a PREPARED receipt must exist before the VFS commit"
+        );
+        assert_eq!(prepared.previous_revision, manifest.revision);
+        assert!(
+            prepared
+                .object_changes
+                .iter()
+                .any(|change| change.z_index.is_some()),
+            "PREPARED board changes must carry trusted z-index values"
+        );
+
+        let unchanged = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after failed commit");
+        assert_eq!(unchanged, manifest);
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &[chunk.chunk_id.clone()],
+        )
+        .expect("reload chunks after failed commit");
+        assert_eq!(chunks, vec![chunk.clone()]);
+        conn.execute_batch("DROP TRIGGER fail_board_commit;")
+            .expect("drop board commit failure trigger");
+        drop(conn);
+
+        let retry = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-prepared-retry",
+                    ops,
+                ),
+                &ctx,
+            )
+            .await
+            .expect("retry result");
+        assert!(
+            retry.success,
+            "retry after a failed commit must succeed: {:?}",
+            retry.output
+        );
+        assert_ne!(
+            retry.output["revision"].as_str(),
+            Some(manifest.revision.as_str())
+        );
+        let committed = stored_board_receipt(&ctx);
+        assert!(committed.committed);
+        assert!(committed
+            .object_changes
+            .iter()
+            .any(|change| change.z_index.is_some()));
+    }
+
+    /// Future contract: if the VFS commit succeeds but the committed receipt
+    /// write fails, the prepared receipt remains. Retrying the same operation
+    /// must promote that receipt without a second VFS mutation.
+    #[tokio::test]
+    async fn board_apply_recovers_committed_receipt_after_chat_receipt_failure() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let ctx = context(db.clone(), "ink-board-receipt-failure");
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+
+        {
+            let chat_db = ctx.chat_v2_db.as_ref().expect("Chat storage");
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute_batch(
+                "CREATE TRIGGER fail_committed_receipt BEFORE UPDATE OF ink_undo_json ON chat_v2_blocks WHEN NEW.ink_undo_json LIKE '%\"committed\":true%' BEGIN SELECT RAISE(ABORT, 'injected committed receipt failure'); END;",
+            )
+            .expect("install committed receipt failure trigger");
+        }
+
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-receipt-failure",
+                    ops.clone(),
+                ),
+                &ctx,
+            )
+            .await
+            .expect("receipt persistence failure does not hide the VFS commit");
+        assert!(
+            first.success,
+            "VFS commit must remain successful when the committed receipt write fails: {:?}",
+            first.output
+        );
+        assert_eq!(first.output["committed"], true);
+        assert_eq!(first.output["receipt_status"], "unavailable");
+        let committed_revision = first.output["revision"]
+            .as_str()
+            .expect("committed revision")
+            .to_owned();
+
+        let prepared = stored_board_receipt(&ctx);
+        assert!(
+            !prepared.committed,
+            "failed committed write must leave the PREPARED receipt in Chat storage"
+        );
+        let changed = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after successful commit");
+        assert_ne!(changed.revision, manifest.revision);
+
+        let chat_db = ctx.chat_v2_db.as_ref().expect("Chat storage");
+        let conn = chat_db.get_conn_safe().expect("Chat connection");
+        conn.execute_batch("DROP TRIGGER fail_committed_receipt;")
+            .expect("drop committed receipt failure trigger");
+        drop(conn);
+
+        let retry = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-receipt-failure",
+                    ops,
+                ),
+                &ctx,
+            )
+            .await
+            .expect("retry result");
+        assert!(
+            retry.success,
+            "retry must recover the committed receipt: {:?}",
+            retry.output
+        );
+        assert_eq!(
+            retry.output["revision"].as_str(),
+            Some(committed_revision.as_str()),
+            "recovery must not perform a second VFS mutation"
+        );
+        assert_eq!(retry.output["undo_available"], true);
+        let recovered = stored_board_receipt(&ctx);
+        assert!(recovered.committed);
+    }
+
+    /// Future contract: board undo must use the trusted z-index persisted in
+    /// the Chat receipt and restore the original chunks exactly.
+    #[tokio::test]
+    async fn board_undo_restores_original_chunks_using_persisted_receipt_z() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let ctx = context(db.clone(), "ink-board-undo-z");
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+
+        let applied = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    "board-undo-z",
+                    ops,
+                ),
+                &ctx,
+            )
+            .await
+            .expect("board apply result");
+        assert!(
+            applied.success,
+            "board apply must succeed before undo: {:?}",
+            applied.output
+        );
+        let applied_revision = applied.output["revision"]
+            .as_str()
+            .expect("applied revision")
+            .to_owned();
+        let receipt = stored_board_receipt(&ctx);
+        assert!(receipt.committed);
+        assert!(
+            receipt
+                .object_changes
+                .iter()
+                .any(|change| change.z_index == Some(10)),
+            "committed receipt must persist the board object's canonical z-index"
+        );
+
+        let undo = crate::ink_undo::undo_ink_operation(
+            db.as_ref(),
+            ctx.chat_v2_db.as_deref().expect("Chat storage"),
+            &ctx.session_id,
+            &ctx.message_id,
+            &ctx.block_id,
+            &applied_revision,
+            "board-undo-z-request",
+        );
+        assert!(undo.is_ok(), "board undo failed: {:?}", undo.err());
+
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &[chunk.chunk_id.clone()],
+        )
+        .expect("reload chunks after board undo");
+        assert_eq!(
+            chunks,
+            vec![chunk],
+            "undo must restore the original chunk objects and z order"
+        );
+        let after = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after undo");
+        assert_eq!(
+            after.chunks.len(),
+            1,
+            "undo must remove the applied board chunk"
+        );
+    }
+
+    /// Real ChatDB + VFS regression: a board attempt that fails its VFS UPDATE
+    /// keeps a PREPARED receipt on the old ERROR block. A retry from a new
+    /// Chat message/block/call must not inherit that receipt identity: it must
+    /// commit once, bind the sole committed receipt to the retry block, move the
+    /// authority off the old ERROR block, and support a real undo through the
+    /// retry block while preserving the original human-authored chunk objects.
+    #[tokio::test]
+    async fn board_cross_block_prepared_retry_rebinds_sole_receipt_and_undoes() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let old_ctx = context(db.clone(), "ink-board-cross-block-prepared-old");
+        let chat_db = old_ctx.chat_v2_db.as_ref().expect("Chat storage").clone();
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+        let client_operation_id = "board-cross-block-prepared";
+
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_cross_block_commit BEFORE UPDATE ON files WHEN OLD.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected cross-block commit failure'); END;",
+                manifest.document_id
+            ))
+            .expect("install cross-block commit failure trigger");
+        }
+
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    client_operation_id,
+                    ops.clone(),
+                ),
+                &old_ctx,
+            )
+            .await
+            .expect("commit failure is a normal tool failure");
+        assert!(
+            !first.success,
+            "injected commit failure must fail the apply"
+        );
+
+        let (old_status, old_receipt) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(
+            old_status, "error",
+            "the failed attempt must persist an ERROR block"
+        );
+        let old_receipt = old_receipt.expect("the failed attempt must keep a PREPARED receipt");
+        assert!(!old_receipt.committed);
+        assert_eq!(old_receipt.message_id, old_ctx.message_id);
+        assert_eq!(old_receipt.block_id, old_ctx.block_id);
+        let operation_id = old_receipt.operation_id.clone();
+
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch("DROP TRIGGER fail_cross_block_commit;")
+                .expect("drop cross-block commit failure trigger");
+        }
+
+        let retry_call_id = "ink-call-cross-block-prepared-retry";
+        let mut retry_call = apply_call(
+            &manifest.document_id,
+            &manifest.revision,
+            client_operation_id,
+            ops,
+        );
+        retry_call.id = retry_call_id.to_owned();
+        let retry_block_id = "ink-cross-block-prepared-retry-block";
+        let retry_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            retry_block_id,
+            retry_call_id,
+        );
+        assert_ne!(retry_ctx.message_id, old_ctx.message_id);
+
+        let retry = InkToolExecutor::new()
+            .execute(&retry_call, &retry_ctx)
+            .await
+            .expect("retry result");
+        assert!(
+            retry.success,
+            "retry after a failed commit must succeed: {:?}",
+            retry.output
+        );
+        assert_eq!(retry.output["committed"], true);
+        assert_eq!(
+            retry.output["undo_available"], true,
+            "the retry block must own a usable receipt: {:?}",
+            retry.output
+        );
+        let committed_revision = retry.output["revision"]
+            .as_str()
+            .expect("retry revision")
+            .to_owned();
+
+        let (retry_status, retry_receipt) =
+            chat_block_state(&chat_db, retry_block_id).expect("retry Chat block");
+        assert_eq!(
+            retry_status, "success",
+            "the retrying call must persist a SUCCESS block"
+        );
+        let retry_receipt =
+            retry_receipt.expect("the retry block must persist its own committed receipt");
+        assert!(retry_receipt.committed);
+        assert_eq!(retry_receipt.message_id, retry_ctx.message_id);
+        assert_eq!(retry_receipt.block_id, retry_block_id);
+        assert_eq!(retry_receipt.tool_call_id, retry_call_id);
+        assert_eq!(
+            retry_receipt.result_revision.as_deref(),
+            Some(committed_revision.as_str())
+        );
+        assert_eq!(retry_receipt.operation_id, operation_id);
+
+        let (old_status_after, old_receipt_after) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(
+            old_status_after, "error",
+            "the retry must not rewrite the old ERROR block"
+        );
+        assert!(
+            old_receipt_after.is_none(),
+            "the retry must move the receipt off the old ERROR block"
+        );
+
+        let authorities = cross_block_authorities(&chat_db, &old_ctx.session_id, &operation_id);
+        assert_eq!(
+            authorities.len(),
+            1,
+            "exactly one Chat receipt may own this session/operation"
+        );
+        assert_eq!(
+            authorities[0].0, retry_block_id,
+            "the retry block must own the sole authority"
+        );
+        assert_eq!(authorities[0].1.message_id, retry_ctx.message_id);
+
+        let committed = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after retry");
+        assert_ne!(committed.revision, manifest.revision);
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let chunk_ids = committed
+            .chunks
+            .iter()
+            .map(|chunk| chunk.chunk_id.clone())
+            .collect::<Vec<_>>();
+        let committed_chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &chunk_ids,
+        )
+        .expect("reload chunks after retry");
+        assert_eq!(
+            committed_chunks
+                .iter()
+                .map(|chunk| chunk.objects.len())
+                .sum::<usize>(),
+            chunk.objects.len() + 1,
+            "the cross-block retry must commit the AI object exactly once"
+        );
+        drop(conn);
+
+        let undo = crate::ink_undo::undo_ink_operation(
+            db.as_ref(),
+            chat_db.as_ref(),
+            &retry_ctx.session_id,
+            &retry_ctx.message_id,
+            retry_block_id,
+            &committed_revision,
+            "board-cross-block-prepared-undo",
+        );
+        assert!(
+            undo.is_ok(),
+            "the committed cross-block receipt must support a real undo: {:?}",
+            undo.err()
+        );
+
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let after = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &[chunk.chunk_id.clone()],
+        )
+        .expect("reload original chunk after undo");
+        assert_eq!(
+            after,
+            vec![chunk],
+            "undo must restore the original chunk, including its human-authored objects"
+        );
+        let manifest_after = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after undo");
+        assert_eq!(
+            manifest_after.chunks.len(),
+            1,
+            "undo must remove the applied board chunk"
+        );
+        drop(conn);
+
+        let (old_status_final, old_receipt_final) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(
+            old_status_final, "error",
+            "the old ERROR block must keep its original status after undo"
+        );
+        assert!(
+            old_receipt_final.is_none(),
+            "the old ERROR block must not regain a receipt after undo"
+        );
+    }
+
+    /// Real ChatDB + VFS regression: when the board VFS commit succeeded but
+    /// the committed Chat receipt UPDATE failed, a retry from a new
+    /// message/block/call must promote the PREPARED receipt onto the retry
+    /// block without a second VFS revision, remove the old receipt, and support
+    /// undo through the new block only.
+    #[tokio::test]
+    async fn board_cross_block_prepared_promotes_committed_receipt_after_chat_failure() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let old_ctx = context(db.clone(), "ink-board-cross-block-promote-old");
+        let chat_db = old_ctx.chat_v2_db.as_ref().expect("Chat storage").clone();
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+        let client_operation_id = "board-cross-block-prepared-promote";
+
+        {
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute_batch(
+                "CREATE TRIGGER fail_cross_block_committed_receipt BEFORE UPDATE OF ink_undo_json ON chat_v2_blocks WHEN NEW.ink_undo_json LIKE '%\"committed\":true%' BEGIN SELECT RAISE(ABORT, 'injected cross-block committed receipt failure'); END;",
+            )
+            .expect("install cross-block committed receipt failure trigger");
+        }
+
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    client_operation_id,
+                    ops.clone(),
+                ),
+                &old_ctx,
+            )
+            .await
+            .expect("receipt persistence failure does not hide the VFS commit");
+        assert!(
+            first.success,
+            "the VFS commit must remain successful when the committed receipt write fails: {:?}",
+            first.output
+        );
+        assert_eq!(first.output["committed"], true);
+        assert_eq!(first.output["receipt_status"], "unavailable");
+        let committed_revision = first.output["revision"]
+            .as_str()
+            .expect("committed revision")
+            .to_owned();
+
+        let (old_status, old_receipt) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(
+            old_status, "success",
+            "the VFS commit succeeded, so the original call block is SUCCESS"
+        );
+        let old_prepared = old_receipt.expect("the failed committed write must leave a receipt");
+        assert!(
+            !old_prepared.committed,
+            "the failed committed write must leave the PREPARED receipt behind"
+        );
+        assert_eq!(old_prepared.block_id, old_ctx.block_id);
+        let operation_id = old_prepared.operation_id.clone();
+
+        {
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute_batch("DROP TRIGGER fail_cross_block_committed_receipt;")
+                .expect("drop cross-block committed receipt failure trigger");
+        }
+
+        let retry_call_id = "ink-call-cross-block-prepared-promote";
+        let mut retry_call = apply_call(
+            &manifest.document_id,
+            &manifest.revision,
+            client_operation_id,
+            ops,
+        );
+        retry_call.id = retry_call_id.to_owned();
+        let retry_block_id = "ink-cross-block-prepared-promote-block";
+        let retry_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            retry_block_id,
+            retry_call_id,
+        );
+        assert_ne!(retry_ctx.message_id, old_ctx.message_id);
+
+        let retry = InkToolExecutor::new()
+            .execute(&retry_call, &retry_ctx)
+            .await
+            .expect("retry result");
+        assert!(
+            retry.success,
+            "retry must promote the recovered committed receipt: {:?}",
+            retry.output
+        );
+        assert_eq!(
+            retry.output["revision"].as_str(),
+            Some(committed_revision.as_str()),
+            "promotion must not perform a second VFS mutation"
+        );
+        assert_eq!(retry.output["committed"], true);
+        assert_eq!(
+            retry.output["undo_available"], true,
+            "the promoted retry block must own a usable receipt: {:?}",
+            retry.output
+        );
+
+        let (retry_status, retry_receipt) =
+            chat_block_state(&chat_db, retry_block_id).expect("retry Chat block");
+        assert_eq!(retry_status, "success");
+        let retry_receipt =
+            retry_receipt.expect("the retry block must own the promoted committed receipt");
+        assert!(retry_receipt.committed);
+        assert_eq!(retry_receipt.message_id, retry_ctx.message_id);
+        assert_eq!(retry_receipt.block_id, retry_block_id);
+        assert_eq!(retry_receipt.tool_call_id, retry_call_id);
+        assert_eq!(
+            retry_receipt.result_revision.as_deref(),
+            Some(committed_revision.as_str())
+        );
+
+        let (old_status_after, old_receipt_after) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(
+            old_status_after, "success",
+            "promotion must leave the original successful call block's status untouched"
+        );
+        assert!(
+            old_receipt_after.is_none(),
+            "promotion must clear the old receipt from the previous block"
+        );
+
+        let authorities = cross_block_authorities(&chat_db, &old_ctx.session_id, &operation_id);
+        assert_eq!(
+            authorities.len(),
+            1,
+            "exactly one Chat receipt may own this session/operation"
+        );
+        assert_eq!(
+            authorities[0].0, retry_block_id,
+            "the promoted retry block must own the sole authority"
+        );
+
+        let undo = crate::ink_undo::undo_ink_operation(
+            db.as_ref(),
+            chat_db.as_ref(),
+            &retry_ctx.session_id,
+            &retry_ctx.message_id,
+            retry_block_id,
+            &committed_revision,
+            "board-cross-block-prepared-promote-undo",
+        );
+        assert!(
+            undo.is_ok(),
+            "undo through the promoted retry block must succeed: {:?}",
+            undo.err()
+        );
+        assert_ne!(
+            undo.as_ref().expect("undo result").revision,
+            committed_revision
+        );
+
+        let conn = db.get_conn_safe().expect("VFS connection");
+        let after = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &[chunk.chunk_id.clone()],
+        )
+        .expect("reload original chunk after promoted undo");
+        assert_eq!(
+            after,
+            vec![chunk],
+            "undo must restore the original chunk after receipt promotion"
+        );
+        drop(conn);
+
+        let (old_status_final, old_receipt_final) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(old_status_final, "success");
+        assert!(
+            old_receipt_final.is_none(),
+            "the old receipt must stay cleared after promoted undo"
+        );
+    }
+
+    /// The cross-block migration clears the source receipt and writes the
+    /// target receipt in one transaction. If the target INSERT fails, the old
+    /// receipt must be restored and no VFS revision may be created.
+    #[tokio::test]
+    async fn cross_block_prepared_migration_rolls_back_when_target_insert_fails() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let old_ctx = context(db.clone(), "ink-cross-block-rollback-old");
+        let chat_db = old_ctx.chat_v2_db.as_ref().expect("Chat storage").clone();
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+        let client_operation_id = "cross-block-rollback";
+
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_rollback_vfs BEFORE UPDATE ON files WHEN OLD.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected rollback VFS failure'); END;",
+                manifest.document_id
+            ))
+            .expect("install rollback VFS failure trigger");
+        }
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    client_operation_id,
+                    ops.clone(),
+                ),
+                &old_ctx,
+            )
+            .await
+            .expect("commit failure is a normal tool failure");
+        assert!(!first.success);
+        let (_, old_receipt) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        let old_receipt = old_receipt.expect("failed attempt must keep the PREPARED receipt");
+        assert!(!old_receipt.committed);
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch("DROP TRIGGER fail_rollback_vfs;")
+                .expect("drop rollback VFS failure trigger");
+        }
+
+        let retry_block_id = "ink-cross-block-rollback-target";
+        {
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_rollback_target BEFORE INSERT ON chat_v2_blocks WHEN NEW.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected target insert failure'); END;",
+                retry_block_id
+            ))
+            .expect("install target insert failure trigger");
+        }
+        let retry_call_id = "ink-call-cross-block-rollback";
+        let mut retry_call = apply_call(
+            &manifest.document_id,
+            &manifest.revision,
+            client_operation_id,
+            ops,
+        );
+        retry_call.id = retry_call_id.to_owned();
+        let retry_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            retry_block_id,
+            retry_call_id,
+        );
+        let retry = InkToolExecutor::new()
+            .execute(&retry_call, &retry_ctx)
+            .await
+            .expect("target insert failure is a normal tool failure");
+        assert!(
+            !retry.success,
+            "the failed migration must not claim success"
+        );
+        assert_eq!(retry.output["code"], "RECEIPT_STORAGE_FAILED");
+
+        let (old_status_after, old_receipt_after) =
+            chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        assert_eq!(old_status_after, "error");
+        assert_eq!(
+            old_receipt_after.as_ref(),
+            Some(&old_receipt),
+            "the failed target INSERT must roll back the cleared source receipt"
+        );
+        assert!(
+            match chat_block_state(&chat_db, retry_block_id) {
+                None => true,
+                Some((_, receipt)) => receipt.is_none(),
+            },
+            "the failed target INSERT must leave no target receipt"
+        );
+        let unchanged = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after rolled-back migration");
+        assert_eq!(
+            unchanged, manifest,
+            "a failed receipt migration must not reach the VFS"
+        );
+
+        {
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute_batch("DROP TRIGGER fail_rollback_target;")
+                .expect("drop target insert failure trigger");
+        }
+        let recovered = InkToolExecutor::new()
+            .execute(&retry_call, &retry_ctx)
+            .await
+            .expect("retry after rollback");
+        assert!(
+            recovered.success,
+            "the rolled-back migration must remain retryable: {:?}",
+            recovered.output
+        );
+        let (_, recovered_receipt) =
+            chat_block_state(&chat_db, retry_block_id).expect("retry Chat block");
+        assert!(
+            recovered_receipt.is_some_and(|receipt| receipt.committed),
+            "the retried migration must persist its committed receipt"
+        );
+    }
+
+    /// A stale expected-old receipt must not migrate a second authority after
+    /// another retry already moved the operation.
+    #[tokio::test]
+    async fn cross_block_prepared_stale_expected_old_is_rejected_without_second_authority() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let old_ctx = context(db.clone(), "ink-cross-block-stale-old");
+        let chat_db = old_ctx.chat_v2_db.as_ref().expect("Chat storage").clone();
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+        let client_operation_id = "cross-block-stale";
+
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_stale_vfs BEFORE UPDATE ON files WHEN OLD.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected stale VFS failure'); END;",
+                manifest.document_id
+            ))
+            .expect("install stale VFS failure trigger");
+        }
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    client_operation_id,
+                    ops.clone(),
+                ),
+                &old_ctx,
+            )
+            .await
+            .expect("commit failure is a normal tool failure");
+        assert!(!first.success);
+        let (_, stale_old) = chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        let stale_old = stale_old.expect("failed attempt must keep the PREPARED receipt");
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch("DROP TRIGGER fail_stale_vfs;")
+                .expect("drop stale VFS failure trigger");
+        }
+
+        let retry_block_id = "ink-cross-block-stale-retry";
+        let retry_call_id = "ink-call-cross-block-stale-retry";
+        let mut retry_call = apply_call(
+            &manifest.document_id,
+            &manifest.revision,
+            client_operation_id,
+            ops,
+        );
+        retry_call.id = retry_call_id.to_owned();
+        let retry_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            retry_block_id,
+            retry_call_id,
+        );
+        let retry = InkToolExecutor::new()
+            .execute(&retry_call, &retry_ctx)
+            .await
+            .expect("retry result");
+        assert!(retry.success, "retry failed: {:?}", retry.output);
+        let committed_revision = retry.output["revision"]
+            .as_str()
+            .expect("retry revision")
+            .to_owned();
+
+        let mut stale_next = stale_old.clone();
+        stale_next.message_id = "ink-cross-block-stale-message".to_owned();
+        stale_next.block_id = "ink-cross-block-stale-target".to_owned();
+        stale_next.tool_call_id = "ink-call-cross-block-stale-target".to_owned();
+        let stale =
+            super::migrate_undo_receipt(&chat_db, &stale_old, &stale_next, &retry_call.arguments);
+        assert!(
+            stale.is_err(),
+            "a stale expected-old receipt must fail closed after another migration won"
+        );
+
+        let authorities =
+            cross_block_authorities(&chat_db, &old_ctx.session_id, &stale_old.operation_id);
+        assert_eq!(
+            authorities.len(),
+            1,
+            "a stale migration attempt must not create a second authority"
+        );
+        assert_eq!(
+            authorities[0].0, retry_block_id,
+            "the successful retry block must keep the sole authority"
+        );
+        let after = ink_commands::get(
+            &db,
+            ink_commands::InkGetRequest {
+                document_id: manifest.document_id.clone(),
+            },
+        )
+        .expect("reload board after stale migration attempt");
+        assert_eq!(
+            after.revision, committed_revision,
+            "a stale migration attempt must not mutate the VFS"
+        );
+    }
+
+    /// Two callers that both observed no existing receipt must not be able to
+    /// save two fresh PREPARED authorities for the same session/operation. The
+    /// first save wins; the second must fail closed and leave the sole
+    /// authority unchanged.
+    #[tokio::test]
+    async fn cross_block_prepared_fresh_saves_keep_single_authority() {
+        let (_temp, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let (manifest, _chunk) = create_board_with_chunk(&db);
+        let surface_page_id = board_surface_page_id(&manifest);
+        let render_id = board_render_artifact(&db, &manifest, &surface_page_id);
+        let old_ctx = context(db.clone(), "ink-cross-block-fresh-old");
+        let chat_db = old_ctx.chat_v2_db.as_ref().expect("Chat storage").clone();
+        let ops = board_add_text_ops(&surface_page_id, &render_id);
+        let client_operation_id = "cross-block-fresh";
+
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_fresh_vfs BEFORE UPDATE ON files WHEN OLD.id = '{}' BEGIN SELECT RAISE(ABORT, 'injected fresh VFS failure'); END;",
+                manifest.document_id
+            ))
+            .expect("install fresh VFS failure trigger");
+        }
+        let first = InkToolExecutor::new()
+            .execute(
+                &apply_call(
+                    &manifest.document_id,
+                    &manifest.revision,
+                    client_operation_id,
+                    ops.clone(),
+                ),
+                &old_ctx,
+            )
+            .await
+            .expect("commit failure is a normal tool failure");
+        assert!(!first.success);
+        let (_, prepared) = chat_block_state(&chat_db, &old_ctx.block_id).expect("old Chat block");
+        let prepared = prepared.expect("failed attempt must keep the PREPARED receipt");
+        assert!(!prepared.committed);
+        {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            conn.execute_batch("DROP TRIGGER fail_fresh_vfs;")
+                .expect("drop fresh VFS failure trigger");
+        }
+
+        // Simulate both callers having loaded `None` before either save ran.
+        {
+            let conn = chat_db.get_conn_safe().expect("Chat connection");
+            conn.execute(
+                "UPDATE chat_v2_blocks SET ink_undo_json=NULL WHERE id=?1",
+                [&old_ctx.block_id],
+            )
+            .expect("clear the fixture receipt to simulate a fresh load");
+        }
+        let retry_call = apply_call(
+            &manifest.document_id,
+            &manifest.revision,
+            client_operation_id,
+            ops,
+        );
+
+        let first_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            "ink-cross-block-fresh-a",
+            "ink-call-cross-block-fresh-a",
+        );
+        let second_ctx = cross_block_context(
+            chat_db.clone(),
+            db.clone(),
+            &old_ctx.session_id,
+            "ink-cross-block-fresh-b",
+            "ink-call-cross-block-fresh-b",
+        );
+        let mut first_receipt = prepared.clone();
+        first_receipt.message_id = first_ctx.message_id.clone();
+        first_receipt.block_id = first_ctx.block_id.clone();
+        first_receipt.tool_call_id = "ink-call-cross-block-fresh-a".to_owned();
+        let mut second_receipt = prepared;
+        second_receipt.message_id = second_ctx.message_id.clone();
+        second_receipt.block_id = second_ctx.block_id.clone();
+        second_receipt.tool_call_id = "ink-call-cross-block-fresh-b".to_owned();
+
+        super::save_undo_receipt(&chat_db, &first_receipt, &retry_call.arguments)
+            .expect("the first fresh save should own the operation");
+        let second = super::save_undo_receipt(&chat_db, &second_receipt, &retry_call.arguments);
+        assert!(
+            second.is_err(),
+            "a second fresh save for the same session/operation must fail closed"
+        );
+
+        let authorities =
+            cross_block_authorities(&chat_db, &old_ctx.session_id, &first_receipt.operation_id);
+        assert_eq!(
+            authorities.len(),
+            1,
+            "two fresh saves must not create two authorities"
+        );
+        assert_eq!(
+            authorities[0].0, first_ctx.block_id,
+            "the first fresh save must keep the sole authority"
+        );
     }
 }

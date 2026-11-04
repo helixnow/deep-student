@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="notebook-cover" x1="30" x2="102" y1="18" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0"/>
+    <stop offset="1" stop-color="#1D3F6E"/>
+  </linearGradient>
+  <rect x="24" y="14" width="90" height="122" rx="12" fill="url(#notebook-cover)"/>
+  <rect x="39" y="22" width="67" height="106" rx="5" fill="#F8FDFC"/>
+  <path d="M52 46h38M52 60h38M52 74h26" fill="none" stroke="#9BC3CE" stroke-linecap="round" stroke-width="5"/>
+  <path d="M21 34h11M21 56h11M21 78h11M21 100h11M21 122h11" fill="none" stroke="#1D3F6E" stroke-linecap="round" stroke-width="5"/>
+  <linearGradient id="notebook-pencil" x1="83" x2="129" y1="122" y2="68" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F0603C"/>
+    <stop offset="1" stop-color="#F9AC33"/>
+  </linearGradient>
+  <path d="m78 112 41-49a6 6 0 0 1 9-1l8 7a6 6 0 0 1 1 9l-41 49-20 7z" fill="url(#notebook-pencil)"/>
+  <path d="m78 112 18 15-20 7z" fill="#F7DFC0"/>
+  <path d="m77 125 8 7-9 2z" fill="#1D3F6E"/>
+  <path d="m115 68 18 15" fill="none" stroke="#FFFFFF" stroke-opacity=".8" stroke-width="4"/>
+</svg>

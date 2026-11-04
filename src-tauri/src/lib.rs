@@ -41,8 +41,10 @@ pub use dstu_sync::backup_job_manager;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
-mod ink_bridge;
-mod ink_jobs;
+// Public only so the native E2E target can register the real ink commands;
+// the command set, state types, and behavior are unchanged.
+pub mod ink_bridge;
+pub mod ink_jobs;
 mod ink_undo;
 pub use dstu_llm::config_recovery;
 pub mod crash_logger;
@@ -2197,6 +2199,7 @@ pub fn run() {
             crate::staged_upload::staged_upload_begin,
             crate::staged_upload::staged_upload_append,
             crate::staged_upload::staged_upload_from_path,
+            crate::staged_upload::resolve_import_file_info,
             crate::staged_upload::staged_upload_abort,
             crate::commands::copy_file,
             crate::commands::save_text_to_file,
@@ -2614,6 +2617,10 @@ pub fn run() {
             ,crate::vfs::ink_commands::vfs_ink_copy
             ,crate::vfs::ink_commands::vfs_ink_append_page
             ,crate::vfs::ink_commands::vfs_ink_rename
+            ,crate::vfs::ink_commands::vfs_ink_create_board
+            ,crate::vfs::ink_commands::vfs_ink_get_chunks
+            ,crate::vfs::ink_commands::vfs_ink_get_board_overview
+            ,crate::vfs::ink_commands::vfs_ink_save_chunks
             ,crate::ink_undo::vfs_ink_undo_tool_operation
             ,crate::ink_bridge::vfs_ink_render
             ,crate::ink_bridge::vfs_ink_get_render_inputs
@@ -2824,6 +2831,7 @@ pub fn run() {
             ,crate::dstu::handlers::dstu_list
             ,crate::dstu::handlers::dstu_get
             ,crate::dstu::handlers::dstu_create
+            ,crate::dstu::handlers::dstu_reclassify_file
             ,crate::dstu::handlers::dstu_update
             ,crate::dstu::handlers::dstu_delete
             ,crate::dstu::handlers::dstu_restore

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Deep Student Ink E2E",
+  "version": "0.11.0",
+  "identifier": "com.deepstudent.app.ink-e2e",
+  "build": {
+    "devUrl": null,
+    "beforeDevCommand": null,
+    "beforeBuildCommand": null,
+    "frontendDist": "target/ink-e2e-client"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "url": "index.html",
+        "title": "Deep Student Ink E2E",
+        "width": 900,
+        "height": 640,
+        "visible": true,
+        "decorations": false,
+        "resizable": false,
+        "focus": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "ink-e2e",
+          "description": "Isolated native Ink prepare/page/render E2E capability: core events and only the required production job, page, background, render, and staging commands.",
+          "local": true,
+          "webviews": ["main"],
+          "platforms": ["linux", "macOS", "windows"],
+          "permissions": [
+            "core:event:default",
+            "allow-ink-e2e-commands"
+          ]
+        }
+      ]
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": false
+  }
+}

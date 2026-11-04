@@ -1136,6 +1136,14 @@
       "path": "vfs/V20261103__ink_render_artifacts.sql",
       "sha256": "e6ce8747a6ba52882782477b5ec7b440449b4e6b13f93c03ec7818a3ebc7ca2b",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261104,
+      "name": "vfs_writer_guard",
+      "path": "vfs/V20261104__vfs_writer_guard.sql",
+      "sha256": "2fae7c2886ca2b8da4b552757eafe82813d29f8010bf97052807d0f8e3bb6fda",
+      "dangers": []
     }
   ]
 }

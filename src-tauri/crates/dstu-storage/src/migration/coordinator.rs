@@ -1219,6 +1219,12 @@ impl MigrationCoordinator {
         conn.execute("PRAGMA foreign_keys = ON", [])
             .map_err(|e| MigrationError::Database(format!("启用外键约束失败: {}", e)))?;
 
+        // Board writer guard 安装后，迁移/修复连接也属于允许写的生产连接。
+        // 未注册 capability 时，repair 中的 UPDATE files 会被触发器拒绝。
+        crate::sqlite_capability::register_vfs_writer_capability(&conn).map_err(|e| {
+            MigrationError::Database(format!("注册 VFS writer capability 失败: {}", e))
+        })?;
+
         // 🔧 旧数据库兼容处理：检测并创建 baseline
         if let Err(e) = self.ensure_legacy_baseline(&conn, &id) {
             self.log_migration_failure(&id, 0, &e.to_string(), start.elapsed().as_millis() as u64);
@@ -9501,5 +9507,99 @@ mod tests {
             .query_row("SELECT value FROM test_data LIMIT 1", [], |row| row.get(0))
             .unwrap();
         assert_eq!(value, "new-snapshot", "必须从最新快照恢复");
+    }
+
+    /// 新合同（test-only，先立 RED）：guard 库再次执行 `migrate_single(Vfs)`
+    /// 时，迁移连接本身也必须注册 VFS writer capability。
+    ///
+    /// 场景：VFS 已迁移到 head 并安装 guard；随后模拟“列已存在但 V20260204
+    /// 记账丢失”的修复分支。该修复中的 `UPDATE files ...` 是真实 DML；未注册
+    /// capability 的 coordinator 连接会因 guard 的 UDF 缺失而失败（生产修复
+    /// 目前只记录 warn 并继续），表现为迁移报成功但回填未生效。
+    ///
+    /// 本测试在 coordinator 注册 capability 修复落地前必须 RED：
+    /// `processing_status` 会停留在 `pending`。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_guarded_vfs_migrate_single_repair_write_requires_writer_capability() {
+        let (mut coordinator, _temp_dir) = create_test_coordinator();
+
+        // 1. 建到 HEAD（此时还没有 guard）。
+        coordinator
+            .migrate_single(DatabaseId::Vfs)
+            .expect("initial VFS migration must succeed");
+
+        let db_path = coordinator.get_database_path(&DatabaseId::Vfs);
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        // 2. 制造一条 V20260204 可回填的 PDF 行，并模拟该迁移记账丢失，
+        //    迫使下一次 migrate_single 走真实 repair DML。
+        conn.execute(
+            "INSERT INTO files (
+                 id, sha256, file_name, size, created_at, updated_at,
+                 mime_type, processing_status, preview_json
+             ) VALUES (
+                 'file-guard-repair', 'sha-guard-repair', 'guard-repair.pdf', 1,
+                 '2026-11-04T00:00:00Z', '2026-11-04T00:00:00Z',
+                 'application/pdf', 'pending', '{}'
+             )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM refinery_schema_history WHERE version = 20260204",
+            [],
+        )
+        .unwrap();
+
+        // 3. 在“board 发布 savepoint”之外先安装 guard；本测试不接 board repo。
+        crate::sqlite_capability::register_vfs_writer_capability(&conn)
+            .expect("register capability on guard installer");
+        crate::sqlite_capability::enable_vfs_board_writer_guard(&conn)
+            .expect("install board writer guard");
+        assert_eq!(guard_trigger_count(&conn), 9);
+
+        // 4. 走生产入口：coordinator 自己打开的迁移连接。
+        let report = coordinator
+            .migrate_single(DatabaseId::Vfs)
+            .expect("guarded VFS must remain migratable");
+        assert!(report.success);
+
+        // 5. guard 不丢。
+        assert_eq!(guard_trigger_count(&conn), 9);
+        let installed: i64 = conn
+            .query_row(
+                "SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(installed, 1);
+
+        // 6. 修复 DML 必须真正执行。未注册 capability 时 UPDATE files 被 guard
+        //    拒绝并 warn 跳过，processing_status 仍为 pending（RED）。
+        let status: String = conn
+            .query_row(
+                "SELECT processing_status FROM files WHERE id = 'file-guard-repair'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            status, "completed",
+            "coordinator migration connection must register writer capability so the \
+             V20260204 repair backfill is not silently skipped by the board guard"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn guard_trigger_count(conn: &rusqlite::Connection) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'trigger' AND name LIKE 'trg_vfs_writer_guard_%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
     }
 }

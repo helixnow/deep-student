@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::vfs::{
     error::{VfsError, VfsResult},
-    ink::InkRect,
-    repos::{blob_repo::VfsBlobRepo, file_repo::VfsFileRepo},
+    ink::{InkBoardSurface, InkRect, INK_BOARD_SCHEMA_VERSION, INK_BOARD_WORLD_LIMIT},
+    repos::{blob_repo::VfsBlobRepo, file_repo::VfsFileRepo, ink_repo::VfsInkRepo},
     upload_saga::{with_savepoint, UploadSaga},
 };
 
@@ -89,7 +89,7 @@ impl VfsInkArtifactRepo {
                 "PNG dimensions do not match render metadata",
             ));
         }
-        validate_draft(&draft)?;
+        validate_draft_shape(&draft)?;
         if !conn.is_autocommit() {
             return Err(VfsError::InvalidState {
                 message: "Ink artifact storage requires an autocommit VFS connection".to_owned(),
@@ -108,6 +108,8 @@ impl VfsInkArtifactRepo {
             // Reserve SQLite's writer lock before the identity read; otherwise another
             // publisher could insert the same immutable render after this transaction's read.
             conn.execute("UPDATE blobs SET ref_count = ref_count WHERE 0", [])?;
+            let signed_crop_allowed = canonical_board_crop_allowed(conn, blobs_dir, &draft)?;
+            validate_draft(&draft, signed_crop_allowed)?;
             check(conn)?;
             if let Some(existing) = load_artifact_row(conn, &draft.render_id)? {
                 if !same_draft(&existing, &draft) || existing.content_hash != content_hash {
@@ -342,7 +344,7 @@ pub fn validate_png_bytes(bytes: &[u8]) -> VfsResult<(u32, u32)> {
     Ok((width, height))
 }
 
-fn validate_draft(draft: &InkArtifactDraft) -> VfsResult<()> {
+fn validate_draft_shape(draft: &InkArtifactDraft) -> VfsResult<()> {
     if draft.artifact_id != draft.render_id
         || !valid_id(&draft.render_id)
         || !valid_id(&draft.document_id)
@@ -367,18 +369,6 @@ fn validate_draft(draft: &InkArtifactDraft) -> VfsResult<()> {
             "Ink source hash must be lowercase SHA-256 hex",
         ));
     }
-    if draft.crop.is_some_and(|crop| {
-        !crop.x.is_finite()
-            || !crop.y.is_finite()
-            || !crop.width.is_finite()
-            || !crop.height.is_finite()
-            || crop.x < 0.0
-            || crop.y < 0.0
-            || crop.width <= 0.0
-            || crop.height <= 0.0
-    }) {
-        return Err(invalid_artifact("Ink crop is invalid"));
-    }
     for value in [
         draft.source_annotation_revision.as_deref(),
         draft.conversion_revision.as_deref(),
@@ -388,6 +378,82 @@ fn validate_draft(draft: &InkArtifactDraft) -> VfsResult<()> {
     {
         if !valid_id(value) {
             return Err(invalid_artifact("Ink provenance revision is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn crop_is_signed(crop: InkRect) -> bool {
+    crop.x < 0.0 || crop.y < 0.0
+}
+
+/// Classify the draft's canonical document. Board documents (schema v2) must
+/// prove revision/surface page and carry an explicit world-bounded crop
+/// regardless of crop sign. Paged and legacy no-document artifacts keep the
+/// nonnegative-crop contract, so a missing document is not a blanket
+/// rejection; a signed crop still requires a board document.
+fn canonical_board_crop_allowed(
+    conn: &Connection,
+    blobs_dir: &Path,
+    draft: &InkArtifactDraft,
+) -> VfsResult<bool> {
+    let signed = draft.crop.is_some_and(crop_is_signed);
+    let manifest = match VfsInkRepo::get_manifest_with_conn(conn, blobs_dir, &draft.document_id) {
+        Ok(manifest) => manifest,
+        Err(VfsError::NotFound { .. }) if !signed => return Ok(false),
+        Err(VfsError::NotFound { .. }) => {
+            return Err(invalid_artifact(
+                "Ink signed crop requires a board document",
+            ))
+        }
+        Err(error) => return Err(error),
+    };
+    if manifest.schema_version != INK_BOARD_SCHEMA_VERSION {
+        if signed {
+            return Err(invalid_artifact(
+                "Ink signed crop is only valid for a board document",
+            ));
+        }
+        return Ok(false);
+    }
+    let surface_page_id = match manifest.surface.as_ref() {
+        Some(InkBoardSurface::Board { page_id, .. }) => page_id,
+        None => {
+            return Err(invalid_artifact(
+                "Ink board artifact requires a canonical board surface",
+            ))
+        }
+    };
+    if manifest.revision != draft.revision || surface_page_id != &draft.page_id {
+        return Err(invalid_artifact(
+            "Ink board artifact does not match the canonical board document",
+        ));
+    }
+    Ok(true)
+}
+
+fn validate_draft(draft: &InkArtifactDraft, canonical_board: bool) -> VfsResult<()> {
+    validate_draft_shape(draft)?;
+    if canonical_board && draft.crop.is_none() {
+        return Err(invalid_artifact(
+            "Ink board artifact requires an explicit crop",
+        ));
+    }
+    if let Some(crop) = draft.crop {
+        let finite_positive = crop.x.is_finite()
+            && crop.y.is_finite()
+            && crop.width.is_finite()
+            && crop.height.is_finite()
+            && crop.width > 0.0
+            && crop.height > 0.0;
+        let v1_origin_ok = canonical_board || (crop.x >= 0.0 && crop.y >= 0.0);
+        let world_range_ok = !canonical_board
+            || (crop.x >= -INK_BOARD_WORLD_LIMIT
+                && crop.y >= -INK_BOARD_WORLD_LIMIT
+                && crop.x + crop.width <= INK_BOARD_WORLD_LIMIT
+                && crop.y + crop.height <= INK_BOARD_WORLD_LIMIT);
+        if !finite_positive || !v1_origin_ok || !world_range_ok {
+            return Err(invalid_artifact("Ink crop is invalid"));
         }
     }
     Ok(())
@@ -443,11 +509,11 @@ mod tests {
     use crate::vfs::{
         database::{setup_migrated_test_db, VfsDatabase},
         error::VfsError,
-        ink::InkRect,
-        repos::blob_repo::VfsBlobRepo,
+        ink::{InkBoardSurface, InkRect, InkRuling, INK_BOARD_WORLD_LIMIT},
+        repos::{blob_repo::VfsBlobRepo, ink_board_repo::VfsInkBoardRepo},
     };
 
-    use super::{InkArtifactDraft, VfsInkArtifactRepo};
+    use super::{validate_draft, InkArtifactDraft, VfsInkArtifactRepo};
 
     // Complete 1x1 RGBA PNG generated locally for this test fixture.
     const PNG_1X1: &[u8] = &[
@@ -483,6 +549,24 @@ mod tests {
             width_px: 1,
             height_px: 1,
         }
+    }
+
+    #[test]
+    fn signed_world_crop_requires_explicit_board_provenance() {
+        let mut artifact = draft("render-board-signed", "revision-1");
+        artifact.crop = Some(InkRect {
+            x: -250.5,
+            y: -9_999_999.0,
+            width: 400.0,
+            height: 500.0,
+        });
+
+        validate_draft(&artifact, true)
+            .expect("verified board provenance allows a signed absolute world crop");
+        assert!(
+            validate_draft(&artifact, false).is_err(),
+            "v1 fixed pages must keep rejecting negative crop origins"
+        );
     }
 
     #[test]
@@ -740,5 +824,122 @@ mod tests {
             })
             .unwrap();
         assert_eq!(rows, 0);
+    }
+
+    #[test]
+    fn board_positive_origin_crop_requires_canonical_board_proof_and_world_limit() {
+        let (_temp_dir, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let board = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Artifact proof board",
+            InkRuling::Blank,
+            "artifact-board-proof-create",
+            None,
+        )
+        .expect("real v2 board");
+        let page_id = match board.surface.as_ref().expect("board surface") {
+            InkBoardSurface::Board { page_id, .. } => page_id.clone(),
+        };
+        let valid_crop = InkRect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        let cases = [
+            (
+                "valid positive-origin board crop",
+                page_id.as_str(),
+                board.revision.as_str(),
+                valid_crop,
+                true,
+            ),
+            (
+                "width beyond world limit",
+                page_id.as_str(),
+                board.revision.as_str(),
+                InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: INK_BOARD_WORLD_LIMIT + 1.0,
+                    height: 100.0,
+                },
+                false,
+            ),
+            (
+                "wrong surface page",
+                "page-wrong",
+                board.revision.as_str(),
+                valid_crop,
+                false,
+            ),
+            (
+                "stale revision",
+                page_id.as_str(),
+                "r_stale_artifact",
+                valid_crop,
+                false,
+            ),
+        ];
+
+        for (index, (label, draft_page_id, revision, crop, should_store)) in
+            cases.into_iter().enumerate()
+        {
+            let render_id = format!("render-board-proof-{index}");
+            let artifacts_before: i64 = conn
+                .query_row("SELECT COUNT(*) FROM ink_render_artifacts", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            let refs_before: i64 = conn
+                .query_row("SELECT COALESCE(SUM(ref_count), 0) FROM blobs", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            let draft = InkArtifactDraft {
+                artifact_id: render_id.clone(),
+                render_id: render_id.clone(),
+                document_id: board.document_id.clone(),
+                page_id: draft_page_id.to_owned(),
+                revision: revision.to_owned(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: Some(crop),
+                width_px: 1,
+                height_px: 1,
+            };
+
+            let result =
+                VfsInkArtifactRepo::store_png_with_conn(&conn, db.blobs_dir(), draft, PNG_1X1);
+            if should_store {
+                let artifact = result.unwrap_or_else(|error| panic!("{label}: {error:?}"));
+                assert_eq!(artifact.page_id, page_id);
+                assert_eq!(artifact.revision, board.revision);
+                assert_eq!(artifact.crop, Some(valid_crop));
+            } else {
+                assert!(
+                    result.is_err(),
+                    "{label}: positive-origin board crop must still prove canonical board provenance"
+                );
+                let artifacts_after: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM ink_render_artifacts", [], |row| {
+                        row.get(0)
+                    })
+                    .unwrap();
+                let refs_after: i64 = conn
+                    .query_row("SELECT COALESCE(SUM(ref_count), 0) FROM blobs", [], |row| {
+                        row.get(0)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    artifacts_after, artifacts_before,
+                    "{label}: no artifact row"
+                );
+                assert_eq!(refs_after, refs_before, "{label}: no blob reference");
+            }
+        }
     }
 }

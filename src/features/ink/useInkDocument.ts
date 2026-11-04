@@ -14,7 +14,7 @@ export interface InkDocumentState {
   pageRef?: InkPageRef;
   page?: InkPage;
   error?: unknown;
-  savePage(page: InkPage): Promise<void>;
+  savePage(page: InkPage, expectedRevision?: string): Promise<void>;
   selectPage(pageId: string): Promise<void>;
   appendPage(width: number, height: number, ruling: InkRuling): Promise<void>;
   rename(title: string): Promise<void>;
@@ -225,9 +225,14 @@ export function useInkDocument(documentId: string, requestedPageId?: string): In
     publishLoaded(loaded);
   }, [documentId, loadRemote, publishLoaded]);
 
-  const savePage = useCallback((page: InkPage): Promise<void> => {
+  const savePage = useCallback((page: InkPage, expectedRevision?: string): Promise<void> => {
     const initial = loadedRef.current;
     if (!initial || page.page_id !== initial.page.page_id) return Promise.resolve();
+    // Optional atomic guard for queued callers (e.g. paste): refuse before touching
+    // refs/state when the loaded base revision no longer matches the click target.
+    if (expectedRevision !== undefined && initial.base_revision !== expectedRevision) {
+      return Promise.reject(new Error('Ink page revision changed before save'));
+    }
     const sequence = ++sequenceRef.current;
     latestSequenceRef.current = sequence;
     const key = { document_id: documentId, page_id: page.page_id };

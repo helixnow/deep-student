@@ -66,6 +66,7 @@ use super::handler_utils::{
     update_mindmap_content_with_occ,
 };
 
+use crate::vfs::file_reclassify::{detect_file_identity, mime_essence, resolve_file_identity};
 use crate::vfs::repos::note_lease_repo::{NoteLeaseAuth, NoteLeaseRepo};
 use crate::vfs::{
     canonical_folder_item_type,
@@ -775,6 +776,65 @@ async fn dstu_create_media_from_staged(
     Ok(Some(file_to_dstu_node(&file)))
 }
 
+/// A3: 既有文件条目的受控重识别结果。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DstuReclassifyFileResult {
+    /// recognized | unknown | missing | corrupt
+    pub status: String,
+    /// 重识别后的节点；文件记录缺失时为空。
+    pub node: Option<DstuNode>,
+}
+
+/// A3: 从既有 blob 受控重识别文件类型。
+///
+/// 由用户在“不支持预览”页显式触发；不扫描全库。保留 ID、内容 hash、文件名、
+/// 目录、收藏和引用，仅回填可靠 MIME/类别。
+#[tauri::command]
+pub async fn dstu_reclassify_file(
+    window: Window,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    id: String,
+) -> Result<DstuReclassifyFileResult, String> {
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+    let outcome = VfsFileRepo::reclassify_existing_file_with_conn(&conn, vfs_db.blobs_dir(), &id)
+        .map_err(|e| {
+        log::error!(
+            "[DSTU::handlers] dstu_reclassify_file: FAILED - id={}, error={}",
+            id,
+            e
+        );
+        e.to_string()
+    })?;
+    drop(conn);
+
+    let node = outcome.file.as_ref().map(file_to_dstu_node);
+    if outcome.status == crate::vfs::file_reclassify::FileReclassifyStatus::Recognized {
+        if let Some(node) = node.as_ref() {
+            emit_watch_event(&window, DstuWatchEvent::updated(&node.path, node.clone()));
+        }
+    }
+
+    log::info!(
+        "[DSTU::handlers] dstu_reclassify_file: id={}, status={:?}",
+        id,
+        outcome.status
+    );
+    Ok(DstuReclassifyFileResult {
+        status: outcome.status.as_str().to_string(),
+        node,
+    })
+}
+
+/// 图片通道预算（与既有实现一致，不提高）。
+const MAX_IMAGE_IMPORT_BYTES: usize = 50 * 1024 * 1024;
+
+/// 纯判定：effective 类别或 MIME 为 image 时，files 通道也必须受 50MiB 约束。
+fn exceeds_image_size_budget(effective_mime: &str, effective_file_type: &str, size: usize) -> bool {
+    (effective_file_type == "image" || mime_essence(Some(effective_mime)).starts_with("image/"))
+        && size > MAX_IMAGE_IMPORT_BYTES
+}
+
 #[tauri::command]
 pub async fn dstu_create(
     path: String,
@@ -1261,10 +1321,9 @@ pub async fn dstu_create(
             // 验证 Base64 数据大小（避免超大字符串导致内存压力）
             // #62: 文件上限 50MB→200MB，与附件上传（attachment_repo）及学习资源导入对齐
             // ★ 2026-06-12（审阅问题 M8）：图片 10MB→50MB，与 attachment_repo::MAX_IMAGE_BYTES 对齐
-            const MAX_IMAGE_SIZE: usize = 50 * 1024 * 1024; // 50MB
             const MAX_FILE_SIZE: usize = 200 * 1024 * 1024; // 200MB
             let max_file_size = if resource_type == "images" {
-                MAX_IMAGE_SIZE
+                MAX_IMAGE_IMPORT_BYTES
             } else {
                 MAX_FILE_SIZE
             };
@@ -1349,7 +1408,7 @@ pub async fn dstu_create(
                 ));
             }
 
-            // 从 metadata 提取 MIME 类型和文件大小
+            // 从 metadata 提取声明 MIME（内容检测可能覆盖，见下）
             let default_mime = if resource_type == "images" {
                 "image/jpeg"
             } else {
@@ -1359,7 +1418,7 @@ pub async fn dstu_create(
                 .get("mimeType")
                 .and_then(|v| v.as_str())
                 .unwrap_or(default_mime);
-            let mime_type = if resource_type == "images" {
+            let declared_mime = if resource_type == "images" {
                 if raw_mime.starts_with("image/") {
                     raw_mime
                 } else {
@@ -1381,31 +1440,67 @@ pub async fn dstu_create(
                 default_mime
             };
 
-            // 根据 MIME 类型推断扩展名
-            let extension = match mime_type {
-                "image/jpeg" => "jpg",
-                "image/png" => "png",
-                "image/gif" => "gif",
-                "image/webp" => "webp",
-                "image/bmp" => "bmp",
-                "image/svg+xml" => "svg",
-                "application/pdf" => "pdf",
-                "text/plain" => "txt",
-                "text/markdown" => "md",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
-                    "pptx"
-                }
-                _ => mime_type.split('/').next_back().unwrap_or("bin"),
+            // A3: 共享 MIME/category 纠正规则处理 ink authority、强/弱检测与
+            // name conflict；handler 不再维护重复的 strong/generic 表。
+            let declared_file_type = if resource_type == "images" {
+                "image"
+            } else {
+                "file"
             };
+            let detected = detect_file_identity(&file_data[..file_data.len().min(64 * 1024)]);
+            let resolved = resolve_file_identity(
+                Some(declared_mime),
+                declared_file_type,
+                &options.name,
+                detected.as_ref(),
+            );
+            let effective_mime = resolved.mime_type.as_str();
+            let effective_file_type = resolved.file_type.as_str();
 
-            // 存储文件到 Blob
+            // files 通道被强内容纠正为 image / image MIME 时，仍受既有图片
+            // 50MiB 护栏约束，不得借用 200MiB 的普通文件上限。
+            if exceeds_image_size_budget(effective_mime, effective_file_type, file_data.len()) {
+                log::error!(
+                    "[DSTU::handlers] dstu_create: FAILED - detected image too large: {} bytes",
+                    file_data.len()
+                );
+                return Err(format!(
+                    "File size exceeds limit: {} bytes (max: {} bytes)",
+                    file_data.len(),
+                    MAX_IMAGE_IMPORT_BYTES
+                ));
+            }
+
+            // 扩展名优先使用解析结果，否则按最终 MIME 推断。
+            let extension = resolved.extension.clone().unwrap_or_else(|| {
+                match effective_mime {
+                    "image/jpeg" => "jpg",
+                    "image/png" => "png",
+                    "image/gif" => "gif",
+                    "image/webp" => "webp",
+                    "image/bmp" => "bmp",
+                    "image/svg+xml" => "svg",
+                    "application/pdf" => "pdf",
+                    "text/plain" => "txt",
+                    "text/markdown" => "md",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+                        "docx"
+                    }
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+                        "pptx"
+                    }
+                    _ => effective_mime.split('/').next_back().unwrap_or("bin"),
+                }
+                .to_string()
+            });
+
+            // 存储文件到 Blob：使用 effective MIME/ext，保证 blob 与文件记录同源。
             let blob = match VfsBlobRepo::store_blob(
                 &vfs_db,
                 &file_data,
-                Some(mime_type),
-                Some(extension),
+                Some(effective_mime),
+                Some(&extension),
             ) {
                 Ok(b) => {
                     log::info!("[DSTU::handlers] dstu_create: blob stored, hash={}", b.hash);
@@ -1420,47 +1515,62 @@ pub async fn dstu_create(
                 }
             };
 
-            // 创建文件记录
-            let file_type = if resource_type == "images" {
-                "image"
-            } else {
-                "file"
-            };
+            // 创建文件记录：data + sha/size/blob 校验后，按内容类别落 folder item。
             let file_name = if options.name.trim().is_empty() {
                 format!("unnamed.{}", extension)
             } else {
                 options.name.clone()
             };
 
-            let file = match VfsFileRepo::create_file_in_folder(
+            let outcome = match VfsFileRepo::create_file_in_folder_from_verified_bytes(
                 &vfs_db,
                 &blob.hash, // sha256: 使用 blob 的 hash
                 &file_name,
                 file_data.len() as i64,
-                file_type,
-                Some(mime_type),
+                declared_file_type,
+                Some(declared_mime),
                 Some(&blob.hash), // blob_hash
                 None,             // original_path
                 folder_id.as_deref(),
+                &file_data,
             ) {
-                Ok(f) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_create: SUCCESS - type={}, id={}, name='{}'",
-                        file_type,
-                        f.id,
-                        f.file_name
-                    );
-                    f
-                }
+                Ok(outcome) => outcome,
                 Err(e) => {
+                    // 记录未落库，补偿本次 store_blob 的引用；不删除物理文件。
+                    if let Err(compensate) = VfsBlobRepo::decrement_ref(&vfs_db, &blob.hash) {
+                        log::warn!(
+                            "[DSTU::handlers] dstu_create: blob ref compensation failed for {}: {}",
+                            blob.hash,
+                            compensate
+                        );
+                    }
                     log::error!(
                         "[DSTU::handlers] dstu_create: FAILED - type={}, error={}",
-                        file_type,
+                        effective_file_type,
                         e
                     );
                     return Err(e.to_string());
                 }
             };
+            if !outcome.created {
+                // 命中去重旧条目：本次 store_blob 的引用必须归还，避免 ref 递增。
+                if let Err(compensate) = VfsBlobRepo::decrement_ref(&vfs_db, &blob.hash) {
+                    log::warn!(
+                        "[DSTU::handlers] dstu_create: blob ref compensation failed for {}: {}",
+                        blob.hash,
+                        compensate
+                    );
+                }
+            }
+            let file = outcome.file;
+
+            log::info!(
+                "[DSTU::handlers] dstu_create: SUCCESS - type={}, id={}, name='{}', created={}",
+                effective_file_type,
+                file.id,
+                file.file_name,
+                outcome.created
+            );
 
             file_to_dstu_node(&file)
         }
@@ -6925,5 +7035,24 @@ mod tests {
             None,
         )
         .is_err());
+    }
+
+    #[test]
+    fn image_size_budget_applies_to_effective_image_mime_without_large_fixture() {
+        assert!(exceeds_image_size_budget(
+            "image/svg+xml",
+            "file",
+            MAX_IMAGE_IMPORT_BYTES + 1
+        ));
+        assert!(!exceeds_image_size_budget(
+            "image/svg+xml",
+            "image",
+            MAX_IMAGE_IMPORT_BYTES
+        ));
+        assert!(!exceeds_image_size_budget(
+            "text/plain",
+            "document",
+            MAX_IMAGE_IMPORT_BYTES + 1
+        ));
     }
 }

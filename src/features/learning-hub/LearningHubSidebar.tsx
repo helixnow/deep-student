@@ -1090,7 +1090,7 @@ export function LearningHubSidebar({
       onNewTranslation={handleNewTranslation}
       onNewEssay={handleNewEssay}
       onNewMindMap={handleNewMindMap}
-      onNewInk={() => { void handleNewInk(); }}
+      onNewInk={(mode) => { void handleNewInk(undefined, mode); }}
       createDisabled={!canCreateInCurrentView}
       favoriteCount={favoriteCount}
       fillContainer={Boolean(quickAccessPortalTarget)}
@@ -1149,7 +1149,7 @@ export function LearningHubSidebar({
             handleNewTranslation={handleNewTranslation}
             handleNewEssay={handleNewEssay}
             handleNewMindMap={handleNewMindMap}
-            handleNewInk={() => handleNewInk()}
+            handleNewInk={handleNewInk}
             isTrashView={isTrashView}
             handleEmptyTrash={handleEmptyTrash}
             items={items}
@@ -1222,7 +1222,7 @@ export function LearningHubSidebar({
             handleNewTranslation={handleNewTranslation}
             handleNewEssay={handleNewEssay}
             handleNewMindMap={handleNewMindMap}
-            handleNewInk={() => handleNewInk()}
+            handleNewInk={handleNewInk}
             toolbarPortalTarget={toolbarPortalTarget}
             toolbarPortalMode={toolbarPortalMode}
           />

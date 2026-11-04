@@ -1,12 +1,25 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { InkManifest, InkPage, InkRect, InkRuling } from './types';
+import type {
+  InkBoardChunk,
+  InkBoardManifest,
+  InkManifest,
+  InkPage,
+  InkRect,
+  InkRuling,
+} from './types';
+
+export interface InkBoardRenderSpec {
+  crop: InkRect;
+  chunk_ids?: string[];
+}
 
 export interface InkRenderSpec {
   document_id: string;
   expected_revision: string;
   page_id: string;
   crop?: InkRect;
+  board?: InkBoardRenderSpec;
   long_edge?: number;
 }
 
@@ -17,12 +30,21 @@ export interface InkPrepareSourceRequest {
   operation_id: string;
 }
 
+export interface InkBoardExportSpec {
+  region: InkRect;
+  page_width: number;
+  page_height: number;
+  paginate?: boolean;
+}
+
 export interface InkExportDocumentRequest {
   document_id: string;
   expected_revision: string;
   page_ids: string[];
   format: InkExportFormat;
   operation_id: string;
+  /** Optional finite board region; paged exports leave this absent. */
+  board?: InkBoardExportSpec;
 }
 
 export interface InkExportArtifact {
@@ -228,6 +250,80 @@ export async function renderInkSnapshot(
     throw asInkApiError(error);
   }
 }
+
+/** Board-only render entry: the caller supplies an explicit signed world crop. */
+export function renderInkBoardSnapshot(
+  request: InkRenderSpec,
+  identity: { session_id?: string; tool_call_id?: string } = {},
+): Promise<InkArtifact> {
+  if (!request.board || !Number.isFinite(request.board.crop?.width) || request.board.crop.width <= 0
+    || !Number.isFinite(request.board.crop?.height) || request.board.crop.height <= 0) {
+    return Promise.reject(new InkApiError({
+      code: 'INVALID_ARGUMENT',
+      message: 'A board render requires a finite positive crop.',
+      retryable: false,
+    }));
+  }
+  return renderInkSnapshot(request, identity);
+}
+
+/** v2 board create; blank source only. */
+export interface InkCreateBoardRequest {
+  title: string;
+  ruling: InkRuling;
+  operation_id: string;
+  folder_id?: string | null;
+}
+
+/** Per-request chunk read. Callers batch by the 16 MiB request budget. */
+export interface InkGetChunksRequest {
+  document_id: string;
+  expected_revision?: string;
+  chunk_ids: string[];
+}
+
+/** Atomic chunk delta publish under CAS. */
+export interface InkSaveChunksRequest {
+  document_id: string;
+  expected_revision: string;
+  operation_id: string;
+  changed: InkBoardChunk[];
+  deleted: string[];
+}
+
+export const createInkBoard = (request: InkCreateBoardRequest): Promise<InkBoardManifest> =>
+  invokeInk('vfs_ink_create_board', request);
+
+export const getInkChunks = (request: InkGetChunksRequest): Promise<InkBoardChunk[]> =>
+  invokeInk('vfs_ink_get_chunks', request);
+
+export const saveInkChunks = (request: InkSaveChunksRequest): Promise<InkBoardManifest> =>
+  invokeInk('vfs_ink_save_chunks', request);
+
+/** Bounded board z-order summary. `max_z_index` is a decimal string or null. */
+export interface InkBoardOverviewRequest {
+  document_id: string;
+  expected_revision?: string;
+}
+
+export interface InkBoardOverview {
+  document_id: string;
+  revision: string;
+  page_id: string;
+  max_z_index: string | null;
+}
+
+export const getInkBoardOverview = (request: InkBoardOverviewRequest): Promise<InkBoardOverview> =>
+  invokeInk('vfs_ink_get_board_overview', request);
+
+/** Board sibling API; the v1 `inkApi` surface stays unchanged. */
+export const inkBoardApi = {
+  create: createInkBoard,
+  get: getInk,
+  getChunks: getInkChunks,
+  saveChunks: saveInkChunks,
+  overview: getInkBoardOverview,
+};
 
 export const inkApi = {
   create: createInk,

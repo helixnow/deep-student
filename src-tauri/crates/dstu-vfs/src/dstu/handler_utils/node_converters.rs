@@ -203,6 +203,11 @@ fn get_textbook_preview_type(file_name: &str) -> PreviewType {
     PreviewType::from_filename(file_name)
 }
 
+/// A3：无扩展名时回退到可靠 MIME，扩展名可靠时仍以文件名为准。
+fn get_file_preview_type(file: &VfsFile) -> PreviewType {
+    PreviewType::from_filename_with_mime(&file.file_name, file.mime_type.as_deref())
+}
+
 /// 将 VfsTextbook 转换为 DstuNode
 pub fn textbook_to_dstu_node(textbook: &VfsTextbook) -> DstuNode {
     let path = build_simple_resource_path(&textbook.id);
@@ -430,7 +435,7 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     };
 
     // ★ T09: 使用 PreviewType 枚举
-    let preview_type = get_textbook_preview_type(&file.file_name);
+    let preview_type = get_file_preview_type(file);
 
     // ★ 移动端修复：file_name 不透明 ID 兼容处理
     let display_name = sanitize_textbook_display_name(&file.file_name, &file.created_at);
@@ -746,5 +751,78 @@ mod tests {
             "should have no extension, got: {}",
             result
         );
+    }
+
+    // ------------------------------------------------------------------------
+    // A3: 无扩展名条目必须能从可靠 MIME 派生 previewType，且不改用户名称
+    // ------------------------------------------------------------------------
+
+    fn vfs_file_with_mime(file_name: &str, file_type: &str, mime_type: &str) -> VfsFile {
+        VfsFile {
+            id: "file_a3_extensionless".to_string(),
+            resource_id: Some("res_a3_extensionless".to_string()),
+            blob_hash: None,
+            sha256: "sha_a3_extensionless".to_string(),
+            file_name: file_name.to_string(),
+            original_path: None,
+            size: 4096,
+            page_count: None,
+            file_type: file_type.to_string(),
+            mime_type: Some(mime_type.to_string()),
+            tags: vec![],
+            is_favorite: false,
+            last_opened_at: None,
+            last_page: None,
+            bookmarks: vec![],
+            cover_key: None,
+            extracted_text: None,
+            preview_json: None,
+            ocr_pages_json: None,
+            description: None,
+            status: "active".to_string(),
+            created_at: "2026-11-03T00:00:00.000Z".to_string(),
+            updated_at: "2026-11-03T00:00:00.000Z".to_string(),
+            deleted_at: None,
+            processing_status: None,
+            processing_progress: None,
+            processing_error: None,
+            processing_started_at: None,
+            processing_completed_at: None,
+            compressed_blob_hash: None,
+        }
+    }
+
+    #[test]
+    fn test_file_to_dstu_node_extensionless_pdf_mime_derives_pdf_preview() {
+        let node = file_to_dstu_node(&vfs_file_with_mime(
+            "Lecture Notes",
+            "document",
+            "application/pdf",
+        ));
+
+        assert_eq!(
+            node.preview_type.as_deref(),
+            Some("pdf"),
+            "无扩展名 PDF MIME 必须派生可用 previewType"
+        );
+        assert_eq!(node.name, "Lecture Notes", "派生预览类型不得改用户名称");
+        assert_eq!(node.node_type, DstuNodeType::Textbook);
+    }
+
+    #[test]
+    fn test_file_to_dstu_node_extensionless_docx_mime_derives_docx_preview() {
+        let node = file_to_dstu_node(&vfs_file_with_mime(
+            "Annual Review",
+            "document",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ));
+
+        assert_eq!(
+            node.preview_type.as_deref(),
+            Some("docx"),
+            "无扩展名 OOXML MIME 必须派生可用 previewType"
+        );
+        assert_eq!(node.name, "Annual Review", "派生预览类型不得改用户名称");
+        assert_eq!(node.node_type, DstuNodeType::File);
     }
 }

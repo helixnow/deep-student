@@ -1,9 +1,8 @@
 //! Prepare source files into fixed Ink page backgrounds.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     fs::File,
@@ -15,9 +14,14 @@ use crate::vfs::{
     error::{VfsError, VfsResult},
     ink::{
         validate_manifest, validate_page, InkBackground, InkManifest, InkOperationReceipt, InkPage,
-        InkPageRef, InkSource, INK_EXTENSION, INK_MIME, INK_SCHEMA_VERSION,
+        InkPageRef, InkSource, INK_SCHEMA_VERSION, INK_TITLE_MAX_CHARS,
     },
-    repos::{blob_repo::VfsBlobRepo, ink_artifact_repo::validate_png_bytes, ink_repo::VfsInkRepo},
+    repos::{
+        blob_repo::VfsBlobRepo,
+        ink_artifact_repo::validate_png_bytes,
+        ink_repo::VfsInkRepo,
+        ink_source::{validate_ink_source_with_conn, InkSourceIdentity},
+    },
     upload_saga::with_savepoint,
 };
 
@@ -52,15 +56,7 @@ enum SourceFormat {
 }
 
 struct SourceFile {
-    resource_id: String,
-    file_id: String,
-    file_name: String,
-    mime_type: String,
-    file_type: String,
-    blob_hash: String,
-    sha256: String,
-    resource_hash: String,
-    metadata_json: Option<String>,
+    identity: InkSourceIdentity,
     format: SourceFormat,
 }
 
@@ -105,7 +101,7 @@ impl VfsInkPrepareRepo {
             let source = load_source(conn, blobs_dir, source_resource_id, expected_source_hash)?;
             validate_page_inputs(conn, blobs_dir, &source, pages)?;
 
-            let mut metadata = parse_metadata(source.metadata_json.as_deref())?;
+            let mut metadata = parse_metadata(source.identity.metadata_json.as_deref())?;
             if let Some(pointer) = metadata.get("default_ink_document_id") {
                 let document_id = pointer
                     .as_str()
@@ -137,10 +133,11 @@ impl VfsInkPrepareRepo {
 
             let create_operation_id =
                 derived_operation_id("prepare-create", source_resource_id, operation_id);
+            let title = prepared_title(&source.identity.file_name);
             let initial = VfsInkRepo::create_blank_with_guard(
                 conn,
                 blobs_dir,
-                PREPARE_TITLE,
+                &title,
                 crate::vfs::ink::InkRuling::Blank,
                 100.0,
                 100.0,
@@ -230,8 +227,8 @@ impl VfsInkPrepareRepo {
                     metadata_json,
                     chrono::Utc::now().timestamp_millis(),
                     source_resource_id,
-                    expected_source_hash,
-                    source.file_id,
+                    source.identity.resource_hash,
+                    source.identity.file_id,
                 ],
             )?;
             if changed != 1 {
@@ -250,105 +247,20 @@ fn load_source(
     resource_id: &str,
     expected_hash: &str,
 ) -> VfsResult<SourceFile> {
-    let row = conn
-        .query_row(
-            r#"SELECT r.hash, r.source_id, r.source_table, r.type, r.metadata_json,
-                      f.file_name, f.mime_type, f."type", f.blob_hash, f.sha256,
-                      f.status, f.compressed_blob_hash
-               FROM resources r JOIN files f ON f.id = r.source_id
-               WHERE r.id = ?1"#,
-            [resource_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<String>>(10)?,
-                    row.get::<_, Option<String>>(11)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| source_changed("Source resource does not resolve to a VFS file"))?;
-    let (
-        resource_hash,
-        source_id,
-        source_table,
-        resource_type,
-        metadata_json,
-        file_name,
-        mime_type,
-        file_type,
-        blob_hash,
-        sha256,
-        status,
-        compressed_blob_hash,
-    ) = row;
-    let file_id =
-        source_id.ok_or_else(|| source_changed("Source resource has no file identity"))?;
-    let source_table =
-        source_table.ok_or_else(|| source_changed("Source resource has no source table"))?;
-    let mime_type =
-        mime_type.ok_or_else(|| unsupported_source("Source file MIME type is missing"))?;
-    let blob_hash = blob_hash.ok_or_else(|| source_changed("Source file blob hash is missing"))?;
-    let sha256 = sha256.ok_or_else(|| source_changed("Source file SHA-256 is missing"))?;
-    if source_table != "files"
-        || resource_type != "file"
-        || file_type != "document" && file_type != "image"
-        || status.as_deref() != Some("active")
-        || compressed_blob_hash.is_some()
-        || resource_hash != expected_hash
-        || blob_hash != expected_hash
-        || sha256 != expected_hash
-    {
-        return Err(source_changed(
-            "Source file identity or hash metadata changed",
-        ));
-    }
-    if VfsInkRepo::is_ink_file_candidate_with_conn(conn, &file_id)? {
+    let identity =
+        validate_ink_source_with_conn(conn, blobs_dir, resource_id, Some(expected_hash))?
+            .ok_or_else(|| source_changed("Source resource is missing"))?;
+    if VfsInkRepo::is_ink_file_candidate_with_conn(conn, &identity.file_id)? {
         return Err(unsupported_source(
             "An Ink document cannot be prepared as a source",
         ));
     }
-    let format = classify_source(&file_name, &mime_type, &file_type)?;
-    let blob = VfsBlobRepo::get_blob_with_conn(conn, expected_hash)?
-        .ok_or_else(|| source_changed("Source blob is missing"))?;
-    if blob.hash != expected_hash || blob.size < 0 || blob.ref_count <= 0 {
-        return Err(source_changed("Source blob metadata is invalid"));
-    }
-    let relative = Path::new(&blob.relative_path);
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(source_changed("Source blob path is invalid"));
-    }
-    let source_path = blobs_dir.join(relative);
-    if hash_file(&source_path)? != expected_hash {
-        return Err(source_changed(
-            "Source blob bytes no longer match the expected hash",
-        ));
-    }
-    Ok(SourceFile {
-        resource_id: resource_id.to_owned(),
-        file_id,
-        file_name,
-        mime_type,
-        file_type,
-        blob_hash,
-        sha256,
-        resource_hash,
-        metadata_json,
-        format,
-    })
+    let mime = identity
+        .mime_type
+        .as_deref()
+        .ok_or_else(|| unsupported_source("Source file MIME type is missing"))?;
+    let format = classify_source(&identity.file_name, mime, &identity.file_type)?;
+    Ok(SourceFile { identity, format })
 }
 
 fn verify_source_unchanged(
@@ -357,30 +269,11 @@ fn verify_source_unchanged(
     source: &SourceFile,
     expected_hash: &str,
 ) -> VfsResult<()> {
-    let current = load_source(conn, blobs_dir, &source.resource_id, expected_hash)?;
-    if current.resource_id != source.resource_id
-        || current.file_id != source.file_id
-        || current.file_name != source.file_name
-        || current.mime_type != source.mime_type
-        || current.file_type != source.file_type
-        || current.blob_hash != source.blob_hash
-        || current.sha256 != source.sha256
-        || current.resource_hash != source.resource_hash
-        || current.format != source.format
-    {
+    let current = load_source(conn, blobs_dir, &source.identity.resource_id, expected_hash)?;
+    if current.identity != source.identity || current.format != source.format {
         return Err(source_changed("Source changed while preparing Ink pages"));
     }
     Ok(())
-}
-
-fn source_resource_id_for_file(conn: &Connection, file_id: &str) -> VfsResult<String> {
-    conn.query_row(
-        "SELECT id FROM resources WHERE source_id = ?1 AND source_table = 'files' AND type = 'file'",
-        [file_id],
-        |row| row.get(0),
-    )
-    .optional()?
-    .ok_or_else(|| source_changed("Source resource disappeared while preparing Ink pages"))
 }
 
 fn validate_page_inputs(
@@ -504,7 +397,8 @@ fn classify_source(file_name: &str, mime: &str, file_type: &str) -> VfsResult<So
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if (mime == "application/pdf" || extension == "pdf") && file_type == "document" {
+    let is_document = matches!(file_type, "document" | "file");
+    if (mime == "application/pdf" || extension == "pdf") && is_document {
         return Ok(SourceFormat::Pdf);
     }
     if mime.starts_with("image/") && file_type == "image" {
@@ -515,7 +409,7 @@ fn classify_source(file_name: &str, mime: &str, file_type: &str) -> VfsResult<So
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     );
-    if file_type == "document"
+    if is_document
         && ((office_mime && matches!(extension.as_str(), "docx" | "pptx"))
             || matches!(extension.as_str(), "docx" | "pptx"))
     {
@@ -524,6 +418,23 @@ fn classify_source(file_name: &str, mime: &str, file_type: &str) -> VfsResult<So
     Err(unsupported_source(
         "Only PDF, image, DOCX, and PPTX sources can be prepared",
     ))
+}
+
+fn prepared_title(file_name: &str) -> String {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(file_name);
+    let title: String = stem
+        .chars()
+        .filter(|character| !character.is_control() && !matches!(character, '/' | '\\'))
+        .take(INK_TITLE_MAX_CHARS)
+        .collect();
+    if title.trim().is_empty() {
+        PREPARE_TITLE.to_owned()
+    } else {
+        title.trim().to_owned()
+    }
 }
 
 fn parse_metadata(serialized: Option<&str>) -> VfsResult<Value> {
@@ -584,22 +495,6 @@ fn validate_hash(hash: &str) -> VfsResult<()> {
     Ok(())
 }
 
-fn hash_file(path: &Path) -> VfsResult<String> {
-    let mut file = File::open(path).map_err(|error| VfsError::Io(error.to_string()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|error| VfsError::Io(error.to_string()))?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&buffer[..count]);
-    }
-    Ok(hex::encode(hasher.finalize()))
-}
-
 fn map_ink_error(error: crate::vfs::ink::InkError) -> VfsError {
     VfsError::InvalidArgument {
         param: "ink_prepare".to_owned(),
@@ -642,7 +537,10 @@ mod tests {
         database::{setup_migrated_test_db, VfsDatabase},
         error::VfsError,
         ink::{InkBackground, InkSource},
-        repos::{blob_repo::VfsBlobRepo, file_repo::VfsFileRepo, ink_repo::VfsInkRepo},
+        repos::{
+            blob_repo::VfsBlobRepo, file_repo::VfsFileRepo, ink_repo::VfsInkRepo, VfsAttachmentRepo,
+        },
+        types::VfsUploadAttachmentParams,
     };
 
     use super::{InkPreparedPage, VfsInkPrepareRepo};
@@ -668,6 +566,10 @@ mod tests {
     }
 
     fn minimal_pdf() -> Vec<u8> {
+        pdf_with_padding(0)
+    }
+
+    fn pdf_with_padding(padding: usize) -> Vec<u8> {
         let objects = [
             "<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -678,6 +580,11 @@ mod tests {
         for (index, object) in objects.iter().enumerate() {
             offsets.push(pdf.len());
             pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        if padding > 0 {
+            pdf.extend_from_slice(b"% ");
+            pdf.resize(pdf.len() + padding, b' ');
+            pdf.push(b'\n');
         }
         let xref_offset = pdf.len();
         pdf.extend_from_slice(
@@ -767,6 +674,160 @@ mod tests {
             Err(VfsError::Conflict { key, .. }) => assert_eq!(key, "ink.source_changed"),
             Err(error) => panic!("expected ink.source_changed, got {error}"),
             Ok(_) => panic!("expected ink.source_changed, got a prepared manifest"),
+        }
+    }
+
+    #[test]
+    fn prepares_real_uploaded_pdf_and_image_sources_without_rewriting_source_storage() {
+        use crate::vfs::repos::ink_source::read_ink_source_with_conn;
+
+        for (name, mime, external, is_pdf) in [
+            ("讲义.pdf", "application/pdf", false, true),
+            ("图片.png", "image/png", false, false),
+            ("external.pdf", "application/pdf", true, true),
+        ] {
+            let (_temp_dir, db) = setup_migrated_test_db();
+            let conn = db.get_conn_safe().unwrap();
+            let bytes = if is_pdf {
+                pdf_with_padding(if external { 1024 * 1024 } else { 0 })
+            } else {
+                PNG_1X1.to_vec()
+            };
+            let upload = VfsAttachmentRepo::upload_bytes_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &VfsUploadAttachmentParams {
+                    name: name.to_owned(),
+                    mime_type: mime.to_owned(),
+                    base64_content: String::new(),
+                    attachment_type: Some(if is_pdf { "file" } else { "image" }.to_owned()),
+                },
+                &bytes,
+            )
+            .unwrap();
+            let resource_id = upload.attachment.resource_id.unwrap();
+            let hash = VfsBlobRepo::compute_hash(&bytes);
+            let source_before =
+                read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash))
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(source_before.identity.blob_hash.is_some(), external);
+            if !external {
+                assert_ne!(source_before.identity.resource_hash, hash);
+            }
+            conn.execute(
+                "UPDATE resources SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.custom', 'preserved') WHERE id = ?1",
+                [&resource_id],
+            )
+            .unwrap();
+            let background = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                db.blobs_dir(),
+                PNG_1X1,
+                Some("image/png"),
+                Some("png"),
+            )
+            .unwrap();
+            let pages = [InkPreparedPage {
+                width: 1.0,
+                height: 1.0,
+                background_blob_hash: background.hash,
+                source_page_index: is_pdf.then_some(0),
+            }];
+            let manifest = VfsInkPrepareRepo::prepare_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &resource_id,
+                &hash,
+                "uploaded-source-v1",
+                &pages,
+                "prepare-upload",
+                None,
+            )
+            .unwrap();
+            assert_eq!(
+                manifest.title,
+                std::path::Path::new(name)
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            );
+            assert_eq!(
+                VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &manifest.document_id)
+                    .unwrap(),
+                manifest,
+            );
+            let page = VfsInkRepo::get_page_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &manifest.document_id,
+                &manifest.pages[0].page_id,
+            )
+            .unwrap();
+            let saved = VfsInkRepo::save_page_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &manifest.document_id,
+                &manifest.revision,
+                "save-upload",
+                &page,
+            )
+            .unwrap();
+            assert_eq!(
+                VfsInkPrepareRepo::prepare_with_conn(
+                    &conn,
+                    db.blobs_dir(),
+                    &resource_id,
+                    &hash,
+                    "uploaded-source-v1",
+                    &pages,
+                    "prepare-upload-retry",
+                    None,
+                )
+                .unwrap(),
+                saved,
+            );
+            let source_after =
+                read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash))
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(source_before.bytes, source_after.bytes);
+            assert_eq!(
+                source_before.identity.resource_hash,
+                source_after.identity.resource_hash,
+            );
+            assert_eq!(source_before.identity.sha256, source_after.identity.sha256);
+            assert_eq!(
+                source_before.identity.blob_hash,
+                source_after.identity.blob_hash
+            );
+            assert_eq!(
+                source_before.identity.storage_mode,
+                source_after.identity.storage_mode,
+            );
+            let metadata: serde_json::Value =
+                serde_json::from_str(source_after.identity.metadata_json.as_deref().unwrap())
+                    .unwrap();
+            assert_eq!(metadata["custom"], "preserved");
+            assert_eq!(metadata["default_ink_document_id"], saved.document_id);
+            conn.execute(
+                "UPDATE files SET resource_id = NULL WHERE id = ?1",
+                [&upload.source_id],
+            )
+            .unwrap();
+            let counts = database_counts(&conn);
+            assert_source_changed(VfsInkPrepareRepo::prepare_with_conn(
+                &conn,
+                db.blobs_dir(),
+                &resource_id,
+                &hash,
+                "uploaded-source-v1",
+                &pages,
+                "prepare-invalid-link",
+                None,
+            ));
+            assert_eq!(database_counts(&conn), counts);
         }
     }
 

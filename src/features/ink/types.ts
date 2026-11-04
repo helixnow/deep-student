@@ -83,6 +83,72 @@ export interface InkManifest {
   last_operation?: InkOperationReceipt;
 }
 
+/** v2 board schema. Kept separate from v1 `InkManifest`; do not widen v1. */
+export const INK_BOARD_SCHEMA_VERSION = 2 as const;
+
+/** v2 board hard limits, aligned with Rust `vfs/ink/board.rs`. */
+export const INK_BOARD_LIMITS = {
+  world_limit: 10000000,
+  chunks_max: 256,
+  objects_max: 100000,
+  samples_max: 2000000,
+  content_max_bytes: 64 * 1024 * 1024,
+  chunk_max_bytes: 8 * 1024 * 1024,
+  chunk_objects_max: 10000,
+  chunk_samples_max: 100000,
+} as const;
+
+/** Signed board-world bounds; x/y may be negative, width/height must be positive. */
+export interface InkBoardBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface InkBoardSurface {
+  kind: 'board';
+  page_id: string;
+  ruling: InkRuling;
+  bounds: InkBoardBounds;
+}
+
+export interface InkBoardChunkRef {
+  chunk_id: string;
+  blob_hash: string;
+  byte_length: number;
+  object_count: number;
+  sample_count: number;
+  bounds: InkBoardBounds;
+}
+
+export interface InkBoardObject {
+  id: string;
+  author: InkAuthor;
+  created_at: number;
+  z_index: number;
+  content: InkObjectContent;
+}
+
+export interface InkBoardChunk {
+  schema_version: typeof INK_BOARD_SCHEMA_VERSION;
+  chunk_id: string;
+  objects: InkBoardObject[];
+}
+
+/** Exact v2 empty-or-chunked board manifest; v1 fields are intentionally unchanged. */
+export interface InkBoardManifest {
+  schema_version: typeof INK_BOARD_SCHEMA_VERSION;
+  document_id: string;
+  revision: string;
+  title: string;
+  source: { kind: 'blank' };
+  pages: [];
+  surface: InkBoardSurface;
+  chunks: InkBoardChunkRef[];
+  last_operation?: InkOperationReceipt;
+}
+
 export interface InkSample {
   x: number;
   y: number;

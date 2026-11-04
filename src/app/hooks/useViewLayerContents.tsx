@@ -12,6 +12,7 @@ import {
   LazyTemplateManagementPage,
   LazyStyleDebugPage,
   LazyLearningHubPage,
+  LazyNotebookPage,
   LazySandboxWorkbenchPage,
   LazyPdfReader,
   LazyTodoPage,
@@ -73,7 +74,7 @@ export function useDashboardAndSettingsContents(currentView: CurrentView, isSmal
 }
 
 /**
- * skills / flashcards / media / ui-lab / learning-hub / pdf-reader / chat-v2 / template-management 视图内容。
+ * skills / flashcards / media / ui-lab / learning-hub / notes / pdf-reader / chat-v2 / template-management 视图内容。
  */
 export function useFeatureViewContents(
   currentView: CurrentView,
@@ -114,6 +115,13 @@ export function useFeatureViewContents(
     <Suspense fallback={<PageLoadingFallback />}><LazyLearningHubPage /></Suspense>
   ), []);
 
+  const isNotebookActive = currentView === 'notes';
+  const notebookContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyNotebookPage isActive={isNotebookActive} />
+    </Suspense>
+  ), [isNotebookActive]);
+
   const pdfReaderContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <MobilePageScaffold>
@@ -146,6 +154,7 @@ export function useFeatureViewContents(
     mediaStudioContent,
     styleDebugContent,
     learningHubContent,
+    notebookContent,
     pdfReaderContent,
     chatV2Content,
     templateManagementContent,

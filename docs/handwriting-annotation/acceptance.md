@@ -2,9 +2,19 @@
 
 日期：2026-11-03。分支：`feat/handwriting-annotation-chat`。最终验证由主 agent 运行；子 agent 负责探索和实现，个别擅自测试的过程偏差如实记录。已本地提交主实现 `7fef25ec` 与来源背景重绘修复 `bc48e6eb`，未 push / merge / publish。
 
-> 最新收尾证据：[closure-results](verification/closure-results.md) 与 [closure-progress](closure-progress.md)。Phase-5原失败已修并完整通过；真实视觉模型工具/问AI附件、受控写入、可信撤销/历史均以自建夹具实测（11/20请求）。Android API36模拟器已完成空白／PDF／图片批注、保存／橡皮／撤销重做／强停重启／问AI附件与导出；ARM64官方配置测试签名APK已从bc48e6eb构建并通过产物核验，见[APK报告](verification/closure-apk.md)。下方结合原实施门禁和本轮追加验证；详细历史快照保留在verification/final-results.md，不将旧红灯或旧未授权状态覆盖最新证据。来源背景修复后完整浏览器55与前端12670通过；真机压感／误触／实际性能仍未验证。
+> **下半部为历史验收基线，不是当前源码最终全绿声明。** 用户2026-11-04明确恢复实施，undo容量、跨失败block authority、双TS／ratchet／分层、真实Wry双尺寸渲染及草稿／概览恢复缺陷已闭环；创建由仓库同事务writer guard接管，命令23／工具33／菜单7主验通过。本轮代码和可运行的本地门禁已收尾，最终四库1079／361／562／752、schema覆盖11、production迁移52、Phase5、Clippy和fmt均通过；未变范围保留八片证据，不伪称最后全8片单次全绿。最新结果以 [唯一交接](HANDOFF-IMPLEMENTATION.md) 为准。旧手机预览问题尚未用新APK复验，见 [当前问题](issues/android-import-preview.md)。代码收尾后用户另行授权Android设备测试：两种ABI构建成功，新ARM64测试包已验签并保留数据安装；真机锁屏，业务功能和根因仍未确认，详见 [真机取证](issues/android-import-preview.md#7-2026-11-04新包与实机bug抓取)。没有Git提交／应用外部模型请求；旧11次模型、模拟器与APK均仅历史证据。
 
-## 功能覆盖矩阵
+## 后续真机新增问题
+
+| 项目 | 当前结果 |
+| --- | --- |
+| ARM64安装身份／应用启动 | 新ARM64测试包已验签／ABI／16KiB并保留数据安装；实际安装SHA256 `94c0c769d2eb44cc945590bacbb23d4fd1e5e397da4388d79cfb2fbe1da17174`相同，应用进程运行；锁屏下不算业务通过 |
+| 实际文件预览 | **旧包缺陷尚未用新包复验**：观察到octet-stream／无扩展名条目显示不支持预览；个人原始字节／当次入口未读取，自动修复链已有回归，真机自建SAF复验待执行 |
+| 新功能／修复 | A–E代码保留并补齐board自动保存／连续书写；108项Ink CT、真实Wry同crop 200/400两图像素/hash/source、双TS／lint ratchet／分层通过。完整Rust8片首轮8193pass/2同根因fail，immutable artifact分类修后schema覆盖11/11；创建命令23／工具33／菜单7通过。最后受影响四库app1079／storage361／sync562／VFS752、schema覆盖11、production迁移52、Phase5两case、Clippy及fmt全部通过；future-floor typed映射已验，不冒称provider／Windows／私有fixture或真机通过 |
+| 真机手写体验 | 压感／手掌误触／性能仍未验证；不能由安装或启动推导通过 |
+| 新包实机bug取证 | UID限定928行日志及180s实时捕获完成；设备全程锁屏，只有6次无栈资源ID异常，未与业务操作关联。release前端日志盲区已核，根因待解锁／应用默认诊断包；不是修复GREEN |
+
+## 功能覆盖矩阵（此前冻结基线）
 
 | 需求/风险 | 实际证据 | 结论 |
 | --- | --- | --- |
@@ -70,9 +80,9 @@
 ## 交付文件与恢复
 
 - [使用说明](usage.md)
-- [集中进度与裁决](progress.md)
-- [主agent最终审查](reviews/final-review.md)
-- [已批准计划](implementation-plan.md)
-- [归档设计](design.md)
+- [当前架构](design.md)
+- [主agent基线审查](reviews/final-review.md)
+- [当前问题与新计划](roadmap.md)
+- [文档治理与历史查询](governance.md)
 
-`HANDOFF.md`是旧暂停快照，不得据此停工或重做实现。源码已在 `7fef25ec` 本地提交；集中记录随后单独审阅提交。当前恢复入口为 [HANDOFF-CLOSURE](HANDOFF-CLOSURE.md)，最新源码／门禁／产物以本轮结果和收尾ledger为准。
+当前入口为 [README](README.md)。旧HANDOFF、implementation-plan、progress和closure-progress已退出活动目录；原文在本地归档及 `d48bec38` 可查，不得从其中恢复已经结束的任务。主实现 `7fef25ec`、修复 `bc48e6eb`、基线文档 `d48bec38` 均已创建；本轮文档治理不包含新的提交。

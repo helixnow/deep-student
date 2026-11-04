@@ -9,7 +9,7 @@ import { useReferenceToChat } from '@/features/learning-hub';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import { renderInkSnapshot } from './api';
-import type { InkEditorProps } from './InkEditor';
+import type { InkAskAiRequest, InkEditorProps } from './InkEditor';
 
 const InkEditor = lazy(() => import('./InkEditor').then(({ InkEditor: component }) => ({ default: component })));
 
@@ -18,12 +18,13 @@ export function LazyInkEditor({ onAskAi, onExport, ...props }: InkEditorProps) {
   const { referenceToChat } = useReferenceToChat();
   const [exportFormat, setExportFormat] = useState<'png' | 'pdf'>('png');
 
-  const handleAskAi = useCallback(async (documentId: string, pageId: string, revision: string) => {
+  const handleAskAi = useCallback(async ({ documentId, pageId, revision, crop }: InkAskAiRequest) => {
     try {
       const artifact = await renderInkSnapshot({
         document_id: documentId,
         expected_revision: revision,
         page_id: pageId,
+        ...(crop ? { crop } : {}),
       });
       await referenceToChat({
         sourceType: 'image',
@@ -71,18 +72,18 @@ export function LazyInkEditor({ onAskAi, onExport, ...props }: InkEditorProps) {
         <span>{t('preview.loading')}</span>
       </div>
     }>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1">
-          <DsButton size="sm" variant={exportFormat === 'png' ? 'outline' : 'ghost'} aria-pressed={exportFormat === 'png'} onClick={() => setExportFormat('png')}>PNG</DsButton>
-          <DsButton size="sm" variant={exportFormat === 'pdf' ? 'outline' : 'ghost'} aria-pressed={exportFormat === 'pdf'} onClick={() => setExportFormat('pdf')}>PDF</DsButton>
-        </div>
-        <InkEditor
-          {...props}
-          className={cn('min-h-0 flex-1', props.className)}
-          onAskAi={onAskAi ?? handleAskAi}
-          onExport={onExport ?? handleExport}
-        />
-      </div>
+      <InkEditor
+        {...props}
+        className={cn('min-h-0 min-w-0 flex-1', props.className)}
+        exportControls={
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label={t('ink:actions.export')}>
+            <DsButton size="sm" variant={exportFormat === 'png' ? 'outline' : 'ghost'} aria-pressed={exportFormat === 'png'} onClick={() => setExportFormat('png')}>PNG</DsButton>
+            <DsButton size="sm" variant={exportFormat === 'pdf' ? 'outline' : 'ghost'} aria-pressed={exportFormat === 'pdf'} onClick={() => setExportFormat('pdf')}>PDF</DsButton>
+          </div>
+        }
+        onAskAi={onAskAi ?? handleAskAi}
+        onExport={onExport ?? handleExport}
+      />
     </Suspense>
   );
 }

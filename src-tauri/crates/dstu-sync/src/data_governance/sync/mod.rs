@@ -44,7 +44,7 @@ pub mod emitter;
 pub mod field_merge;
 pub mod history;
 pub mod hlc;
-mod ink;
+pub(crate) mod ink;
 #[cfg(test)]
 mod ink_tests;
 mod note_history;
@@ -1409,6 +1409,11 @@ impl SyncManager {
     const FORMAT_KEY: &'static str = "data_governance/format.json";
     pub const CURRENT_FORMAT_VERSION: u32 = 4;
     pub const MIN_COMPATIBLE_FORMAT_VERSION: u32 = 3;
+    /// v2 board rows/chunks require this minimum reader. It is only legal when
+    /// the remote descriptor advertises the recognized `ink_board_v2` feature;
+    /// the global format version stays v4 so v1 data remains readable.
+    pub const BOARD_READER_VERSION: u32 = 5;
+    pub const INK_BOARD_V2_FEATURE: &'static str = "ink_board_v2";
     const SNAPSHOT_FORMAT_VERSION: u32 = 1;
     const SNAPSHOT_INTERVAL_DAYS: i64 = 7;
     const SNAPSHOT_RETAIN_PER_DB: usize = 2;
@@ -1641,6 +1646,95 @@ impl SyncManager {
         ]
     }
 
+    fn is_recognized_feature(feature: &str) -> bool {
+        feature == Self::INK_BOARD_V2_FEATURE
+            || Self::v4_features().iter().any(|known| known == feature)
+    }
+
+    fn descriptor_supports_board_v2(descriptor: &SyncFormatDescriptor) -> bool {
+        descriptor.format_version >= Self::CURRENT_FORMAT_VERSION
+            && descriptor.min_reader_version == Self::BOARD_READER_VERSION
+            && descriptor
+                .features
+                .iter()
+                .any(|feature| feature == Self::INK_BOARD_V2_FEATURE)
+    }
+
+    /// Capability rank used only to prevent a write from lowering the remote
+    /// contract. 3 = legacy/v4 skeleton, 4 = v4 shards, 5 = board v2.
+    fn descriptor_capability_level(descriptor: &SyncFormatDescriptor) -> u32 {
+        if Self::descriptor_supports_board_v2(descriptor) {
+            Self::BOARD_READER_VERSION
+        } else if descriptor.format_version >= Self::CURRENT_FORMAT_VERSION {
+            Self::CURRENT_FORMAT_VERSION
+        } else {
+            Self::MIN_COMPATIBLE_FORMAT_VERSION
+        }
+    }
+
+    /// Fail closed on future formats, unknown capabilities, and incoherent
+    /// board feature/min-reader pairs. The global format version never moves
+    /// past v4; only the capability-gated reader floor may be 5.
+    fn validate_descriptor_capabilities(
+        descriptor: &SyncFormatDescriptor,
+    ) -> Result<(), SyncError> {
+        if descriptor.format_version > Self::CURRENT_FORMAT_VERSION {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{} 高于当前客户端 v{}；已在写入前拒绝同步",
+                descriptor.format_version,
+                Self::CURRENT_FORMAT_VERSION
+            )));
+        }
+        if descriptor.format_version < Self::MIN_COMPATIBLE_FORMAT_VERSION {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{} 过旧，当前客户端仅兼容 v{}-v{}",
+                descriptor.format_version,
+                Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                Self::CURRENT_FORMAT_VERSION
+            )));
+        }
+        if let Some(unknown) = descriptor
+            .features
+            .iter()
+            .find(|feature| !Self::is_recognized_feature(feature))
+        {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{}（最低 reader v{}）包含未识别能力 {unknown}；为避免忽略未知语义，已拒绝同步",
+                descriptor.format_version, descriptor.min_reader_version
+            )));
+        }
+
+        let advertises_board_v2 = descriptor
+            .features
+            .iter()
+            .any(|feature| feature == Self::INK_BOARD_V2_FEATURE);
+        if descriptor.min_reader_version > Self::CURRENT_FORMAT_VERSION
+            && (descriptor.min_reader_version != Self::BOARD_READER_VERSION || !advertises_board_v2)
+        {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{}（最低 reader v{}）要求未知 reader；只有 {} + {} 是合法组合",
+                descriptor.format_version,
+                descriptor.min_reader_version,
+                Self::INK_BOARD_V2_FEATURE,
+                Self::BOARD_READER_VERSION
+            )));
+        }
+        if advertises_board_v2
+            && (descriptor.format_version < Self::CURRENT_FORMAT_VERSION
+                || descriptor.min_reader_version != Self::BOARD_READER_VERSION)
+        {
+            return Err(SyncError::Database(format!(
+                "远端同步能力 {} 必须搭配 format v{}、最低 reader v{}，当前为 v{}/v{}；拒绝不一致的能力声明",
+                Self::INK_BOARD_V2_FEATURE,
+                Self::CURRENT_FORMAT_VERSION,
+                Self::BOARD_READER_VERSION,
+                descriptor.format_version,
+                descriptor.min_reader_version
+            )));
+        }
+        Ok(())
+    }
+
     fn new_compatibility_lease(&self) -> SyncCompatibilityLease {
         SyncCompatibilityLease {
             holder_device_id: self.device_id.clone(),
@@ -1698,9 +1792,48 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
         mut descriptor: SyncFormatDescriptor,
+        require_board_v2: bool,
     ) -> Result<SyncFormatDescriptor, SyncError> {
+        let incoming_level = Self::descriptor_capability_level(&descriptor);
         let mut changed = false;
-        if descriptor.format_version < Self::CURRENT_FORMAT_VERSION {
+
+        if require_board_v2 {
+            // Board v2 data is unreadable by v4 clients. Publishing a board row
+            // first promotes the remote contract to reader v5 + ink_board_v2,
+            // so old clients fail closed on their next sync start. This cannot
+            // retroactively stop an old writer that already validated v4 and is
+            // still in flight; logical conflict handling below preserves the
+            // board pointer and rejects a v1 downgrade instead.
+            if descriptor.format_version < Self::CURRENT_FORMAT_VERSION {
+                descriptor.format_version = Self::CURRENT_FORMAT_VERSION;
+                descriptor.features = Self::v4_features();
+                changed = true;
+            }
+            if !descriptor
+                .features
+                .iter()
+                .any(|feature| feature == Self::INK_BOARD_V2_FEATURE)
+            {
+                descriptor
+                    .features
+                    .push(Self::INK_BOARD_V2_FEATURE.to_string());
+                changed = true;
+            }
+            if descriptor.min_reader_version != Self::BOARD_READER_VERSION {
+                descriptor.min_reader_version = Self::BOARD_READER_VERSION;
+                changed = true;
+            }
+            if descriptor.checkpoint.is_none() {
+                descriptor.checkpoint = Some(SyncShardCheckpoint::default());
+                changed = true;
+            }
+            // Board data has no v3 dual-read path; the lease must not keep the
+            // remote advertised as readable by legacy clients.
+            if descriptor.compatibility_lease.take().is_some() {
+                changed = true;
+            }
+            Self::validate_descriptor_capabilities(&descriptor)?;
+        } else if descriptor.format_version < Self::CURRENT_FORMAT_VERSION {
             descriptor.format_version = Self::CURRENT_FORMAT_VERSION;
             descriptor.min_reader_version = Self::MIN_COMPATIBLE_FORMAT_VERSION;
             descriptor.features = Self::v4_features();
@@ -1715,7 +1848,7 @@ impl SyncManager {
             changed = true;
         }
 
-        if descriptor.min_reader_version < Self::CURRENT_FORMAT_VERSION {
+        if !require_board_v2 && descriptor.min_reader_version < Self::CURRENT_FORMAT_VERSION {
             let lease_expired = descriptor
                 .compatibility_lease
                 .as_ref()
@@ -1752,8 +1885,15 @@ impl SyncManager {
             }
         }
 
+        if Self::descriptor_capability_level(&descriptor) < incoming_level {
+            return Err(SyncError::Database(
+                "同步格式协商不得降低远端 reader 能力".to_string(),
+            ));
+        }
+
         if changed {
-            // 写前重新读取一次，避免把刚出现的未来版本 descriptor 覆盖掉。
+            // 写前重新读取一次，避免把协商期间出现的更高能力 descriptor 覆盖掉。
+            // 只允许同等级或向上升级；任何降级都中止本轮写入。
             if let Some(fresh) = storage
                 .get(Self::FORMAT_KEY)
                 .await
@@ -1762,12 +1902,18 @@ impl SyncManager {
                 let fresh: SyncFormatDescriptor = serde_json::from_slice(&fresh).map_err(|e| {
                     SyncError::Database(format!("写前复核远端 format.json 失败: {}", e))
                 })?;
-                if fresh.format_version > Self::CURRENT_FORMAT_VERSION
-                    || fresh.min_reader_version > Self::CURRENT_FORMAT_VERSION
+                Self::validate_descriptor_capabilities(&fresh)?;
+                if Self::descriptor_capability_level(&fresh)
+                    > Self::descriptor_capability_level(&descriptor)
+                    || fresh.format_version > descriptor.format_version
+                    || fresh.min_reader_version > descriptor.min_reader_version
                 {
                     return Err(SyncError::Database(format!(
-                        "远端同步格式在协商期间升级到 v{}（最低 client v{}），拒绝覆盖",
-                        fresh.format_version, fresh.min_reader_version
+                        "远端同步格式在协商期间升级到 v{}（最低 client v{}），拒绝降级覆盖为 v{}（最低 client v{}）",
+                        fresh.format_version,
+                        fresh.min_reader_version,
+                        descriptor.format_version,
+                        descriptor.min_reader_version
                     )));
                 }
             }
@@ -1784,55 +1930,83 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         will_write: bool,
     ) -> Result<SyncFormatDescriptor, SyncError> {
+        self.validate_remote_format_with_requirement(storage, will_write, false)
+            .await
+    }
+
+    /// Board v2 writes additionally require the remote contract to advertise
+    /// reader v5 + `ink_board_v2` before the first board row/blob is published.
+    async fn validate_remote_format_with_requirement(
+        &self,
+        storage: &dyn CloudStorage,
+        will_write: bool,
+        require_board_v2: bool,
+    ) -> Result<SyncFormatDescriptor, SyncError> {
         let Some(bytes) = storage
             .get(Self::FORMAT_KEY)
             .await
             .map_err(|e| SyncError::Network(format!("读取远端同步格式失败: {}", e)))?
         else {
-            let descriptor = SyncFormatDescriptor {
-                format_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
-                min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
-                features: Vec::new(),
-                checkpoint: None,
-                compatibility_lease: None,
-            };
             if !will_write {
-                return Ok(descriptor);
+                return Ok(SyncFormatDescriptor {
+                    format_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                    min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                    features: Vec::new(),
+                    checkpoint: None,
+                    compatibility_lease: None,
+                });
             }
 
-            // 第一次写入先发布 v4 能力描述，但在一个发布周期内继续写 v3 root。
-            let descriptor = SyncFormatDescriptor {
-                format_version: Self::CURRENT_FORMAT_VERSION,
-                min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
-                features: Self::v4_features(),
-                checkpoint: Some(SyncShardCheckpoint::default()),
-                compatibility_lease: Some(self.new_compatibility_lease()),
+            let descriptor = if require_board_v2 {
+                let mut features = Self::v4_features();
+                features.push(Self::INK_BOARD_V2_FEATURE.to_string());
+                SyncFormatDescriptor {
+                    format_version: Self::CURRENT_FORMAT_VERSION,
+                    min_reader_version: Self::BOARD_READER_VERSION,
+                    features,
+                    checkpoint: Some(SyncShardCheckpoint::default()),
+                    compatibility_lease: None,
+                }
+            } else {
+                // 第一次写入先发布 v4 能力描述，但在一个发布周期内继续写 v3 root。
+                SyncFormatDescriptor {
+                    format_version: Self::CURRENT_FORMAT_VERSION,
+                    min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                    features: Self::v4_features(),
+                    checkpoint: Some(SyncShardCheckpoint::default()),
+                    compatibility_lease: Some(self.new_compatibility_lease()),
+                }
             };
+            Self::validate_descriptor_capabilities(&descriptor)?;
             self.write_format_descriptor(storage, &descriptor).await?;
             return Ok(descriptor);
         };
+
         let descriptor: SyncFormatDescriptor = serde_json::from_slice(&bytes)
             .map_err(|e| SyncError::Database(format!("远端 format.json 损坏: {}", e)))?;
-        if descriptor.format_version > Self::CURRENT_FORMAT_VERSION
-            || descriptor.min_reader_version > Self::CURRENT_FORMAT_VERSION
-        {
-            return Err(SyncError::Database(format!(
-                "远端同步格式 v{}（最低 reader v{}）高于当前客户端 v{}；为避免旧客户端破坏数据，已在写入前拒绝同步",
-                descriptor.format_version,
-                descriptor.min_reader_version,
-                Self::CURRENT_FORMAT_VERSION
-            )));
+        Self::validate_descriptor_capabilities(&descriptor)?;
+
+        if require_board_v2 && !Self::descriptor_supports_board_v2(&descriptor) {
+            if !will_write {
+                return Err(SyncError::Database(format!(
+                    "远端同步格式 v{} / reader v{} 未声明 {}，不能读取 board v2 数据",
+                    descriptor.format_version,
+                    descriptor.min_reader_version,
+                    Self::INK_BOARD_V2_FEATURE
+                )));
+            }
+            // A board writer promotes the remote contract before its first
+            // board row/blob reaches the cloud. Legacy clients then fail closed
+            // on their next sync start; an already in-flight legacy writer is
+            // handled by conflict/pointer validation, not retroactively.
+            return self
+                .prepare_format_for_write(storage, descriptor, true)
+                .await;
         }
-        if descriptor.format_version < Self::MIN_COMPATIBLE_FORMAT_VERSION {
-            return Err(SyncError::Database(format!(
-                "远端同步格式 v{} 过旧，当前客户端仅兼容 v{}-v{}",
-                descriptor.format_version,
-                Self::MIN_COMPATIBLE_FORMAT_VERSION,
-                Self::CURRENT_FORMAT_VERSION
-            )));
-        }
+
         if will_write {
-            self.prepare_format_for_write(storage, descriptor).await
+            self.prepare_format_for_write(storage, descriptor, require_board_v2)
+                .await
         } else {
             Ok(descriptor)
         }
@@ -2467,7 +2641,10 @@ impl SyncManager {
             return Ok(());
         }
 
-        let negotiated = self.validate_remote_format(storage, true).await?;
+        let require_board_v2 = changes.iter().any(ink::is_board_v2_change);
+        let negotiated = self
+            .validate_remote_format_with_requirement(storage, true, require_board_v2)
+            .await?;
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         let cloud_max_seq = self
@@ -2516,6 +2693,20 @@ impl SyncManager {
         let compressed_size = compressed.len();
         let uploaded_size = final_bytes.len();
         let _total_count = payload.total_count;
+
+        if require_board_v2 {
+            // Last-moment recheck: a concurrent descriptor downgrade must not
+            // receive the first board row. Re-read the contract immediately
+            // before the payload write and fail instead of publishing.
+            let current = self.validate_remote_format(storage, false).await?;
+            if !Self::descriptor_supports_board_v2(&current) {
+                return Err(SyncError::Database(format!(
+                    "远端同步格式在 board v2 上传前不再声明 {} + reader v{}；已中止写入",
+                    Self::INK_BOARD_V2_FEATURE,
+                    Self::BOARD_READER_VERSION
+                )));
+            }
+        }
 
         // [P0-10/C8] 上传后回验对象 size + 重试。
         //   - 进度路径首次走流式 put_file（实时字节进度），上传后用 stat 回验 size；
@@ -7139,6 +7330,9 @@ impl SyncManager {
                     }
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
+                    if applied {
+                        ink::ensure_board_writer_guard_after_publish(conn, &change_to_apply)?;
+                    }
                     Ok((applied, change_to_apply))
                 })();
 
@@ -7702,6 +7896,9 @@ impl SyncManager {
                     }
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
+                    if applied {
+                        ink::ensure_board_writer_guard_after_publish(conn, &change_to_apply)?;
+                    }
                     Ok((applied, change_to_apply))
                 })();
 
@@ -8056,6 +8253,9 @@ impl SyncManager {
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
                     Self::clear_matching_quarantine(conn, change)?;
+                    if apply_result.success_count > apply_before.success_count {
+                        ink::ensure_board_writer_guard_after_publish(conn, change)?;
+                    }
                     Ok(())
                 })();
 
@@ -12971,6 +13171,82 @@ impl SyncManager {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn d3_mixed_client_gate_accepts_ink_board_v2_min_reader_five() {
+        let storage = FileE2eeMemoryStorage::default();
+        storage.put_raw(
+            SyncManager::FORMAT_KEY,
+            serde_json::to_vec(&json!({
+                "format_version": 4,
+                "min_client": 5,
+                "features": ["ink_board_v2"],
+            }))
+            .unwrap(),
+        );
+
+        let descriptor = SyncManager::new("d3-board-v2-reader".to_string())
+            .validate_remote_format(&storage, false)
+            .await
+            .expect("recognized ink_board_v2 must allow format v4 with min_client=5");
+
+        assert_eq!(descriptor.format_version, 4);
+        assert_eq!(descriptor.min_reader_version, 5);
+        assert!(descriptor
+            .features
+            .iter()
+            .any(|feature| feature == "ink_board_v2"));
+    }
+
+    #[test]
+    fn d3_legacy_v4_predicate_rejects_min_reader_five_despite_board_feature() {
+        // Exact copy of the last shipped v4 predicate, before ink_board_v2:
+        // a higher min reader is fail-closed and features are ignored.
+        fn legacy_v4_reader_accepts(format_version: u32, min_reader_version: u32) -> bool {
+            format_version <= 4 && min_reader_version <= 4 && format_version >= 3
+        }
+
+        let descriptor: SyncFormatDescriptor = serde_json::from_value(json!({
+            "format_version": 4,
+            "min_client": 5,
+            "features": ["ink_board_v2"],
+        }))
+        .unwrap();
+
+        assert!(
+            !legacy_v4_reader_accepts(descriptor.format_version, descriptor.min_reader_version),
+            "legacy v4 clients must reject min_client=5 instead of ignoring the feature"
+        );
+    }
+
+    #[tokio::test]
+    async fn d3_mixed_client_gate_rejects_unrecognized_feature_and_min_reader_six() {
+        for (min_client, features) in [
+            (5, json!([])),
+            (5, json!(["ink_board_v3"])),
+            (6, json!(["ink_board_v2"])),
+        ] {
+            let storage = FileE2eeMemoryStorage::default();
+            storage.put_raw(
+                SyncManager::FORMAT_KEY,
+                serde_json::to_vec(&json!({
+                    "format_version": 4,
+                    "min_client": min_client,
+                    "features": features,
+                }))
+                .unwrap(),
+            );
+
+            let error = SyncManager::new("d3-board-v2-reader".to_string())
+                .validate_remote_format(&storage, false)
+                .await
+                .expect_err("min_client=5 without recognized ink_board_v2, or min_client=6, must fail closed");
+            assert!(
+                error.to_string().contains(&format!("v{min_client}")),
+                "error must name the rejected min_client={min_client}: {error}"
+            );
+        }
+    }
 
     #[test]
     fn v3_format_descriptor_defaults_into_v4_compatible_skeleton() {

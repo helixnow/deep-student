@@ -1,6 +1,6 @@
 # 本轮技术裁决完整清单
 
-本清单按原实施阶段progress中Ruling出现顺序整理，重复同一结论仍保留。主agent裁决不等于用户新增批准；所有决策服务于已批准范围。源码已本地提交 `7fef25ec`，未删除现场／ledger、未合并推送；后续收尾裁决见 [closure-progress](../closure-progress.md)。
+本清单保留原实施阶段的重要裁决。实现基线为 `7fef25ec`／`bc48e6eb`，基线文档为 `d48bec38`；裁决不等于用户新增批准，也不授权在新任务中自动提交或调用模型。旧 progress／closure-progress 已按用户本轮要求移入本地归档，见 [治理说明](../governance.md)。当前事实以 [README](../README.md)、[真机问题](../issues/android-import-preview.md) 和 [总体计划](../roadmap.md) 为准。
 
 | 顺序 | 裁决 | 原因 | 判断错误的成本/验证 |
 | --- | --- | --- | --- |

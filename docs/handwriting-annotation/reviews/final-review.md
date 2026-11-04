@@ -1,6 +1,6 @@
 # 主 agent 最终审查记录
 
-日期：2026-11-03。分支：`feat/handwriting-annotation-chat`。下方为原实施阶段审查记录，源码随后已本地提交 `7fef25ec`，未推送。最新收尾发现、真实模型和Android／APK证据以 [closure-results](../verification/closure-results.md) 与 [closure-progress](../closure-progress.md) 为准。
+日期：2026-11-03。分支：`feat/handwriting-annotation-chat`。本文为 `7fef25ec`／`bc48e6eb` 的冻结主审记录，文档基线 `d48bec38`，不代表后续问题已解决。基线结果见 [closure-results](../verification/closure-results.md)；后续真机预览失败见 [当前问题](../issues/android-import-preview.md)，扩展设计见 [总体计划](../roadmap.md)。旧过程清单和 ledger 已移入本地归档，查询方式见 [治理说明](../governance.md)。
 
 ## 审查范围与裁决
 

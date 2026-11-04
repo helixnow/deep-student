@@ -1,5 +1,7 @@
 # Android API36 模拟器最终验收
 
+> 冻结的x86_64模拟器报告，不是后续ARM64真机运行结论。后续真机观察到预览缺陷，见 [当前问题](../issues/android-import-preview.md)；原始截图、XML和读回摘要已移入本地归档，查询见 [治理说明](../governance.md)。
+
 日期：2026-11-03。执行／审阅：主 agent。AVD：`ds-ink-closure-20261103-api36`，serial `emulator-5582`，x86_64／Android WebView。使用本轮自建资料，无个人文件、无模型外发。
 
 ## 包与环境

@@ -1,8 +1,8 @@
 /**
  * 移动抽屉全局应用入口契约：
- * 1. head 之下固定启动器网格（3 列，7 个入口），不随页内列表滚动。
+ * 1. head 之下固定启动器网格（3 列，8 个入口），不随页内列表滚动。
  * 2. 不含搜索与命令、总览；制卡任务与模板并入「闪卡」（闪卡中心页内分区切换）。
- *    格子文案：会话 / 资源 / 音视频 / 待办 / 技能 / 闪卡 / 数据（音视频为产品名，不缩写）。
+ *    格子文案：会话 / 资源 / 笔记 / 音视频 / 待办 / 技能 / 闪卡 / 数据（音视频为产品名，不缩写）。
  * 3. 当前视图高亮，不从网格里拿掉；闪卡中心任一分区活跃时「闪卡」高亮。
  */
 import React from 'react';
@@ -13,7 +13,7 @@ import type { CurrentView } from '@/types/navigation';
 import { MOBILE_APP_LAUNCHER_VIEWS } from '@/config/navigation';
 import { rememberCardsHubView, resetCardsHubMemoryForTests } from '@/app/navigation/cardsHub';
 
-import { MobileSidebarNavigation } from '../MobileSidebarNavigation';
+import { MobileAppNavigationProvider, MobileSidebarNavigation } from '../MobileSidebarNavigation';
 
 const setCurrentView = (view: CurrentView) => {
   useViewStore.setState({ currentView: view, previousView: null });
@@ -29,22 +29,25 @@ describe('MobileSidebarNavigation app launcher', () => {
     setCurrentView('chat-v2');
   });
 
-  it('renders the seven launcher destinations as a 3-column grid', () => {
+  it('renders the notes library alongside the other launcher destinations in a 3-column grid', () => {
     render(<MobileSidebarNavigation />);
 
     expect(MOBILE_APP_LAUNCHER_VIEWS).toEqual([
       'chat-v2',
       'learning-hub',
+      'notes',
       'media',
       'todo',
       'skills-management',
       'flashcards',
       'data-management',
     ]);
+    expect(screen.getByRole('navigation')).toHaveClass('grid-cols-3');
     expect(screen.getByRole('navigation').getAttribute('data-mobile-app-launcher')).toBe('');
     expect(getButtonLabels()).toEqual([
       '会话',
       '资源',
+      '笔记',
       '音视频',
       '待办',
       '技能',
@@ -68,6 +71,39 @@ describe('MobileSidebarNavigation app launcher', () => {
 
     expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: '资源库' })).toBeTruthy();
+  });
+
+  it('opens notes directly without marking the resource library active', () => {
+    setCurrentView('notes');
+    const navigate = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <MobileAppNavigationProvider navigate={navigate}>
+        <MobileSidebarNavigation onNavigate={onNavigate} />
+      </MobileAppNavigationProvider>,
+    );
+
+    const tile = screen.getByRole('button', { name: '笔记' });
+    expect(tile).toHaveAttribute('aria-current', 'page');
+    expect(tile.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '资源库' })).not.toHaveAttribute('aria-current');
+    fireEvent.click(tile);
+    expect(navigate).toHaveBeenCalledWith('notes');
+    expect(onNavigate).toHaveBeenCalledWith('notes');
+  });
+
+  it('keeps the drawer open when direct notes navigation is blocked', () => {
+    const navigate = vi.fn(() => false);
+    const onNavigate = vi.fn();
+    render(
+      <MobileAppNavigationProvider navigate={navigate}>
+        <MobileSidebarNavigation onNavigate={onNavigate} />
+      </MobileAppNavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '笔记' }));
+    expect(navigate).toHaveBeenCalledWith('notes');
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it('highlights data management when the deprecated dashboard view is current', () => {

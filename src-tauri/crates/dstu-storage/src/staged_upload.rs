@@ -514,6 +514,36 @@ pub async fn staged_upload_abort(upload_id: String) -> Result<(), String> {
         .map_err(|e| format!("Staged upload task failed: {}", e))
 }
 
+/// 导入分流前的文件描述解析。Android 上 provider 的 DISPLAY_NAME/MIME 通过
+/// 既有 saf-permission 插件查询；其余平台/未知类型使用有界内容检测。
+/// 只读取头部，不整文件入内存；`Err` 表示 opaque 且完全无法识别，调用方必须显式失败。
+#[tauri::command]
+pub async fn resolve_import_file_info(
+    window: Window,
+    path: String,
+) -> Result<crate::unified_file_manager::ResolvedImportInfo, String> {
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&path)
+        .map_err(|e| e.to_string())?;
+    crate::unified_file_manager::deny_hidden_local_path(&window, &path)
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "android")]
+    let provider = if path.trim().to_ascii_lowercase().starts_with("content://") {
+        crate::unified_file_manager::query_android_saf_display_info(&path).await
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "android"))]
+    let provider: Option<crate::unified_file_manager::AndroidSafDisplayInfo> = None;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::unified_file_manager::resolve_import_info(&window, &path, provider)
+    })
+    .await
+    .map_err(|e| format!("Resolve import info task failed: {}", e))?
+    .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
