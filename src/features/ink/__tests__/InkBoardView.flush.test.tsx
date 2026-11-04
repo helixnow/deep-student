@@ -132,6 +132,22 @@ describe('InkBoardView host flush boundary', () => {
     expect(onErase).toHaveBeenCalledOnce();
   });
 
+  it('finishes an OS-cancelled stroke without appending cancellation coordinates', async () => {
+    const onCommitStroke = vi.fn<InkBoardViewProps['onCommitStroke']>();
+    render(<InkBoardView {...props({ onCommitStroke })} />);
+    const canvas = startGesture();
+    fireEvent.pointerCancel(canvas, { pointerId: 7, pointerType: 'pen' });
+    await act(async () => undefined);
+
+    expect(onCommitStroke).toHaveBeenCalledOnce();
+    expect(onCommitStroke.mock.calls[0][0].samples).toMatchObject([
+      { x: 10, y: 10, pressure: 0.5 },
+      { x: 30, y: 30, pressure: 0.5 },
+    ]);
+    fireEvent.pointerUp(canvas, { pointerId: 7, pointerType: 'pen', button: 0, clientX: 30, clientY: 30 });
+    expect(onCommitStroke).toHaveBeenCalledOnce();
+  });
+
   it('waits for an eraser removal already started by pointerup', async () => {
     const gate = deferred();
     const onErase = vi.fn(() => gate.promise);

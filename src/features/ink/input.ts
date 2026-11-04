@@ -52,6 +52,7 @@ export function collectPointerSamples(
   if (bounds && (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0)) {
     throw new RangeError('Page bounds must be finite and positive');
   }
+  if (options.cancelled) return [];
   let events = eventLike.getCoalescedEvents?.();
   if (!events?.length) events = [eventLike];
 
@@ -67,7 +68,7 @@ export function collectPointerSamples(
   };
 
   for (const event of events) append(event);
-  if ((options.terminal || options.cancelled) && events !== undefined && events[events.length - 1] !== eventLike) {
+  if (options.terminal && events !== undefined && events[events.length - 1] !== eventLike) {
     const lastEvent = events[events.length - 1];
     const terminalIsDifferent = !isFiniteEvent(lastEvent)
       || lastEvent.clientX !== eventLike.clientX
