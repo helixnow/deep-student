@@ -13,9 +13,7 @@ import {
 import { InkToolbar } from './InkToolbar';
 import { flushInkEditor, registerInkEditorSession, type InkEditorSession } from './editorSession';
 import { useInkDocument } from './useInkDocument';
-import { loadInkBackground, type InkBackgroundLease } from './background';
-import { getFrozenInkRenderInputs } from './renderBridge';
-import { composeSourceHighlights } from './sourceHighlights';
+import { useInkBackground } from './useInkBackground';
 import {
   clampEraserSize,
   clampInkOpacity,
@@ -58,6 +56,12 @@ type InkHistory = { undo: InkPage[]; redo: InkPage[] };
 export function InkEditor({ documentId, className, initialPageId, exportControls, onAskAi, onExport }: InkEditorProps) {
   const { t } = useTranslation('ink');
   const docState = useInkDocument(documentId, initialPageId);
+  const inkBackground = useInkBackground({
+    documentId,
+    status: docState.status,
+    manifest: docState.manifest,
+    pageRef: docState.pageRef,
+  });
   const pageViewRef = useRef<InkPageViewHandle>(null);
   const activeStrokeRef = useRef(false);
   const interactionEpochRef = useRef(0);
@@ -98,8 +102,6 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     }
   }, [documentId]);
   const [renameValue, setRenameValue] = useState('');
-  const [publishedBackground, setPublishedBackground] = useState<InkBackgroundLease>();
-  const [backgroundError, setBackgroundError] = useState(false);
   const [pageError, setPageError] = useState(false);
   const [selectionMode, setSelectionMode] = useState<InkSelectionMode>('none');
   const [selection, setSelection] = useState<InkSelectionRegion | null>(null);
@@ -281,62 +283,6 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     { target: 'document', type: 'visibilitychange', listener: onVisibilityHidden },
     { target: 'window', type: 'pagehide', listener: onPageHide },
   ], [onVisibilityHidden, onPageHide]);
-
-  useEffect(() => {
-    const pageRef = docState.pageRef;
-    const manifest = docState.manifest;
-    let cancelled = false;
-    setPublishedBackground(undefined);
-    setBackgroundError(false);
-    if (docState.status !== 'ready' || !pageRef || !manifest) return;
-
-    void (async () => {
-      let lease: InkBackgroundLease | undefined;
-      try {
-        let highlights: Array<Record<string, unknown>> = [];
-        if (manifest.source.kind === 'resource') {
-          const inputs = await getFrozenInkRenderInputs(documentId, manifest.revision, pageRef.page_id);
-          if (inputs.revision !== manifest.revision || inputs.page_ref.page_id !== pageRef.page_id
-            || inputs.page.page_id !== pageRef.page_id) throw new Error('Frozen Ink render inputs do not match the open page revision.');
-          highlights = inputs.highlights;
-        }
-        lease = await loadInkBackground(pageRef);
-        if (cancelled) {
-          lease.dispose();
-          return;
-        }
-        const composed = composeSourceHighlights(lease.background, pageRef, highlights);
-        const owned = lease;
-        lease = undefined;
-        let disposed = false;
-        setPublishedBackground({
-          background: composed ?? owned.background,
-          dispose() {
-            if (disposed) return;
-            disposed = true;
-            owned.dispose();
-            if (composed) {
-              composed.width = 0;
-              composed.height = 0;
-            }
-          },
-        });
-      } catch {
-        lease?.dispose();
-        if (!cancelled) setBackgroundError(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [documentId, docState.status, docState.pageRef, docState.manifest]);
-
-  // Disposing from this effect (not the loader's cleanup) ties the lease to the
-  // value React actually published: React runs this cleanup only after the
-  // background prop has been replaced or detached, so InkPageView can no longer
-  // redraw a closed ImageBitmap in the same commit.
-  useEffect(() => () => publishedBackground?.dispose(), [publishedBackground]);
 
   const onPageChange = useCallback(async (page: InkPage, expectedRevision?: string) => {
     const previous = documentRef.current.page;
@@ -601,7 +547,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         onToggleTouchDrawing={() => setTouchDrawing((value) => !value)}
         translate={(key) => t(key)}
       />
-      {backgroundError && <div role="alert" className="shrink-0 px-3 py-1 text-sm text-destructive">{t('errors.backgroundLoadFailed')}</div>}
+      {inkBackground.error && <div role="alert" className="shrink-0 px-3 py-1 text-sm text-destructive">{t('errors.backgroundLoadFailed')}</div>}
       {pageError && <div role="alert" className="shrink-0 px-3 py-1 text-sm text-destructive">{t('errors.operationFailed')}</div>}
       {pasteError === 'too-large' && (
         <div role="alert" data-testid="ink-selection-too-large" className="shrink-0 px-3 py-1 text-sm text-destructive">
@@ -613,7 +559,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         documentId={documentId}
         pageRef={docState.pageRef}
         page={docState.page}
-        background={publishedBackground?.background}
+        background={inkBackground.background}
         tool={toolSettings}
         erasing={erasing}
         selectionMode={selectionMode}

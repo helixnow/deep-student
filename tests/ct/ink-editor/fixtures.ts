@@ -92,7 +92,9 @@ export function createInkEditorBackend(
     title: 'Ink editor CT fixture',
     source: background === 'pdf_page'
       ? { kind: 'resource', resource_id: 'res-ink-editor-pdf', source_hash: 'a'.repeat(64), conversion_revision: 'conversion-v1' }
-      : { kind: 'blank' },
+      : background === 'image'
+        ? { kind: 'resource', resource_id: 'res-ink-editor-image', source_hash: 'c'.repeat(64), conversion_revision: 'conversion-image-v1' }
+        : { kind: 'blank' },
     pages: manifestPages,
   };
   const pdfResource = background === 'pdf_page'
@@ -114,6 +116,20 @@ export function createInkEditorBackend(
         updatedAt: 1,
       }
     : undefined;
+  // A real resource-backed image page (no source PDF annotations) so the editor
+  // exercises the generic frozen-render-inputs path, not only PDF pages.
+  const imageResource = background === 'image'
+    ? {
+        id: 'res-ink-editor-image',
+        hash: 'c'.repeat(64),
+        type: 'file',
+        storageMode: 'inline',
+        metadata: { extra: { highlights: [] as Array<Record<string, unknown>> } },
+        refCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      }
+    : undefined;
   const pages = new Map<string, InkPage>([
     [pageRefs[0].page_id, { schema_version: 1, page_id: pageRefs[0].page_id, objects: [redOtherPageStroke] }],
     [inkEditorPageId, { schema_version: 1, page_id: inkEditorPageId, objects: [bluePageStroke] }],
@@ -128,17 +144,36 @@ export function createInkEditorBackend(
   let appendRequest: { document_id?: string; expected_revision?: string; operation_id?: string; width?: number; height?: number; ruling?: InkRuling } | undefined;
   let renameCalls = 0;
   let renameRequest: { document_id?: string; expected_revision?: string; operation_id?: string; title?: string } | undefined;
+  let backgroundReadCalls = 0;
+  let pendingBackgroundReads = 0;
+  let holdBackgroundReads = false;
+  const heldBackgroundReadResolvers: Array<() => void> = [];
+  let renderInputReadCalls = 0;
+  let pendingRenderInputReads = 0;
+  let holdRenderInputReads = false;
+  const heldRenderInputReadResolvers: Array<() => void> = [];
 
   const handlers: Record<string, CtInvokeHandler> = {
-    vfs_get_blob_base64: (_command, payload) => {
+    vfs_get_blob_base64: async (_command, payload) => {
       if ((payload as { blobHash?: string } | undefined)?.blobHash !== 'ink-editor-background-blob') throw new Error('Unknown fixture blob');
+      backgroundReadCalls += 1;
       const base64 = preparedPngBase64(background === 'pdf_page' ? '#dddddd' : '#ff0000', manifestPages[1].width, manifestPages[1].height);
+      if (holdBackgroundReads) {
+        pendingBackgroundReads += 1;
+        await new Promise<void>((resolve) => { heldBackgroundReadResolvers.push(resolve); });
+        pendingBackgroundReads -= 1;
+      }
       return { mimeType: 'image/png', size: atob(base64).length, base64 };
     },
     vfs_get_resource: (_command, payload) => {
       const request = payload as { resourceId?: string } | undefined;
-      if (request?.resourceId !== pdfResource?.id) throw new Error('Unknown fixture source resource');
-      return structuredClone(pdfResource);
+      const resource = request?.resourceId === pdfResource?.id
+        ? pdfResource
+        : request?.resourceId === imageResource?.id
+          ? imageResource
+          : undefined;
+      if (!resource) throw new Error('Unknown fixture source resource');
+      return structuredClone(resource);
     },
     vfs_ink_get: (_command, payload) => {
       const request = payload?.request as { document_id?: string } | undefined;
@@ -155,7 +190,7 @@ export function createInkEditorBackend(
       selectedPageId = page.page_id;
       return structuredClone(page);
     },
-    vfs_ink_get_render_inputs: (_command, payload) => {
+    vfs_ink_get_render_inputs: async (_command, payload) => {
       const request = payload as { documentId?: string; expectedRevision?: string; pageId?: string } | undefined;
       if (request?.documentId !== manifest.document_id || request.expectedRevision !== manifest.revision) {
         throw new Error('Unknown fixture frozen Ink revision');
@@ -163,8 +198,9 @@ export function createInkEditorBackend(
       const pageRef = manifest.pages.find((candidate) => candidate.page_id === request.pageId);
       const page = request.pageId ? pages.get(request.pageId) : undefined;
       if (!pageRef || !page || page.page_id !== pageRef.page_id) throw new Error('Unknown fixture frozen Ink page');
+      renderInputReadCalls += 1;
       const highlights = pdfResource && pdfPageHighlights ? pdfResource.metadata.extra.highlights ?? [] : [];
-      return structuredClone({
+      const inputs = structuredClone({
         revision: manifest.revision,
         source: manifest.source,
         page_ref: pageRef,
@@ -172,6 +208,12 @@ export function createInkEditorBackend(
         highlights,
         source_annotation_revision: pdfResource ? 'annotations-fixture-v1' : undefined,
       });
+      if (holdRenderInputReads) {
+        pendingRenderInputReads += 1;
+        await new Promise<void>((resolve) => { heldRenderInputReadResolvers.push(resolve); });
+        pendingRenderInputReads -= 1;
+      }
+      return inputs;
     },
     vfs_ink_append_page: (_command, payload) => {
       const request = payload?.request as {
@@ -295,6 +337,41 @@ export function createInkEditorBackend(
           ? { ...pageRef, page_blob_hash: `remote-${revisionNumber}-${pageId}` }
           : pageRef),
       };
+    },
+    updatePdfSourceHighlights(highlights: Array<Record<string, unknown>>) {
+      if (!pdfResource) throw new Error('Fixture document has no PDF source resource');
+      const extra = pdfResource.metadata.extra as { highlights?: Array<Record<string, unknown>> };
+      extra.highlights = structuredClone(highlights);
+    },
+    holdBackgroundReads(hold: boolean) {
+      holdBackgroundReads = hold;
+    },
+    releaseHeldBackgroundReads() {
+      holdBackgroundReads = false;
+      const resolvers = heldBackgroundReadResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    holdRenderInputReads(hold: boolean) {
+      holdRenderInputReads = hold;
+    },
+    releaseHeldRenderInputReads() {
+      holdRenderInputReads = false;
+      const resolvers = heldRenderInputReadResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    get backgroundReadCalls() {
+      return backgroundReadCalls;
+    },
+    get pendingBackgroundReads() {
+      return pendingBackgroundReads;
+    },
+    get renderInputReadCalls() {
+      return renderInputReadCalls;
+    },
+    get pendingRenderInputReads() {
+      return pendingRenderInputReads;
     },
     get saveCalls() {
       return saveCalls;
