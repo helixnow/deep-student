@@ -14,6 +14,7 @@ vi.mock('@/dstu', () => ({
 }));
 
 import { appRegistry } from '../../../core/appRegistry';
+import { registerInkWorkspaceExitGuard } from '@/services/inkWorkspaceRegistry';
 import { CONTENT_APP_DEFINITIONS } from '../register';
 import { MINDMAP_APP_DEFINITION } from '../../mindmap/register';
 import { notesAppDefinition } from '../../notes/register';
@@ -78,12 +79,49 @@ describe('content app registers', () => {
     }
   });
 
-  it('独立编辑类应用接了 canClose 未保存拦截', () => {
-    for (const typeId of ['translation', 'essay']) {
+  it('编辑类与 file 应用接了 canClose 拦截，其他只读应用不拦截', () => {
+    for (const typeId of ['translation', 'essay', 'file']) {
       expect(appRegistry.get(typeId)?.canClose, `${typeId} canClose`).toBeTypeOf('function');
     }
-    for (const typeId of ['textbook', 'image', 'file']) {
+    for (const typeId of ['textbook', 'image']) {
       expect(appRegistry.get(typeId)?.canClose, `${typeId} canClose`).toBeUndefined();
+    }
+  });
+
+  it('file 注册项等待墨迹工作区保存完成，普通文件直接放行', async () => {
+    const file = appRegistry.get('file')!;
+    await expect(file.canClose!('file_plain')).resolves.toBe(true);
+    let dirty = true;
+    let finish!: (saved: boolean) => void;
+    const flush = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const unregister = registerInkWorkspaceExitGuard('file_ink', { isDirty: () => dirty, flush });
+    try {
+      let settled = false;
+      const closing = Promise.resolve(file.canClose!('/folder/file_ink')).then((saved) => { settled = true; return saved; });
+      expect(flush).toHaveBeenCalledTimes(1);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      dirty = false;
+      finish(true);
+      await expect(closing).resolves.toBe(true);
+    } finally {
+      unregister();
+    }
+  });
+
+  it.each(['false', 'throw', 'still-dirty'] as const)('file 注册项在 guard %s 时拒绝关闭', async (failure) => {
+    const flush = vi.fn(async () => {
+      if (failure === 'throw') throw new Error('Ink save failed');
+      return failure !== 'false';
+    });
+    const unregister = registerInkWorkspaceExitGuard('file_ink_failed', {
+      isDirty: () => failure === 'still-dirty', flush,
+    });
+    try {
+      await expect(appRegistry.get('file')!.canClose!('/folder/file_ink_failed')).resolves.toBe(false);
+      expect(flush).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
     }
   });
 
