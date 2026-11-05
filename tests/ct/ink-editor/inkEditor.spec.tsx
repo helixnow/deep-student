@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 import type { InkPage } from '@/features/ink/types';
 import { InkEditorHarness } from './InkEditorHarness';
 import { inkEditorDocumentId, inkEditorPageId } from './fixtures';
+import { expectEditorFlush, flushEditor } from './inkTestUtils';
 
 async function drawStroke(page: Page, canvas: ReturnType<Page['locator']>, localY = 72) {
   const bounds = await canvas.boundingBox();
@@ -77,6 +78,7 @@ test('loads the requested page, writes one real pointer stroke, saves, and reope
   await expect(canvas).toHaveAttribute('data-page-id', inkEditorPageId);
 
   await drawStroke(page, canvas);
+  await flushEditor(page);
   await expect.poll(() => hasBlueFixtureStroke(canvas)).toBe(true);
   await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
   await expect(saveState).toHaveAttribute('data-state', 'saved');
@@ -95,6 +97,7 @@ test('keeps the local stroke visible and recoverable after a revision conflict',
   const canvas = component.getByTestId('ink-page-canvas');
   await expect(canvas).toBeVisible();
   await drawStroke(page, canvas);
+  await flushEditor(page);
 
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'conflict');
   await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
@@ -111,6 +114,7 @@ test('recovers a persisted unsaved stroke after the page is hidden and the edito
   const canvas = component.getByTestId('ink-page-canvas');
   await expect(canvas).toBeVisible();
   await drawStroke(page, canvas);
+  await flushEditor(page);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'offline');
   await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
 
@@ -133,6 +137,7 @@ test('classifies an offline draft as conflict when the remote page advanced befo
   const canvas = component.getByTestId('ink-page-canvas');
   await expect(canvas).toBeVisible();
   await drawStroke(page, canvas);
+  await flushEditor(page);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'offline');
   await component.getByTestId('ink-editor-unmount').click();
   await component.getByTestId('ink-editor-advance-remote').click();
@@ -188,13 +193,13 @@ test('applies selected pen color and width to the saved stroke and real canvas p
   await component.getByTestId('ink-width-large').click();
   const activeCanvas = component.getByTestId('ink-active-stroke-canvas');
   await drawStroke(page, activeCanvas, 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   await component.getByTestId('ink-tool-highlighter').click();
   await component.getByTestId('ink-color-blue').click();
   await component.getByTestId('ink-width-medium').click();
   await drawStroke(page, activeCanvas, 102);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   const pageValue = await readFixturePage(page);
   const newStrokes = pageValue?.objects.filter((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
@@ -243,7 +248,7 @@ test('erases a whole stroke and restores/removes it with undo and redo on the re
   await expect.poll(() => hasBlueFixtureStroke(canvas)).toBe(true);
   await component.getByTestId('ink-redo').click();
   await expect.poll(() => hasBlueFixtureStroke(canvas)).toBe(false);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.map((object) => object.id)).toEqual([]);
 
   const savedPage = await readFixturePage(page);
@@ -308,7 +313,7 @@ test('zooms the rendered page while keeping pointer samples in page coordinates'
   expect(cssWidth).toBeGreaterThan(120);
 
   await drawStroke(page, component.getByTestId('ink-active-stroke-canvas'), 90);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   const saved = await readFixturePage(page);
   const stroke = saved?.objects.find((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
   expect(stroke?.content.kind).toBe('stroke');
@@ -352,7 +357,7 @@ test('requires explicit touch drawing and uses the shared page input surface', a
     send('pointermove', 70, 72, 12);
     send('pointerup', 96, 72, 12);
   }, { left: bounds.x, top: bounds.y });
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   const drawnPage = await readFixturePage(page);
   expect(drawnPage?.objects.some((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke')).toBe(true);
 });
@@ -438,7 +443,7 @@ test('composites active highlighter over cached page with final pixels and keeps
   expect(preview.activeHighlighterPixel).toEqual([127, 127, 255, 255]);
 
   await dispatch('pointerup', 96, 50, 0.45);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   const finalPixels = await pageCanvas.evaluate((element) => {
     const canvas = element as HTMLCanvasElement;
     const context = canvas.getContext('2d');
@@ -453,9 +458,9 @@ test('does not conflict on native ink:changed events emitted before successive s
   const input = component.getByTestId('ink-active-stroke-canvas');
   await expect(component.getByTestId('ink-page-canvas')).toBeVisible();
   await drawStroke(page, input, 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await drawStroke(page, input, 96);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   const savedPage = await readFixturePage(page);
   expect(savedPage?.objects.filter((object) => object.content.kind === 'stroke')).toHaveLength(3);
   await component.getByTestId('ink-editor-flush').click();
@@ -528,7 +533,7 @@ test('keeps pointer-down pen style frozen while toolbar changes before pointerup
   await component.getByTestId('ink-width-small').click();
   await send('pointermove', 64);
   await send('pointerup', 96);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   const pageValue = await readFixturePage(page);
   const stroke = pageValue?.objects.find((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
   expect(stroke?.content).toMatchObject({ kind: 'stroke', style: { tool: 'pen', color: '#ff0000', width: 12 } });
@@ -589,6 +594,8 @@ test('persists an active pointer stroke on pagehide while document visibility re
     window.dispatchEvent(new PageTransitionEvent('pagehide'));
   });
 
+  expect((await readFixturePage(page))?.objects).toHaveLength(1);
+  await flushEditor(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
   await component.getByTestId('ink-editor-unmount').click();
   await component.getByTestId('ink-editor-remount').click();
@@ -604,6 +611,7 @@ test('reports draft-store failure without claiming a durable draft was kept', as
     Object.defineProperty(indexedDB, 'open', { configurable: true, value: () => { throw new Error('quota exceeded'); } });
   });
   await drawStroke(page, component.getByTestId('ink-active-stroke-canvas'));
+  await flushEditor(page);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'storage-error');
   await expect(component.getByTestId('ink-editor-save-state')).not.toContainText(/draft is kept|draft kept/i);
   const saveCalls = await page.evaluate(() => (window as Window & {
@@ -651,6 +659,7 @@ test('keeps the image background and saved stroke after a successful save advanc
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([255, 0, 0, 255]);
 
   await drawStroke(page, canvas);
+  await flushEditor(page);
   await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
 
@@ -668,6 +677,7 @@ test('keeps a prepared PDF background without source highlights after a successf
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual([221, 221, 221, 255]);
 
   await drawStroke(page, canvas);
+  await flushEditor(page);
   await expect.poll(() => countInkPixels(canvas)).toBeGreaterThan(10);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
 
@@ -710,7 +720,7 @@ test('refetches the loaded page on a matching ink:changed event instead of trust
     const [red, green, blue] = context.getImageData(48, 130, 1, 1).data;
     return red > 180 && green < 80 && blue < 80;
   })).toBe(true);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 });
 
 test('does not overwrite a dirty page after an ink:changed event and marks the refreshed document conflicted', async ({ mount, page }) => {
@@ -718,6 +728,7 @@ test('does not overwrite a dirty page after an ink:changed event and marks the r
   const canvas = component.getByTestId('ink-page-canvas');
   await expect(canvas).toBeVisible();
   await drawStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
+  await flushEditor(page);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'offline');
 
   await component.getByTestId('ink-editor-advance-remote-external').click();
@@ -755,7 +766,7 @@ test('invalidates page undo history after a clean external ink:changed reload', 
   const component = await mount(<InkEditorHarness saveMode="success" />);
   await expect(component.getByTestId('ink-page-canvas')).toBeVisible();
   await drawStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect(component.getByTestId('ink-undo')).toBeEnabled();
 
   await component.getByTestId('ink-editor-advance-remote-external').click();
@@ -806,7 +817,7 @@ test('refetches revision and page rather than trusting ink:changed payload revis
     const [red, green, blue] = context.getImageData(48, 130, 1, 1).data;
     return red > 180 && green < 80 && blue < 80;
   })).toBe(true);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 });
 
 test('treats OPERATION_STATE_UNKNOWN as a read-required conflict instead of offering retry', async ({ mount, page }) => {
@@ -815,6 +826,7 @@ test('treats OPERATION_STATE_UNKNOWN as a read-required conflict instead of offe
   const canvas = component.getByTestId('ink-page-canvas');
   await expect(canvas).toBeVisible();
   await drawStroke(page, canvas);
+  await flushEditor(page);
   const saveState = component.getByTestId('ink-editor-save-state');
   await expect(saveState).toHaveAttribute('data-state', 'conflict');
   await component.getByTestId('ink-editor-flush').click();
@@ -843,13 +855,13 @@ test('does not let a page-1 undo stack replace a remote AI change made while pag
   await component.getByTestId('ink-page-previous').click();
   await expect(canvas).toHaveAttribute('data-page-id', pageOneId);
   await drawStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect(undo).toBeEnabled();
   expect((await readFixturePage(page, pageOneId))?.objects).toHaveLength(2);
 
   await component.getByTestId('ink-page-next').click();
   await expect(canvas).toHaveAttribute('data-page-id', inkEditorPageId);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   // A remote AI writer changes page 1 while the editor is cleanly showing page 2.
   const readsBeforeRemoteChange = await page.evaluate(() => {
@@ -888,14 +900,14 @@ test('does not let a page-1 undo stack replace a remote AI change made while pag
     return backend ? [backend.getCalls, backend.getPageCalls] : [];
   })).toEqual([readsBeforeRemoteChange[0] + 1, readsBeforeRemoteChange[1] + 1]);
   await expect(canvas).toHaveAttribute('data-page-id', inkEditorPageId);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   // Returning to page 1 must load the remote object without allowing the stale
   // page-1 history to replace it. Either invalidate the history (undo disabled)
   // or make undo object-safe (remote object survives a click).
   await component.getByTestId('ink-page-previous').click();
   await expect(canvas).toHaveAttribute('data-page-id', pageOneId);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page, pageOneId))?.objects.some((object) => object.id === remotePageOneStrokeId)).toBe(true);
   await expect.poll(() => hasRedPixelAt(canvas, 48, 130)).toBe(true);
 

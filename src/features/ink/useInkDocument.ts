@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { inkApi, InkApiError, type InkChangedEvent } from './api';
 import { inkDraftJournal, type InkDraftRecord } from './drafts';
 import { hasDirtyInkEditor } from './editorSession';
 import type { InkManifest, InkPage, InkPageRef, InkRuling } from './types';
 
-export type InkSaveStatus = 'loading' | 'saved' | 'saving' | 'conflict' | 'offline' | 'storage-error';
+export type InkSaveStatus = 'loading' | 'saved' | 'pending' | 'saving' | 'conflict' | 'offline' | 'storage-error';
 
-export interface InkDocumentState {
+export interface InkDocumentSnapshot {
   status: 'loading' | 'ready' | 'error';
   saveStatus: InkSaveStatus;
   manifest?: InkManifest;
   pageRef?: InkPageRef;
   page?: InkPage;
   error?: unknown;
+  remoteReloadSequence: number;
+}
+
+export interface InkDocumentState extends InkDocumentSnapshot {
+  getSnapshot(): InkDocumentSnapshot;
   savePage(page: InkPage, expectedRevision?: string): Promise<void>;
   selectPage(pageId: string): Promise<void>;
   appendPage(width: number, height: number, ruling: InkRuling): Promise<void>;
@@ -24,479 +29,486 @@ export interface InkDocumentState {
   persistDraft(): Promise<InkDraftRecord | undefined>;
   flush(): Promise<void>;
   setActiveStroke(active: boolean): void;
-  remoteReloadSequence: number;
 }
 
-interface LoadedInkDocument {
-  manifest: InkManifest;
-  pageRef: InkPageRef;
+interface CachedInkPage {
   page: InkPage;
-  base_revision: string;
-  saveStatus: InkSaveStatus;
+  sequence: number;
+  savedSequence: number;
+  draft?: InkDraftRecord;
+  operation?: { id: string; sequence: number; revision: string };
+}
+
+interface InkDocumentSession {
+  documentId: string;
+  status: InkDocumentSnapshot['status'];
+  manifest?: InkManifest;
+  baseRevision: string;
+  pages: Map<string, CachedInkPage>;
+  selectedPageId?: string;
+  requestedPageId?: string;
+  selectionRequest: number;
+  loadRequest: number;
+  editVersion: number;
+  epoch: number;
+  remoteReloadSequence: number;
+  conflict: boolean;
+  offline: boolean;
+  storageError: boolean;
+  saving: boolean;
+  activeStroke: boolean;
+  active: boolean;
+  error?: unknown;
+  ready?: Promise<void>;
+  operation?: Promise<void>;
 }
 
 const documentSaveQueues = new Map<string, Promise<void>>();
-const conflictedDocuments = new Set<string>();
-const activeDocumentSequences = new Map<string, Set<number>>();
+const documentExitQueues = new Map<string, Promise<void>>();
+const documentDraftQueues = new Map<string, Promise<void>>();
+const documentSequences = new Map<string, number>();
 const pendingSaveOperationIds = new Map<string, Set<string>>();
 
 const operationId = (): string => globalThis.crypto?.randomUUID?.()
   ?? `ink-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-function serializeDocumentSave(documentId: string, save: () => Promise<void>): Promise<void> {
-  const previous = documentSaveQueues.get(documentId) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(save);
+function serialize(queue: Map<string, Promise<void>>, documentId: string, task: () => Promise<void>): Promise<void> {
+  const previous = queue.get(documentId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(task);
   const queued = next.finally(() => {
-    if (documentSaveQueues.get(documentId) === queued) documentSaveQueues.delete(documentId);
+    if (queue.get(documentId) === queued) queue.delete(documentId);
   });
-  documentSaveQueues.set(documentId, queued);
+  queue.set(documentId, queued);
   return queued;
 }
 
-export function useInkDocument(documentId: string, requestedPageId?: string): InkDocumentState {
-  const [state, setState] = useState<InkDocumentState>({
-    status: 'loading',
-    saveStatus: 'loading',
-    savePage: async () => {},
-    selectPage: async () => {},
-    appendPage: async () => {},
-    rename: async () => {},
-    reloadRemote: async () => {},
-    retrySave: async () => {},
-    retryDraftStorage: async () => {},
-    persistDraft: async () => undefined,
-    flush: async () => {},
-    setActiveStroke: () => {},
-    remoteReloadSequence: 0,
+export function enqueueInkDocumentExit(documentId: string, exit: () => Promise<void>): Promise<void> {
+  return serialize(documentExitQueues, documentId, exit);
+}
+
+function nextSequence(documentId: string): number {
+  const sequence = (documentSequences.get(documentId) ?? 0) + 1;
+  documentSequences.set(documentId, sequence);
+  return sequence;
+}
+
+function isDirty(entry: CachedInkPage): boolean {
+  return entry.sequence > entry.savedSequence;
+}
+
+function dirtyPages(session: InkDocumentSession): CachedInkPage[] {
+  return (session.manifest?.pages ?? []).flatMap(({ page_id }) => {
+    const entry = session.pages.get(page_id);
+    return entry && isDirty(entry) ? [entry] : [];
   });
-  const loadedRef = useRef<LoadedInkDocument | null>(null);
-  const selectedPageIdRef = useRef(requestedPageId);
-  const lastRequestedPageIdRef = useRef(requestedPageId);
-  if (lastRequestedPageIdRef.current !== requestedPageId) {
-    lastRequestedPageIdRef.current = requestedPageId;
-    selectedPageIdRef.current = requestedPageId;
+}
+
+function saveStatus(session: InkDocumentSession): InkSaveStatus {
+  if (session.storageError) return 'storage-error';
+  if (session.conflict) return 'conflict';
+  if (session.status === 'loading') return 'loading';
+  if (session.saving) return 'saving';
+  if (!dirtyPages(session).length) return 'saved';
+  return session.offline ? 'offline' : 'pending';
+}
+
+function snapshot(session: InkDocumentSession): InkDocumentSnapshot {
+  return {
+    status: session.status,
+    saveStatus: saveStatus(session),
+    manifest: session.manifest,
+    pageRef: session.manifest?.pages.find(({ page_id }) => page_id === session.selectedPageId),
+    page: session.pages.get(session.selectedPageId ?? '')?.page,
+    error: session.error,
+    remoteReloadSequence: session.remoteReloadSequence,
+  };
+}
+
+function isConflict(error: unknown): boolean {
+  return error instanceof InkApiError
+    && (error.code === 'REVISION_CONFLICT' || error.code === 'OPERATION_STATE_UNKNOWN');
+}
+
+async function ownOperation<T>(documentId: string, id: string, task: () => Promise<T>): Promise<T> {
+  const ids = pendingSaveOperationIds.get(documentId) ?? new Set<string>();
+  ids.add(id);
+  pendingSaveOperationIds.set(documentId, ids);
+  try {
+    return await task();
+  } finally {
+    ids.delete(id);
+    if (!ids.size) pendingSaveOperationIds.delete(documentId);
   }
-  const sequenceRef = useRef(0);
-  const queueRef = useRef<Promise<void>>(Promise.resolve());
-  const latestSequenceRef = useRef(0);
-  const loadRequestRef = useRef(0);
-  const activeRef = useRef(true);
-  const saveStatusRef = useRef<InkSaveStatus>('loading');
-  const sequenceOnPageRef = useRef(0);
-  const activeStrokeRef = useRef(false);
-  const [remoteReloadSequence, setRemoteReloadSequence] = useState(0);
+}
 
-  const loadRemote = useCallback(async (restoreDraft: boolean): Promise<LoadedInkDocument> => {
-    const requestId = ++loadRequestRef.current;
-    const sequenceAtStart = sequenceRef.current;
-    const manifest = await inkApi.get({ document_id: documentId });
-    const pageId = selectedPageIdRef.current ?? manifest.pages[0]?.page_id;
-    if (!pageId) throw new Error('Ink document has no pages.');
-    const pageRef = manifest.pages.find((candidate) => candidate.page_id === pageId);
-    if (!pageRef) throw new Error('The requested ink page does not exist.');
-    const remotePage = await inkApi.getPage({ document_id: documentId, page_id: pageId });
-    let loaded: LoadedInkDocument = {
-      manifest,
-      pageRef,
-      page: remotePage,
-      base_revision: manifest.revision,
-      saveStatus: 'saved',
-    };
+function draftRecord(session: InkDocumentSession, entry: CachedInkPage): InkDraftRecord {
+  return {
+    document_id: session.documentId,
+    page_id: entry.page.page_id,
+    base_revision: session.conflict ? entry.draft?.base_revision ?? session.baseRevision : session.baseRevision,
+    sequence: entry.sequence,
+    page: entry.page,
+    updated_at: Date.now(),
+    ...(session.conflict ? { save_state: 'conflict' as const } : session.offline ? { save_state: 'offline' as const } : {}),
+  };
+}
 
-    const draft = restoreDraft
-      ? await inkDraftJournal.read({ document_id: documentId, page_id: pageId })
-      : undefined;
-
-    if (loadRequestRef.current !== requestId || sequenceRef.current !== sequenceAtStart) {
-      return loadedRef.current ?? loaded;
+async function persistPageDraft(session: InkDocumentSession, entry: CachedInkPage): Promise<InkDraftRecord | undefined> {
+  let persisted: InkDraftRecord | undefined;
+  await serialize(documentDraftQueues, session.documentId, async () => {
+    if (!isDirty(entry) || session.pages.get(entry.page.page_id) !== entry) return;
+    const record = draftRecord(session, entry);
+    const previous = entry.draft;
+    if (previous?.sequence === record.sequence && previous.base_revision === record.base_revision && previous.save_state === record.save_state) {
+      persisted = previous;
+      return;
     }
-
-    if (draft) {
-      sequenceRef.current = Math.max(sequenceRef.current, draft.sequence);
-      const revisionChanged = draft.base_revision !== manifest.revision;
-      const saveStatus: InkSaveStatus = revisionChanged || draft.save_state === 'conflict'
-        ? 'conflict'
-        : draft.save_state ?? 'offline';
-      if (saveStatus === 'conflict') conflictedDocuments.add(documentId);
-      loaded = {
-        manifest,
-        pageRef,
-        page: draft.page,
-        base_revision: draft.base_revision,
-        saveStatus,
-      };
+    const stored = await inkDraftJournal.read(record);
+    if (stored && stored.sequence > record.sequence) {
+      session.conflict = true;
+      throw new InkApiError({ code: 'REVISION_CONFLICT', message: 'A newer ink draft exists.', retryable: false });
     }
+    await inkDraftJournal.persist(record);
+    entry.draft = record;
+    persisted = record;
+  });
+  return persisted;
+}
 
-    loadedRef.current = loaded;
-    saveStatusRef.current = loaded.saveStatus;
-    latestSequenceRef.current = Math.max(latestSequenceRef.current, sequenceRef.current);
-    return loaded;
-  }, [documentId]);
+async function persistSessionDrafts(session: InkDocumentSession, durableOnly = false): Promise<InkDraftRecord | undefined> {
+  let last: InkDraftRecord | undefined;
+  try {
+    for (const entry of session.pages.values()) {
+      if (isDirty(entry)) {
+        if (!durableOnly || entry.draft) last = await persistPageDraft(session, entry) ?? last;
+      } else if (entry.draft) {
+        await discardPageDraft(session, entry, entry.savedSequence);
+      }
+    }
+    session.storageError = false;
+  } catch (error) {
+    if (!isConflict(error)) session.storageError = true;
+    session.error = error;
+    throw error;
+  }
+  return last;
+}
 
-  const publishLoaded = useCallback((loaded: LoadedInkDocument) => {
-    if (!activeRef.current) return;
-    saveStatusRef.current = loaded.saveStatus;
-    setState((current) => ({
-      ...current,
-      status: 'ready',
-      saveStatus: loaded.saveStatus,
-      manifest: loaded.manifest,
-      pageRef: loaded.pageRef,
-      page: loaded.page,
-      error: undefined,
-    }));
-  }, []);
+async function discardPageDraft(session: InkDocumentSession, entry: CachedInkPage, sequence: number): Promise<void> {
+  await serialize(documentDraftQueues, session.documentId, async () => {
+    await inkDraftJournal.discard({ document_id: session.documentId, page_id: entry.page.page_id }, sequence);
+    if (entry.draft && entry.draft.sequence <= sequence) entry.draft = undefined;
+  });
+}
+
+export function useInkDocument(documentId: string, requestedPageId?: string): InkDocumentState {
+  const session = useMemo<InkDocumentSession>(() => ({
+    documentId,
+    status: 'loading',
+    baseRevision: '',
+    pages: new Map(),
+    selectionRequest: 0,
+    loadRequest: 0,
+    editVersion: 0,
+    epoch: 0,
+    remoteReloadSequence: 0,
+    conflict: false,
+    offline: false,
+    storageError: false,
+    saving: false,
+    activeStroke: false,
+    active: false,
+  }), [documentId]);
+  session.requestedPageId = requestedPageId;
+  const currentSessionRef = useRef(session);
+  currentSessionRef.current = session;
+  const [state, setState] = useState<InkDocumentSnapshot>(() => snapshot(session));
+  const publish = useCallback(() => {
+    if (session.active && currentSessionRef.current === session) setState(snapshot(session));
+  }, [session]);
+  const getSnapshot = useCallback(() => snapshot(session), [session]);
+
+  const loadRemote = useCallback(async (restoreDrafts: boolean, editVersion = session.editVersion) => {
+    const request = ++session.loadRequest;
+    await documentExitQueues.get(session.documentId)?.catch(() => undefined);
+    await documentSaveQueues.get(session.documentId)?.catch(() => undefined);
+    const manifest = await inkApi.get({ document_id: session.documentId });
+    const pageId = session.selectedPageId ?? session.requestedPageId ?? manifest.pages[0]?.page_id;
+    if (!pageId || !manifest.pages.some(({ page_id }) => page_id === pageId)) throw new Error('The requested ink page does not exist.');
+    await documentDraftQueues.get(session.documentId)?.catch(() => undefined);
+    const [page, drafts] = await Promise.all([
+      inkApi.getPage({ document_id: session.documentId, page_id: pageId }),
+      restoreDrafts ? Promise.all(manifest.pages.map(({ page_id }) => inkDraftJournal.read({ document_id: session.documentId, page_id }))) : [],
+    ]);
+    if (request !== session.loadRequest) return;
+    if (editVersion !== session.editVersion || session.activeStroke) {
+      const error = new Error('Ink document changed during reload.');
+      session.error = error;
+      try { await persistSessionDrafts(session); } finally { publish(); }
+      throw error;
+    }
+    session.manifest = manifest;
+    session.baseRevision = manifest.revision;
+    session.pages.clear();
+    session.pages.set(pageId, { page, sequence: 0, savedSequence: 0 });
+    session.selectedPageId = pageId;
+    session.conflict = false;
+    session.offline = false;
+    session.storageError = false;
+    for (const draft of drafts) {
+      if (!draft) continue;
+      const sequence = Math.max(1, draft.sequence);
+      documentSequences.set(session.documentId, Math.max(documentSequences.get(session.documentId) ?? 0, sequence));
+      session.pages.set(draft.page_id, { page: draft.page, sequence, savedSequence: 0, draft });
+      session.conflict ||= draft.base_revision !== manifest.revision || draft.save_state === 'conflict';
+      session.offline ||= draft.save_state === 'offline';
+    }
+    session.status = 'ready';
+    session.error = undefined;
+    publish();
+  }, [publish, session]);
+
+  const savePage = useCallback(async (page: InkPage, expectedRevision?: string) => {
+    if (!session.manifest || page.page_id !== session.selectedPageId) return;
+    if (expectedRevision !== undefined && session.baseRevision !== expectedRevision) throw new Error('Ink page revision changed before save');
+    const entry = session.pages.get(page.page_id);
+    if (!entry || entry.page === page) return;
+    entry.page = page;
+    entry.sequence = nextSequence(session.documentId);
+    ++session.editVersion;
+    publish();
+  }, [publish, session]);
 
   const selectPage = useCallback(async (pageId: string) => {
-    await queueRef.current;
-    const current = loadedRef.current;
-    if (!current || !current.manifest.pages.some((pageRef) => pageRef.page_id === pageId)) return;
-    selectedPageIdRef.current = pageId;
-    const loaded = await loadRemote(true);
-    publishLoaded(loaded);
-  }, [loadRemote, publishLoaded]);
+    await session.ready;
+    if (!session.manifest?.pages.some(({ page_id }) => page_id === pageId)) return;
+    const request = ++session.selectionRequest;
+    const epoch = session.epoch;
+    if (!session.pages.has(pageId)) {
+      const page = await inkApi.getPage({ document_id: session.documentId, page_id: pageId });
+      if (epoch !== session.epoch) return;
+      if (!session.pages.has(pageId)) session.pages.set(pageId, { page, sequence: 0, savedSequence: 0 });
+    }
+    if (request !== session.selectionRequest || epoch !== session.epoch) return;
+    session.selectedPageId = pageId;
+    publish();
+  }, [publish, session]);
 
-  const appendPage = useCallback(async (width: number, height: number, ruling: InkRuling) => {
-    const current = loadedRef.current;
-    if (!current) return;
-    await queueRef.current;
-    const latest = loadedRef.current;
-    if (!latest || conflictedDocuments.has(documentId) || latest.saveStatus === 'conflict') return;
-    let manifest: InkManifest;
+  const persistDraft = useCallback(async () => {
     try {
-      manifest = await inkApi.appendPage({
-        document_id: documentId,
-        expected_revision: latest.base_revision,
-        operation_id: operationId(),
-        width,
-        height,
-        ruling,
-      });
-    } catch (error) {
-      if (error instanceof InkApiError && error.code === 'REVISION_CONFLICT') {
-        conflictedDocuments.add(documentId);
-        loadedRef.current = { ...latest, saveStatus: 'conflict' };
-        setState((currentState) => ({ ...currentState, saveStatus: 'conflict' }));
-      }
-      throw error;
+      return await persistSessionDrafts(session);
+    } finally {
+      publish();
     }
-    const pageRef = manifest.pages.find((entry) => !latest.manifest.pages.some((existing) => existing.page_id === entry.page_id));
-    if (!pageRef) return;
-    const page: InkPage = { schema_version: 1, page_id: pageRef.page_id, objects: [] };
-    selectedPageIdRef.current = page.page_id;
-    const loaded: LoadedInkDocument = { manifest, pageRef, page, base_revision: manifest.revision, saveStatus: 'saved' };
-    loadedRef.current = loaded;
-    publishLoaded(loaded);
-  }, [documentId, publishLoaded]);
-
-  const rename = useCallback(async (title: string) => {
-    const current = loadedRef.current;
-    if (!current || !title.trim()) return;
-    await queueRef.current;
-    const latest = loadedRef.current;
-    if (!latest || conflictedDocuments.has(documentId) || latest.saveStatus === 'conflict') return;
-    let manifest: InkManifest;
-    try {
-      manifest = await inkApi.rename({
-        document_id: documentId,
-        expected_revision: latest.base_revision,
-        operation_id: operationId(),
-        title: title.trim(),
-      });
-    } catch (error) {
-      if (error instanceof InkApiError && error.code === 'REVISION_CONFLICT') {
-        conflictedDocuments.add(documentId);
-        loadedRef.current = { ...latest, saveStatus: 'conflict' };
-        setState((currentState) => ({ ...currentState, saveStatus: 'conflict' }));
-      }
-      throw error;
-    }
-    const loaded = { ...latest, manifest, base_revision: manifest.revision };
-    loadedRef.current = loaded;
-    publishLoaded(loaded);
-  }, [documentId, publishLoaded]);
-
-  const reloadRemote = useCallback(async () => {
-    const current = loadedRef.current;
-    if (current) await inkDraftJournal.discard({ document_id: documentId, page_id: current.page.page_id }, Number.MAX_SAFE_INTEGER);
-    conflictedDocuments.delete(documentId);
-    const loaded = await loadRemote(false);
-    setRemoteReloadSequence((sequence) => sequence + 1);
-    publishLoaded(loaded);
-  }, [documentId, loadRemote, publishLoaded]);
-
-  const savePage = useCallback((page: InkPage, expectedRevision?: string): Promise<void> => {
-    const initial = loadedRef.current;
-    if (!initial || page.page_id !== initial.page.page_id) return Promise.resolve();
-    // Optional atomic guard for queued callers (e.g. paste): refuse before touching
-    // refs/state when the loaded base revision no longer matches the click target.
-    if (expectedRevision !== undefined && initial.base_revision !== expectedRevision) {
-      return Promise.reject(new Error('Ink page revision changed before save'));
-    }
-    const sequence = ++sequenceRef.current;
-    latestSequenceRef.current = sequence;
-    const key = { document_id: documentId, page_id: page.page_id };
-    const saveOperationId = operationId();
-    const nextStatus = initial.saveStatus === 'conflict' || initial.saveStatus === 'storage-error' ? initial.saveStatus : 'saving';
-    saveStatusRef.current = nextStatus;
-    sequenceOnPageRef.current = sequence;
-    const activeSequences = activeDocumentSequences.get(documentId) ?? new Set<number>();
-    activeSequences.add(sequence);
-    activeDocumentSequences.set(documentId, activeSequences);
-    const saveOperationIds = pendingSaveOperationIds.get(documentId) ?? new Set<string>();
-    saveOperationIds.add(saveOperationId);
-    pendingSaveOperationIds.set(documentId, saveOperationIds);
-    loadedRef.current = { ...initial, page, saveStatus: nextStatus };
-    setState((current) => ({ ...current, saveStatus: nextStatus, page }));
-    const save = async (record: InkDraftRecord) => {
-      const current = loadedRef.current;
-      if (!current) return;
-      if (conflictedDocuments.has(documentId) || current.saveStatus === 'conflict') {
-        await inkDraftJournal.persist({ ...record, save_state: 'conflict' });
-        if (latestSequenceRef.current === sequence) {
-          const latest = loadedRef.current;
-          if (latest) loadedRef.current = { ...latest, page, saveStatus: 'conflict' };
-          saveStatusRef.current = 'conflict';
-          if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'conflict', page }));
-        }
-        return;
-      }
-      try {
-        if (record.base_revision !== current.base_revision) {
-          conflictedDocuments.add(documentId);
-          await inkDraftJournal.persist({ ...record, save_state: 'conflict' });
-          if (latestSequenceRef.current === sequence) {
-            const latest = loadedRef.current;
-            if (latest) loadedRef.current = { ...latest, page, saveStatus: 'conflict' };
-            if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'conflict', page }));
-          }
-          return;
-        }
-        const savedManifest = await inkApi.savePage({
-          document_id: documentId,
-          expected_revision: current.base_revision,
-          operation_id: saveOperationId,
-          page,
-        });
-        const nextPageRef = savedManifest.pages.find((entry) => entry.page_id === page.page_id);
-        const latest = loadedRef.current;
-        if (latest) loadedRef.current = {
-          ...latest,
-          manifest: savedManifest,
-          pageRef: nextPageRef ?? latest.pageRef,
-          base_revision: savedManifest.revision,
-        };
-        if (latestSequenceRef.current === sequence && latest) {
-          loadedRef.current = { ...latest, manifest: savedManifest, pageRef: nextPageRef ?? latest.pageRef, base_revision: savedManifest.revision, page, saveStatus: 'saved' };
-          if (activeRef.current) setState((currentState) => ({
-            ...currentState,
-            status: 'ready',
-            saveStatus: 'saved',
-            manifest: savedManifest,
-            pageRef: nextPageRef ?? current.pageRef,
-            page,
-          }));
-        }
-        await inkDraftJournal.discard(key, sequence);
-      } catch (error) {
-        const conflict = error instanceof InkApiError
-          && (error.code === 'REVISION_CONFLICT' || error.code === 'OPERATION_STATE_UNKNOWN');
-        const saveStatus = conflict ? 'conflict' : 'offline';
-        if (conflict) conflictedDocuments.add(documentId);
-        try {
-          await inkDraftJournal.persist({ ...record, save_state: saveStatus });
-        } catch {
-          if (latestSequenceRef.current === sequence) {
-            const latest = loadedRef.current;
-            if (latest) loadedRef.current = { ...latest, page, saveStatus: 'storage-error' };
-            saveStatusRef.current = 'storage-error';
-            if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'storage-error', page }));
-          }
-          return;
-        }
-        const latest = loadedRef.current;
-        if (latestSequenceRef.current === sequence && latest) {
-          loadedRef.current = { ...latest, page, saveStatus };
-          saveStatusRef.current = saveStatus;
-          if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus, page }));
-        }
-      }
-    };
-
-    const queued = serializeDocumentSave(documentId, async () => {
-      const current = loadedRef.current;
-      if (!current || current.saveStatus === 'storage-error') return;
-      const record: InkDraftRecord = {
-        ...key,
-        base_revision: current.base_revision,
-        sequence,
-        page,
-        updated_at: Date.now(),
-        ...(current.saveStatus === 'conflict' || current.saveStatus === 'offline' ? { save_state: current.saveStatus } : {}),
-      };
-      try {
-        await inkDraftJournal.persist(record);
-      } catch {
-        if (latestSequenceRef.current === sequence) {
-          const latest = loadedRef.current;
-          if (latest) loadedRef.current = { ...latest, page, saveStatus: 'storage-error' };
-          saveStatusRef.current = 'storage-error';
-          if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'storage-error', page }));
-        }
-        return;
-      }
-      await save(record);
-    }).finally(() => {
-      const sequences = activeDocumentSequences.get(documentId);
-      sequences?.delete(sequence);
-      if (sequences && sequences.size === 0) activeDocumentSequences.delete(documentId);
-      const saveOperationIds = pendingSaveOperationIds.get(documentId);
-      saveOperationIds?.delete(saveOperationId);
-      if (saveOperationIds && saveOperationIds.size === 0) pendingSaveOperationIds.delete(documentId);
-    });
-    queueRef.current = queued;
-    return queued;
-  }, [documentId]);
-
-  const retrySave = useCallback(async () => {
-    const current = loadedRef.current;
-    if (!current || current.saveStatus === 'conflict' || current.saveStatus === 'storage-error' || conflictedDocuments.has(documentId)) return;
-    await savePage(current.page);
-  }, [documentId, savePage]);
-
-  const retryDraftStorage = useCallback(async () => {
-    const current = loadedRef.current;
-    if (!current || current.saveStatus !== 'storage-error') return;
-    const sequence = Math.max(1, sequenceRef.current, latestSequenceRef.current);
-    const record: InkDraftRecord = {
-      document_id: documentId,
-      page_id: current.page.page_id,
-      base_revision: current.base_revision,
-      sequence,
-      page: current.page,
-      updated_at: Date.now(),
-    };
-    try {
-      await inkDraftJournal.persist(record);
-      const latest = loadedRef.current;
-      if (!latest || latest.page.page_id !== current.page.page_id) return;
-      const recovered = { ...latest, saveStatus: 'offline' as const };
-      loadedRef.current = recovered;
-      saveStatusRef.current = 'offline';
-      if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'offline' }));
-      await savePage(recovered.page);
-    } catch {
-      // Keep the non-durable storage-error state until a draft write succeeds.
-    }
-  }, [documentId, savePage]);
-
-  const persistDraft = useCallback(async (): Promise<InkDraftRecord | undefined> => {
-    const current = loadedRef.current;
-    if (!current || current.saveStatus === 'saved' || current.saveStatus === 'loading') return undefined;
-    const sequence = Math.max(1, sequenceRef.current, latestSequenceRef.current);
-    sequenceRef.current = sequence;
-    if (current.saveStatus === 'storage-error') return undefined;
-    const record: InkDraftRecord = {
-      document_id: documentId,
-      page_id: current.page.page_id,
-      base_revision: current.base_revision,
-      sequence,
-      page: current.page,
-      updated_at: Date.now(),
-      ...(current.saveStatus === 'conflict' || current.saveStatus === 'offline' ? { save_state: current.saveStatus } : {}),
-    };
-    try {
-      await inkDraftJournal.persist(record);
-      return record;
-    } catch (error) {
-      loadedRef.current = { ...current, saveStatus: 'storage-error' };
-      saveStatusRef.current = 'storage-error';
-      if (activeRef.current) setState((currentState) => ({ ...currentState, saveStatus: 'storage-error' }));
-      throw error;
-    }
-  }, [documentId]);
+  }, [publish, session]);
 
   const flush = useCallback(async () => {
-    await queueRef.current;
-    const current = loadedRef.current;
-    if (current && current.saveStatus !== 'saved') throw new Error('Ink editor has an unsaved draft.');
-  }, []);
+    const epoch = session.epoch;
+    const queued = serialize(documentSaveQueues, session.documentId, async () => {
+      await session.ready;
+      if (epoch !== session.epoch || !session.manifest) throw new Error('Ink document changed before flush.');
+      if (session.storageError) throw new Error('Ink recovery storage is unavailable.');
+      if (session.conflict) {
+        await persistSessionDrafts(session);
+        throw new Error('Ink document has a conflicting draft.');
+      }
+      session.saving = true;
+      publish();
+      try {
+        await persistSessionDrafts(session);
+        while (true) {
+          if (epoch !== session.epoch || session.conflict) throw new Error('Ink document changed during flush.');
+          const entry = dirtyPages(session)[0];
+          if (!entry) break;
+          const record = await persistPageDraft(session, entry);
+          if (epoch !== session.epoch || session.conflict) throw new Error('Ink document changed before save.');
+          if (!record || record.sequence !== entry.sequence || record.base_revision !== session.baseRevision) continue;
+          const page = record.page;
+          const sequence = record.sequence;
+          const revision = session.baseRevision;
+          const operation = entry.operation?.sequence === sequence && entry.operation.revision === revision
+            ? entry.operation : { id: operationId(), sequence, revision };
+          entry.operation = operation;
+          let manifest: InkManifest;
+          try {
+            manifest = await ownOperation(session.documentId, operation.id, () => inkApi.savePage({
+              document_id: session.documentId,
+              expected_revision: revision,
+              operation_id: operation.id,
+              page,
+            }));
+          } catch (error) {
+            session.conflict ||= isConflict(error);
+            session.offline = !session.conflict;
+            throw error;
+          }
+          if (epoch !== session.epoch) throw new Error('Ink document changed during save.');
+          session.manifest = manifest;
+          session.baseRevision = manifest.revision;
+          entry.savedSequence = sequence;
+          entry.operation = undefined;
+          try {
+            await discardPageDraft(session, entry, sequence);
+            await persistSessionDrafts(session);
+          } catch (error) {
+            if (!isConflict(error)) session.storageError = true;
+            throw error;
+          }
+          publish();
+        }
+        session.offline = false;
+        session.error = undefined;
+        if (session.activeStroke) throw new Error('Ink editor has an unfinished gesture.');
+      } catch (error) {
+        session.error = error;
+        await persistSessionDrafts(session);
+        throw error;
+      } finally {
+        session.saving = false;
+        publish();
+      }
+    });
+    session.operation = queued;
+    await queued;
+  }, [publish, session]);
+
+  const mutateManifest = useCallback(async (mutate: (revision: string, id: string) => Promise<InkManifest>, appended = false) => {
+    const epoch = session.epoch;
+    const selectionRequest = session.selectionRequest;
+    const queued = serialize(documentSaveQueues, session.documentId, async () => {
+      await session.ready;
+      if (!session.manifest || epoch !== session.epoch || session.conflict || session.storageError) throw new Error('Ink document is not ready for this change.');
+      const previous = session.manifest;
+      try {
+        const id = operationId();
+        const manifest = await ownOperation(session.documentId, id, () => mutate(session.baseRevision, id));
+        if (epoch !== session.epoch) return;
+        session.manifest = manifest;
+        session.baseRevision = manifest.revision;
+        if (appended) {
+          const pageRef = manifest.pages.find(({ page_id }) => !previous.pages.some((entry) => entry.page_id === page_id));
+          if (pageRef) {
+            session.pages.set(pageRef.page_id, { page: { schema_version: 1, page_id: pageRef.page_id, objects: [] }, sequence: 0, savedSequence: 0 });
+            if (selectionRequest === session.selectionRequest) session.selectedPageId = pageRef.page_id;
+          }
+        }
+        await persistSessionDrafts(session, true);
+      } catch (error) {
+        session.error = error;
+        session.conflict ||= isConflict(error);
+        if (session.conflict) await persistSessionDrafts(session);
+        throw error;
+      } finally {
+        publish();
+      }
+    });
+    session.operation = queued;
+    await queued;
+  }, [publish, session]);
+
+  const appendPage = useCallback((width: number, height: number, ruling: InkRuling) => mutateManifest((expected_revision, operation_id) => inkApi.appendPage({
+    document_id: session.documentId, expected_revision, operation_id, width, height, ruling,
+  }), true), [mutateManifest, session]);
+
+  const rename = useCallback(async (title: string) => {
+    if (!title.trim()) return;
+    await mutateManifest((expected_revision, operation_id) => inkApi.rename({
+      document_id: session.documentId, expected_revision, operation_id, title: title.trim(),
+    }));
+  }, [mutateManifest, session]);
+
+  const reloadRemote = useCallback(async () => {
+    const editVersion = session.editVersion;
+    await session.operation?.catch(() => undefined);
+    const entries = [...session.pages.values()];
+    ++session.epoch;
+    ++session.selectionRequest;
+    for (const entry of entries) await discardPageDraft(session, entry, entry.sequence);
+    await loadRemote(false, editVersion);
+    ++session.remoteReloadSequence;
+    publish();
+  }, [loadRemote, publish, session]);
+
+  const retrySave = useCallback(async () => {
+    if (session.conflict || session.storageError) return;
+    await flush();
+  }, [flush, session]);
+
+  const retryDraftStorage = useCallback(async () => {
+    if (!session.storageError) return;
+    await persistDraft();
+    if (!session.conflict) await flush();
+  }, [flush, persistDraft, session]);
 
   useEffect(() => {
-    activeRef.current = true;
-    let cancelled = false;
-    setState((current) => ({ ...current, status: 'loading', saveStatus: 'loading', error: undefined }));
-    void loadRemote(true).then((loaded) => {
-      if (!cancelled) publishLoaded(loaded);
-    }).catch((error: unknown) => {
-      if (!cancelled) setState((current) => ({ ...current, status: 'error', error }));
+    session.active = true;
+    session.ready = loadRemote(true).catch((error: unknown) => {
+      if (!session.active) return;
+      session.status = 'error';
+      session.error = error;
+      publish();
     });
+    publish();
     return () => {
-      cancelled = true;
-      activeRef.current = false;
+      session.active = false;
+      ++session.loadRequest;
+      void persistSessionDrafts(session).catch(() => undefined);
     };
-  }, [loadRemote, publishLoaded]);
+  }, [loadRemote, publish, session]);
+
+  useEffect(() => {
+    if (requestedPageId && session.status === 'ready' && requestedPageId !== session.selectedPageId) {
+      void selectPage(requestedPageId).catch((error: unknown) => { session.error = error; publish(); });
+    }
+  }, [publish, requestedPageId, selectPage, session, state.status]);
 
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
     void listen<InkChangedEvent>('ink:changed', async ({ payload }) => {
-      if (cancelled || payload?.document_id !== documentId) return;
-      if (payload.operation_id && pendingSaveOperationIds.get(documentId)?.has(payload.operation_id)) return;
-      const current = loadedRef.current;
-      if (!current) return;
-      const startSequence = sequenceRef.current;
+      if (cancelled || payload?.document_id !== session.documentId || !session.manifest) return;
+      if (payload.operation_id && pendingSaveOperationIds.get(session.documentId)?.has(payload.operation_id)) return;
+      const epoch = session.epoch;
+      const baseRevision = session.baseRevision;
+      const conflictIfDirty = async () => {
+        if (!dirtyPages(session).length && !session.activeStroke && !session.saving && !hasDirtyInkEditor(session.documentId)) return false;
+        session.conflict = true;
+        try { await persistSessionDrafts(session); } finally { publish(); }
+        return true;
+      };
       try {
-        const manifest = await inkApi.get({ document_id: documentId });
-        if (cancelled || sequenceRef.current !== startSequence) return;
-        const beforeRead = loadedRef.current;
-        if (!beforeRead || beforeRead.page.page_id !== current.page.page_id || manifest.revision === beforeRead.base_revision
-          || !manifest.pages.some((pageRef) => pageRef.page_id === beforeRead.page.page_id)) return;
-        const remotePage = await inkApi.getPage({ document_id: documentId, page_id: beforeRead.page.page_id });
-        if (cancelled || sequenceRef.current !== startSequence) return;
-        const latest = loadedRef.current;
-        if (!latest || latest.page.page_id !== current.page.page_id) return;
-        const hasPendingSave = (activeDocumentSequences.get(documentId)?.size ?? 0) > 0;
-        const isDirty = activeStrokeRef.current || hasDirtyInkEditor(documentId) || hasPendingSave || latest.saveStatus !== 'saved' || conflictedDocuments.has(documentId);
-        if (isDirty) {
-          conflictedDocuments.add(documentId);
-          saveStatusRef.current = 'conflict';
-          loadedRef.current = { ...latest, manifest, pageRef: manifest.pages.find((pageRef) => pageRef.page_id === latest.page.page_id) ?? latest.pageRef, saveStatus: 'conflict' };
-          setState((previous) => ({
-            ...previous,
-            status: 'ready',
-            saveStatus: 'conflict',
-            manifest,
-            pageRef: manifest.pages.find((pageRef) => pageRef.page_id === latest.page.page_id) ?? latest.pageRef,
-            page: latest.page,
-          }));
+        const manifest = await inkApi.get({ document_id: session.documentId });
+        if (cancelled || epoch !== session.epoch || baseRevision !== session.baseRevision || manifest.revision === session.baseRevision) return;
+        if (await conflictIfDirty()) return;
+        while (!cancelled && epoch === session.epoch) {
+          const request = session.selectionRequest;
+          const pageId = manifest.pages.some(({ page_id }) => page_id === session.selectedPageId) ? session.selectedPageId : manifest.pages[0]?.page_id;
+          if (!pageId) return;
+          const page = await inkApi.getPage({ document_id: session.documentId, page_id: pageId });
+          if (cancelled || epoch !== session.epoch || baseRevision !== session.baseRevision || manifest.revision === session.baseRevision) return;
+          if (await conflictIfDirty()) return;
+          if (request !== session.selectionRequest) continue;
+          session.manifest = manifest;
+          session.baseRevision = manifest.revision;
+          session.pages.clear();
+          session.pages.set(pageId, { page, sequence: 0, savedSequence: 0 });
+          session.selectedPageId = pageId;
+          ++session.epoch;
+          ++session.remoteReloadSequence;
+          publish();
           return;
         }
-        const loaded: LoadedInkDocument = {
-          manifest,
-          pageRef: manifest.pages.find((pageRef) => pageRef.page_id === latest.page.page_id) ?? latest.pageRef,
-          page: remotePage,
-          base_revision: manifest.revision,
-          saveStatus: 'saved',
-        };
-        loadedRef.current = loaded;
-        saveStatusRef.current = 'saved';
-        setRemoteReloadSequence((sequence) => sequence + 1);
-        publishLoaded(loaded);
       } catch {
-        // A changed event is advisory; current loaded page and its draft remain authoritative if refetch fails.
+        // Changed events are advisory; failed reads never replace local pages.
       }
     }).then((stop) => {
       if (cancelled) stop();
       else unlisten = stop;
     }).catch(() => undefined);
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [documentId, publishLoaded]);
+    return () => { cancelled = true; unlisten?.(); };
+  }, [publish, session]);
 
-  const setActiveStroke = useCallback((active: boolean) => { activeStrokeRef.current = active; }, []);
+  const setActiveStroke = useCallback((active: boolean) => { session.activeStroke = active; }, [session]);
 
-  return { ...state, savePage, selectPage, appendPage, rename, reloadRemote, retrySave, retryDraftStorage, persistDraft, flush, setActiveStroke, remoteReloadSequence };
+  return { ...(currentSessionRef.current === session && state.manifest?.document_id === session.documentId ? state : snapshot(session)), getSnapshot, savePage, selectPage, appendPage, rename, reloadRemote, retrySave, retryDraftStorage, persistDraft, flush, setActiveStroke };
 }

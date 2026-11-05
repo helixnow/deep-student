@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { InkPage } from '@/features/ink/types';
 import { InkEditorHarness } from './InkEditorHarness';
 import { inkEditorDocumentId, inkEditorPageId } from './fixtures';
+import { expectEditorFlush } from './inkTestUtils';
 
 interface BackgroundProbeState {
   frames: number;
@@ -169,7 +170,6 @@ test('keeps a resource-sourced image background on every animation frame while t
   const component = await mount(<InkEditorHarness saveMode="success" imageBackground />);
   const canvas = component.getByTestId('ink-page-canvas');
   const input = component.getByTestId('ink-active-stroke-canvas');
-  const saveState = component.getByTestId('ink-editor-save-state');
   await expect(canvas).toBeVisible();
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual(IMAGE_BACKGROUND);
 
@@ -185,8 +185,9 @@ test('keeps a resource-sourced image background on every animation frame while t
     (window as unknown as FixtureWindow).__INK_EDITOR_CT_BACKEND__?.holdRenderInputReads(true);
   });
   await drawStroke(page, input, 72);
+  expect((await readBackend(page)).saveCalls).toBe(before.saveCalls);
+  await expectEditorFlush(page);
   await expect.poll(() => readBackend(page).then((value) => value.saveCalls)).toBeGreaterThan(before.saveCalls);
-  await expect(saveState).toHaveAttribute('data-state', 'saved');
   const heldWhileSaving = await waitForHeldBackgroundWork(page);
   const duringHold = await readBackgroundProbe(page);
   const backendDuringHold = await readBackend(page);
@@ -227,7 +228,7 @@ test('keeps a resource-sourced image background on every animation frame while t
   // never re-decode it.
   for (const localY of [84, 96]) {
     await drawStroke(page, input, localY);
-    await expect(saveState).toHaveAttribute('data-state', 'saved');
+    await expectEditorFlush(page);
     await waitForAnimationFrames(page, 8);
     await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual(IMAGE_BACKGROUND);
   }
@@ -254,12 +255,12 @@ test('keeps a resource-sourced image background on every animation frame while t
   // Undo and redo still persist the right page content.
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(4);
   await component.getByTestId('ink-undo').click();
-  await expect(saveState).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(3);
   await waitForAnimationFrames(page, 8);
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual(IMAGE_BACKGROUND);
   await component.getByTestId('ink-redo').click();
-  await expect(saveState).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(4);
   await waitForAnimationFrames(page, 8);
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual(IMAGE_BACKGROUND);
@@ -278,7 +279,6 @@ test('keeps the PDF background and source highlights on every animation frame ac
   const component = await mount(<InkEditorHarness saveMode="success" pdfPageBackground />);
   const canvas = component.getByTestId('ink-page-canvas');
   const input = component.getByTestId('ink-active-stroke-canvas');
-  const saveState = component.getByTestId('ink-editor-save-state');
   await expect(canvas).toBeVisible();
   await expect.poll(() => readCanvasPixel(canvas, 5, 5)).toEqual(PDF_BACKGROUND);
   await expect.poll(() => readCanvasPixel(canvas, 40, 30)).toEqual(PDF_HIGHLIGHT_BLUE);
@@ -295,8 +295,9 @@ test('keeps the PDF background and source highlights on every animation frame ac
     backend?.holdRenderInputReads(true);
   });
   await drawStroke(page, input, 72);
+  expect((await readBackend(page)).saveCalls).toBe(before.saveCalls);
+  await expectEditorFlush(page);
   await expect.poll(() => readBackend(page).then((value) => value.saveCalls)).toBeGreaterThan(before.saveCalls);
-  await expect(saveState).toHaveAttribute('data-state', 'saved');
   const heldWhileSaving = await waitForHeldBackgroundWork(page);
   const duringHold = await readBackgroundProbe(page);
   const backendDuringHold = await readBackend(page);

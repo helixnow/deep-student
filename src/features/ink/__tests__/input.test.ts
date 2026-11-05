@@ -37,6 +37,24 @@ describe('ink input', () => {
     ]);
   });
 
+  it('falls back to the dispatched sample when coalesced events are empty', () => {
+    expect(collectPointerSamples(pointer({ getCoalescedEvents: () => [] }), viewport, 100, true)).toEqual([
+      { x: 10, y: 12, pressure: 0.8, elapsed_ms: 25 },
+    ]);
+  });
+
+  it('preserves a terminal endpoint after coalesced samples without duplicating it', () => {
+    const endpoint = pointer({
+      getCoalescedEvents: () => [pointer({ clientX: 34, clientY: 48, timeStamp: 120 })],
+    });
+    expect(collectPointerSamples(endpoint, viewport, 100, true, { terminal: true })).toEqual([
+      { x: 12, y: 14, pressure: 0.8, elapsed_ms: 20 },
+      { x: 10, y: 12, pressure: 0.8, elapsed_ms: 25 },
+    ]);
+    expect(collectPointerSamples(pointer({ getCoalescedEvents: () => [pointer()] }), viewport, 100, true, { terminal: true }))
+      .toHaveLength(1);
+  });
+
   it('keeps a valid terminal pointerup sample', () => {
     expect(collectPointerSamples(pointer(), viewport, 100, true, { terminal: true })).toEqual([
       { x: 10, y: 12, pressure: 0.8, elapsed_ms: 25 },

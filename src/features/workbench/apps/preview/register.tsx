@@ -5,6 +5,7 @@ import type { ActivationContext, ActivationResult, AppDefinition } from '../../c
 import { FILE_PREVIEW_APP_TYPE_ID } from '../content/typeMap';
 import { createResourceContentManifest } from '../content/agentManifests';
 import { requestPdfPageFocus } from '../content/pdfFocusAck';
+import { flushInkWorkspace, hasInkWorkspace } from '@/services/inkWorkspaceRegistry';
 
 const FilePreviewAppWindow = React.lazy(() => import('./FilePreviewAppWindow'));
 
@@ -48,6 +49,8 @@ export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {
   defaultFrame: { w: 920, h: 700 },
   minSize: { w: 420, h: 320 },
   render: FilePreviewAppWindow,
+  canClose: flushInkWorkspace,
+  canSuspend: (instanceKey) => !hasInkWorkspace(instanceKey),
   onActivation: handleFilePreviewActivation,
   agentManifest: createResourceContentManifest(
     FILE_PREVIEW_APP_TYPE_ID,

@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { InkPage } from '@/features/ink/types';
 import { InkEditorHarness } from './InkEditorHarness';
 import { inkEditorPageId } from './fixtures';
+import { expectEditorFlush } from './inkTestUtils';
 
 type Point = { x: number; y: number };
 type Footprint = { left: number; top: number; right: number; bottom: number };
@@ -130,7 +131,7 @@ async function expectStrokeFrames(page: Page, expected: FrameExpectation, phase:
   const frames = await readStrokeFrames(page, expected);
   const evidence = `${phase}: ${JSON.stringify(frames)}`;
   expect(frames.map((frame) => frame.active.strayPixels), `${evidence}; active ink must not connect to the origin or a previous stroke`).toEqual([0, 0, 0, 0, 0]);
-  expect(frames.map((frame) => frame.completed.strayPixels), `${evidence}; saved ink must stay inside the real pointer path`).toEqual([0, 0, 0, 0, 0]);
+  expect(frames.map((frame) => frame.completed.strayPixels), `${evidence}; completed ink must stay inside the real pointer path`).toEqual([0, 0, 0, 0, 0]);
   for (const [index, frame] of frames.entries()) {
     const label = `${phase}, frame ${index}: ${JSON.stringify(frame)}`;
     if (expected.tip) {
@@ -194,14 +195,15 @@ for (const background of ['blank', 'image', 'pdf'] as const) {
           }
         }
         await sendPointer(page, input, pointerType, 'pointerup', stroke.end, pageWidth, pageHeight, pointerId);
-        await expect.poll(() => page.evaluate((pageId) => window.__INK_EDITOR_CT_BACKEND__?.readPage(pageId)?.objects.length, inkEditorPageId)).toBe(index + 2);
-        await expect(saveState).toHaveAttribute('data-state', 'saved');
+        await expect(saveState).toHaveAttribute('data-state', 'pending');
+        expect(await page.evaluate(() => window.__INK_EDITOR_CT_BACKEND__?.saveCalls)).toBe(0);
         completedFootprints.push(footprint(stroke.start, stroke.end));
         await expectStrokeFrames(page, {
           pageWidth, pageHeight, activeFootprints: [], completedFootprints, background: backgroundPixel,
-        }, `stroke ${index + 1} saved`);
+        }, `stroke ${index + 1} committed locally`);
       }
 
+      await expectEditorFlush(page);
       const saved = await page.evaluate((pageId) => window.__INK_EDITOR_CT_BACKEND__?.readPage(pageId), inkEditorPageId) as InkPage | undefined;
       const drawn = saved?.objects.filter((object) => object.id !== 'fixture-blue-stroke');
       expect(drawn).toHaveLength(strokes.length);
@@ -267,8 +269,8 @@ for (const background of ['image', 'pdf'] as const) {
             bubbles: true, cancelable: true,
           }));
         }, { pointerId, pointerType });
-        await expect.poll(() => page.evaluate((pageId) => window.__INK_EDITOR_CT_BACKEND__?.readPage(pageId)?.objects.length, inkEditorPageId)).toBe(index + 2);
-        await expect(saveState).toHaveAttribute('data-state', 'saved');
+        await expect(saveState).toHaveAttribute('data-state', 'pending');
+        expect(await page.evaluate(() => window.__INK_EDITOR_CT_BACKEND__?.saveCalls)).toBe(0);
         completedFootprints.push(footprint(start, last));
         await expectStrokeFrames(page, {
           pageWidth, pageHeight, activeFootprints: [], completedFootprints, background: backgroundPixel,
@@ -282,12 +284,13 @@ for (const background of ['image', 'pdf'] as const) {
         tip: next, background: backgroundPixel,
       }, 'the first frame after cancellation');
       await sendPointer(page, input, pointerType, 'pointerup', next, pageWidth, pageHeight, 153);
-      await expect.poll(() => page.evaluate((pageId) => window.__INK_EDITOR_CT_BACKEND__?.readPage(pageId)?.objects.length, inkEditorPageId)).toBe(4);
-      await expect(saveState).toHaveAttribute('data-state', 'saved');
+      await expect(saveState).toHaveAttribute('data-state', 'pending');
+      expect(await page.evaluate(() => window.__INK_EDITOR_CT_BACKEND__?.saveCalls)).toBe(0);
       completedFootprints.push(footprint(next));
       await expectStrokeFrames(page, {
         pageWidth, pageHeight, activeFootprints: [], completedFootprints, background: backgroundPixel,
-      }, 'the next stroke saved');
+      }, 'the next stroke committed locally');
+      await expectEditorFlush(page);
       const saved = await page.evaluate((pageId) => window.__INK_EDITOR_CT_BACKEND__?.readPage(pageId), inkEditorPageId);
       const drawn = saved?.objects.filter((object) => object.id !== 'fixture-blue-stroke');
       expect(drawn).toHaveLength(3);

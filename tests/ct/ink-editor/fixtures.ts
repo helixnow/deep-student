@@ -68,7 +68,7 @@ export function createInkEditorBackend(
   saveMode: InkEditorSaveMode = 'success',
   documentId = inkEditorDocumentId,
   background: InkEditorBackgroundFixture = 'none',
-  options: { pdfPageHighlights?: boolean; largePage?: boolean } = {},
+  options: { pdfPageHighlights?: boolean; largePage?: boolean; holdSaves?: boolean; saveDelayMs?: number } = {},
 ) {
   const pdfPageHighlights = options.pdfPageHighlights !== false;
   const manifestPages = structuredClone(pageRefs);
@@ -137,8 +137,15 @@ export function createInkEditorBackend(
   let selectedPageId = inkEditorPageId;
   let saveAttempted = false;
   let saveCalls = 0;
+  let pendingSaves = 0;
+  let holdSaves = options.holdSaves === true;
+  const heldSaveResolvers: Array<() => void> = [];
+  const saveRequests: Array<{ expected_revision?: string; operation_id?: string; page: InkPage }> = [];
   let getCalls = 0;
   let getPageCalls = 0;
+  let holdPageReads = false;
+  let pendingPageReads = 0;
+  const heldPageReadResolvers: Array<() => void> = [];
   const saveOperationIds: string[] = [];
   let appendCalls = 0;
   let appendRequest: { document_id?: string; expected_revision?: string; operation_id?: string; width?: number; height?: number; ruling?: InkRuling } | undefined;
@@ -181,14 +188,20 @@ export function createInkEditorBackend(
       getCalls += 1;
       return structuredClone(manifest);
     },
-    vfs_ink_get_page: (_command, payload) => {
+    vfs_ink_get_page: async (_command, payload) => {
       const request = payload?.request as { document_id?: string; page_id?: string } | undefined;
       if (request?.document_id !== manifest.document_id) throw new Error('Unknown fixture document');
       getPageCalls += 1;
       const page = request.page_id ? pages.get(request.page_id) : undefined;
       if (!page) throw new Error('Unknown fixture page');
+      const value = structuredClone(page);
+      if (holdPageReads) {
+        pendingPageReads += 1;
+        await new Promise<void>((resolve) => heldPageReadResolvers.push(resolve));
+        pendingPageReads -= 1;
+      }
       selectedPageId = page.page_id;
-      return structuredClone(page);
+      return value;
     },
     vfs_ink_get_render_inputs: async (_command, payload) => {
       const request = payload as { documentId?: string; expectedRevision?: string; pageId?: string } | undefined;
@@ -265,6 +278,13 @@ export function createInkEditorBackend(
       } | undefined;
       if (request?.document_id !== manifest.document_id || !request.page) throw new Error('Invalid fixture save');
       saveCalls += 1;
+      saveRequests.push(structuredClone({ ...request, page: request.page }));
+      if (holdSaves) {
+        pendingSaves += 1;
+        await new Promise<void>((resolve) => heldSaveResolvers.push(resolve));
+        pendingSaves -= 1;
+      }
+      if (options.saveDelayMs) await new Promise<void>((resolve) => setTimeout(resolve, options.saveDelayMs));
       if (request.operation_id) saveOperationIds.push(request.operation_id);
       if (saveMode === 'operation-unknown') {
         throw {
@@ -372,6 +392,30 @@ export function createInkEditorBackend(
     },
     get pendingRenderInputReads() {
       return pendingRenderInputReads;
+    },
+    releaseSaves() {
+      holdSaves = false;
+      const resolvers = heldSaveResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    holdPageReads(hold: boolean) {
+      holdPageReads = hold;
+    },
+    releasePageReads() {
+      holdPageReads = false;
+      const resolvers = heldPageReadResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    get pendingPageReads() {
+      return pendingPageReads;
+    },
+    get pendingSaves() {
+      return pendingSaves;
+    },
+    get saveRequests() {
+      return structuredClone(saveRequests);
     },
     get saveCalls() {
       return saveCalls;

@@ -50,16 +50,18 @@ export interface InkEditorHarnessProps {
   clipboardWriteDeferred?: boolean;
   /** Test-only: preseed the IPC clipboard payload. */
   clipboardPreset?: string;
+  holdSaves?: boolean;
+  saveDelayMs?: number;
 }
 
-export function InkEditorHarness({ saveMode, documentId = 'ink-editor-ct-document', imageBackground = false, pdfPageBackground = false, pdfPageHighlights = true, captureAskAi = false, largePage = false, fullHeight = false, clipboardReadRejects = false, clipboardWriteDeferred = false, clipboardPreset = '' }: InkEditorHarnessProps) {
+export function InkEditorHarness({ saveMode, documentId = 'ink-editor-ct-document', imageBackground = false, pdfPageBackground = false, pdfPageHighlights = true, captureAskAi = false, largePage = false, fullHeight = false, clipboardReadRejects = false, clipboardWriteDeferred = false, clipboardPreset = '', holdSaves = false, saveDelayMs = 0 }: InkEditorHarnessProps) {
   const background: InkEditorBackgroundFixture = pdfPageBackground ? 'pdf_page' : imageBackground ? 'image' : 'none';
   const clipboardRef = useRef({ text: clipboardPreset });
   const clipboardReadRejectsRef = useRef(clipboardReadRejects);
   const clipboardWriteDeferredRef = useRef(clipboardWriteDeferred);
   const pendingClipboardWriteRef = useRef<{ text: string; resolve: () => void } | null>(null);
   const [backend] = useState(() => {
-    const created = createInkEditorBackend(saveMode, documentId, background, { pdfPageHighlights, largePage });
+    const created = createInkEditorBackend(saveMode, documentId, background, { pdfPageHighlights, largePage, holdSaves, saveDelayMs });
     created.handlers['plugin:clipboard-manager|write_text'] = (_command, payload) => {
       const text = (payload as { text?: unknown } | undefined)?.text;
       const value = typeof text === 'string' ? text : '';

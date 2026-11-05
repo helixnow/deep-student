@@ -4,6 +4,7 @@ import { appRegistry } from '../../../core/appRegistry';
 import type { ActivationContext } from '../../../core/types';
 import { FILE_PREVIEW_APP_TYPE_ID } from '../../content/typeMap';
 import { FILE_PREVIEW_APP_DEFINITION, handleFilePreviewActivation } from '../register';
+import { registerInkWorkspaceExitGuard } from '@/services/inkWorkspaceRegistry';
 
 describe('file preview app registration', () => {
   it('registers one multi-instance application for previewable files', () => {
@@ -12,6 +13,23 @@ describe('file preview app registration', () => {
     expect(FILE_PREVIEW_APP_DEFINITION.showInLauncher).toBe(false);
     expect(FILE_PREVIEW_APP_DEFINITION.memoryWeight).toBe(3);
     expect(React.isValidElement(FILE_PREVIEW_APP_DEFINITION.icon)).toBe(true);
+  });
+
+  it('preserves regular previews but blocks freezing and awaits Ink workspace close', async () => {
+    expect(FILE_PREVIEW_APP_DEFINITION.canSuspend!('file_plain')).toBe(true);
+    await expect(FILE_PREVIEW_APP_DEFINITION.canClose!('file_plain')).resolves.toBe(true);
+    let finish!: (saved: boolean) => void;
+    const flush = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const stop = registerInkWorkspaceExitGuard('file_ink', { isDirty: () => false, flush });
+    try {
+      expect(FILE_PREVIEW_APP_DEFINITION.canSuspend!('/folder/file_ink')).toBe(false);
+      const closing = FILE_PREVIEW_APP_DEFINITION.canClose!('/folder/file_ink');
+      expect(flush).toHaveBeenCalledTimes(1);
+      finish(false);
+      await expect(closing).resolves.toBe(false);
+    } finally {
+      stop();
+    }
   });
 
   it('routes page activation and waits for the shared PDF focus ACK', async () => {

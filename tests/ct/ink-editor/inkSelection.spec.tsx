@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { InkManifest, InkObject, InkPage } from '@/features/ink/types';
 import { InkEditorHarness, type InkAskAiCapture } from './InkEditorHarness';
 import { inkEditorDocumentId, inkEditorPageId } from './fixtures';
+import { expectEditorFlush, flushEditor } from './inkTestUtils';
 
 const SELECT_RECTANGLE = 'ink-select-rectangle';
 const SELECT_LASSO = 'ink-select-lasso';
@@ -229,6 +230,7 @@ test('copies and pastes a same-page vector duplicate through the clipboard IPC b
   expect(await readInvokeCommands(page)).toContain('plugin:clipboard-manager|write_text');
 
   await component.getByTestId(SELECTION_PASTE).click();
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
 
   const pastedPage = await readFixturePage(page);
@@ -252,9 +254,10 @@ test('copies and pastes a same-page vector duplicate through the clipboard IPC b
   await expect.poll(() => readSaveCalls(page)).toBe(1);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
 
-  // One paste is one journal/undo unit: undo removes only the duplicate.
+  // One paste is one undo unit; flushing undo removes only the duplicate.
   expect(await component.getByTestId('ink-undo').count()).toBe(1);
   await component.getByTestId('ink-undo').click();
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.map((object) => object.id)).toEqual(['fixture-blue-stroke']);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
 });
@@ -341,6 +344,7 @@ test('cross-page paste centers on the scrolled and zoomed visible viewport inste
   const expectedCenter = await readVisiblePageCenter(page, 'ink-editor-ct-page-1');
 
   await component.getByTestId(SELECTION_PASTE).click();
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page, 'ink-editor-ct-page-1'))?.objects.length).toBe(2);
   const targetPage = await readFixturePage(page, 'ink-editor-ct-page-1');
   const pasted = targetPage?.objects.find((object) => object.id.startsWith('ink-paste-'));
@@ -412,8 +416,8 @@ test('does not ask after paste save/flush failure and does not write when clipbo
   await component.getByTestId(SELECTION_COPY).click();
   await expect.poll(() => readClipboardText(page)).not.toBe('');
 
-  // Paste mutates locally, but the fixture save fails and leaves the page offline.
   await component.getByTestId(SELECTION_PASTE).click();
+  await flushEditor(page);
   await expect.poll(() => readSaveCalls(page)).toBe(1);
   await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'offline');
 
@@ -422,7 +426,8 @@ test('does not ask after paste save/flush failure and does not write when clipbo
   await component.getByTestId(SELECTION_ASK_AI).click();
   await expect(component.getByRole('alert').first()).toBeVisible();
   expect(await readAskAiRequests(page)).toHaveLength(0);
-  expect(await readSaveCalls(page)).toBe(1);
+  await expect.poll(() => readSaveCalls(page)).toBe(2);
+  const failedFlushSaves = await readSaveCalls(page);
 
   // Clipboard read reject must not write a page or invoke a save.
   const pageBefore = await readFixturePage(page);
@@ -432,7 +437,7 @@ test('does not ask after paste save/flush failure and does not write when clipbo
   await expect.poll(async () => (await readInvokeCommands(page)).filter((command) => command === 'plugin:clipboard-manager|read_text').length).toBeGreaterThan(readCallsBefore);
   await nextFrame(page);
   expect(await readFixturePage(page)).toEqual(pageBefore);
-  expect(await readSaveCalls(page)).toBe(1);
+  expect(await readSaveCalls(page)).toBe(failedFlushSaves);
 });
 
 test('background-only copy is a disabled or no-error short-circuit and touch selection works with touch drawing off', async ({ mount, page }) => {
@@ -473,10 +478,12 @@ test('queues paste behind a deferred copy write, serializes or rejects double pa
   // Copy IPC is held: paste must wait for the write instead of reading empty clipboard.
   await component.getByTestId(SELECTION_PASTE).click();
   await component.getByTestId('ink-editor-resolve-clipboard-write').click();
+  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'pending');
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.length).toBe(2);
   await expect.poll(() => readSaveCalls(page)).toBe(1);
 
-  // Two synchronous paste clicks: serial (two new objects / two saves) or reject (one each).
+  // Synchronous pastes are local undo units; one flush saves only their final snapshot.
   const beforeSaves = await readSaveCalls(page);
   const beforeObjects = (await readFixturePage(page))?.objects.length ?? 0;
   await component.getByTestId(SELECTION_PASTE).evaluate((button) => {
@@ -485,12 +492,12 @@ test('queues paste behind a deferred copy write, serializes or rejects double pa
   });
   await nextFrame(page);
   await nextFrame(page);
+  expect(await readSaveCalls(page)).toBe(beforeSaves);
+  await expectEditorFlush(page);
   const saveDelta = (await readSaveCalls(page)) - beforeSaves;
   const objectDelta = ((await readFixturePage(page))?.objects.length ?? 0) - beforeObjects;
-  expect(
-    (saveDelta === 1 && objectDelta === 1)
-    || (saveDelta === 2 && objectDelta === 2),
-  ).toBe(true);
+  expect(saveDelta).toBe(1);
+  expect([1, 2]).toContain(objectDelta);
 
   // Ctrl/Cmd+C and Ctrl/Cmd+V with repeat=true are ignored.
   await dragSelection(page, input, { x: 8, y: 8 }, { x: 104, y: 32 });

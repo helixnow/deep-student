@@ -61,6 +61,7 @@
   "status": {
     "loading": "Loading page…",
     "saved": "Saved",
+    "pending": "Unsaved (saved when closing the file)",
     "saving": "Saving…",
     "conflict": "A newer version exists. Your draft is kept.",
     "offline": "Could not save. A local recovery draft is saved.",

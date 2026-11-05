@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { InkPage } from '@/features/ink/types';
 import { InkEditorHarness } from './InkEditorHarness';
 import { inkEditorPageId } from './fixtures';
+import { expectEditorFlush } from './inkTestUtils';
 
 async function readPage(page: Page, pageId = inkEditorPageId): Promise<InkPage | undefined> {
   return page.evaluate((id) => window.__INK_EDITOR_CT_BACKEND__?.readPage(id), pageId);
@@ -53,6 +54,7 @@ for (const size of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 
     await logicalStroke(page, input);
+    await expectEditorFlush(page);
     await expect.poll(async () => (await readPage(page))?.objects.length).toBe(2);
     const savedStroke = (await readPage(page))?.objects.find((object) => object.id !== 'fixture-blue-stroke');
     expect(savedStroke?.content.kind).toBe('stroke');
@@ -62,8 +64,10 @@ for (const size of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
     }
     await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
     await component.getByTestId('ink-undo').click();
+    await expectEditorFlush(page);
     await expect.poll(async () => (await readPage(page))?.objects.length).toBe(1);
     await component.getByTestId('ink-redo').click();
+    await expectEditorFlush(page);
     await expect.poll(async () => (await readPage(page))?.objects.length).toBe(2);
 
     await component.getByTestId('ink-zoom-in').click();
@@ -80,6 +84,7 @@ for (const size of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
     await component.getByTestId('ink-page-append').click();
     await expect(canvas).toHaveAttribute('data-page-id', 'ink-editor-ct-page-3');
     await logicalStroke(page, input, { x: 140, y: 180 }, { x: 600, y: 180 });
+    await expectEditorFlush(page);
     await expect.poll(async () => (await readPage(page, 'ink-editor-ct-page-3'))?.objects.length).toBe(1);
   });
 }
@@ -123,6 +128,7 @@ test('preserves user zoom and pan on resize and saves touch strokes in logical c
       }));
     }
   });
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readPage(page))?.objects.length).toBe(2);
   const touchStroke = (await readPage(page))?.objects.find((object) => object.id !== 'fixture-blue-stroke');
   if (touchStroke?.content.kind !== 'stroke') throw new Error('Touch stroke was not saved');

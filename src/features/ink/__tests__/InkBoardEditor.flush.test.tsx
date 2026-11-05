@@ -178,6 +178,137 @@ describe('InkBoardEditor registered host flush', () => {
     expect(saves).toHaveLength(1);
   });
 
+  it('marks the first unlifted stroke dirty and protects it on pagehide without a CAS', async () => {
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    const canvas = startGesture();
+    expect(hasDirtyInkEditor(documentId)).toBe(true);
+    await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+    expect(drafts.get(documentId)?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(1);
+    expect(saves).toHaveLength(0);
+    startGesture(70);
+    endGesture(canvas);
+    await flush();
+    expect(saves[0].changed.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+  });
+
+  it.each(['pagehide', 'visibilitychange'] as const)('protects completed A and unlifted B on %s before unmount and recovers both', async (event) => {
+    const first = render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    endGesture(startGesture());
+    await act(async () => undefined);
+    startGesture(70);
+    if (event === 'visibilitychange') vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => {
+      (event === 'pagehide' ? window : document).dispatchEvent(new Event(event));
+      first.unmount();
+    });
+    await act(async () => undefined);
+    expect(saves).toHaveLength(0);
+    expect(drafts.get(documentId)?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    await flush();
+    const objects = saves[0].changed.flatMap((chunk) => chunk.objects);
+    expect(objects).toHaveLength(2);
+    expect(objects.map(({ content }) => content.kind === 'stroke' ? content.samples[0].x : null)).toEqual([10, 70]);
+  });
+
+  it('uses an unmount fallback to protect unlifted input without repeating a normal exit save', async () => {
+    const first = render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    startGesture();
+    first.unmount();
+    await act(async () => undefined);
+    expect(saves).toHaveLength(0);
+    expect(drafts.get(documentId)?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(1);
+    const second = render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    await flush();
+    expect(saves).toHaveLength(1);
+    const persists = vi.mocked(inkBoardDraftJournal.persist).mock.calls.length;
+    second.unmount();
+    await act(async () => undefined);
+    expect(saves).toHaveLength(1);
+    expect(inkBoardDraftJournal.persist).toHaveBeenCalledTimes(persists);
+    expect(drafts.has(documentId)).toBe(false);
+  });
+
+  it('keeps pen input dirty while unrelated palm touches arrive before background protection', async () => {
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    const canvas = startGesture();
+    fireEvent.pointerDown(canvas, { pointerId: 21, pointerType: 'touch', button: 0, buttons: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(canvas, { pointerId: 22, pointerType: 'touch', button: 0, buttons: 1, clientX: 120, clientY: 100 });
+    expect(hasDirtyInkEditor(documentId)).toBe(true);
+    await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+    expect(saves).toHaveLength(0);
+    const content = drafts.get(documentId)?.changed[0].objects[0].content;
+    expect(content?.kind === 'stroke' ? content.samples[0].x : null).toBe(10);
+  });
+
+  it('keeps a new unlifted stroke dirty when the previous stroke finishes in the same task', async () => {
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    act(() => {
+      endGesture(startGesture());
+      startGesture(70);
+    });
+    await act(async () => undefined);
+    expect(hasDirtyInkEditor(documentId)).toBe(true);
+    await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+    expect(drafts.get(documentId)?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+    expect(saves).toHaveLength(0);
+  });
+
+  it('keeps consecutive completed and OS-cancelled strokes pending without journal or idle CAS', async () => {
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const canvas = startGesture();
+      endGesture(canvas);
+      await act(async () => undefined);
+      expect(screen.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'pending');
+      expect(inkBoardDraftJournal.persist).not.toHaveBeenCalled();
+      expect(saves).toHaveLength(0);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(saves).toHaveLength(0);
+      expect(inkBoardDraftJournal.persist).not.toHaveBeenCalled();
+
+      startGesture(70);
+      fireEvent.pointerCancel(canvas, { pointerId: 7, pointerType: 'pen' });
+      await act(async () => undefined);
+      expect(inkBoardDraftJournal.persist).not.toHaveBeenCalled();
+      expect(saves).toHaveLength(0);
+      await flush();
+      expect(saves).toHaveLength(1);
+      const objects = saves[0].changed.flatMap((chunk) => chunk.objects);
+      expect(objects).toHaveLength(2);
+      const cancelled = objects[1].content;
+      expect(cancelled.kind).toBe('stroke');
+      if (cancelled.kind !== 'stroke') throw new Error('Missing cancelled stroke.');
+      expect(cancelled.samples.map(({ x, y }) => ({ x, y }))).toEqual([{ x: 70, y: 10 }, { x: 90, y: 30 }]);
+      expect(hasDirtyInkEditor(documentId)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes pending and still-unlifted ink together on explicit save', async () => {
+    render(<InkBoardEditor documentId={documentId} />);
+    await ready();
+    endGesture(startGesture());
+    await act(async () => undefined);
+    expect(screen.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'pending');
+    startGesture(70);
+    fireEvent.click(screen.getByTestId('ink-board-save'));
+    await waitFor(() => expect(screen.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'saved'));
+    expect(saves).toHaveLength(1);
+    expect(saves[0].changed.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+    expect(journalAtCas[0]?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+  });
+
   it('blocks host flush instead of dropping input when the stroke cannot be enqueued', async () => {
     const implementation = mocks.invoke.getMockImplementation()!;
     mocks.invoke.mockImplementation(async (command: string, payload: Record<string, any>) => {
@@ -198,7 +329,7 @@ describe('InkBoardEditor registered host flush', () => {
     expect(saves[0].changed[0].objects).toHaveLength(1);
   });
 
-  it('waits for a pointerup commit to finish journaling before the canonical save', async () => {
+  it('keeps completed input in memory and waits for the flush journal before the canonical save', async () => {
     render(<InkBoardEditor documentId={documentId} />);
     await ready();
     const gate = deferred();
@@ -240,7 +371,7 @@ describe('InkBoardEditor registered host flush', () => {
     expect(saves).toHaveLength(2);
   });
 
-  it('does not commit a gesture from a replaced remote epoch through the new view', async () => {
+  it('keeps unlifted input and blocks canonical flush when a remote revision arrives', async () => {
     render(<InkBoardEditor documentId={documentId} />);
     await ready();
     startGesture();
@@ -248,19 +379,15 @@ describe('InkBoardEditor registered host flush', () => {
     await act(async () => {
       await mocks.listener?.({ payload: { document_id: documentId, revision: 'remote-2' } });
     });
-    await ready();
-    await flush();
+    expect(screen.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'conflict');
+    expect(hasDirtyInkEditor(documentId)).toBe(true);
+    expect(await act(async () => flushInkEditor(documentId))).toEqual({ ok: false, code: 'EDITOR_BUSY' });
     expect(saves).toHaveLength(0);
-
-    startGesture(70);
-    await flush();
-    expect(saves).toHaveLength(1);
-    expect(saves[0].expected_revision).toBe('remote-2');
-    const content = saves[0].changed[0].objects[0].content;
-    expect(content.kind === 'stroke' ? content.samples[0].x : null).toBe(70);
+    const content = drafts.get(documentId)?.changed[0].objects[0].content;
+    expect(content?.kind === 'stroke' ? content.samples[0].x : null).toBe(10);
   });
 
-  it('rejects old-view input when the hook already received a remote epoch before React renders it', async () => {
+  it('protects unlifted input if a remote conflict and exit happen before React renders it', async () => {
     render(<InkBoardEditor documentId={documentId} />);
     await ready();
     startGesture();
@@ -270,8 +397,8 @@ describe('InkBoardEditor registered host flush', () => {
       expect(await flushInkEditor(documentId)).toEqual({ ok: false, code: 'EDITOR_BUSY' });
     });
     expect(saves).toHaveLength(0);
-    expect(drafts.has(documentId)).toBe(false);
-    await ready();
+    expect(drafts.get(documentId)?.save_state).toBe('conflict');
+    expect(drafts.get(documentId)?.changed.flatMap((chunk) => chunk.objects)).toHaveLength(1);
   });
 
   it('does not commit the old document gesture when the editor is retargeted', async () => {

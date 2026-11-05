@@ -416,6 +416,47 @@ describe('InkBoardDraftClaim memory contract', () => {
 });
 
 describe('useInkBoardDocument', () => {
+  it('publishes completed edits without waiting for a lifecycle journal write or starting a CAS', async () => {
+    createHarness({ manifest: makeManifest({ chunks: [] }), chunks: {} });
+    const { journal, records } = createMemoryJournal();
+    const { result } = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    const persist = vi.spyOn(journal, 'persist');
+    const gate = createDeferred<void>();
+    persist.mockImplementationOnce(async () => { await gate.promise; });
+
+    let editResolved = false;
+    let edit!: Promise<void>;
+    act(() => {
+      edit = result.current.insertObjects([strokeObject]).then(() => { editResolved = true; });
+    });
+    await act(async () => undefined);
+    try {
+      expect(editResolved).toBe(true);
+      expect(result.current.chunks[0].objects).toEqual([strokeObject]);
+      expect(result.current.saveStatus).toBe('pending');
+      expect(persist).not.toHaveBeenCalled();
+      expect(records.size).toBe(0);
+
+      let protection!: Promise<InkBoardDraftRecord | undefined>;
+      act(() => { protection = result.current.persistDraft(); });
+      await act(async () => undefined);
+      expect(persist).toHaveBeenCalledOnce();
+      await act(async () => {
+        await result.current.insertObjects([{ ...strokeObject, id: 'next-stroke', z_index: 1 }]);
+      });
+      expect(result.current.chunks.flatMap((chunk) => chunk.objects)).toHaveLength(2);
+      expect(result.current.saveStatus).toBe('pending');
+      expect(persist).toHaveBeenCalledOnce();
+      expect(mocks.invoke.mock.calls.some(([command]) => command === 'vfs_ink_save_chunks')).toBe(false);
+      gate.resolve();
+      await protection;
+    } finally {
+      gate.resolve();
+      await act(async () => { await edit; });
+    }
+  });
+
   it('loads only visible chunks and batches each request under the 16 MiB budget', async () => {
     const visibleA = chunkRef('chunk-a', { x: 0, y: 0, width: 100, height: 100 }, 1024);
     const offscreen = chunkRef('chunk-b', { x: 5000, y: 5000, width: 100, height: 100 });
@@ -678,7 +719,7 @@ describe('useInkBoardDocument', () => {
     await waitFor(() => expect(records.has(DOCUMENT_ID)).toBe(false));
   });
 
-  it('resumes draft persistence after a transient journal failure on a later gesture', async () => {
+  it('retries failed lifecycle draft protection after a later in-memory gesture', async () => {
     createHarness({ manifest: makeManifest(), chunks: { 'chunk-a': chunkA } });
     const memory = createMemoryJournal();
     let failNext = true;
@@ -706,15 +747,19 @@ describe('useInkBoardDocument', () => {
     await act(async () => {
       await first.result.current.upsertObjects([{ ...strokeObject, z_index: 2 }]);
     });
-    expect(first.result.current.saveStatus).toBe('storage-error');
+    expect(first.result.current.saveStatus).toBe('pending');
+    window.dispatchEvent(new Event('pagehide'));
+    await waitFor(() => expect(first.result.current.saveStatus).toBe('storage-error'));
     expect(memory.records.has(DOCUMENT_ID)).toBe(false);
 
     await act(async () => {
       await first.result.current.upsertObjects([{ ...strokeObject, z_index: 3 }]);
     });
+    expect(first.result.current.chunks[0].objects[0].z_index).toBe(3);
     window.dispatchEvent(new Event('pagehide'));
     await waitFor(() =>
       expect(memory.records.get(DOCUMENT_ID)?.changed[0].objects[0].z_index).toBe(3));
+    await waitFor(() => expect(first.result.current.saveStatus).toBe('pending'));
     expect(mocks.invoke.mock.calls.some(([command]) => command === 'vfs_ink_save_chunks'))
       .toBe(false);
 
@@ -722,7 +767,7 @@ describe('useInkBoardDocument', () => {
     await act(async () => undefined);
     const second = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
     await waitFor(() => expect(second.result.current.status).toBe('ready'));
-    expect(second.result.current.saveStatus).toBe('offline');
+    expect(second.result.current.saveStatus).toBe('pending');
     expect(second.result.current.chunks[0].objects[0].z_index).toBe(3);
   });
 
@@ -1212,7 +1257,7 @@ describe('useInkBoardDocument', () => {
     expect(result.current.chunks.map((chunk) => chunk.chunk_id)).toContain('chunk-b');
     expect(result.current.chunks.find((chunk) => chunk.chunk_id === 'chunk-b')?.objects[0].z_index).toBe(7);
     expect(result.current.dirtyChunks.map((chunk) => chunk.chunk_id)).toContain('chunk-b');
-    expect(result.current.saveStatus).toBe('offline');
+    expect(result.current.saveStatus).toBe('pending');
     expect(result.current.undoDepth).toBe(undoDepthInB);
   });
 
@@ -1376,7 +1421,7 @@ describe('useInkBoardDocument', () => {
     expect(result.current.dirtyChunks.map((chunk) => chunk.chunk_id)).toContain('chunk-a');
     expect(result.current.manifest?.revision).toBe('rev-2');
     expect(records.get(DOCUMENT_ID)?.base_revision).toBe('rev-2');
-    expect(result.current.saveStatus).toBe('offline');
+    expect(result.current.saveStatus).toBe('pending');
     expect(onConflict).not.toHaveBeenCalled();
 
     await emitChanged({
@@ -1503,7 +1548,7 @@ describe('useInkBoardDocument', () => {
     await act(async () => {
       await result.current.upsertObjects([{ ...strokeObject, z_index: 6 }]);
     });
-    expect(records.get(documentA)?.changed[0].objects[0].z_index).toBe(6);
+    expect(records.has(documentA)).toBe(false);
     expect(hasDirtyInkEditor(documentA)).toBe(true);
 
     rerender({ documentId: documentB });
@@ -1809,7 +1854,7 @@ describe('useInkBoardDocument', () => {
     const second = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
     await waitFor(() => expect(second.result.current.status).toBe('ready'));
     expect(second.result.current.manifest?.revision).toBe('rev-1');
-    expect(second.result.current.saveStatus).toBe('offline');
+    expect(second.result.current.saveStatus).toBe('pending');
     expect(second.result.current.chunks[0].objects[0].z_index).toBe(2);
 
     await act(async () => {
@@ -1991,7 +2036,7 @@ describe('useInkBoardDocument', () => {
 
     const second = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
     await waitFor(() => expect(second.result.current.status).toBe('ready'));
-    expect(second.result.current.saveStatus).toBe('offline');
+    expect(second.result.current.saveStatus).toBe('pending');
     expect(second.result.current.chunks[0].objects[0].z_index).toBe(2);
 
     await act(async () => {
@@ -2015,7 +2060,7 @@ describe('useInkBoardDocument', () => {
     expect(second.result.current.saveStatus).not.toBe('saved');
   });
 
-  it('journals an upsert gesture before it resolves and recovers it after a new claim', async () => {
+  it('recovers an upsert from explicit draft protection after a new writer claim', async () => {
     const baseManifest = makeManifest();
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === 'vfs_ink_get') return structuredClone(baseManifest);
@@ -2037,6 +2082,8 @@ describe('useInkBoardDocument', () => {
       await result.current.upsertObjects([{ ...strokeObject, z_index: 7 }]);
     });
 
+    expect(records.size).toBe(0);
+    await act(async () => { await result.current.persistDraft(); });
     const sessionOwner = owners.get(DOCUMENT_ID);
     expect(sessionOwner).toBeTruthy();
     expect(records.get(DOCUMENT_ID)?.owner).toBe(sessionOwner);
@@ -2070,8 +2117,7 @@ describe('useInkBoardDocument', () => {
         persistCalls += 1;
         const call = persistCalls;
         return enqueue(async () => {
-          if (call === 2) {
-            // Gate only the save's journal write, never the gesture write.
+          if (call === 1) {
             savePersistEntered = true;
             await savePersistGate.promise;
           }
@@ -2109,17 +2155,19 @@ describe('useInkBoardDocument', () => {
     });
     await waitFor(() => expect(savePersistEntered).toBe(true));
 
-    let newGesture!: Promise<void>;
-    act(() => {
-      newGesture = result.current.upsertObjects([{ ...strokeObject, z_index: 9 }]);
-    });
-    await waitFor(() => expect(persistCalls).toBe(3));
-
-    await act(async () => {
-      savePersistGate.resolve();
-      await savePromise;
-      await newGesture;
-    });
+    try {
+      await act(async () => {
+        await result.current.upsertObjects([{ ...strokeObject, z_index: 9 }]);
+      });
+      expect(result.current.chunks[0].objects[0].z_index).toBe(9);
+      expect(persistCalls).toBe(1);
+      expect(saveRequests).toHaveLength(0);
+    } finally {
+      await act(async () => {
+        savePersistGate.resolve();
+        await savePromise;
+      });
+    }
 
     expect(saveRequests[0].changed[0].objects[0].z_index).toBe(2);
     expect(result.current.dirtyChunks.map((chunk) => chunk.chunk_id)).toContain('chunk-a');
@@ -2358,6 +2406,9 @@ describe('useInkBoardDocument', () => {
     expect(loadError).toBeInstanceOf(Error);
     expect(result.current.error).toBeTruthy();
     expect(result.current.dirtyChunks.map((chunk) => chunk.chunk_id)).toContain('dirty-1');
+    expect(result.current.chunks[0].objects[0].z_index).toBe(3);
+    expect(records.size).toBe(0);
+    await act(async () => { await result.current.persistDraft(); });
     expect(records.get(DOCUMENT_ID)?.changed[0].objects[0].z_index).toBe(3);
     expect(result.current.manifest?.revision).toBe('rev-1');
     expect(result.current.chunks.map((chunk) => chunk.chunk_id)).not.toContain('n-1');

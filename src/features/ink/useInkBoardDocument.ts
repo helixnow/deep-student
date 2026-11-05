@@ -24,7 +24,7 @@ import {
   type InkBoardSurface,
 } from './types';
 
-export type InkBoardSaveStatus = 'loading' | 'saved' | 'saving' | 'conflict' | 'offline' | 'storage-error';
+export type InkBoardSaveStatus = 'loading' | 'saved' | 'pending' | 'saving' | 'conflict' | 'offline' | 'storage-error';
 
 export interface InkBoardCamera {
   x: number;
@@ -81,6 +81,7 @@ export interface InkBoardDocumentState {
   persistDraft(): Promise<InkBoardDraftRecord | undefined>;
   flush(): Promise<void>;
   setCamera(camera: Partial<InkBoardCamera>): void;
+  setActiveInput(active: boolean): void;
 }
 
 interface BoardHistoryEntry {
@@ -137,6 +138,9 @@ interface BoardSessionState {
   epoch: number;
   sequence: number;
   editVersion: number;
+  draftNeedsCleanup: boolean;
+  activeInput: boolean;
+  inputProtection: Promise<InkBoardDraftRecord | undefined> | null;
   loadRequest: number;
   viewportRequest: number;
   loadPending: PendingViewportLoad | null;
@@ -169,6 +173,9 @@ function createBoardSession(documentId: string, journal: InkBoardDraftJournal): 
     epoch: 0,
     sequence: 0,
     editVersion: 0,
+    draftNeedsCleanup: false,
+    activeInput: false,
+    inputProtection: null,
     loadRequest: 0,
     viewportRequest: 0,
     loadPending: null,
@@ -717,6 +724,7 @@ export function useInkBoardDocument(
     const deleted = Array.from(session.deleted);
     if (changed.length === 0 && deleted.length === 0) return undefined;
     const sequence = ++session.sequence;
+    session.draftNeedsCleanup = true;
     return {
       document_id: session.documentId,
       owner: session.owner,
@@ -744,71 +752,62 @@ export function useInkBoardDocument(
         ? 'conflict'
         : session.saveStatus === 'offline' ? 'offline' : undefined,
     );
-    if (!record) return undefined;
+    const editVersion = session.editVersion;
+    const sequence = session.sequence;
+    const cleanConflict = !record && session.saveStatus === 'conflict'
+      && !session.inflightSave && !session.activeInput;
+    if (!record && (session.inflightSave || (!session.draftNeedsCleanup && !cleanConflict))) return undefined;
     try {
-      await session.journal.persist(record);
-      // A successful retry only proves the draft is durable locally, not that
-      // the server accepted it: recover to dirty/offline, never to saved.
-      if (session.saveStatus === 'storage-error' && isCurrentSession(session)) {
-        session.saveStatus = 'offline';
+      if (record) {
+        await session.journal.persist(record);
+      } else {
+        await session.journal.discard(
+          { document_id: session.documentId },
+          sequence,
+          session.owner,
+        );
+        if (session.sequence === sequence) session.draftNeedsCleanup = false;
+      }
+      const clearedConflict = cleanConflict && session.editVersion === editVersion
+        && !session.inflightSave && !session.activeInput
+        && session.dirty.size === 0 && session.deleted.size === 0 && !session.draftNeedsCleanup;
+      if (isCurrentSession(session) && (session.saveStatus !== 'conflict' || clearedConflict)
+        && (!record || (session.saveStatus === 'storage-error' && session.editVersion === editVersion))) {
+        session.saveStatus = session.dirty.size > 0 || session.deleted.size > 0
+          || session.inflightSave || session.draftNeedsCleanup || session.activeInput
+          ? 'pending'
+          : 'saved';
+        if (clearedConflict) {
+          session.retrySave = null;
+          session.blockedSave = null;
+        }
+        setError(undefined);
         publishView(session);
       }
       return record;
     } catch (persistError) {
-      if (isDraftRejected(persistError)) {
-        if (isCurrentSession(session)) {
-          session.saveStatus = 'conflict';
-          setError(persistError);
-          publishView(session);
-        }
-        throw persistError;
-      }
       if (isCurrentSession(session)) {
-        session.saveStatus = 'storage-error';
+        session.saveStatus = isDraftRejected(persistError) ? 'conflict' : 'storage-error';
+        setError(persistError);
         publishView(session);
       }
       throw persistError;
     }
   }, [buildDraftRecord, isCurrentSession, publishView]);
 
-  /**
-   * A gesture can return the board to its canonical state (for example,
-   * inserting then removing an unpublished chunk). The old draft must then be
-   * discarded, but the in-memory undo/redo history stays available. Never
-   * discard while a save is in flight: its first publish may make a locally
-   * absent new chunk canonical and require a follow-up delete.
-   */
-  const discardCleanDraft = useCallback(async (
-    session: BoardSessionState,
-    editVersionAtClean: number,
-    sequenceAtClean: number,
-  ): Promise<void> => {
-    try {
-      await session.journal.discard(
-        { document_id: session.documentId },
-        sequenceAtClean,
-        session.owner,
-      );
-    } catch (discardError) {
-      if (!isCurrentSession(session)) return;
-      session.saveStatus = isDraftRejected(discardError) ? 'conflict' : 'storage-error';
-      setError(discardError);
-      publishView(session);
-      return;
-    }
-    if (!isCurrentSession(session)
-      || session.editVersion !== editVersionAtClean
-      || session.inflightSave
-      || session.dirty.size > 0
-      || session.deleted.size > 0) return;
+  const publishLocalEdit = useCallback((session: BoardSessionState) => {
     if (session.saveStatus !== 'conflict' && session.saveStatus !== 'storage-error') {
-      session.saveStatus = 'saved';
+      session.saveStatus = session.dirty.size > 0 || session.deleted.size > 0
+        || session.inflightSave || session.draftNeedsCleanup
+        ? 'pending'
+        : 'saved';
     }
-    session.retrySave = null;
-    session.blockedSave = null;
-    setError(undefined);
+    if (session.saveStatus === 'saved') {
+      session.retrySave = null;
+      session.blockedSave = null;
+    }
     publishView(session);
-  }, [isCurrentSession, publishView]);
+  }, [publishView]);
 
   const applyObjectEdits = useCallback(async (
     objects: InkBoardObject[],
@@ -862,20 +861,8 @@ export function useInkBoardDocument(
       session.undo.push(history);
       session.redo = [];
     }
-    if (session.saveStatus !== 'conflict' && session.saveStatus !== 'storage-error') {
-      session.saveStatus = 'offline';
-    }
-
-    // The gesture must be journaled before its promise resolves. On a typed or
-    // storage failure keep the local dirty state and never continue to CAS.
-    try {
-      await persistSessionDraft(session);
-    } catch {
-      return;
-    }
-    if (!isCurrentSession(session)) return;
-    publishView(session);
-  }, [isCurrentSession, persistSessionDraft, publishView]);
+    publishLocalEdit(session);
+  }, [isCurrentSession, publishLocalEdit]);
 
   const upsertObjects = useCallback((objects: InkBoardObject[]): Promise<void> => (
     applyObjectEdits(
@@ -949,7 +936,6 @@ export function useInkBoardDocument(
     }
     if (!isCurrentSession(session)) return;
 
-    const epoch = session.epoch;
     if (session.blockedSave) {
       session.blockedSave = null;
       setError(undefined);
@@ -958,23 +944,8 @@ export function useInkBoardDocument(
     session.editVersion += 1;
     session.undo.push(history);
     session.redo = [];
-    if (session.saveStatus !== 'conflict' && session.saveStatus !== 'storage-error') {
-      session.saveStatus = 'offline';
-    }
-
-    if (session.dirty.size === 0 && session.deleted.size === 0 && !session.inflightSave) {
-      await discardCleanDraft(session, session.editVersion, session.sequence);
-      return;
-    }
-
-    try {
-      await persistSessionDraft(session);
-    } catch {
-      return;
-    }
-    if (!isCurrentSession(session) || session.epoch !== epoch) return;
-    publishView(session);
-  }, [discardCleanDraft, isCurrentSession, persistSessionDraft, publishView]);
+    publishLocalEdit(session);
+  }, [isCurrentSession, publishLocalEdit]);
 
   const applyHistoryEntries = useCallback(async (
     session: BoardSessionState,
@@ -997,7 +968,6 @@ export function useInkBoardDocument(
     }
     if (!isCurrentSession(session)) return;
 
-    const epoch = session.epoch;
     if (session.blockedSave) {
       session.blockedSave = null;
       setError(undefined);
@@ -1007,23 +977,8 @@ export function useInkBoardDocument(
     if (direction === 'undo') session.redo.push(entries);
     else session.undo.push(entries);
     session.editVersion += 1;
-    if (session.saveStatus !== 'conflict' && session.saveStatus !== 'storage-error') {
-      session.saveStatus = 'offline';
-    }
-
-    if (session.dirty.size === 0 && session.deleted.size === 0 && !session.inflightSave) {
-      await discardCleanDraft(session, session.editVersion, session.sequence);
-      return;
-    }
-
-    try {
-      await persistSessionDraft(session);
-    } catch {
-      return;
-    }
-    if (!isCurrentSession(session) || session.epoch !== epoch) return;
-    publishView(session);
-  }, [discardCleanDraft, isCurrentSession, persistSessionDraft, publishView]);
+    publishLocalEdit(session);
+  }, [isCurrentSession, publishLocalEdit]);
 
   const undo = useCallback((): Promise<void> => {
     const session = sessionRef.current;
@@ -1072,6 +1027,8 @@ export function useInkBoardDocument(
             rejectJournalFailure(journalError);
             return;
           }
+        } else {
+          await persistSessionDraft(session);
         }
         if (isCurrentSession(session)) publishView(session);
         return;
@@ -1081,7 +1038,10 @@ export function useInkBoardDocument(
         session,
         session.saveStatus === 'offline' ? 'offline' : undefined,
       );
-      if (!record) return;
+      if (!record) {
+        await persistSessionDraft(session);
+        return;
+      }
       // The versions and edit snapshot must belong to the same synchronous
       // moment as the record. Capturing them after the journal await would let
       // a gesture that landed during that await be treated as if it had been
@@ -1200,7 +1160,7 @@ export function useInkBoardDocument(
             // Edits made while the CAS was in flight were not part of the
             // committed payload. Rewrite the journal at the returned base
             // revision so a restart retries the new delta.
-            const rebased = buildDraftRecord(session, 'offline', savedManifest.revision);
+            const rebased = buildDraftRecord(session, undefined, savedManifest.revision);
             if (rebased) await session.journal.persist(rebased);
           } else {
             // Only delete up to the highest sequence this session issued. This
@@ -1212,12 +1172,13 @@ export function useInkBoardDocument(
               throughSequence,
               session.owner,
             );
+            if (session.sequence === throughSequence) session.draftNeedsCleanup = false;
           }
           if (!isCurrentSession(session)) return;
           // Re-read current dirty/version after the cleanup await. A new edit
           // may have landed while the discard/persist was in flight.
           if (session.dirty.size > 0 || session.deleted.size > 0) {
-            const afterCommit = buildDraftRecord(session, 'offline', savedManifest.revision);
+            const afterCommit = buildDraftRecord(session, undefined, savedManifest.revision);
             if (afterCommit) await session.journal.persist(afterCommit);
           }
         } catch (cleanupError) {
@@ -1228,8 +1189,8 @@ export function useInkBoardDocument(
 
         session.blockedSave = null;
         session.retrySave = null;
-        session.saveStatus = session.dirty.size > 0 || session.deleted.size > 0
-          ? 'offline'
+        session.saveStatus = session.dirty.size > 0 || session.deleted.size > 0 || session.draftNeedsCleanup
+          ? 'pending'
           : 'saved';
         setError(undefined);
         publishView(session);
@@ -1334,13 +1295,15 @@ export function useInkBoardDocument(
       }
     });
     return queued;
-  }, [buildDraftRecord, isCurrentSession, publishView, rememberOwnOperation]);
+  }, [buildDraftRecord, isCurrentSession, persistSessionDraft, publishView, rememberOwnOperation]);
 
   const save = useCallback((): Promise<void> => saveSession(sessionRef.current), [saveSession]);
 
   const isLocallyDirty = useCallback((session: BoardSessionState): boolean => (
-    session.dirty.size > 0
+    session.activeInput
+    || session.dirty.size > 0
     || session.deleted.size > 0
+    || session.saveStatus === 'pending'
     || session.saveStatus === 'saving'
     || session.saveStatus === 'offline'
     || session.saveStatus === 'conflict'
@@ -1362,9 +1325,10 @@ export function useInkBoardDocument(
     assertSession();
     if (session.blockedSave) throw new Error('Ink board has a non-retryable save error.');
     if (session.saveStatus !== 'saved') await saveSession(session);
+    else await persistSessionDraft(session);
     assertSession();
     if (session.saveStatus !== 'saved') throw new Error('Ink board has an unsaved draft.');
-  }, [isCurrentSession, saveSession]);
+  }, [isCurrentSession, persistSessionDraft, saveSession]);
 
   const flush = useCallback((): Promise<void> => flushSession(sessionRef.current), [flushSession]);
 
@@ -1376,12 +1340,14 @@ export function useInkBoardDocument(
     const session = sessionRef.current;
     if (!isCurrentSession(session)) return;
     const editVersion = session.editVersion;
+    const throughSequence = session.sequence;
     try {
       await session.journal.discard(
         { document_id: session.documentId },
-        session.sequence,
+        throughSequence,
         session.owner,
       );
+      if (session.sequence === throughSequence) session.draftNeedsCleanup = false;
     } catch (discardError) {
       if (isDraftRejected(discardError) && isCurrentSession(session)) {
         session.saveStatus = 'conflict';
@@ -1420,6 +1386,10 @@ export function useInkBoardDocument(
   const setCamera = useCallback((next: Partial<InkBoardCamera>) => {
     setCameraState((current) => ({ ...current, ...next }));
   }, []);
+
+  const setActiveInput = useCallback((active: boolean) => {
+    sessionState.activeInput = active;
+  }, [sessionState]);
 
   useEffect(() => {
     const session = sessionState;
@@ -1460,6 +1430,7 @@ export function useInkBoardDocument(
         }
         if (cancelled || !isCurrentSession(session) || requestId !== session.loadRequest) return;
         const draft = claim.draft;
+        session.draftNeedsCleanup = Boolean(draft);
 
         session.manifest = manifest;
         session.chunks.clear();
@@ -1503,7 +1474,7 @@ export function useInkBoardDocument(
           const revisionChanged = draft.base_revision !== manifest.revision;
           nextSaveStatus = revisionChanged || draft.save_state === 'conflict'
             ? 'conflict'
-            : draft.save_state ?? 'offline';
+            : draft.save_state ?? 'pending';
         }
 
         session.saveStatus = nextSaveStatus;
@@ -1659,6 +1630,7 @@ export function useInkBoardDocument(
             throughSequence,
             session.owner,
           );
+          if (session.sequence === throughSequence) session.draftNeedsCleanup = false;
         } catch (discardError) {
           if (isDraftRejected(discardError) && isCurrentSession(session)) {
             session.saveStatus = 'conflict';
@@ -1709,10 +1681,34 @@ export function useInkBoardDocument(
   }, [buildDraftRecord, isCurrentSession, isLocallyDirty, loadVisible, publishView]);
 
   const sessionIsDirty = useCallback((session: BoardSessionState) => (
-    session.dirty.size > 0
+    session.activeInput
+      || session.dirty.size > 0
       || session.deleted.size > 0
+      || session.draftNeedsCleanup
       || (session.saveStatus !== 'saved' && session.saveStatus !== 'loading')
   ), []);
+  const protectSessionInput = useCallback((session: BoardSessionState): Promise<InkBoardDraftRecord | undefined> => {
+    if (session.inputProtection) return session.inputProtection;
+    const pageId = session.manifest?.surface.page_id;
+    const epoch = session.epoch;
+    const beforeFlush = beforeFlushRef.current;
+    const pending = (async () => {
+      try {
+        if (session.activeInput && pageId) {
+          await beforeFlush?.({ documentId: session.documentId, pageId, revisionEpoch: epoch });
+        }
+      } catch (inputError) {
+        await persistSessionDraft(session);
+        throw inputError;
+      }
+      return persistSessionDraft(session);
+    })();
+    session.inputProtection = pending;
+    void pending.finally(() => {
+      if (session.inputProtection === pending) session.inputProtection = null;
+    }).catch(() => undefined);
+    return pending;
+  }, [persistSessionDraft]);
   const surfacePageId = sessionState.manifest?.surface.page_id;
   const sessionHandle = useMemo<InkEditorSession | null>(() => {
     if (!surfacePageId) return null;
@@ -1742,11 +1738,11 @@ export function useInkBoardDocument(
       persistDraft: async () => {
         // Cleanup persists its own bound session snapshot even after the
         // session became inactive, but it never reads the current session.
-        await persistSessionDraft(boundSession);
+        await protectSessionInput(boundSession);
         return undefined;
       },
     };
-  }, [flushSession, isCurrentSession, persistSessionDraft, sessionIsDirty, sessionState, surfacePageId]);
+  }, [flushSession, isCurrentSession, protectSessionInput, sessionIsDirty, sessionState, surfacePageId]);
 
   useEffect(() => {
     if (!sessionHandle) return;
@@ -1759,8 +1755,8 @@ export function useInkBoardDocument(
   const persistLifecycleDraft = useCallback(() => {
     const session = sessionRef.current;
     if (!session.manifest) return;
-    void persistSessionDraft(session).catch(() => undefined);
-  }, [persistSessionDraft]);
+    void protectSessionInput(session).catch(() => undefined);
+  }, [protectSessionInput]);
   const onPageHide = useCallback(() => {
     persistLifecycleDraft();
   }, [persistLifecycleDraft]);
@@ -1796,5 +1792,6 @@ export function useInkBoardDocument(
     persistDraft,
     flush,
     setCamera,
+    setActiveInput,
   };
 }

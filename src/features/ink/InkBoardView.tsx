@@ -69,6 +69,7 @@ export interface InkBoardViewProps {
   ariaLabel: string;
   onCameraChange(camera: Camera): void;
   onCommitStroke(content: Extract<InkObjectContent, { kind: 'stroke' }>): void | boolean | Promise<void | boolean>;
+  onActiveStrokeChange?(active: boolean): void;
   onErase(objectIds: string[]): void | Promise<void>;
   onSelectionChange(selection: InkBoardSelection | null): void;
   onError(error: unknown): void;
@@ -109,6 +110,13 @@ interface PinchGesture {
 interface PointerPosition {
   clientX: number;
   clientY: number;
+  pointerType: string;
+}
+
+interface PendingStroke {
+  content: Extract<InkObjectContent, { kind: 'stroke' }>;
+  accepted: boolean;
+  failed: boolean;
 }
 
 function finiteCamera(camera: Camera): Camera {
@@ -140,6 +148,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     ariaLabel,
     onCameraChange,
     onCommitStroke,
+    onActiveStrokeChange,
     onErase,
     onSelectionChange,
     onError,
@@ -172,6 +181,18 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   const pinchGestureRef = useRef<PinchGesture | null>(null);
   const [selectionDraft, setSelectionDraft] = useState<InkPoint[] | null>(null);
   const [eraserCursor, setEraserCursor] = useState<InkPoint | null>(null);
+  const pendingStrokesRef = useRef<PendingStroke[]>([]);
+  const pendingCommitsRef = useRef(new Set<Promise<void>>());
+  const activeInputRef = useRef(false);
+  const onActiveStrokeChangeRef = useRef(onActiveStrokeChange);
+  onActiveStrokeChangeRef.current = onActiveStrokeChange;
+  const reportActiveInput = useCallback(() => {
+    const active = Boolean(activeStrokeRef.current || eraserGestureRef.current
+      || pendingCommitsRef.current.size > 0 || pendingStrokesRef.current.some((pending) => !pending.accepted));
+    if (activeInputRef.current === active) return;
+    activeInputRef.current = active;
+    onActiveStrokeChangeRef.current?.(active);
+  }, []);
 
   const renderFrame = useCallback(() => {
     const main = canvasRef.current;
@@ -181,8 +202,18 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     const currentCamera = finiteCamera(cameraRef.current);
     const currentObjects = objectsRef.current;
     const dpr = globalThis.devicePixelRatio || 1;
-
-    renderInkBoard(main, currentSurface, currentObjects, currentCamera, { dpr });
+    pendingStrokesRef.current = pendingStrokesRef.current.filter((pending) => !currentObjects.some((object) => (
+      object.content === pending.content
+      || (object.content.kind === 'stroke' && object.content.samples === pending.content.samples)
+    )));
+    const completed = pendingStrokesRef.current.map((pending, index): InkBoardObject => ({
+      id: `ink-board-pending-stroke-${index}`,
+      author: 'user',
+      created_at: 0,
+      z_index: Number.MAX_SAFE_INTEGER - pendingStrokesRef.current.length + index,
+      content: pending.content,
+    }));
+    renderInkBoard(main, currentSurface, [...currentObjects, ...completed], currentCamera, { dpr });
 
     const active = activeStrokeRef.current;
     if (active?.samples.length) {
@@ -193,6 +224,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         z_index: 0,
         content: { kind: 'stroke', samples: active.samples, style: active.style },
       };
+      overlay.style.mixBlendMode = active.style.tool === 'highlighter' ? 'multiply' : 'normal';
       renderInkBoard(overlay, currentSurface, [preview], currentCamera, { dpr, transparent: true });
       return;
     }
@@ -260,6 +292,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     setSelectionDraft(null);
     setEraserCursor(null);
     clearOverlay();
+    reportActiveInput();
   };
 
   const finishSelection = (cancelled: boolean) => {
@@ -301,7 +334,6 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     onSelectionChange({ polygon: points, bounds, objectIds });
   };
 
-  const pendingCommitsRef = useRef(new Set<Promise<void>>());
   const trackCommit = (commit: () => void | Promise<void>): Promise<void> => {
     let pending: Promise<void>;
     try {
@@ -310,40 +342,59 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
       pending = Promise.reject(error);
     }
     pendingCommitsRef.current.add(pending);
+    reportActiveInput();
     void pending.then(
-      () => { pendingCommitsRef.current.delete(pending); },
+      () => {
+        pendingCommitsRef.current.delete(pending);
+        reportActiveInput();
+      },
       (error: unknown) => {
         pendingCommitsRef.current.delete(pending);
+        reportActiveInput();
         onError(error);
       },
     );
     return pending;
   };
 
-  const finishStroke = (cancelled: boolean): Promise<void> => {
-    const active = activeStrokeRef.current;
-    activeStrokeRef.current = null;
-    clearOverlay();
-    if (!active || cancelled || active.samples.length === 0) return Promise.resolve();
+  const commitStroke = (pending: PendingStroke): Promise<void> => {
+    pending.failed = false;
     return trackCommit(async () => {
       try {
-        const accepted = await onCommitStroke({ kind: 'stroke', samples: active.samples, style: active.style });
+        const accepted = await onCommitStroke(pending.content);
         if (accepted === false) throw new Error('Ink board stroke was not queued.');
+        pending.accepted = true;
       } catch (error) {
-        if (!activeStrokeRef.current) {
-          activeStrokeRef.current = active;
-          renderFrame();
-        }
+        pending.failed = true;
         throw error;
       }
     });
   };
 
+  const finishStroke = (cancelled: boolean): Promise<void> => {
+    const active = activeStrokeRef.current;
+    activeStrokeRef.current = null;
+    if (!active || cancelled || active.samples.length === 0) {
+      reportActiveInput();
+      return Promise.resolve();
+    }
+    const pending: PendingStroke = {
+      content: { kind: 'stroke', samples: active.samples, style: active.style },
+      accepted: false,
+      failed: false,
+    };
+    pendingStrokesRef.current.push(pending);
+    renderFrame();
+    return commitStroke(pending);
+  };
+
   const finishEraser = (cancelled: boolean): Promise<void> => {
     const gesture = eraserGestureRef.current;
     eraserGestureRef.current = null;
-    clearOverlay();
-    if (!gesture || cancelled || gesture.hitIds.size === 0) return Promise.resolve();
+    if (!gesture || cancelled || gesture.hitIds.size === 0) {
+      reportActiveInput();
+      return Promise.resolve();
+    }
     return trackCommit(async () => {
       try {
         await onErase([...gesture.hitIds]);
@@ -355,9 +406,10 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   };
 
   const finishInput = async (): Promise<void> => {
+    const retries = pendingStrokesRef.current.filter((pending) => pending.failed).map(commitStroke);
     const stroke = finishStroke(false);
     const eraser = finishEraser(false);
-    await Promise.all([stroke, eraser, ...pendingCommitsRef.current]);
+    await Promise.all([...retries, stroke, eraser, ...pendingCommitsRef.current]);
   };
   const finishInputRef = useRef(finishInput);
   finishInputRef.current = finishInput;
@@ -377,7 +429,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   };
 
   const beginPinch = () => {
-    const positions = [...pointersRef.current.entries()];
+    const positions = [...pointersRef.current.entries()].filter(([, pointer]) => pointer.pointerType === 'touch');
     if (positions.length < 2) return;
     const [firstId, first] = positions[0];
     const [secondId, second] = positions[1];
@@ -393,10 +445,20 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const currentTool = toolRef.current;
-    pointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    if (event.pointerType === 'pen' && [...pointersRef.current.values()].some((pointer) => pointer.pointerType === 'touch')) {
+      cancelActiveGesture();
+      pinchGestureRef.current = null;
+      pointersRef.current.clear();
+    }
+    const gesturePointerId = activeStrokeRef.current?.pointerId
+      ?? eraserGestureRef.current?.pointerId
+      ?? selectionGestureRef.current?.pointerId;
     if (event.pointerType === 'touch') {
       event.preventDefault();
-      const touchCount = [...pointersRef.current.keys()].length;
+      if (gesturePointerId !== undefined && pointersRef.current.get(gesturePointerId)?.pointerType !== 'touch') return;
+      pointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType });
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
+      const touchCount = [...pointersRef.current.values()].filter((pointer) => pointer.pointerType === 'touch').length;
       if (touchCount >= 2) {
         cancelActiveGesture();
         beginPinch();
@@ -404,10 +466,11 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
       }
       if (!currentTool.touchDrawing && selectionModeRef.current === 'none') {
         panGestureRef.current = { pointerId: event.pointerId, last: { x: event.clientX, y: event.clientY } };
-        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
         return;
       }
     }
+    if (gesturePointerId !== undefined || panGestureRef.current || pinchGestureRef.current) return;
+    pointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType });
 
     if (event.button === 1 || (event.pointerType === 'mouse' && (spaceDownRef.current || event.button === 2))) {
       event.preventDefault();
@@ -424,6 +487,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         if (objectHitTestSweep(object, point, point, currentTool.eraserSize / 2)) gesture.hitIds.add(object.id);
       }
       eraserGestureRef.current = gesture;
+      reportActiveInput();
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
       renderFrame();
       return;
@@ -457,6 +521,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     };
     active.samples.push(...collectSamples(event, active));
     activeStrokeRef.current = active;
+    reportActiveInput();
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
     renderFrame();
   };
@@ -670,6 +735,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onLostPointerCapture={onPointerCancel}
         onPointerLeave={() => setEraserCursor(null)}
         onContextMenu={(event) => event.preventDefault()}
       />

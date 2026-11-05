@@ -3,6 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BACK_PRIORITY, handleAndroidBack, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { registerInkEditorSession } from '../editorSession';
+import { flushInkWorkspace, hasInkWorkspace } from '@/services/inkWorkspaceRegistry';
+import { confirmTabClose, isTabDirty, requestCloseTabs } from '@/features/learning-hub/closeTabGate';
+import { createTab } from '@/features/learning-hub/types/tabs';
+import { FILE_PREVIEW_APP_DEFINITION } from '@/features/workbench/apps/preview/register';
+import { createContentApp } from '@/features/workbench/apps/content/createContentApp';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { DsButton } from '@/components/ui/DsButton';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/shad/Dialog';
@@ -58,7 +63,10 @@ function editorSession(documentId: string, flush = vi.fn(async () => undefined))
   unregisters.push(registerInkEditorSession({
     key: { document_id: documentId, page_id: 'page-1' },
     isDirty,
-    flush,
+    flush: async () => {
+      await flush();
+      isDirty.mockReturnValue(false);
+    },
     persistDraft,
   }));
   return { flush, persistDraft, isDirty };
@@ -149,6 +157,87 @@ describe('InkWorkspace fullscreen host', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(flush).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['android', 'escape'] as const)('keeps %s back inside the editor after failure and awaits the next save before closing', async (source) => {
+    const pending = deferred<void>();
+    const flush = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(() => pending.promise);
+    editorSession('note-1', flush);
+    const onClose = vi.fn();
+    render(<InkWorkspace documentId="note-1" onClose={onClose} />);
+    const editor = await screen.findByTestId('paged-editor');
+    const back = () => {
+      if (source === 'android') expect(handleAndroidBack()).toBe(true);
+      else fireEvent.keyDown(window, { key: 'Escape' });
+    };
+    await act(async () => { back(); });
+    expect(await screen.findByText(/保存未完成/)).toBeInTheDocument();
+    expect(screen.getByTestId('paged-editor')).toBe(editor);
+    expect(onClose).not.toHaveBeenCalled();
+    act(back);
+    expect(flush).toHaveBeenCalledTimes(2);
+    expect(onClose).not.toHaveBeenCalled();
+    act(back);
+    expect(flush).toHaveBeenCalledTimes(2);
+    await act(async () => { pending.resolve(); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a nominally successful flush that leaves dirty edits behind', async () => {
+    const flush = vi.fn(async () => undefined);
+    unregisters.push(registerInkEditorSession({
+      key: { document_id: 'note-1', page_id: 'page-1' },
+      isDirty: () => true, flush, persistDraft: async () => undefined,
+    }));
+    const onClose = vi.fn();
+    render(<InkWorkspace documentId="note-1" onClose={onClose} />);
+    const editor = await screen.findByTestId('paged-editor');
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(await screen.findByText(/保存未完成/)).toBeInTheDocument();
+    expect(screen.getByTestId('paged-editor')).toBe(editor);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['hub', 'preview', 'file'] as const)('routes %s host close through the real workspace and retains the editor on failure', async (host) => {
+    const pending = deferred<void>();
+    const flush = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(() => pending.promise);
+    editorSession('note-1', flush);
+    const onClose = vi.fn();
+    render(<InkWorkspace documentId="note-1" onClose={onClose} />);
+    const editor = await screen.findByTestId('paged-editor');
+    const tab = createTab({ type: 'file', resourceId: 'note-1', dstuPath: '/note-1', title: 'Ink' });
+    const fileApp = createContentApp({ typeId: 'file', nameKey: 'file', icon: null, memoryWeight: 1, defaultFrame: { w: 800, h: 600 } });
+    const closeHost = () => host === 'hub' ? confirmTabClose(tab)
+      : Promise.resolve((host === 'preview' ? FILE_PREVIEW_APP_DEFINITION : fileApp).canClose!('/folder/note-1'));
+    expect(isTabDirty(tab)).toBe(true);
+    expect(hasInkWorkspace('note-1')).toBe(true);
+    expect(FILE_PREVIEW_APP_DEFINITION.canSuspend!('note-1')).toBe(false);
+    let rejected!: boolean;
+    await act(async () => { rejected = await closeHost(); });
+    expect(rejected).toBe(false);
+    expect(await screen.findByText(/保存未完成/)).toBeInTheDocument();
+    expect(screen.getByTestId('paged-editor')).toBe(editor);
+    let closing!: ReturnType<typeof closeHost>;
+    act(() => { closing = closeHost(); });
+    expect(flush).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: '返回' })).toBeDisabled();
+    await act(async () => { pending.resolve(); });
+    await expect(closing).resolves.toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('paged-editor')).toBe(editor);
+  });
+
+  it('retains a failed Ink tab while allowing an unrelated clean tab in a batch close', async () => {
+    editorSession('note-1', vi.fn(async () => { throw new Error('offline'); }));
+    render(<InkWorkspace documentId="note-1" />);
+    await screen.findByTestId('paged-editor');
+    const ink = createTab({ type: 'file', resourceId: 'note-1', dstuPath: '/note-1', title: 'Ink' });
+    const pdf = createTab({ type: 'file', resourceId: 'file_pdf', dstuPath: '/file_pdf', title: 'PDF' });
+    let result!: Awaited<ReturnType<typeof requestCloseTabs>>;
+    await act(async () => { result = await requestCloseTabs([ink, pdf]); });
+    expect(result).toEqual({ approved: [pdf.tabId], cancelled: true });
+    expect(screen.getByTestId('paged-editor')).toBeInTheDocument();
   });
 
   it('provides an explicit fullscreen reopen entry after returning without an onClose host', async () => {
@@ -384,6 +473,23 @@ describe('InkWorkspace fullscreen host', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('rejects a stale host-close approval and completes a requested document switch after its save', async () => {
+    const pending = deferred<void>();
+    editorSession('note-1', vi.fn(() => pending.promise));
+    const onClose = vi.fn();
+    const view = render(<InkWorkspace documentId="note-1" onClose={onClose} />);
+    await screen.findByTestId('paged-editor');
+    let closing!: Promise<boolean>;
+    act(() => { closing = flushInkWorkspace('note-1'); });
+    view.rerender(<InkWorkspace documentId="note-2" onClose={onClose} />);
+    await act(async () => { pending.resolve(); });
+    await expect(closing).resolves.toBe(false);
+    await waitFor(() => expect(screen.getByTestId('paged-editor')).toHaveAttribute('data-document-id', 'note-2'));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(hasInkWorkspace('note-1')).toBe(false);
+    expect(hasInkWorkspace('note-2')).toBe(true);
+  });
+
   it('ignores a late v1 manifest after changing to a v2 document', async () => {
     const oldManifest = deferred<{ schema_version: number; document_id: string }>();
     get.mockImplementation(({ document_id }) => document_id === 'note-1'
@@ -411,25 +517,45 @@ describe('InkWorkspace fullscreen host', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('flushes a dirty session when hidden and persists recovery without discarding the mounted editor', async () => {
+  it('flushes the dirty session once when its host hides and preserves recovery on failure', async () => {
     const session = editorSession('note-1', vi.fn(async () => { throw new Error('offline'); }));
     const view = render(<InkWorkspace documentId="note-1" />);
     const editor = await screen.findByTestId('paged-editor');
     view.rerender(<InkWorkspace documentId="note-1" isActive={false} />);
     await waitFor(() => expect(session.persistDraft).toHaveBeenCalledTimes(1));
+    expect(session.flush).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(handleAndroidBack()).toBe(false);
     view.rerender(<InkWorkspace documentId="note-1" isActive />);
     expect(await screen.findByTestId('paged-editor')).toBe(editor);
   });
 
-  it('persists a dirty recovery draft on forced unmount when flushing fails', async () => {
+  it('shares a pending hidden-host flush with a later host close without duplicate saves', async () => {
+    const pending = deferred<void>();
+    const session = editorSession('note-1', vi.fn(() => pending.promise));
+    const view = render(<InkWorkspace documentId="note-1" />);
+    await screen.findByTestId('paged-editor');
+    view.rerender(<InkWorkspace documentId="note-1" isActive={false} />);
+    expect(session.flush).toHaveBeenCalledTimes(1);
+    let settled = false;
+    const closing = flushInkWorkspace('note-1').then((saved) => { settled = true; return saved; });
+    expect(session.flush).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+    await act(async () => { pending.resolve(); });
+    await expect(closing).resolves.toBe(true);
+    expect(session.flush).toHaveBeenCalledTimes(1);
+    expect(session.persistDraft).not.toHaveBeenCalled();
+  });
+
+  it('persists a recovery draft on forced unmount without canonical saving', async () => {
     const session = editorSession('note-1', vi.fn(async () => { throw new Error('offline'); }));
     const onClose = vi.fn();
     const view = render(<InkWorkspace documentId="note-1" onClose={onClose} />);
     await screen.findByTestId('paged-editor');
     view.unmount();
     await waitFor(() => expect(session.persistDraft).toHaveBeenCalledTimes(1));
+    expect(session.flush).not.toHaveBeenCalled();
+    expect(hasInkWorkspace('note-1')).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
     expect(document.querySelector('[data-ink-workspace-portal]')).not.toBeInTheDocument();
     expect(handleAndroidBack()).toBe(false);

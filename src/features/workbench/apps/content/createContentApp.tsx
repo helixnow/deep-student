@@ -20,6 +20,7 @@ import { hasContentSaveHandler, isContentDirty, saveContentNow } from './content
 import { requestContentCloseDecision } from './ContentCloseConfirmation';
 import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { flushInkWorkspace, hasInkWorkspace } from '@/services/inkWorkspaceRegistry';
 
 export interface CreateContentAppOptions {
   typeId: ContentAppTypeId;
@@ -64,6 +65,7 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
   const canClose = options.confirmUnsavedOnClose
     ? async (instanceKey: string | null): Promise<boolean> => {
         const dirtyResourceId = resolveDirtyResourceId(instanceKey);
+        if (typeId === 'file' && hasInkWorkspace(dirtyResourceId)) return flushInkWorkspace(dirtyResourceId);
         if (!isContentDirty(typeId, dirtyResourceId)) return true;
         // 有保存挂点时提供「保存并关闭」（translation 等编辑视图注册）
         const offerSave = hasContentSaveHandler(typeId, dirtyResourceId);
@@ -81,16 +83,17 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
         }
         return decision === 'discard';
       }
-    : undefined;
+    : typeId === 'file' ? flushInkWorkspace : undefined;
 
-  // suspend 契约：dirty 窗永不 frozen。调度器热路径同步调用本回调，
+  // suspend 契约：dirty 或仍打开墨迹工作区的窗永不 frozen。调度器热路径同步调用本回调，
   // isContentDirty 是同步查询，返回 false 即告知调度器跳过冻结
   //（脏窗保持 background，不丢未保存的内存态）。
   // 不随 confirmUnsavedOnClose 开关：exam 的关窗拦截在 register.ts 另行
   // 覆盖 canClose，但其 dirty checker 同样注册在 contentDirtyRegistry，
-  // 冻结保护必须一致生效；未注册 checker 的类型恒判干净，行为不变。
+  // 冻结保护必须一致生效；无墨迹工作区且未注册 checker 的资源仍视为干净。
   const canSuspend = (instanceKey: string | null): boolean =>
-    !isContentDirty(typeId, resolveDirtyResourceId(instanceKey));
+    !(typeId === 'file' && hasInkWorkspace(instanceKey))
+    && !isContentDirty(typeId, resolveDirtyResourceId(instanceKey));
 
   return {
     typeId,

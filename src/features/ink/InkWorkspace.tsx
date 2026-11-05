@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowsOut, CircleNotch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { BACK_PRIORITY, registerBackHandler } from '@/services/androidBackRegistry';
+import { registerInkWorkspaceExitGuard } from '@/services/inkWorkspaceRegistry';
 import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -22,6 +23,7 @@ export interface InkWorkspaceProps {
   title?: string;
   isActive?: boolean;
   onClose?: () => void;
+  onRetryExit?: () => void;
   className?: string;
 }
 
@@ -75,7 +77,7 @@ function hasForegroundOverlay(page: HTMLElement | null): boolean {
   });
 }
 
-export function InkWorkspace({ documentId, title, isActive = true, onClose, className }: InkWorkspaceProps) {
+export function InkWorkspace({ documentId, title, isActive = true, onClose, onRetryExit, className }: InkWorkspaceProps) {
   const { t } = useTranslation(['ink', 'common', 'learningHub']);
   const hostRef = useRef<HTMLDivElement>(null);
   const ownedOverlaysRef = useRef(new Set<HTMLElement>());
@@ -93,6 +95,7 @@ export function InkWorkspace({ documentId, title, isActive = true, onClose, clas
   const [exitBlocked, setExitBlocked] = useState(false);
   const mountedRef = useRef(false);
   const leavingRef = useRef(false);
+  const flushPromiseRef = useRef<Promise<boolean>>();
   const requestedRef = useRef({ documentId, title });
   const sessionRef = useRef(session);
   const onCloseRef = useRef(onClose);
@@ -237,55 +240,86 @@ export function InkWorkspace({ documentId, title, isActive = true, onClose, clas
     return () => { cancelled = true; };
   }, [probeAttempt, session.documentId, startedDocumentId]);
 
-  const leave = useCallback(async (intent: 'close' | 'switch') => {
-    if (leavingRef.current || (intent === 'close' && !presentationRef.current)) return;
-    const sourceId = sessionRef.current.documentId;
-    const version = requestVersionRef.current;
+  const flushSession = useCallback((sourceId: string): Promise<boolean> => {
+    if (!mountedRef.current || sessionRef.current.documentId !== sourceId) return Promise.resolve(false);
+    if (flushPromiseRef.current) return flushPromiseRef.current;
     leavingRef.current = true;
+    if (pageRef.current) pageRef.current.dataset.inkWorkspaceLeaving = 'true';
     setLeaving(true);
     setExitBlocked(false);
-    try {
-      const result = await flushInkEditor(sourceId);
-      if (!mountedRef.current || sessionRef.current.documentId !== sourceId) return;
-      if (!result.ok) {
-        setExitBlocked(true);
-        return;
+    const saving = (async () => {
+      try {
+        const result = await flushInkEditor(sourceId);
+        if (!mountedRef.current || sessionRef.current.documentId !== sourceId) return false;
+        if (!result.ok || hasDirtyInkEditor(sourceId)) {
+          setExitBlocked(true);
+          return false;
+        }
+        return true;
+      } catch {
+        if (mountedRef.current && sessionRef.current.documentId === sourceId) setExitBlocked(true);
+        return false;
+      } finally {
+        leavingRef.current = false;
+        flushPromiseRef.current = undefined;
+        if (pageRef.current) pageRef.current.dataset.inkWorkspaceLeaving = 'false';
+        if (mountedRef.current) setLeaving(false);
       }
-      const requested = requestedRef.current;
-      if (requested.documentId !== sourceId) {
-        setSession(requested);
-        setOpened(true);
-      } else if (intent === 'close' && requestVersionRef.current === version && presentationRef.current) {
-        setOpened(false);
-        onCloseRef.current?.();
-      }
-    } catch {
-      if (mountedRef.current && sessionRef.current.documentId === sourceId) setExitBlocked(true);
-    } finally {
-      leavingRef.current = false;
-      if (mountedRef.current) setLeaving(false);
+    })();
+    flushPromiseRef.current = saving;
+    return saving;
+  }, [pageRef]);
+
+  useLayoutEffect(() => {
+    if (!opened) return;
+    const sourceId = session.documentId;
+    return registerInkWorkspaceExitGuard(sourceId, {
+      isDirty: () => hasDirtyInkEditor(sourceId),
+      flush: async () => {
+        const version = requestVersionRef.current;
+        if (!await flushSession(sourceId)) return false;
+        const requested = requestedRef.current;
+        if (requested.documentId !== sourceId) {
+          setSession(requested);
+          setOpened(true);
+          return false;
+        }
+        return requestVersionRef.current === version;
+      },
+    });
+  }, [flushSession, opened, session.documentId]);
+
+  const leave = useCallback(async (intent: 'close' | 'switch') => {
+    if (intent === 'close' && (!presentationRef.current || leavingRef.current)) return;
+    const sourceId = sessionRef.current.documentId;
+    const version = requestVersionRef.current;
+    if (!await flushSession(sourceId)) return;
+    const requested = requestedRef.current;
+    if (requested.documentId !== sourceId) {
+      setSession(requested);
+      setOpened(true);
+    } else if (intent === 'close' && requestVersionRef.current === version && presentationRef.current) {
+      setOpened(false);
+      onCloseRef.current?.();
     }
-  }, []);
+  }, [flushSession]);
 
   useEffect(() => {
     if (documentId !== session.documentId) void leave('switch');
   }, [documentId, leave, session.documentId]);
 
-  useLayoutEffect(() => () => {
+  useEffect(() => () => {
     const sourceId = session.documentId;
-    if (!hasDirtyInkEditor(sourceId)) return;
-    void flushInkEditor(sourceId).then((result) => {
-      if (!result.ok) return persistInkEditorDrafts(sourceId);
-    }).catch(() => persistInkEditorDrafts(sourceId)).catch(() => undefined);
+    queueMicrotask(() => { void persistInkEditorDrafts(sourceId).catch(() => undefined); });
   }, [session.documentId]);
 
   useEffect(() => {
     if (!opened || presenting || leavingRef.current || startedDocumentId !== session.documentId || !hasDirtyInkEditor(session.documentId)) return;
     const sourceId = session.documentId;
-    void flushInkEditor(sourceId).then((result) => {
-      if (!result.ok) return persistInkEditorDrafts(sourceId);
+    void flushSession(sourceId).then((saved) => {
+      if (!saved) return persistInkEditorDrafts(sourceId);
     }).catch(() => persistInkEditorDrafts(sourceId)).catch(() => undefined);
-  }, [opened, presenting, session.documentId, startedDocumentId]);
+  }, [flushSession, opened, presenting, session.documentId, startedDocumentId]);
 
   const overlayEscapeRef = useRef<KeyboardEvent>();
   const captureEscape = useCallback((event: KeyboardEvent) => {
@@ -356,7 +390,7 @@ export function InkWorkspace({ documentId, title, isActive = true, onClose, clas
           </header>
           {exitBlocked && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-sm">
             <span className="flex-1">{t('workspace.exitBlocked', { defaultValue: '保存未完成，当前编辑页面和草稿已保留。请重试保存后再返回或切换笔记。' })}</span>
-            <DsButton size="sm" variant="outline" disabled={leaving} onClick={() => { void leave(switching ? 'switch' : 'close'); }}>
+            <DsButton size="sm" variant="outline" disabled={leaving} onClick={() => { if (onRetryExit) onRetryExit(); else void leave(switching ? 'switch' : 'close'); }}>
               {t('common:retry')}
             </DsButton>
           </div>}

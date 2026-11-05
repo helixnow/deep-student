@@ -143,10 +143,11 @@ describe('DSTU file editor ink dispatch', () => {
     const view = render(<FileEditor path={inkNode.path} />);
     const oldEditor = await screen.findByTestId('lazy-ink-editor');
     const pendingFlush = deferred<void>();
-    const flush = vi.fn(() => pendingFlush.promise);
+    let dirty = true;
+    const flush = vi.fn(async () => { await pendingFlush.promise; dirty = false; });
     const unregister = registerInkEditorSession({
       key: { document_id: inkNode.id, page_id: 'page-1' },
-      isDirty: () => true,
+      isDirty: () => dirty,
       flush,
       persistDraft: async () => undefined,
     });
@@ -158,6 +159,64 @@ describe('DSTU file editor ink dispatch', () => {
       expect(oldEditor).toBeInTheDocument();
       await act(async () => { pendingFlush.resolve(); });
       expect(await screen.findByTestId('lazy-ink-board-editor')).toHaveAttribute('data-document-id', nextNode.id);
+    } finally {
+      unregister();
+    }
+  });
+
+  it('retains the Ink editor when switching to a non-Ink file fails, and only replaces it after retry saves', async () => {
+    const pdfNode = { ...inkNode, id: 'file_pdf', path: '/file_pdf', name: 'book.pdf', metadata: { mimeType: 'application/pdf' } };
+    inkGet.mockResolvedValue({ schema_version: 1, document_id: inkNode.id });
+    registerDstuFileViewer();
+    const FileEditor = await loadEditorComponent('file');
+    const view = render(<FileEditor path={inkNode.path} />);
+    const oldEditor = await screen.findByTestId('lazy-ink-editor');
+    const pending = deferred<void>();
+    let dirty = true;
+    const flush = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(async () => { await pending.promise; dirty = false; });
+    const unregister = registerInkEditorSession({
+      key: { document_id: inkNode.id, page_id: 'page-1' }, isDirty: () => dirty, flush, persistDraft: async () => undefined,
+    });
+    try {
+      get.mockResolvedValue({ ok: true, value: pdfNode });
+      view.rerender(<FileEditor path={pdfNode.path} />);
+      await screen.findAllByRole('alert');
+      expect(oldEditor).toBeInTheDocument();
+      expect(screen.queryByTestId('generic-file-viewer')).not.toBeInTheDocument();
+      fireEvent.click(screen.getAllByRole('button', { name: 'common:retry' }).at(-1)!);
+      await waitFor(() => expect(flush).toHaveBeenCalledTimes(2));
+      expect(oldEditor).toBeInTheDocument();
+      expect(screen.queryByTestId('generic-file-viewer')).not.toBeInTheDocument();
+      await act(async () => { pending.resolve(); });
+      expect(await screen.findByTestId('generic-file-viewer')).toHaveAttribute('data-path', pdfNode.path);
+      expect(screen.queryByTestId('lazy-ink-editor')).not.toBeInTheDocument();
+    } finally {
+      unregister();
+    }
+  });
+
+  it('ignores a stale non-Ink switch result after the caller requests the original file again', async () => {
+    const pdfNode = { ...inkNode, id: 'file_pdf', path: '/file_pdf', name: 'book.pdf', metadata: { mimeType: 'application/pdf' } };
+    inkGet.mockResolvedValue({ schema_version: 1, document_id: inkNode.id });
+    registerDstuFileViewer();
+    const FileEditor = await loadEditorComponent('file');
+    const view = render(<FileEditor path={inkNode.path} />);
+    const oldEditor = await screen.findByTestId('lazy-ink-editor');
+    const pending = deferred<void>();
+    let dirty = true;
+    const flush = vi.fn(async () => { await pending.promise; dirty = false; });
+    const unregister = registerInkEditorSession({
+      key: { document_id: inkNode.id, page_id: 'page-1' }, isDirty: () => dirty, flush, persistDraft: async () => undefined,
+    });
+    try {
+      get.mockResolvedValueOnce({ ok: true, value: pdfNode });
+      view.rerender(<FileEditor path={pdfNode.path} />);
+      await waitFor(() => expect(flush).toHaveBeenCalledTimes(1));
+      get.mockResolvedValueOnce({ ok: true, value: inkNode });
+      view.rerender(<FileEditor path={inkNode.path} />);
+      await act(async () => { pending.resolve(); });
+      expect(await screen.findByTestId('lazy-ink-editor')).toBe(oldEditor);
+      expect(screen.queryByTestId('generic-file-viewer')).not.toBeInTheDocument();
     } finally {
       unregister();
     }

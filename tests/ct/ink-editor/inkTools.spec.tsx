@@ -5,6 +5,7 @@ import type { InkPage } from '@/features/ink/types';
 import { INK_TOOL_PREFERENCES_STORAGE_KEY } from '@/features/ink/toolSettings';
 import { InkEditorHarness } from './InkEditorHarness';
 import { inkEditorDocumentId, inkEditorPageId } from './fixtures';
+import { expectEditorFlush } from './inkTestUtils';
 
 async function drawHorizontalStroke(page: Page, canvas: Locator, localY: number) {
   const bounds = await canvas.boundingBox();
@@ -156,7 +157,7 @@ test('applies a custom hex color and a numeric pen width to the saved stroke and
   await closeSettings(page);
 
   await drawHorizontalStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   const saved = await readFixturePage(page);
   const newStrokes = saved?.objects.filter((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
@@ -213,7 +214,7 @@ test('keeps pen and highlighter color, numeric width, and highlighter opacity se
   await closeSettings(page);
 
   await drawHorizontalStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   await component.getByTestId('ink-tool-highlighter').click();
   await openSettings(page);
@@ -224,7 +225,7 @@ test('keeps pen and highlighter color, numeric width, and highlighter opacity se
   await closeSettings(page);
 
   await drawHorizontalStroke(page, component.getByTestId('ink-active-stroke-canvas'), 110);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   const saved = await readFixturePage(page);
   const newStrokes = saved?.objects.filter((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
@@ -261,9 +262,9 @@ test('one fast adjustable-size eraser sweep removes two strokes, and one undo re
   await expect(canvas).toBeVisible();
 
   await drawHorizontalStroke(page, input, 60);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
   await drawHorizontalStroke(page, input, 110);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+  await expectEditorFlush(page);
 
   const beforeErase = await readFixturePage(page);
   const originalIds = beforeErase?.objects.map((object) => object.id) ?? [];
@@ -281,6 +282,7 @@ test('one fast adjustable-size eraser sweep removes two strokes, and one undo re
   expect(await eraserSize.inputValue()).toBe('8');
   await closeSettings(page);
   await sweep(page, input, { x: 20, y: 85 }, { x: 100, y: 85 });
+  await expectEditorFlush(page);
   expect((await readFixturePage(page))?.objects.map((object) => object.id)).toEqual(originalIds);
 
   // A diameter of 64 gives a 32-unit radius, so the same fast sweep must collect both strokes.
@@ -290,19 +292,19 @@ test('one fast adjustable-size eraser sweep removes two strokes, and one undo re
   expect(await eraserSize.inputValue()).toBe('64');
   await closeSettings(page);
   await sweep(page, input, { x: 20, y: 85 }, { x: 100, y: 85 });
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.map((object) => object.id)).toEqual(['fixture-blue-stroke']);
   await expect.poll(() => countDarkPixels(canvas, 56, 64)).toBe(0);
   await expect.poll(() => countDarkPixels(canvas, 106, 114)).toBe(0);
   // The image background is not an editable object and must survive the eraser.
   expect(await canvasPixel(canvas, 48, 85)).toEqual([255, 0, 0, 255]);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
 
   await component.getByTestId('ink-undo').click();
+  await expectEditorFlush(page);
   await expect.poll(async () => (await readFixturePage(page))?.objects.map((object) => object.id)).toEqual(originalIds);
   await expect.poll(() => countDarkPixels(canvas, 56, 64)).toBeGreaterThan(10);
   await expect.poll(() => countDarkPixels(canvas, 106, 114)).toBeGreaterThan(10);
   expect(await canvasPixel(canvas, 48, 85)).toEqual([255, 0, 0, 255]);
-  await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
 });
 
 test('restores pen, highlighter, and eraser settings across an unmount/remount without restoring tool or eraser mode and saves a pen stroke with the restored style', async ({ mount, page }) => {
@@ -380,7 +382,7 @@ test('restores pen, highlighter, and eraser settings across an unmount/remount w
 
     // The restored pen settings must reach a real pointer stroke and its save.
     await drawHorizontalStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-    await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+    await expectEditorFlush(page);
 
     const saved = await readFixturePage(page);
     const newStrokes = saved?.objects.filter((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');
@@ -460,7 +462,7 @@ test('keeps the IndexedDB journal and CAS save working when localStorage getItem
     await fillNumeric(page.getByTestId('ink-width-value'), '6');
     await closeSettings(page);
     await drawHorizontalStroke(page, component.getByTestId('ink-active-stroke-canvas'), 72);
-    await expect(component.getByTestId('ink-editor-save-state')).toHaveAttribute('data-state', 'saved');
+    await expectEditorFlush(page);
 
     const saved = await readFixturePage(page);
     const newStrokes = saved?.objects.filter((object) => object.content.kind === 'stroke' && object.id !== 'fixture-blue-stroke');

@@ -18,6 +18,7 @@ import {
 } from './NotebookLibrary';
 import { useNotebookLibrary } from './useNotebookLibrary';
 import { flushInkEditor, hasDirtyInkEditor } from './editorSession';
+import { flushInkWorkspace, hasInkWorkspace } from '@/services/inkWorkspaceRegistry';
 import { hasContentSaveHandler, isContentDirty, saveContentNow } from '@/services/contentDirtyRegistry';
 import type { NotebookHostState, NotebookPageProps } from './NotebookHost';
 import './Notebook.css';
@@ -94,7 +95,9 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
       if (!entry) return libraryBusyRef.current;
       const page = writingPage();
       return !ready() || page?.dataset.notebookClosing === 'true'
-        || Boolean(page?.querySelector('.ink-workspace-content[inert]'));
+        || (page?.dataset.inkWorkspaceLeaving !== undefined
+          ? page.dataset.inkWorkspaceLeaving === 'true'
+          : Boolean(page?.querySelector('.ink-workspace-content[inert]')));
     };
     const state: NotebookHostState = {
       writing: Boolean(entry),
@@ -108,7 +111,9 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
         if (!entry) return true;
         try {
           const saved = entry.kind === 'ink'
-            ? (await flushInkEditor(entry.node.id)).ok
+            ? hasInkWorkspace(entry.node.id)
+              ? await flushInkWorkspace(entry.node.id)
+              : (await flushInkEditor(entry.node.id)).ok
             : await saveContentNow('note', entry.node.id);
           return Boolean(current() && !busy() && ready() && saved && !state.isDirty());
         } catch {

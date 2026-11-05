@@ -384,7 +384,7 @@ export function InkToolbar({
       <div data-testid="ink-page-controls" className="flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain border-t border-border/40 px-2 py-1 [scrollbar-width:thin]">
         <div className="flex w-24 min-w-0 shrink-0 flex-col px-1">
           <span data-testid="ink-editor-title" className="truncate text-xs font-medium" title={pageTitle}>{pageTitle}</span>
-          <output data-testid="ink-editor-save-state" data-state={status} className="truncate text-xs text-muted-foreground" title={translate(`status.${status}`)} role={status === 'storage-error' ? 'alert' : 'status'} aria-live={status === 'storage-error' ? 'assertive' : 'polite'}>
+          <output data-testid="ink-editor-save-state" data-state={status} data-dirty={status !== 'saved' && status !== 'loading'} className="truncate text-xs text-muted-foreground" title={translate(`status.${status}`)} role={status === 'storage-error' ? 'alert' : 'status'} aria-live={status === 'storage-error' ? 'assertive' : 'polite'}>
             {translate(`status.${status}`)}
           </output>
         </div>

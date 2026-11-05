@@ -99,6 +99,150 @@ describe('InkPageView pointer samples', () => {
     });
   });
 
+  it.each(['before', 'after'])('lets the pen take over palm input without committing the touch (cancel %s pen up)', async (cancelTouch) => {
+    const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(async () => undefined);
+    render(<InkPageView {...props({ onPageChange })} />);
+    const input = inputCanvas();
+    fireEvent.pointerDown(input, { pointerId: 9, pointerType: 'touch', clientX: 180, clientY: 180, buttons: 1 });
+    fireEvent.pointerMove(input, { pointerId: 9, pointerType: 'touch', clientX: 200, clientY: 200, buttons: 1 });
+    fireEvent.pointerDown(input, { pointerId: 7, pointerType: 'pen', clientX: 80, clientY: 100, buttons: 1 });
+    expect(onPageChange).not.toHaveBeenCalled();
+    if (cancelTouch === 'before') fireEvent.pointerCancel(input, { pointerId: 9, pointerType: 'touch' });
+    fireEvent(input, new TestPointerEvent('lostpointercapture', { bubbles: true, pointerId: 9, pointerType: 'touch' }));
+    fireEvent.pointerMove(input, { pointerId: 7, pointerType: 'pen', clientX: 100, clientY: 120, buttons: 1 });
+    fireEvent.pointerUp(input, { pointerId: 7, pointerType: 'pen', clientX: 120, clientY: 140 });
+    fireEvent.pointerCancel(input, { pointerId: 9, pointerType: 'touch' });
+    await act(async () => undefined);
+
+    expect(onPageChange).toHaveBeenCalledOnce();
+    expect(onPageChange.mock.calls[0][0].objects).toHaveLength(1);
+    expect(onPageChange.mock.calls[0][0].objects[0].content).toMatchObject({
+      kind: 'stroke',
+      samples: [{ x: 40, y: 40 }, { x: 60, y: 60 }, { x: 80, y: 80 }],
+      style: { pressure_enabled: true },
+    });
+  });
+
+  it.each(['document', 'page'])('does not move an active stroke into another %s after palm takeover', async (navigation) => {
+    const oldChange = vi.fn<InkPageViewProps['onPageChange']>(async () => undefined);
+    const nextChange = vi.fn<InkPageViewProps['onPageChange']>(async () => undefined);
+    const initial = props({ onPageChange: oldChange });
+    const { rerender } = render(<InkPageView {...initial} />);
+    const input = inputCanvas();
+    fireEvent.pointerDown(input, { pointerId: 9, pointerType: 'touch', clientX: 180, clientY: 180, buttons: 1 });
+    fireEvent.pointerDown(input, { pointerId: 7, pointerType: 'pen', clientX: 80, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(input, { pointerId: 7, pointerType: 'pen', clientX: 100, clientY: 120, buttons: 1 });
+    const nextPageId = navigation === 'page' ? 'page-2' : initial.page.page_id;
+    rerender(<InkPageView
+      {...initial}
+      documentId={navigation === 'document' ? 'document-2' : initial.documentId}
+      pageRef={{ ...initial.pageRef, page_id: nextPageId }}
+      page={{ ...initial.page, page_id: nextPageId }}
+      onPageChange={nextChange}
+    />);
+    fireEvent.pointerMove(input, { pointerId: 7, pointerType: 'pen', clientX: 120, clientY: 140, buttons: 1 });
+    fireEvent.pointerUp(input, { pointerId: 7, pointerType: 'pen', clientX: 140, clientY: 160 });
+    fireEvent.pointerCancel(input, { pointerId: 9, pointerType: 'touch' });
+    await act(async () => undefined);
+    expect(oldChange).not.toHaveBeenCalled();
+    expect(nextChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(input, { pointerId: 8, pointerType: 'pen', clientX: 160, clientY: 80, buttons: 1 });
+    fireEvent.pointerUp(input, { pointerId: 8, pointerType: 'pen', clientX: 180, clientY: 100 });
+    expect(nextChange).toHaveBeenCalledOnce();
+    expect(nextChange.mock.calls[0][0]).toMatchObject({
+      page_id: nextPageId,
+      objects: [{ content: { kind: 'stroke', samples: [{ x: 120, y: 20 }, { x: 140, y: 40 }] } }],
+    });
+  });
+
+  it('paints a finished stroke on the main canvas before a delayed page callback completes', async () => {
+    let resolve!: () => void;
+    const pending = new Promise<void>((done) => { resolve = done; });
+    const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(() => pending);
+    render(<InkPageView {...props({ onPageChange })} />);
+    const input = inputCanvas();
+    const main = screen.getByTestId('ink-page-canvas');
+    fireEvent.pointerDown(input, { clientX: 80, clientY: 100, buttons: 1 });
+    fireEvent.pointerUp(input, { clientX: 100, clientY: 120 });
+
+    const mainFrame = vi.mocked(renderInkPage).mock.calls.filter(([target]) => target === main).at(-1);
+    expect(mainFrame?.[2].objects).toHaveLength(1);
+    expect(mainFrame?.[2]).toBe(onPageChange.mock.calls[0][0]);
+    const clear = vi.mocked(input.getContext('2d')!.clearRect);
+    const paintOrder = vi.mocked(renderInkPage).mock.invocationCallOrder.at(-1)!;
+    expect(paintOrder).toBeLessThan(clear.mock.invocationCallOrder.at(-1)!);
+    await act(async () => { resolve(); await pending; });
+  });
+
+  it('keeps rapid strokes across old-prop rerenders and delayed acknowledgements', async () => {
+    const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(() => new Promise(() => {}));
+    const initial = props({ onPageChange });
+    const { rerender } = render(<InkPageView {...initial} />);
+    const input = inputCanvas();
+    const main = screen.getByTestId('ink-page-canvas');
+    const draw = (x: number) => {
+      fireEvent.pointerDown(input, { clientX: x, clientY: 100, buttons: 1 });
+      fireEvent.pointerUp(input, { clientX: x + 10, clientY: 110 });
+    };
+    draw(60);
+    rerender(<InkPageView {...initial} tool={{ ...initial.tool }} />);
+    draw(90);
+    const firstPage = onPageChange.mock.calls[0][0];
+    const secondPage = onPageChange.mock.calls[1][0];
+    expect(secondPage.objects).toHaveLength(2);
+
+    rerender(<InkPageView {...initial} page={firstPage} />);
+    const mainFrame = vi.mocked(renderInkPage).mock.calls.filter(([target]) => target === main).at(-1);
+    expect(mainFrame?.[2]).toBe(secondPage);
+    draw(120);
+    const thirdPage = onPageChange.mock.calls[2][0];
+    expect(thirdPage.objects).toHaveLength(3);
+
+    rerender(<InkPageView {...initial} page={thirdPage} />);
+    rerender(<InkPageView {...initial} page={secondPage} />);
+    draw(150);
+    expect(onPageChange.mock.calls[3][0].objects).toHaveLength(3);
+  });
+
+  it('discards pending local pages on document navigation or an external page replacement', () => {
+    const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(() => new Promise(() => {}));
+    const initial = props({ onPageChange });
+    const { rerender } = render(<InkPageView {...initial} />);
+    const input = inputCanvas();
+    const draw = () => {
+      fireEvent.pointerDown(input, { clientX: 80, clientY: 100, buttons: 1 });
+      fireEvent.pointerUp(input, { clientX: 100, clientY: 120 });
+    };
+    draw();
+    rerender(<InkPageView {...initial} documentId="document-2" />);
+    draw();
+    expect(onPageChange.mock.calls[1][0].objects).toHaveLength(1);
+    rerender(<InkPageView {...initial} documentId="document-2" page={{ ...initial.page, objects: [] }} />);
+    draw();
+    expect(onPageChange.mock.calls[2][0].objects).toHaveLength(1);
+  });
+
+  it('finishes lost capture at the last sample and accepts the next stroke', async () => {
+    const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(async () => undefined);
+    render(<InkPageView {...props({ onPageChange })} />);
+    const input = inputCanvas();
+    const capture = vi.spyOn(input, 'setPointerCapture');
+    fireEvent.pointerDown(input, { clientX: 80, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(input, { clientX: 100, clientY: 120, buttons: 1 });
+    expect(capture).toHaveBeenCalledWith(7);
+    fireEvent(input, new TestPointerEvent('lostpointercapture', { bubbles: true }));
+    await act(async () => undefined);
+    expect(onPageChange).toHaveBeenCalledOnce();
+    expect(onPageChange.mock.calls[0][0].objects[0].content).toMatchObject({
+      kind: 'stroke', samples: [{ x: 40, y: 40 }, { x: 60, y: 60 }],
+    });
+    fireEvent.pointerDown(input, { clientX: 120, clientY: 140, buttons: 1 });
+    fireEvent.pointerUp(input, { clientX: 140, clientY: 160 });
+    expect(onPageChange).toHaveBeenCalledTimes(2);
+    expect(onPageChange.mock.calls[1][0].objects).toHaveLength(2);
+  });
+
   it('preserves the final pointerup endpoint', async () => {
     const onPageChange = vi.fn<InkPageViewProps['onPageChange']>(async () => undefined);
     render(<InkPageView {...props({ onPageChange })} />);

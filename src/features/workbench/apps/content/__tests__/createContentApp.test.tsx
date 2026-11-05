@@ -41,6 +41,7 @@ import {
 } from '../contentDirtyRegistry';
 import type { AppWindowProps } from '../../../core/types';
 import { useWindowStore } from '../../../core/windowStore';
+import { registerInkWorkspaceExitGuard } from '@/services/inkWorkspaceRegistry';
 
 function makeWindowProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -177,6 +178,21 @@ describe('createContentApp', () => {
     expect(def.memoryWeight).toBe(2);
     expect(def.minSize).toEqual({ w: 360, h: 280 });
     expect(def.canClose).toBeUndefined();
+  });
+
+  it.each([false, true])('file app closes through Ink guard even when confirmUnsavedOnClose=%s', async (confirmUnsavedOnClose) => {
+    const def = createContentApp({ ...baseOptions, typeId: 'file', confirmUnsavedOnClose });
+    const flush = vi.fn(async () => false);
+    const stop = registerInkWorkspaceExitGuard('file_ink', { isDirty: () => false, flush });
+    try {
+      expect(def.canSuspend!('/folder/file_ink')).toBe(false);
+      await expect(def.canClose!('/folder/file_ink')).resolves.toBe(false);
+      expect(flush).toHaveBeenCalledTimes(1);
+      await expect(def.canClose!('file_plain')).resolves.toBe(true);
+      expect(def.canSuspend!('file_plain')).toBe(true);
+    } finally {
+      stop();
+    }
   });
 
   it('可声明单窗口资源工作区', () => {

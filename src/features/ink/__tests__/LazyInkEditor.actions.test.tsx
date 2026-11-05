@@ -65,11 +65,14 @@ const mocks = vi.hoisted(() => {
     source: { kind: 'blank' as const },
     pages: [pageRef],
   };
+  const getSnapshot = vi.fn(() => ({ status: 'ready', saveStatus: 'saved', page, pageRef, manifest, remoteReloadSequence: 0 }));
+  const persistDraft = vi.fn(async () => undefined);
   const pageViewProps: { current: PageViewMockProps | null } = { current: null };
-  return { events, flush, finishStroke, renderSnapshot, invoke, referenceToChat, pageRef, page, manifest, pageViewProps };
+  return { events, flush, finishStroke, renderSnapshot, invoke, referenceToChat, pageRef, page, manifest, pageViewProps, getSnapshot, persistDraft };
 });
 
 vi.mock('../useInkDocument', () => ({
+  enqueueInkDocumentExit: (_documentId: string, exit: () => Promise<void>) => exit(),
   useInkDocument: () => ({
     status: 'ready',
     saveStatus: 'saved',
@@ -79,7 +82,9 @@ vi.mock('../useInkDocument', () => ({
     savePage: vi.fn(),
     reloadRemote: vi.fn(),
     retrySave: vi.fn(),
-    persistDraft: vi.fn(async () => undefined),
+    getSnapshot: mocks.getSnapshot,
+    persistDraft: mocks.persistDraft,
+    remoteReloadSequence: 0,
     flush: mocks.flush,
   }),
 }));

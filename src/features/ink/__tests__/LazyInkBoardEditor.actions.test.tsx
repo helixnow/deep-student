@@ -85,8 +85,7 @@ const mocks = vi.hoisted(() => {
   const referenceToChat = vi.fn(async () => ({ success: true }));
   const showGlobalNotification = vi.fn();
   const insertObjects = vi.fn(async () => undefined);
-  // Observable canonical save. The host's own debounce scheduling is real; only
-  // the document-boundary method is a mock.
+  const setActiveInput = vi.fn();
   const save = vi.fn(async () => undefined);
   const saveState: { saveStatus: string; revisionEpoch: number } = {
     saveStatus: 'saved',
@@ -113,6 +112,7 @@ const mocks = vi.hoisted(() => {
     renderSnapshot,
     save,
     saveState,
+    setActiveInput,
     selectionCrop,
     showGlobalNotification,
     viewportCrop,
@@ -144,6 +144,7 @@ vi.mock('../useInkBoardDocument', () => ({
     persistDraft: vi.fn(async () => undefined),
     flush: mocks.boardFlush,
     setCamera: vi.fn(),
+    setActiveInput: mocks.setActiveInput,
   }),
 }));
 
@@ -261,6 +262,7 @@ describe('LazyInkBoardEditor shared host actions', () => {
     mocks.showGlobalNotification.mockClear();
     mocks.insertObjects.mockClear();
     mocks.save.mockClear();
+    mocks.setActiveInput.mockClear();
     mocks.saveState.saveStatus = 'saved';
     mocks.saveState.revisionEpoch = 0;
     mocks.manifestState.current = mocks.manifest;
@@ -528,52 +530,67 @@ describe('LazyInkBoardEditor shared host actions', () => {
     return handler as CommitStroke;
   }
 
-  // The host debounce is the behavior under test, so only the document hook
-  // boundary is mocked. Fake timers are installed after the initial mount so
-  // testing-library's real-timer polling is untouched.
-  function installDebounceTimers() {
+  it('uses the view active callback and fences callbacks from an old epoch or document', async () => {
+    const view = await mountReadyBoard();
+    const active = mocks.viewProps.current?.onActiveStrokeChange as ((active: boolean) => void) | undefined;
+    expect(active).toBeTypeOf('function');
+    act(() => { active!(true); active!(false); });
+    expect(mocks.setActiveInput.mock.calls).toEqual([[true], [false]]);
+
+    mocks.saveState.revisionEpoch = 1;
+    mocks.manifestState.current = { ...mocks.manifestState.current, revision: 'board-rev-2' };
+    mocks.getInkBoardOverview.mockImplementationOnce(() => new Promise<never>(() => undefined));
+    view.rerender(<LazyInkBoardEditor documentId="board-doc-1" />);
+    mocks.setActiveInput.mockClear();
+    act(() => { active!(true); active!(false); });
+    expect(mocks.setActiveInput).not.toHaveBeenCalled();
+    const current = mocks.viewProps.current?.onActiveStrokeChange as (active: boolean) => void;
+    act(() => { current(true); current(false); });
+    expect(mocks.setActiveInput.mock.calls).toEqual([[true], [false]]);
+
+    mocks.setActiveInput.mockClear();
+    view.rerender(<LazyInkBoardEditor documentId="board-doc-2" />);
+    act(() => { current(true); current(false); });
+    expect(mocks.setActiveInput).not.toHaveBeenCalled();
+  });
+
+  function installIdleTimers() {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   }
 
-  it('waits the 1000 ms debounce after a committed stroke before the first canonical save and merges repeated gestures', async () => {
+  it('keeps completed strokes in memory across idle periods until an explicit save finishes input and flushes', async () => {
     await mountReadyBoard();
     const commitStroke = currentCommitStroke();
-    installDebounceTimers();
+    installIdleTimers();
     try {
       await act(async () => { await commitStroke(STROKE_CONTENT); });
       expect(mocks.insertObjects).toHaveBeenCalledTimes(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
       expect(mocks.save).not.toHaveBeenCalled();
+      expect(mocks.boardFlush).not.toHaveBeenCalled();
 
-      await act(async () => { await vi.advanceTimersByTimeAsync(999); });
-      expect(mocks.save).not.toHaveBeenCalled();
-
-      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(mocks.save).toHaveBeenCalledTimes(1);
-
-      // A second gesture inside the window must fold into one save 1000 ms
-      // after the last gesture, not one save per gesture.
-      mocks.save.mockClear();
-      const insertsBefore = mocks.insertObjects.mock.calls.length;
       await act(async () => { await commitStroke(STROKE_CONTENT); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(400); });
-      await act(async () => { await commitStroke(STROKE_CONTENT); });
-      expect(mocks.insertObjects).toHaveBeenCalledTimes(insertsBefore + 2);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(mocks.insertObjects).toHaveBeenCalledTimes(2);
       expect(mocks.save).not.toHaveBeenCalled();
+      expect(mocks.boardFlush).not.toHaveBeenCalled();
 
-      await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+      mocks.saveState.saveStatus = 'pending';
+      fireEvent.click(screen.getByTestId('ink-board-tool-highlighter'));
+      fireEvent.click(screen.getByTestId('ink-board-save'));
+      await act(async () => undefined);
+      expect(mocks.events).toEqual(['finishStroke', 'flush']);
+      expect(mocks.boardFlush).toHaveBeenCalledOnce();
       expect(mocks.save).not.toHaveBeenCalled();
-
-      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(mocks.save).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('drops the pending autosave on unmount and never CASes while the document reports storage-error', async () => {
+  it('never starts an idle CAS after unmount or while the document reports storage-error', async () => {
     const view = await mountReadyBoard();
     const commitStroke = currentCommitStroke();
-    installDebounceTimers();
+    installIdleTimers();
     try {
       await act(async () => { await commitStroke(STROKE_CONTENT); });
       expect(mocks.insertObjects).toHaveBeenCalledTimes(1);
@@ -594,7 +611,7 @@ describe('LazyInkBoardEditor shared host actions', () => {
       await mountReadyBoard();
       expect(screen.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'storage-error');
       const storageErrorCommit = currentCommitStroke();
-      installDebounceTimers();
+      installIdleTimers();
 
       await act(async () => { await storageErrorCommit(STROKE_CONTENT); });
       expect(mocks.insertObjects).toHaveBeenCalledTimes(1);

@@ -171,19 +171,16 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
 export function InkBoardEditor({ documentId, className, onAskAi, onExport }: InkBoardEditorProps) {
   const { t } = useTranslation(['ink', 'dstu', 'common']);
   const isMobile = useIsMobile();
-  const viewRef = useRef<InkBoardViewHandle>(null);
-  const boardSaveTimerRef = useRef<number | undefined>(undefined);
-  const boardSaveTargetRef = useRef<{
-    documentId: string;
-    pageId: string;
-    revisionEpoch: number;
-  } | null>(null);
-  const cancelAutoSave = useCallback(() => {
-    if (boardSaveTimerRef.current !== undefined) {
-      window.clearTimeout(boardSaveTimerRef.current);
-      boardSaveTimerRef.current = undefined;
+  const viewRef = useRef<InkBoardViewHandle | null>(null);
+  const lastViewRef = useRef<InkBoardViewHandle | null>(null);
+  const activeInputRef = useRef(false);
+  const attachView = useCallback((view: InkBoardViewHandle | null) => {
+    if (!view && viewRef.current && activeInputRef.current) {
+      void viewRef.current.finishStroke().catch(() => undefined);
     }
-    boardSaveTargetRef.current = null;
+    if (view && lastViewRef.current !== view) activeInputRef.current = false;
+    viewRef.current = view;
+    if (view) lastViewRef.current = view;
   }, []);
   const renderedInputTargetRef = useRef<InkBoardFlushTarget | null>(null);
   const finishInput = useCallback(async (target?: InkBoardFlushTarget) => {
@@ -194,14 +191,8 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
       || rendered.revisionEpoch !== target.revisionEpoch)) {
       throw new Error('Ink board input session changed.');
     }
-    const view = viewRef.current;
-    cancelAutoSave();
-    try {
-      await view?.finishStroke?.();
-    } finally {
-      if (viewRef.current === view) cancelAutoSave();
-    }
-  }, [cancelAutoSave]);
+    await (viewRef.current ?? lastViewRef.current)?.finishStroke();
+  }, []);
   const doc = useInkBoardDocument(documentId, { beforeFlush: finishInput });
   // Hook methods are stable useCallbacks; destructure them so effects/callbacks
   // depend on the actual stable functions instead of the per-render `doc`
@@ -215,14 +206,23 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
     removeObjects: removeBoardObjects,
     undo,
     redo,
-    save,
     setCamera,
+    setActiveInput,
   } = doc;
   const docRef = useRef(doc);
   docRef.current = doc;
+  const surfacePageId = surface?.page_id;
+  const inputEpoch = doc.revisionEpoch;
   renderedInputTargetRef.current = doc.status === 'ready' && manifest?.document_id === documentId
-    ? { documentId, pageId: manifest.surface.page_id, revisionEpoch: doc.revisionEpoch }
+    ? { documentId, pageId: manifest.surface.page_id, revisionEpoch: inputEpoch }
     : null;
+  const handleActiveStrokeChange = useCallback((active: boolean) => {
+    const rendered = renderedInputTargetRef.current;
+    if (!rendered || rendered.documentId !== documentId
+      || rendered.pageId !== surfacePageId || rendered.revisionEpoch !== inputEpoch) return;
+    activeInputRef.current = active;
+    setActiveInput(active);
+  }, [documentId, inputEpoch, setActiveInput, surfacePageId]);
   const [tool, setTool] = useState<InkToolName>('pen');
   const [initialPreferences] = useState(() => loadInkToolPreferences());
   const [settingsByTool, setSettingsByTool] = useState<Record<InkToolName, InkToolStyleSettings>>(() => ({
@@ -263,7 +263,6 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
   const cameraHydratedRef = useRef(false);
   const cameraSaveTimerRef = useRef<number | undefined>(undefined);
   const latestCameraRef = useRef<Camera | null>(null);
-  const boardMountedRef = useRef(true);
   const documentIdRef = useRef(documentId);
   documentIdRef.current = documentId;
 
@@ -427,62 +426,6 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
     if (latestCameraRef.current) saveCameraState(documentId, latestCameraRef.current);
   }, [documentId]);
 
-  /**
-   * Coalesce completed host gestures into one debounced canonical save. The
-   * hook keeps its explicit-save contract and its own no-dirty/blocked replay
-   * guards; this timer only supplies the idle trigger.
-   */
-  const scheduleAutoSave = useCallback(() => {
-    const current = docRef.current;
-    const pageId = current.manifest?.surface.page_id;
-    if (current.status !== 'ready' || !pageId) return;
-    if (boardSaveTimerRef.current !== undefined) {
-      window.clearTimeout(boardSaveTimerRef.current);
-    }
-    boardSaveTargetRef.current = {
-      documentId,
-      pageId,
-      revisionEpoch: current.revisionEpoch,
-    };
-    boardSaveTimerRef.current = window.setTimeout(() => {
-      boardSaveTimerRef.current = undefined;
-      const expected = boardSaveTargetRef.current;
-      boardSaveTargetRef.current = null;
-      if (!expected || !boardMountedRef.current) return;
-      const latest = docRef.current;
-      if (documentIdRef.current !== expected.documentId) return;
-      if (latest.status !== 'ready') return;
-      if (latest.manifest?.surface.page_id !== expected.pageId) return;
-      if (latest.revisionEpoch !== expected.revisionEpoch) return;
-      if (latest.saveStatus === 'loading'
-        || latest.saveStatus === 'conflict'
-        || latest.saveStatus === 'storage-error') return;
-      try {
-        void Promise.resolve(latest.save()).catch((error: unknown) => {
-          if (!boardMountedRef.current || documentIdRef.current !== expected.documentId) return;
-          setNotice(errorMessage(error, t('ink:errors.operationFailed')));
-        });
-      } catch (error) {
-        if (!boardMountedRef.current || documentIdRef.current !== expected.documentId) return;
-        setNotice(errorMessage(error, t('ink:errors.operationFailed')));
-      }
-    }, 1000);
-  }, [documentId, t]);
-
-  useEffect(() => {
-    boardMountedRef.current = true;
-    return () => {
-      boardMountedRef.current = false;
-      cancelAutoSave();
-    };
-  }, [cancelAutoSave]);
-
-  useEffect(() => () => {
-    // A remote revision or document change invalidates the pending target; a
-    // late timer must never save across documents or epochs.
-    cancelAutoSave();
-  }, [cancelAutoSave, doc.revisionEpoch, documentId]);
-
   const allocateZIndexes = useCallback((count: number): number[] | null => {
     if (!hasOverviewAuthority() || nextZRef.current === null) return null;
     const start = nextZRef.current;
@@ -513,26 +456,24 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
         z_index: z,
         content,
       }]);
-      scheduleAutoSave();
       setNotice(null);
     } catch (error) {
       setNotice(errorMessage(error, t('ink:errors.operationFailed')));
       throw error;
     }
-  }, [allocateZIndexes, hasOverviewAuthority, insertObjects, manifest, scheduleAutoSave, t]);
+  }, [allocateZIndexes, hasOverviewAuthority, insertObjects, manifest, t]);
 
   const removeObjects = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     try {
       await removeBoardObjects(ids);
-      scheduleAutoSave();
       setSelection(null);
       setNotice(null);
     } catch (error) {
       setNotice(errorMessage(error, t('ink:errors.operationFailed')));
       throw error;
     }
-  }, [removeBoardObjects, scheduleAutoSave, t]);
+  }, [removeBoardObjects, t]);
 
   const handleSelectionChange = useCallback((next: InkBoardSelection | null) => {
     setSelection(next);
@@ -593,31 +534,21 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
         return;
       }
       await insertObjects(pasted);
-      scheduleAutoSave();
       setNotice(null);
     } catch (error) {
       setNotice(errorMessage(error, t('ink:errors.operationFailed')));
     }
-  }, [allocateZIndexes, documentId, insertObjects, scheduleAutoSave, t]);
+  }, [allocateZIndexes, documentId, insertObjects, t]);
 
   const handleUndo = useCallback(() => {
     setSelection(null);
-    void undo()
-      .then(() => scheduleAutoSave())
-      .catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
-  }, [scheduleAutoSave, t, undo]);
+    void undo().catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
+  }, [t, undo]);
 
   const handleRedo = useCallback(() => {
     setSelection(null);
-    void redo()
-      .then(() => scheduleAutoSave())
-      .catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
-  }, [redo, scheduleAutoSave, t]);
-
-  const handleSave = useCallback(() => {
-    cancelAutoSave();
-    void save().catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
-  }, [cancelAutoSave, save, t]);
+    void redo().catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
+  }, [redo, t]);
 
   const exportGrid = useMemo(() => {
     if (!exportRegion) return { columns: 0, rows: 0, count: 0, valid: false };
@@ -650,6 +581,10 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
     }
     await current.flush();
   }, [documentId, finishInput]);
+
+  const handleSave = useCallback(() => {
+    void finishAndFlush().catch((error: unknown) => setNotice(errorMessage(error, t('ink:errors.operationFailed'))));
+  }, [finishAndFlush, t]);
 
   const handleAskAi = useCallback(() => {
     if (!onAskAi) return;
@@ -980,7 +915,7 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
       <div className="relative min-h-0 flex-1">
         <InkBoardView
           key={`${documentId}:${surface.page_id}:${doc.revisionEpoch}`}
-          ref={viewRef}
+          ref={attachView}
           surface={surface}
           objects={objects}
           camera={camera}
@@ -992,6 +927,7 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
           ariaLabel={t('ink:board.canvasLabel')}
           onCameraChange={handleCameraChange}
           onCommitStroke={commitStroke}
+          onActiveStrokeChange={handleActiveStrokeChange}
           onErase={removeObjects}
           onSelectionChange={handleSelectionChange}
           onError={(error) => setNotice(errorMessage(error, t('ink:errors.operationFailed')))}

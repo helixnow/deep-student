@@ -245,7 +245,7 @@ beforeEach(() => {
 });
 
 describe('useInkBoardDocument board history', () => {
-  it('journals one removeObjects gesture and preserves the remaining objects in their original order', async () => {
+  it('keeps removal in memory until draft protection and preserves the remaining object order', async () => {
     const objects = [
       textObject('obj-a', 0),
       textObject('obj-b', 1),
@@ -268,6 +268,9 @@ describe('useInkBoardDocument board history', () => {
     await act(async () => {
       await result.current.removeObjects(['obj-b']);
     });
+    expect(records.size).toBe(0);
+    expect(result.current.saveStatus).toBe('pending');
+    await act(async () => { await result.current.persistDraft(); });
 
     const record = records.get(DOCUMENT_ID);
     expect(record?.sequence).toBe(1);
@@ -467,7 +470,7 @@ describe('useInkBoardDocument board history', () => {
     expect(records.size).toBe(0);
   });
 
-  it('does not CAS or claim a durable draft when the journal write fails during removal', async () => {
+  it('keeps removal responsive but blocks CAS when draft protection fails', async () => {
     const objects = [
       textObject('obj-a', 0),
       textObject('obj-b', 1),
@@ -493,11 +496,11 @@ describe('useInkBoardDocument board history', () => {
 
     failWrites = true;
     await act(async () => {
-      try {
-        await result.current.removeObjects(['obj-b']);
-      } catch {
-        // The storage boundary failed; the assertions below cover the effect.
-      }
+      await result.current.removeObjects(['obj-b']);
+    });
+    expect(result.current.saveStatus).toBe('pending');
+    await act(async () => {
+      await expect(result.current.persistDraft()).rejects.toThrow('journal unavailable');
     });
 
     expect(result.current.saveStatus).toBe('storage-error');
@@ -582,6 +585,117 @@ describe('useInkBoardDocument board history', () => {
     expect(reopened.result.current.dirtyChunks).toEqual([]);
   });
 
+  it('defers stale draft cleanup after a clean undo until flush without blocking further history edits', async () => {
+    const harness = createHarness({ manifest: makeManifest(), chunks: {} });
+    const { journal, records } = createMemoryJournal();
+    const first = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    await act(async () => { await first.result.current.insertObjects([textObject('obj-new', 0)]); });
+    await act(async () => { await first.result.current.persistDraft(); });
+    expect(records.get(DOCUMENT_ID)?.changed[0].objects[0].id).toBe('obj-new');
+    const discardDraft = journal.discard.bind(journal);
+    const discard = vi.spyOn(journal, 'discard');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    discard.mockImplementationOnce(async (key, sequence, owner) => {
+      await gate;
+      await discardDraft(key, sequence, owner);
+    });
+
+    await act(async () => { await first.result.current.undo(); });
+    expect(first.result.current.chunks).toEqual([]);
+    expect(first.result.current.saveStatus).toBe('pending');
+    expect(discard).not.toHaveBeenCalled();
+
+    let pending!: Promise<void>;
+    act(() => { pending = first.result.current.flush(); });
+    await waitFor(() => expect(discard).toHaveBeenCalledOnce());
+    try {
+      await act(async () => { await first.result.current.redo(); });
+      expect(first.result.current.chunks[0].objects[0].id).toBe('obj-new');
+      await act(async () => { await first.result.current.undo(); });
+      expect(first.result.current.chunks).toEqual([]);
+      expect(first.result.current.saveStatus).toBe('pending');
+    } finally {
+      await act(async () => { release(); await pending; });
+    }
+    expect(first.result.current.saveStatus).toBe('saved');
+    expect(records.size).toBe(0);
+    expect(harness.casRequests).toHaveLength(0);
+    first.unmount();
+    await act(async () => undefined);
+    const reopened = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(reopened.result.current.status).toBe('ready'));
+    expect(reopened.result.current.chunks).toEqual([]);
+  });
+
+  it('clears a conflict and its obsolete draft after undo removes every local delta', async () => {
+    const harness = createHarness({ manifest: makeManifest(), chunks: {} });
+    const { journal, records } = createMemoryJournal();
+    const first = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    await act(async () => { await first.result.current.insertObjects([textObject('obj-new', 0)]); });
+    await emitChanged({ document_id: DOCUMENT_ID, revision: 'remote-2' });
+    expect(first.result.current.saveStatus).toBe('conflict');
+    expect(records.get(DOCUMENT_ID)?.changed[0].objects[0].id).toBe('obj-new');
+    await act(async () => { await first.result.current.undo(); });
+    expect(first.result.current.chunks).toEqual([]);
+    expect(first.result.current.dirtyChunks).toEqual([]);
+    await act(async () => { await expect(first.result.current.flush()).resolves.toBeUndefined(); });
+    expect(first.result.current.saveStatus).toBe('saved');
+    expect(records.has(DOCUMENT_ID)).toBe(false);
+    expect(harness.casRequests).toHaveLength(0);
+    first.unmount();
+    await act(async () => undefined);
+    const reopened = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(reopened.result.current.status).toBe('ready'));
+    expect(reopened.result.current.chunks).toEqual([]);
+    expect(reopened.result.current.saveStatus).toBe('saved');
+  });
+
+  it('does not clear an empty conflict while a CAS can still publish an undone chunk', async () => {
+    let resolveSave!: (manifest: InkBoardManifest) => void;
+    const gate = new Promise<InkBoardManifest>((resolve) => { resolveSave = resolve; });
+    const harness = createHarness({ manifest: makeManifest(), chunks: {}, saveChunks: () => gate });
+    const { journal, records } = createMemoryJournal();
+    const { result } = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    await act(async () => { await result.current.insertObjects([textObject('obj-new', 0)]); });
+    const chunkId = result.current.chunks[0].chunk_id;
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.save(); });
+    await waitFor(() => expect(harness.casRequests).toHaveLength(1));
+    await emitChanged({ document_id: DOCUMENT_ID, revision: 'remote-2' });
+    await act(async () => { await result.current.undo(); });
+    expect(result.current.chunks).toEqual([]);
+    try {
+      await act(async () => { await result.current.persistDraft(); });
+      expect(result.current.saveStatus).toBe('conflict');
+      expect(records.has(DOCUMENT_ID)).toBe(true);
+    } finally {
+      await act(async () => {
+        resolveSave(makeManifest({ revision: 'rev-2', chunks: [chunkRef(chunkId, visibleBounds, 1)] }));
+        await pending;
+      });
+    }
+    expect(records.get(DOCUMENT_ID)?.deleted).toEqual([chunkId]);
+    expect(result.current.saveStatus).not.toBe('saved');
+  });
+
+  it('does not report an empty conflict saved when writer fencing rejects its draft cleanup', async () => {
+    createHarness({ manifest: makeManifest(), chunks: {} });
+    const { journal, records } = createMemoryJournal();
+    const { result } = renderHook(() => useInkBoardDocument(DOCUMENT_ID, { journal }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    await act(async () => { await result.current.insertObjects([textObject('obj-new', 0)]); });
+    await emitChanged({ document_id: DOCUMENT_ID, revision: 'remote-2' });
+    await act(async () => { await result.current.undo(); });
+    await journal.claim({ document_id: DOCUMENT_ID }, 'new-owner');
+    await act(async () => { await expect(result.current.flush()).rejects.toBeInstanceOf(DraftWriteRejectedError); });
+    expect(result.current.saveStatus).toBe('conflict');
+    expect(records.get(DOCUMENT_ID)?.owner).toBe('new-owner');
+  });
+
   it('keeps a later deletion of the same chunk after a pending delete save completes', async () => {
     const objects = [
       textObject('obj-a', 0),
@@ -634,7 +748,7 @@ describe('useInkBoardDocument board history', () => {
     });
 
     expect(harness.casRequests).toHaveLength(1);
-    expect(result.current.saveStatus).toBe('offline');
+    expect(result.current.saveStatus).toBe('pending');
     const draft = records.get(DOCUMENT_ID);
     expect(draft?.base_revision).toBe('rev-2');
     expect(draft?.deleted).toEqual(['chunk-a']);
@@ -720,6 +834,9 @@ describe('useInkBoardDocument board history', () => {
     });
     expect(result.current.chunks).toEqual([]);
     expect(result.current.dirtyChunks).toEqual([]);
+    expect(result.current.saveStatus).toBe('pending');
+    expect(records.size).toBe(0);
+    await act(async () => { await result.current.persistDraft(); });
     const draftBefore = records.get(DOCUMENT_ID);
     expect(draftBefore?.deleted).toEqual(['chunk-a']);
 

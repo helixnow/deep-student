@@ -2,6 +2,7 @@ import React from 'react';
 import { expect, test } from '@playwright/experimental-ct-react';
 import type { Locator, Page } from '@playwright/test';
 import { NotebookPageHarness } from './NotebookPageHarness';
+import { readInkDraftWrites, watchInkDraftWrites } from '../ink-editor/inkTestUtils';
 import {
   NOTEBOOK_CT_LIST_ERROR,
   NOTEBOOK_CT_PDF_COUNT,
@@ -135,9 +136,14 @@ async function drawReturnAndReopen(page: Page, documentId: string, board: boolea
   const objectIds = new Set(baseline.objects.map((object) => object.id));
   const renderCanvas = () => page.getByTestId(board ? 'ink-board-canvas' : 'ink-page-canvas');
   const pixelsBefore = await darkPixels(renderCanvas());
+  await watchInkDraftWrites(page);
   await page.getByTestId(board ? 'ink-board-tool-pen' : 'ink-tool-pen').click();
   await drawStroke(page, board);
-  await expect.poll(async () => (await readState(page)).pendingSaves).toBe(1);
+  await expect(page.getByTestId(board ? 'ink-board-save-state' : 'ink-editor-save-state')).toHaveAttribute('data-state', 'pending');
+  await page.waitForTimeout(1_200);
+  expect((await readState(page)).pendingSaves).toBe(0);
+  expect((await documentState(page, documentId)).saveAttempts).toBe(0);
+  expect(await readInkDraftWrites(page, documentId)).toEqual([]);
   expect((await readCanonical(page, documentId)).objects).toEqual(baseline.objects);
 
   const back = workspace(page).locator('header').getByRole('button').first();
@@ -145,6 +151,7 @@ async function drawReturnAndReopen(page: Page, documentId: string, board: boolea
   await expect(back).toBeDisabled();
   await expect(workspace(page)).toBeVisible();
   await expect(page.getByTestId('notebook-library')).toHaveCount(0);
+  await expect.poll(async () => (await documentState(page, documentId)).saveAttempts).toBe(1);
   const pendingDocument = await documentState(page, documentId);
   expect(pendingDocument.saveAttempts).toBeGreaterThan(0);
   expect(pendingDocument.savePageCalls + pendingDocument.saveChunkCalls).toBe(0);

@@ -12,7 +12,7 @@ import {
 } from './InkPageView';
 import { InkToolbar } from './InkToolbar';
 import { flushInkEditor, registerInkEditorSession, type InkEditorSession } from './editorSession';
-import { useInkDocument } from './useInkDocument';
+import { enqueueInkDocumentExit, useInkDocument } from './useInkDocument';
 import { useInkBackground } from './useInkBackground';
 import {
   clampEraserSize,
@@ -56,6 +56,7 @@ type InkHistory = { undo: InkPage[]; redo: InkPage[] };
 export function InkEditor({ documentId, className, initialPageId, exportControls, onAskAi, onExport }: InkEditorProps) {
   const { t } = useTranslation('ink');
   const docState = useInkDocument(documentId, initialPageId);
+  const { getSnapshot: getDocumentSnapshot, savePage: commitPage, flush: flushDocument, persistDraft: persistDocumentDraft, setActiveStroke } = docState;
   const inkBackground = useInkBackground({
     documentId,
     status: docState.status,
@@ -67,6 +68,10 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   const interactionEpochRef = useRef(0);
   const documentRef = useRef(docState);
   documentRef.current = docState;
+  const handleActiveStrokeChange = useCallback((active: boolean) => {
+    if (documentRef.current.getSnapshot === getDocumentSnapshot) activeStrokeRef.current = active;
+    setActiveStroke(active);
+  }, [getDocumentSnapshot, setActiveStroke]);
   const historiesRef = useRef(new Map<string, InkHistory>());
   const [historyRevision, setHistoryRevision] = useState(0);
   const seenRemoteReloadRef = useRef(docState.remoteReloadSequence);
@@ -149,6 +154,12 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     setHistoryRevision((revision) => revision + 1);
   }, [pageId, docState.remoteReloadSequence]);
 
+  useEffect(() => {
+    activeStrokeRef.current = false;
+    historiesRef.current.clear();
+    setHistoryRevision((revision) => revision + 1);
+  }, [documentId]);
+
   // 选区是 transient UI state：翻页或远端 epoch 变化后失效，绝不写入页面/manifest。
   useEffect(() => {
     setSelection(null);
@@ -176,9 +187,21 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   }, []);
 
   const finishAndFlush = useCallback(async () => {
+    const current = getDocumentSnapshot();
+    if (documentRef.current.getSnapshot !== getDocumentSnapshot) throw new Error('Ink editor document changed before flush.');
     await pageViewRef.current?.finishStroke();
-    await documentRef.current.flush();
-  }, []);
+    const finished = getDocumentSnapshot();
+    if (documentRef.current.getSnapshot !== getDocumentSnapshot || finished.remoteReloadSequence !== current.remoteReloadSequence) {
+      throw new Error('Ink editor changed while finishing input.');
+    }
+    await flushDocument();
+    const latest = getDocumentSnapshot();
+    if (documentRef.current.getSnapshot !== getDocumentSnapshot || latest.page?.page_id !== current.page?.page_id
+      || latest.remoteReloadSequence !== current.remoteReloadSequence || latest.saveStatus !== 'saved' || activeStrokeRef.current) {
+      throw new Error('Ink editor changed during flush.');
+    }
+    return latest;
+  }, [getDocumentSnapshot, flushDocument]);
 
   const toggleSelectionMode = useCallback((mode: InkSelectionMode) => {
     setSelection(null);
@@ -191,7 +214,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   }, []);
 
   const handleSelectionCopy = useCallback(() => {
-    const page = documentRef.current.page;
+    const page = documentRef.current.getSnapshot().page;
     const region = selectionRef.current;
     if (!region || !page) return;
     if (selectedInkObjects(page, region.polygon).length === 0) return;
@@ -199,7 +222,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
 
     void enqueueClipboard(async () => {
       try {
-        const current = documentRef.current;
+        const current = documentRef.current.getSnapshot();
         if (!current.page || current.page.page_id !== pageIdAtClick) return;
         const region = selectionRef.current;
         if (!region) return;
@@ -230,54 +253,69 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
 
     try {
       setPageError(false);
-      // 先结束活动手势并 flush；保存失败时不截旧图、不把旧选区发给 Chat。
-      await finishAndFlush();
+      const latest = await finishAndFlush();
+      if (!latest.page || !latest.manifest
+        || latest.page.page_id !== startPageId
+        || latest.remoteReloadSequence !== startRemoteSequence) return;
+      onAskAi({
+        documentId,
+        pageId: latest.page.page_id,
+        revision: latest.manifest.revision,
+        crop: activeSelection.bounds,
+      });
     } catch {
       setPageError(true);
-      return;
     }
-
-    const latest = documentRef.current;
-    if (!latest.page || !latest.manifest
-      || latest.page.page_id !== startPageId
-      || latest.remoteReloadSequence !== startRemoteSequence) return;
-
-    onAskAi({
-      documentId,
-      pageId: latest.page.page_id,
-      revision: latest.manifest.revision,
-      crop: activeSelection.bounds,
-    });
   }, [documentId, docState.remoteReloadSequence, finishAndFlush, onAskAi, pageId]);
 
   const persistCurrentDraft = useCallback(async () => {
+    const current = documentRef.current;
     await pageViewRef.current?.finishStroke();
-    await documentRef.current.persistDraft();
+    await current.persistDraft();
   }, []);
 
+  const sessionPageId = docState.manifest?.pages[0]?.page_id;
   const session = useMemo<InkEditorSession | null>(() => {
-    if (!pageId) return null;
+    if (!sessionPageId) return null;
     return {
-      key: { document_id: documentId, page_id: pageId },
-      isDirty: () => activeStrokeRef.current || (documentRef.current.saveStatus !== 'saved' && documentRef.current.saveStatus !== 'loading'),
-      flush: finishAndFlush,
-      persistDraft: () => documentRef.current.persistDraft(),
+      key: { document_id: documentId, page_id: sessionPageId },
+      isDirty: () => {
+        const current = getDocumentSnapshot();
+        return (documentRef.current.getSnapshot === getDocumentSnapshot && activeStrokeRef.current)
+          || (current.saveStatus !== 'saved' && current.saveStatus !== 'loading');
+      },
+      flush: async () => { await finishAndFlush(); },
+      persistDraft: persistDocumentDraft,
     };
-  }, [documentId, pageId, finishAndFlush]);
+  }, [documentId, sessionPageId, getDocumentSnapshot, persistDocumentDraft, finishAndFlush]);
 
   useEffect(() => {
     if (!session) return;
+    const view = pageViewRef.current;
+    const getSnapshot = getDocumentSnapshot;
     const unregister = registerInkEditorSession(session);
-    return () => { void session.persistDraft().catch(() => undefined).finally(unregister); };
-  }, [session]);
+    return () => {
+      unregister();
+      void enqueueInkDocumentExit(documentId, async () => {
+        try {
+          await view?.finishStroke();
+          const status = getSnapshot().saveStatus;
+          if (session.isDirty() && (status === 'pending' || status === 'saving')) await flushDocument();
+          else await session.persistDraft();
+        } catch {
+          await session.persistDraft();
+        }
+      }).catch(() => undefined);
+    };
+  }, [documentId, flushDocument, getDocumentSnapshot, session]);
 
   const onVisibilityHidden = useCallback(() => {
     if (documentRef.current.status !== 'ready' || globalThis.document.visibilityState !== 'hidden') return;
-    void persistCurrentDraft();
+    void persistCurrentDraft().catch(() => undefined);
   }, [persistCurrentDraft]);
   const onPageHide = useCallback(() => {
     if (documentRef.current.status !== 'ready') return;
-    void persistCurrentDraft();
+    void persistCurrentDraft().catch(() => undefined);
   }, [persistCurrentDraft]);
   useEventRegistry([
     { target: 'document', type: 'visibilitychange', listener: onVisibilityHidden },
@@ -285,21 +323,26 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   ], [onVisibilityHidden, onPageHide]);
 
   const onPageChange = useCallback(async (page: InkPage, expectedRevision?: string) => {
-    const previous = documentRef.current.page;
+    const current = getDocumentSnapshot();
+    const previous = current.page;
     if (!previous || previous.page_id !== page.page_id || previous === page) return;
-    if (expectedRevision !== undefined && documentRef.current.manifest?.revision !== expectedRevision) {
+    if (expectedRevision !== undefined && current.manifest?.revision !== expectedRevision) {
       throw new Error('Ink page revision changed before commit');
+    }
+    if (documentRef.current.getSnapshot !== getDocumentSnapshot) {
+      await commitPage(page, expectedRevision);
+      return;
     }
     const currentHistory = historyFor(previous);
     if (currentHistory.undo[currentHistory.undo.length - 1] !== page) {
       historiesRef.current.set(page.page_id, { undo: [...currentHistory.undo, previous], redo: [] });
       setHistoryRevision((revision) => revision + 1);
     }
-    await documentRef.current.savePage(page, expectedRevision);
-  }, []);
+    await commitPage(page, expectedRevision);
+  }, [getDocumentSnapshot, commitPage]);
 
   const handleSelectionPaste = useCallback(() => {
-    const target = documentRef.current;
+    const target = documentRef.current.getSnapshot();
     if (!target.page || !target.pageRef || !target.manifest || target.status !== 'ready') return;
     const captured = {
       documentId,
@@ -309,7 +352,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
       epoch: interactionEpochRef.current,
     };
     const isStillTarget = () => {
-      const current = documentRef.current;
+      const current = documentRef.current.getSnapshot();
       return captured.documentId === documentId
         && interactionEpochRef.current === captured.epoch
         && current.status === 'ready'
@@ -331,7 +374,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         const payload = parseInkClipboard(text);
 
         if (!isStillTarget()) return;
-        const current = documentRef.current;
+        const current = documentRef.current.getSnapshot();
         if (!current.page || !current.pageRef) return;
         const source = clipboardSourceRef.current;
         const samePage = Boolean(
@@ -353,8 +396,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         });
         // Target may have changed while building the page; never commit a stale paste.
         if (!isStillTarget()) return;
-        // 一次粘贴 = 一次 onPageChange（历史/草稿/CAS 保存各一次），
-        // 并用点击时 revision 做原子校验，不能以 queued 最新 revision 替旧页。
+        // Keep a paste atomic against the revision captured before clipboard access.
         await onPageChange(nextPage, captured.revision);
         setSelection(null);
       } catch (error) {
@@ -388,7 +430,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   }, [handleSelectionCopy, handleSelectionPaste, selectionMode]);
 
   const applyHistory = useCallback(async (direction: 'undo' | 'redo') => {
-    const current = documentRef.current.page;
+    const current = documentRef.current.getSnapshot().page;
     if (!current) return;
     const currentHistory = historyFor(current);
     const source = direction === 'undo' ? currentHistory.undo : currentHistory.redo;
@@ -403,22 +445,29 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   }, []);
 
   const changePage = useCallback(async (offset: number) => {
-    await pageViewRef.current?.finishStroke();
-    await documentRef.current.flush();
-    const state = documentRef.current;
-    if (!state.manifest || !state.page) return;
-    const index = state.manifest.pages.findIndex((pageRef) => pageRef.page_id === state.page?.page_id);
-    const target = state.manifest.pages[index + offset];
-    if (target) await state.selectPage(target.page_id);
+    try {
+      setPageError(false);
+      const current = documentRef.current;
+      await pageViewRef.current?.finishStroke();
+      if (documentRef.current.getSnapshot !== current.getSnapshot) return;
+      const state = current.getSnapshot();
+      if (!state.manifest || !state.page) return;
+      const index = state.manifest.pages.findIndex((pageRef) => pageRef.page_id === state.page?.page_id);
+      const target = state.manifest.pages[index + offset];
+      if (target) await current.selectPage(target.page_id);
+    } catch {
+      setPageError(true);
+    }
   }, []);
 
   const appendPage = useCallback(async (ruling: InkRuling) => {
     try {
       setPageError(false);
+      const current = documentRef.current;
       await pageViewRef.current?.finishStroke();
-      await documentRef.current.flush();
-      const pageRef = documentRef.current.pageRef;
-      if (pageRef) await documentRef.current.appendPage(pageRef.width, pageRef.height, ruling);
+      if (documentRef.current.getSnapshot !== current.getSnapshot) return;
+      const pageRef = current.getSnapshot().pageRef;
+      if (pageRef) await current.appendPage(pageRef.width, pageRef.height, ruling);
     } catch {
       setPageError(true);
     }
@@ -427,8 +476,10 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   const renamePage = useCallback(async () => {
     try {
       setPageError(false);
-      await documentRef.current.flush();
-      await documentRef.current.rename(renameValue);
+      const current = documentRef.current;
+      await pageViewRef.current?.finishStroke();
+      if (documentRef.current.getSnapshot !== current.getSnapshot) return;
+      await current.rename(renameValue);
     } catch {
       setPageError(true);
     }
@@ -487,10 +538,13 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         selectionCanCopy={selectedObjectsForCopy.length > 0}
         renameValue={renameValue}
         onRenameValue={setRenameValue}
-        onReloadRemote={() => { void docState.reloadRemote(); }}
-        onKeepDraft={() => { void persistCurrentDraft(); }}
-        onRetrySave={() => { void docState.retrySave(); }}
-        onRetryStorage={() => { void docState.retryDraftStorage(); }}
+        onReloadRemote={() => { void docState.reloadRemote().catch(() => setPageError(true)); }}
+        onKeepDraft={() => { void persistCurrentDraft().catch(() => setPageError(true)); }}
+        onRetrySave={() => { void finishAndFlush().catch(() => setPageError(true)); }}
+        onRetryStorage={() => {
+          const current = documentRef.current;
+          void pageViewRef.current?.finishStroke().then(() => current.retryDraftStorage()).catch(() => setPageError(true));
+        }}
         onSelectTool={(nextTool) => {
           setTool(nextTool);
           setErasing(false);
@@ -520,8 +574,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         onAppendPage={(ruling) => { void appendPage(ruling); }}
         onRename={() => { void renamePage(); }}
         onAskAi={onAskAi ? () => {
-          void finishAndFlush().then(() => {
-            const current = documentRef.current;
+          void finishAndFlush().then((current) => {
             if (current.page && current.manifest) {
               onAskAi({
                 documentId,
@@ -532,8 +585,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
           }).catch(() => setPageError(true));
         } : undefined}
         onExport={onExport ? () => {
-          void finishAndFlush().then(() => {
-            const current = documentRef.current;
+          void finishAndFlush().then((current) => {
             if (current.page && current.manifest) onExport(documentId, current.page.page_id, current.manifest.revision);
           }).catch(() => setPageError(true));
         } : undefined}
@@ -569,10 +621,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         onViewportInteraction={preserveViewport}
         onPageChange={onPageChange}
         onError={() => setPageError(true)}
-        onActiveStrokeChange={(active) => {
-          activeStrokeRef.current = active;
-          documentRef.current.setActiveStroke(active);
-        }}
+        onActiveStrokeChange={handleActiveStrokeChange}
         ariaLabel={t('canvas.label')}
       />
       <output className="sr-only" data-testid="ink-history-revision">{historyRevision}</output>

@@ -56,6 +56,7 @@ interface ActiveStroke {
 
 interface EraserGesture {
   pointerId: number;
+  pointerType: string;
   basePage: InkPage;
   lastPoint: InkPoint;
   hitIds: Set<string>;
@@ -64,6 +65,7 @@ interface EraserGesture {
 
 interface SelectionGesture {
   pointerId: number;
+  pointerType: string;
   mode: Exclude<InkSelectionMode, 'none'>;
   points: InkPoint[];
 }
@@ -102,8 +104,24 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
   const [selectionRegion, setSelectionRegion] = useState<InkSelectionRegion | null>(null);
   const callbacksRef = useRef({ onPageChange, onActiveStrokeChange, onSelectionChange, onViewportWidthChange, onViewportInteraction, onError });
   const currentRef = useRef({ pageRef, page, background, tool, erasing, selectionMode });
+  const previousPageRef = useRef({ documentId, page });
+  const pendingPagesRef = useRef<InkPage[]>([]);
   callbacksRef.current = { onPageChange, onActiveStrokeChange, onSelectionChange, onViewportWidthChange, onViewportInteraction, onError };
-  currentRef.current = { pageRef, page, background, tool, erasing, selectionMode };
+  if (previousPageRef.current.documentId !== documentId || previousPageRef.current.page.page_id !== page.page_id) {
+    pendingPagesRef.current = [];
+  } else if (previousPageRef.current.page !== page) {
+    const acknowledged = pendingPagesRef.current.indexOf(page);
+    pendingPagesRef.current = acknowledged < 0 ? [] : pendingPagesRef.current.slice(acknowledged + 1);
+  }
+  previousPageRef.current = { documentId, page };
+  currentRef.current = { pageRef, page: pendingPagesRef.current.at(-1) ?? page, background, tool, erasing, selectionMode };
+
+  const applyLocalPage = (nextPage: InkPage) => {
+    pendingPagesRef.current.push(nextPage);
+    currentRef.current = { ...currentRef.current, page: nextPage };
+    const canvas = canvasRef.current;
+    if (canvas) renderPageRef.current(canvas, nextPage);
+  };
 
   const reportViewportWidth = useCallback(() => {
     const viewport = viewportRef.current;
@@ -170,6 +188,30 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     overlay.style.mixBlendMode = 'normal';
   };
 
+  const discardActiveGesture = () => {
+    const active = activeStrokeRef.current;
+    const eraser = eraserGestureRef.current;
+    const selection = selectionGestureRef.current;
+    activeStrokeRef.current = null;
+    eraserGestureRef.current = null;
+    selectionGestureRef.current = null;
+    clearEraserPreview();
+    setSelectionDraft(null);
+    setSelectionRegion(null);
+    if (active || eraser) callbacksRef.current.onActiveStrokeChange?.(false);
+    if (selection) callbacksRef.current.onSelectionChange?.(null);
+    const pointerId = active?.pointerId ?? eraser?.pointerId ?? selection?.pointerId;
+    if (pointerId !== undefined) {
+      try { overlayRef.current?.releasePointerCapture(pointerId); } catch { /* Synthetic input may not support capture. */ }
+    }
+  };
+
+  const discardActiveGestureRef = useRef(discardActiveGesture);
+  discardActiveGestureRef.current = discardActiveGesture;
+  useLayoutEffect(() => {
+    discardActiveGestureRef.current();
+  }, [documentId, pageRef.page_id]);
+
   const renderEraserPreview = () => {
     const overlay = overlayRef.current;
     const gesture = eraserGestureRef.current;
@@ -198,20 +240,24 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     if (!gesture) return;
     eraserGestureRef.current = null;
     callbacksRef.current.onActiveStrokeChange?.(false);
-    clearEraserPreview();
-    if (!gesture.hitIds.size) return;
-
     const current = currentRef.current;
     // A remote reload advanced the page while the gesture was active. Never
     // apply stroke ids captured from the older page to the newer one.
-    if (current.page !== gesture.basePage) return;
+    if (!gesture.hitIds.size || current.page !== gesture.basePage) {
+      clearEraserPreview();
+      return;
+    }
 
     const nextPage: InkPage = {
       ...current.page,
       objects: current.page.objects.filter((object) => !gesture.hitIds.has(object.id)),
     };
-    if (nextPage.objects.length === current.page.objects.length) return;
-    currentRef.current = { ...current, page: nextPage };
+    if (nextPage.objects.length === current.page.objects.length) {
+      clearEraserPreview();
+      return;
+    }
+    applyLocalPage(nextPage);
+    clearEraserPreview();
     await callbacksRef.current.onPageChange(nextPage);
   };
 
@@ -223,9 +269,11 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     const active = activeStrokeRef.current;
     if (!active) return;
     activeStrokeRef.current = null;
-    callbacksRef.current.onActiveStrokeChange?.(false);
-    renderActiveStroke();
-    if (!active.samples.length) return;
+    if (!active.samples.length) {
+      renderActiveStroke();
+      callbacksRef.current.onActiveStrokeChange?.(false);
+      return;
+    }
 
     const current = currentRef.current;
     const stroke: InkObject = {
@@ -239,7 +287,9 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
       },
     };
     const nextPage = { ...current.page, objects: [...current.page.objects, stroke] };
-    currentRef.current = { ...current, page: nextPage };
+    applyLocalPage(nextPage);
+    renderActiveStroke();
+    callbacksRef.current.onActiveStrokeChange?.(false);
     await callbacksRef.current.onPageChange(nextPage);
   };
 
@@ -249,7 +299,7 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     for (let index = current.page.objects.length - 1; index >= 0; index -= 1) {
       if (objectHitTest(current.page.objects[index], point, radius)) {
         const nextPage = { ...current.page, objects: current.page.objects.filter((_, objectIndex) => objectIndex !== index) };
-        currentRef.current = { ...current, page: nextPage };
+        applyLocalPage(nextPage);
         await callbacksRef.current.onPageChange(nextPage);
         return;
       }
@@ -313,7 +363,7 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     const canvas = canvasRef.current;
     const overlay = overlayRef.current;
     if (!canvas || !overlay) return;
-    renderPageRef.current(canvas, page);
+    renderPageRef.current(canvas, currentRef.current.page);
     if (activeStrokeRef.current) renderActiveStrokeRef.current();
     if (eraserGestureRef.current) renderEraserPreviewRef.current();
   }, [pageRef, page, background, tool.zoom]);
@@ -426,6 +476,8 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const current = currentRef.current;
+    const gesture = activeStrokeRef.current ?? eraserGestureRef.current ?? selectionGestureRef.current;
+    if (event.pointerType === 'pen' && gesture?.pointerType === 'touch') discardActiveGesture();
     const selectionTouch = event.pointerType === 'touch' && current.selectionMode !== 'none';
     if (activeStrokeRef.current || eraserGestureRef.current || selectionGestureRef.current
       || (event.pointerType === 'touch' && !current.tool.touchDrawing && !selectionTouch)) return;
@@ -435,6 +487,7 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     if (current.erasing) {
       const gesture: EraserGesture = {
         pointerId: event.pointerId,
+        pointerType: event.pointerType,
         basePage: current.page,
         lastPoint: point,
         hitIds: new Set<string>(),
@@ -452,6 +505,7 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
       const start = selectionPoint(event);
       selectionGestureRef.current = {
         pointerId: event.pointerId,
+        pointerType: event.pointerType,
         mode: current.selectionMode,
         points: [start],
       };
@@ -593,6 +647,13 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onLostPointerCapture={(event) => {
+            if (selectionGestureRef.current?.pointerId === event.pointerId) {
+              finalizeSelectionGesture(true);
+            } else if (activeStrokeRef.current?.pointerId === event.pointerId || eraserGestureRef.current?.pointerId === event.pointerId) {
+              void finishStroke().catch((error) => callbacksRef.current.onError?.(error));
+            }
+          }}
           onPointerLeave={() => setEraserCursor(null)}
         />
         {previewPoints && previewBounds && previewBounds.width > 0 && previewBounds.height > 0 && (

@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/experimental-ct-react';
 import type { Locator, Page } from '@playwright/test';
 import { INK_BOARD_CT_BASE_OBJECT_ID } from '../ink-board/fixtures';
 import { InkWorkspaceHarness, type InkWorkspaceCtSnapshot } from './InkWorkspaceHarness';
+import { readInkDraftWrites, watchInkDraftWrites } from '../ink-editor/inkTestUtils';
 
 const workspace = (page: Page) => page.locator('[data-ink-workspace-page]');
 
@@ -120,9 +121,13 @@ for (const [host, mode] of [['dstu', 'paged-v1'], ['file-content', 'board-v2']] 
     const input = page.getByTestId(board ? 'ink-board-canvas' : 'ink-active-stroke-canvas');
     const rendered = page.getByTestId(board ? 'ink-board-canvas' : 'ink-page-canvas');
     const initialPixels = await darkPixels(rendered, { x: 0.15, y: 0, width: 0.6, height: 0.6 });
+    await watchInkDraftWrites(page);
     await drawStroke(page, input);
-    if (board) await expect(page.getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'saving');
-    else await expect.poll(async () => (await readState(page)).pendingSaves).toBe(1);
+    await expect(page.getByTestId(board ? 'ink-board-save-state' : 'ink-editor-save-state')).toHaveAttribute('data-state', 'pending');
+    await page.waitForTimeout(1_200);
+    expect((await readState(page)).saveAttempts).toBe(0);
+    expect((await readState(page)).pendingSaves).toBe(0);
+    expect(await readInkDraftWrites(page)).toEqual([]);
 
     const back = workspace(page).getByRole('button', { name: labels.back, exact: true });
     await back.click();
@@ -162,10 +167,11 @@ test('a failed canonical page save keeps the real editor and draft open until th
   const editor = page.getByTestId('ink-editor');
   await page.getByTestId('ink-tool-pen').click();
   await drawStroke(page, page.getByTestId('ink-active-stroke-canvas'));
-  await expect.poll(async () => (await readState(page)).pendingSaves).toBe(1);
+  expect((await readState(page)).saveAttempts).toBe(0);
   const back = workspace(page).getByRole('button', { name: labels.back, exact: true });
   await back.click();
   await expect(back).toBeDisabled();
+  await expect.poll(async () => (await readState(page)).pendingSaves).toBe(1);
   await page.evaluate(() => window.__INK_WORKSPACE_CT__?.rejectSaves());
   await expect(workspace(page).getByRole('alert').filter({ hasText: labels.exitBlocked })).toBeVisible();
   await expect(editor).toBeVisible();

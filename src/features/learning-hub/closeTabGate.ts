@@ -5,10 +5,9 @@
  * 关闭其他/关闭右侧）在删除标签前都必须经过本模块；LearningHubPage.closeTab
  * 退化为 gate 通过后的最终提交步。
  *
- * dirty 真相源只读消费 workbench contentDirtyRegistry：各视图注册 checker 时
- * typeId 即 tab.type、instanceKey 即资源叶 ID（note=NoteContentView、
- * exam=ExamContentView、essay/translation=内嵌的两个 Workbench 组件，均已核实），
- * 故直接以 tab 字段查询，无需映射表。gate 不自建任何 dirty/保存状态。
+ * 墨迹工作区通过退出注册表先结束手势并保存；已打开的工作区同时豁免 LRU 淘汰。
+ * 其他资源直接按 tab.type 与资源叶 ID 消费 contentDirtyRegistry，
+ * gate 不自建 dirty/保存状态。
  */
 
 import i18next from 'i18next';
@@ -20,17 +19,19 @@ import {
 } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { requestContentCloseDecision } from '@/features/workbench/apps/content/ContentCloseConfirmation';
 import type { OpenTab } from './types/tabs';
+import { flushInkWorkspace, hasInkWorkspace } from '@/services/inkWorkspaceRegistry';
 
-/** 该标签对应的资源实例当前是否有未保存修改（未注册 checker = 干净） */
-export const isTabDirty = (tab: OpenTab): boolean => isContentDirty(tab.type, tab.resourceId);
+/** 打开的墨迹工作区需保活；其他资源以已注册 checker 为准。 */
+export const isTabDirty = (tab: OpenTab): boolean => hasInkWorkspace(tab.resourceId) || isContentDirty(tab.type, tab.resourceId);
 
 /**
- * 单标签 close gate：干净直接放行；dirty 弹三态确认（保存并关闭 / 丢弃 / 取消）。
+ * 单标签 close gate：墨迹工作区先结束手势并保存；其他 dirty 资源弹三态确认。
  * 返回 true = 允许关闭。保存失败或用户取消返回 false —— 调用方必须保留标签
  * 与草稿（fail-closed）。无确认宿主时 requestContentCloseDecision 返回
  * 'cancel'，同样 fail-closed。
  */
 export const confirmTabClose = async (tab: OpenTab): Promise<boolean> => {
+  if (hasInkWorkspace(tab.resourceId)) return flushInkWorkspace(tab.resourceId);
   if (!isTabDirty(tab)) return true;
   const offerSave = hasContentSaveHandler(tab.type, tab.resourceId);
   // ★ r6-review（关标签）：原引用 workbench:notes.confirmCloseUnsaved 为不存在

@@ -180,11 +180,10 @@ async function dispatchCanvasPointer(
   });
 }
 
-async function waitForJournalOrNewCas(page: Page, casCount: number): Promise<void> {
-  await expect.poll(async () => {
-    const [draft, state] = await Promise.all([readDraft(page), readState(page)]);
-    return Boolean(draft) || state.saveChunkRequests.length > casCount;
-  }).toBe(true);
+async function expectPendingBoardEdit(page: Page, casCount: number): Promise<void> {
+  await expect(workspace(page).getByTestId('ink-board-save-state')).toHaveAttribute('data-state', 'pending');
+  expect((await readState(page)).saveChunkRequests).toHaveLength(casCount);
+  expect(await readDraft(page)).toBeFalsy();
 }
 
 async function flushAndRead(page: Page): Promise<InkBoardCtSnapshot> {
@@ -243,10 +242,7 @@ test('v2 board root shows a finite capped viewport, saves a negative-world pen s
   await expect(workspace(page).getByTestId('ink-board-editor')).toHaveAttribute('data-loaded-chunks', /[1-9]/);
 
   await drawPenStroke(page, canvas);
-  await expect.poll(async () => {
-    const [draft, state] = await Promise.all([readDraft(page), readState(page)]);
-    return Boolean(draft) || state.saveChunkRequests.length > 0;
-  }).toBe(true);
+  await expectPendingBoardEdit(page, 0);
   expect((await flushBoard(page)).ok).toBe(true);
 
   const saved = await readState(page);
@@ -313,8 +309,8 @@ test('v2 board root shows a finite capped viewport, saves a negative-world pen s
   })).toBeGreaterThan(0);
 });
 
-test('an idle pen stroke reaches the canonical CAS without pressing Save or flushing', async ({ mount, page }) => {
-  await mount(<InkBoardEditorHarness mode="board-v2" label="autosave" />);
+test('idle pen strokes stay in memory without journal writes or canonical CAS until exit', async ({ mount, page }) => {
+  await mount(<InkBoardEditorHarness mode="board-v2" label="exit-save" />);
 
   await expect(workspace(page).getByTestId('ink-board-editor')).toBeVisible();
   await expect(workspace(page).getByTestId('ink-board-overview-state')).toHaveAttribute('data-state', 'ready');
@@ -337,15 +333,15 @@ test('an idle pen stroke reaches the canonical CAS without pressing Save or flus
 
   await drawPenStroke(page, canvas);
 
-  // No toolbar Save click and no explicit session flush: the host debounce must
-  // be the only actor between the journaled gesture and the canonical CAS.
-  await expect.poll(async () => {
-    const state = await readState(page);
-    return state.saveChunkCalls > 0 && state.revision !== baseline.revision;
-  }, { timeout: 10_000 }).toBe(true);
+  await expectPendingBoardEdit(page, 0);
+  await page.waitForTimeout(1_200);
+  expect((await readState(page)).saveChunkCalls).toBe(0);
+  expect(await readDraft(page)).toBeUndefined();
+  await workspace(page).locator('header').getByRole('button').click();
+  await expect(workspace(page)).toHaveCount(0);
 
   const saved = await readState(page);
-  expect(saved.saveChunkCalls).toBeGreaterThanOrEqual(1);
+  expect(saved.saveChunkCalls).toBe(1);
   expect(saved.revision).not.toBe(baseline.revision);
   expect(saved.journalAtCas.some((record) => Boolean(record))).toBe(true);
   expect(saved.objects.some((object) => (
@@ -430,7 +426,7 @@ test('root pen gesture, eraser sweep, and undo/redo round-trip through the real 
   const baselineCas = (await readState(page)).saveChunkRequests.length;
 
   await drawPenStroke(page, canvas);
-  await waitForJournalOrNewCas(page, baselineCas);
+  await expectPendingBoardEdit(page, baselineCas);
   let state = await flushAndRead(page);
   const baseId = 'board_ct_object0001';
   const drawn = state.objects.find((object) => object.id !== baseId && object.content.kind === 'stroke');
@@ -439,21 +435,21 @@ test('root pen gesture, eraser sweep, and undo/redo round-trip through the real 
   await workspace(page).getByTestId('ink-board-eraser-tool').click();
   const beforeEraseCas = state.saveChunkRequests.length;
   await drawPenStroke(page, canvas);
-  await waitForJournalOrNewCas(page, beforeEraseCas);
+  await expectPendingBoardEdit(page, beforeEraseCas);
   state = await flushAndRead(page);
   expect(state.objects.some((object) => object.id === drawn?.id)).toBe(false);
 
   await expect(workspace(page).getByTestId('ink-board-undo')).toBeEnabled();
   const beforeUndoCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-undo').click();
-  await waitForJournalOrNewCas(page, beforeUndoCas);
+  await expectPendingBoardEdit(page, beforeUndoCas);
   state = await flushAndRead(page);
   expect(state.objects.some((object) => object.id === drawn?.id)).toBe(true);
 
   await expect(workspace(page).getByTestId('ink-board-redo')).toBeEnabled();
   const beforeRedoCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-redo').click();
-  await waitForJournalOrNewCas(page, beforeRedoCas);
+  await expectPendingBoardEdit(page, beforeRedoCas);
   state = await flushAndRead(page);
   expect(state.objects.some((object) => object.id === drawn?.id)).toBe(false);
 });
@@ -493,7 +489,7 @@ test('rectangle and lasso selection copy vector content, paste creates fresh IDs
 
   const beforePasteCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-selection-paste').click();
-  await waitForJournalOrNewCas(page, beforePasteCas);
+  await expectPendingBoardEdit(page, beforePasteCas);
   state = await flushAndRead(page);
 
   const baseObject = state.objects.find((object) => object.id === baseId);
@@ -511,7 +507,7 @@ test('rectangle and lasso selection copy vector content, paste creates fresh IDs
   await expect(workspace(page).getByTestId('ink-board-undo')).toBeEnabled();
   const beforeUndoCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-undo').click();
-  await waitForJournalOrNewCas(page, beforeUndoCas);
+  await expectPendingBoardEdit(page, beforeUndoCas);
   state = await flushAndRead(page);
   expect(state.objects.map((object) => object.id)).toEqual([baseId]);
 });
@@ -540,7 +536,7 @@ test('same-source paste keeps +16 while an external clipboard payload far from t
   let state = await readState(page);
   const beforeSameSourceCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-selection-paste').click();
-  await waitForJournalOrNewCas(page, beforeSameSourceCas);
+  await expectPendingBoardEdit(page, beforeSameSourceCas);
   state = await flushAndRead(page);
   const base = state.objects.find((object) => object.id === baseId);
   const sameSourcePasted = state.objects.find((object) => object.id !== baseId);
@@ -571,7 +567,7 @@ test('same-source paste keeps +16 while an external clipboard payload far from t
 
   const beforeExternalCas = state.saveChunkRequests.length;
   await workspace(page).getByTestId('ink-board-selection-paste').click();
-  await waitForJournalOrNewCas(page, beforeExternalCas);
+  await expectPendingBoardEdit(page, beforeExternalCas);
   state = await flushAndRead(page);
   const ids = new Set([baseId, sameSourcePasted?.id]);
   const externalPasted = state.objects.find((object) => !ids.has(object.id));
@@ -600,7 +596,7 @@ test('pointercancel finishes one stroke and one eraser sweep, while a pinch-init
   await dispatchCanvasPointer(canvas, 'pointerdown', 71, { x: 80, y: 80 }, 'pen');
   await dispatchCanvasPointer(canvas, 'pointermove', 71, { x: 200, y: 140 }, 'pen');
   await dispatchCanvasPointer(canvas, 'pointercancel', 71, { x: 200, y: 140 }, 'pen');
-  await waitForJournalOrNewCas(page, beforeStrokeCas);
+  await expectPendingBoardEdit(page, beforeStrokeCas);
   state = await flushAndRead(page);
   const cancelledStroke = state.objects.find((object) => object.id !== baseId);
   expect(cancelledStroke?.content.kind).toBe('stroke');
@@ -610,7 +606,7 @@ test('pointercancel finishes one stroke and one eraser sweep, while a pinch-init
   await dispatchCanvasPointer(canvas, 'pointerdown', 72, { x: 80, y: 80 }, 'pen');
   await dispatchCanvasPointer(canvas, 'pointermove', 72, { x: 200, y: 140 }, 'pen');
   await dispatchCanvasPointer(canvas, 'pointercancel', 72, { x: 200, y: 140 }, 'pen');
-  await waitForJournalOrNewCas(page, beforeEraseCas);
+  await expectPendingBoardEdit(page, beforeEraseCas);
   state = await flushAndRead(page);
   expect(state.objects.some((object) => object.id === cancelledStroke?.id)).toBe(false);
 
@@ -658,7 +654,7 @@ test('repeated toolbar zoom stays inside camera bounds and saved pointer coordin
 
   const beforeDrawCas = (await readState(page)).saveChunkRequests.length;
   await drawPenStroke(page, canvas);
-  await waitForJournalOrNewCas(page, beforeDrawCas);
+  await expectPendingBoardEdit(page, beforeDrawCas);
   const state = await flushAndRead(page);
   const drawn = state.objects.find((object) => object.id !== 'board_ct_object0001');
   expect(drawn?.content.kind).toBe('stroke');
