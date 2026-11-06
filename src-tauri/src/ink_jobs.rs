@@ -20,7 +20,7 @@ use dstu_vfs::vfs::{
         file_repo::VfsFileRepo,
         ink_prepare_repo::{InkPreparedPage, VfsInkPrepareRepo},
         ink_repo::VfsInkRepo,
-        ink_source::{read_ink_source_with_conn, validate_ink_source_with_conn},
+        ink_source::{ink_source_format, read_ink_source_with_conn},
     },
     upload_saga::UploadSaga,
 };
@@ -363,6 +363,17 @@ trait IntoInkJobError {
 
 impl IntoInkJobError for VfsError {
     fn into_ink_job_error(self) -> InkJobError {
+        if let VfsError::Conflict { key, message } = &self {
+            if key == "ink.source_changed" {
+                tracing::warn!(phase = "source_validation", reason = %message, "Ink source validation failed");
+            }
+        }
+        if matches!(&self, VfsError::InvalidArgument { param, .. } if param == "file_name") {
+            return job_error(
+                "UNSUPPORTED_FORMAT",
+                "The VFS file extension and MIME type are unsupported or inconsistent.",
+            );
+        }
         let error = dstu_vfs::vfs::ink_commands::InkCommandError::from(self);
         job_error(&error.code, error.message)
     }
@@ -408,6 +419,19 @@ fn vfs_error(error: impl IntoInkJobError) -> InkJobError {
     error.into_ink_job_error()
 }
 
+/// Log a prepare failure with enough structure to diagnose imports without
+/// recording source bytes, extracted text, or any other file content.
+fn log_prepare_failure(source_resource_id: &str, operation_id: &str, error: &InkJobError) {
+    tracing::warn!(
+        phase = "prepare",
+        code = %error.code,
+        reason = %error.message,
+        source_resource_id = %source_resource_id,
+        operation_id = %operation_id,
+        "vfs_ink_prepare failed"
+    );
+}
+
 fn source_changed(message: &str) -> InkJobError {
     job_error("SOURCE_CHANGED", message)
 }
@@ -417,36 +441,32 @@ fn source_format(
     mime_type: &str,
     file_type: &str,
 ) -> Result<&'static str, InkJobError> {
+    // Keep the backend's single source-format whitelist authoritative. Real
+    // textbook imports persist "pdf"/"docx"/"pptx" as files.type while older
+    // VFS rows used "document"/"file"; the shared helper accepts both aliases.
+    if let Some(format) = ink_source_format(file_name, mime_type, file_type) {
+        return Ok(format);
+    }
     let ext = Path::new(file_name)
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    match (ext.as_str(), mime_type, file_type) {
-        ("pdf", "application/pdf", "document" | "file") => Ok("pdf"),
-        ("png", "image/png", "image")
-        | ("jpg" | "jpeg", "image/jpeg", "image")
-        | ("webp", "image/webp", "image")
-        | ("gif", "image/gif", "image") => Ok("image"),
-        (
-            "docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "document" | "file",
-        ) => Ok("docx"),
-        (
-            "pptx",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "document" | "file",
-        ) => Ok("pptx"),
-        ("xls" | "xlsx" | "ppt" | "doc" | "docm" | "pptm", _, _) => Err(job_error(
+    // Preserve the specific legacy Office rejection used by older clients
+    // instead of collapsing it into the generic mismatch message.
+    if matches!(
+        ext.as_str(),
+        "xls" | "xlsx" | "ppt" | "doc" | "docm" | "pptm"
+    ) {
+        return Err(job_error(
             "UNSUPPORTED_FORMAT",
             "This source format is not supported for Ink preparation.",
-        )),
-        _ => Err(job_error(
-            "UNSUPPORTED_FORMAT",
-            "The VFS file extension and MIME type are unsupported or inconsistent.",
-        )),
+        ));
     }
+    Err(job_error(
+        "UNSUPPORTED_FORMAT",
+        "The VFS file extension and MIME type are unsupported or inconsistent.",
+    ))
 }
 
 fn load_source_bytes(
@@ -487,45 +507,16 @@ fn reusable_prepared_manifest(
 ) -> Result<Option<InkManifest>, InkJobError> {
     let mut conn = db.get_conn_safe().map_err(vfs_error)?;
     let tx = conn.transaction().map_err(vfs_error)?;
-    let source =
-        validate_ink_source_with_conn(&tx, db.blobs_dir(), source_resource_id, Some(source_hash))
-            .map_err(vfs_error)?
-            .ok_or_else(|| source_changed("Source resource is missing."))?;
-    let Some(raw) = source.metadata_json else {
-        return Ok(None);
-    };
-    let metadata: Value = serde_json::from_str(&raw).map_err(vfs_error)?;
-    let Some(default_id) = metadata
-        .get("default_ink_document_id")
-        .and_then(Value::as_str)
-    else {
-        return Ok(None);
-    };
-    let manifest =
-        VfsInkRepo::get_manifest_with_conn(&tx, db.blobs_dir(), default_id).map_err(vfs_error)?;
-    match &manifest.source {
-        InkSource::Resource {
-            resource_id,
-            source_hash: existing_hash,
-            conversion_revision: existing_profile,
-        } if resource_id == source_resource_id
-            && existing_hash == source_hash
-            && existing_profile == conversion_revision =>
-        {
-            tx.commit().map_err(vfs_error)?;
-            Ok(Some(manifest))
-        }
-        InkSource::Resource {
-            resource_id,
-            source_hash: existing_hash,
-            ..
-        } if resource_id == source_resource_id && existing_hash != source_hash => Err(
-            source_changed("Source hash differs from its prepared Ink document."),
-        ),
-        _ => Err(source_changed(
-            "The default prepared Ink document has a different source or converter profile.",
-        )),
-    }
+    let manifest = VfsInkPrepareRepo::reusable_prepared_manifest_with_conn(
+        &tx,
+        db.blobs_dir(),
+        source_resource_id,
+        source_hash,
+        conversion_revision,
+    )
+    .map_err(vfs_error)?;
+    tx.commit().map_err(vfs_error)?;
+    Ok(manifest)
 }
 
 // First-RED seam for notifying the frontend to abort staged output on timeout.
@@ -2274,7 +2265,7 @@ pub async fn vfs_ink_prepare(
             "Only main may start Ink jobs.",
         ));
     }
-    let manifest = prepare_source_ink(
+    let manifest = match prepare_source_ink(
         &app,
         db.inner().clone(),
         &request.source_resource_id,
@@ -2283,7 +2274,14 @@ pub async fn vfs_ink_prepare(
         tool_call_id.as_deref(),
         None,
     )
-    .await?;
+    .await
+    {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            log_prepare_failure(&request.source_resource_id, &request.operation_id, &error);
+            return Err(error);
+        }
+    };
     crate::vfs::hooks::notify_resource_created(&app, &manifest.document_id);
     let _ = app.emit("ink:changed", json!({"document_id": manifest.document_id, "revision": manifest.revision, "operation_id": request.operation_id, "affected_page_ids": manifest.pages.iter().map(|page| page.page_id.clone()).collect::<Vec<_>>()}));
     Ok(manifest)
@@ -2340,7 +2338,7 @@ mod bus_tests;
 #[cfg(test)]
 mod tests {
     use std::{
-        io::Cursor,
+        io::{Cursor, Write},
         path::Path,
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -2353,7 +2351,7 @@ mod tests {
         database::{setup_migrated_test_db, VfsDatabase},
         ink::{
             InkAuthor, InkBackground, InkBoardChunk, InkBoardObject, InkBoardSurface, InkManifest,
-            InkObject, InkObjectContent, InkRect, InkRuling, INK_BOARD_SCHEMA_VERSION,
+            InkObject, InkObjectContent, InkRect, InkRuling, InkSource, INK_BOARD_SCHEMA_VERSION,
         },
         repos::{
             blob_repo::VfsBlobRepo,
@@ -2361,6 +2359,7 @@ mod tests {
             ink_board_repo::VfsInkBoardRepo,
             ink_prepare_repo::{InkPreparedPage, VfsInkPrepareRepo},
             ink_repo::VfsInkRepo,
+            textbook_repo::VfsTextbookRepo,
             VfsAttachmentRepo,
         },
         types::VfsUploadAttachmentParams,
@@ -2373,10 +2372,10 @@ mod tests {
         commit_ink_export_cancellable, commit_ink_export_with_snapshot,
         commit_prepared_source_pages, commit_prepared_source_pages_cancellable,
         frozen_snapshot_hash, load_board_export_inputs, load_export_inputs,
-        load_export_receipt_for_retry, load_source_bytes, wait_pending_ink_job_with_timeout_notify,
-        InkExportBoardRequest, InkExportCommandRequest, InkExportFormat, InkJobBusError,
-        InkJobIdentity, InkJobKind, InkJobResponse, InkJobResponseValue, InkStagedPage,
-        PendingInkJobBus,
+        load_export_receipt_for_retry, load_source_bytes, reusable_prepared_manifest,
+        source_format, wait_pending_ink_job_with_timeout_notify, InkExportBoardRequest,
+        InkExportCommandRequest, InkExportFormat, InkJobBusError, InkJobIdentity, InkJobKind,
+        InkJobResponse, InkJobResponseValue, InkStagedPage, PendingInkJobBus,
     };
 
     const PNG_1X1: &[u8] = &[
@@ -2388,6 +2387,10 @@ mod tests {
     ];
     const PNG_MIME: &str = "image/png";
     const PDF_MIME: &str = "application/pdf";
+    const DOCX_MIME: &str =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const PPTX_MIME: &str =
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     const MAX_STAGED_BYTES: u64 = 4 * 1024 * 1024;
 
     fn distinct_png() -> Vec<u8> {
@@ -2442,6 +2445,59 @@ mod tests {
             .as_bytes(),
         );
         pdf
+    }
+
+    fn ooxml_zip(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, contents) in entries {
+                writer.start_file(*name, options).unwrap();
+                writer.write_all(contents.as_bytes()).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    fn minimal_docx() -> Vec<u8> {
+        ooxml_zip(&[
+            (
+                "[Content_Types].xml",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>"#,
+            ),
+            (
+                "_rels/.rels",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#,
+            ),
+            (
+                "word/document.xml",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Textbook DOCX fixture</w:t></w:r></w:p></w:body></w:document>"#,
+            ),
+        ])
+    }
+
+    fn minimal_pptx() -> Vec<u8> {
+        ooxml_zip(&[
+            (
+                "[Content_Types].xml",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>"#,
+            ),
+            (
+                "_rels/.rels",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>"#,
+            ),
+            (
+                "ppt/presentation.xml",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>"#,
+            ),
+            (
+                "ppt/slides/slide1.xml",
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Textbook PPTX fixture</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"#,
+            ),
+        ])
     }
 
     fn source_file(conn: &rusqlite::Connection, db: &VfsDatabase) -> (String, String, String) {
@@ -2611,6 +2667,397 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
         )
         .unwrap()
+    }
+
+    fn textbook_import_source(
+        conn: &rusqlite::Connection,
+        db: &VfsDatabase,
+        file_name: &str,
+        mime_type: &str,
+        bytes: &[u8],
+        extracted_text: &str,
+    ) -> (String, String) {
+        let extension = Path::new(file_name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("bin");
+        let stored = VfsBlobRepo::store_blob_with_conn(
+            conn,
+            db.blobs_dir(),
+            bytes,
+            Some(mime_type),
+            Some(extension),
+        )
+        .expect("textbook source blob");
+        let source_hash = VfsBlobRepo::compute_hash(bytes);
+        assert_eq!(stored.hash, source_hash);
+        let textbook = VfsTextbookRepo::create_textbook_with_preview(
+            conn,
+            &source_hash,
+            file_name,
+            bytes.len() as i64,
+            Some(&stored.hash),
+            Some("/imports/textbook"),
+            None,
+            Some(extracted_text),
+            Some(1),
+        )
+        .expect("real textbook import");
+        (
+            textbook.resource_id.expect("textbook resource id"),
+            source_hash,
+        )
+    }
+
+    fn attachment_import_source(
+        db: &VfsDatabase,
+        name: &str,
+        mime_type: &str,
+        bytes: &[u8],
+        attachment_type: &str,
+    ) -> (String, String) {
+        let conn = db.get_conn_safe().unwrap();
+        let upload = VfsAttachmentRepo::upload_bytes_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &VfsUploadAttachmentParams {
+                name: name.to_owned(),
+                mime_type: mime_type.to_owned(),
+                base64_content: String::new(),
+                attachment_type: Some(attachment_type.to_owned()),
+            },
+            bytes,
+        )
+        .expect("real attachment upload");
+        (
+            upload
+                .attachment
+                .resource_id
+                .expect("attachment resource id"),
+            VfsBlobRepo::compute_hash(bytes),
+        )
+    }
+
+    fn assert_prepared_source_chain(
+        temp_dir: &Path,
+        db: &VfsDatabase,
+        resource_id: &str,
+        source_hash: &str,
+        conversion_profile: &str,
+        source_page_index: Option<u32>,
+        operation_prefix: &str,
+    ) -> InkManifest {
+        let staged = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir, "prepared-source-page.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index,
+        };
+        let manifest = commit_prepared_source_pages(
+            db,
+            resource_id,
+            source_hash,
+            conversion_profile,
+            &[staged],
+            &format!("{operation_prefix}-prepare"),
+        )
+        .expect("prepared source commit");
+        assert_eq!(manifest.pages.len(), 1);
+        match &manifest.source {
+            InkSource::Resource {
+                resource_id: manifest_resource_id,
+                source_hash: manifest_hash,
+                conversion_revision: manifest_profile,
+            } => {
+                assert_eq!(manifest_resource_id, resource_id);
+                assert_eq!(manifest_hash, source_hash);
+                assert_eq!(manifest_profile, conversion_profile);
+            }
+            other => panic!("prepared source must reference its resource, got {other:?}"),
+        }
+        assert_eq!(
+            reusable_prepared_manifest(db, resource_id, source_hash, conversion_profile)
+                .expect("reusable manifest query")
+                .expect("committed manifest must be reusable"),
+            manifest
+        );
+
+        let conn = db.get_conn_safe().unwrap();
+        let mut page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.pages[0].page_id,
+        )
+        .expect("prepared page reopen");
+        assert!(page.objects.is_empty());
+        page.objects.push(InkObject {
+            id: "source-annotation".to_owned(),
+            author: InkAuthor::User,
+            created_at: 0,
+            content: InkObjectContent::Rect {
+                rect: InkRect {
+                    x: 0.1,
+                    y: 0.1,
+                    width: 0.5,
+                    height: 0.5,
+                },
+                color: "#000000".to_owned(),
+                width: 1.0,
+            },
+        });
+        let saved = VfsInkRepo::save_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            &format!("{operation_prefix}-save"),
+            &page,
+        )
+        .expect("prepared page annotation save");
+        let reopened =
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &saved.document_id)
+                .expect("saved manifest reopen");
+        assert_eq!(reopened, saved);
+        let reopened_page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &saved.document_id,
+            &saved.pages[0].page_id,
+        )
+        .expect("saved page reopen");
+        assert_eq!(reopened_page, page);
+        drop(conn);
+
+        let (loaded_hash, _, _, _, loaded_bytes) =
+            load_source_bytes(db, resource_id).expect("source must survive the prepare/save chain");
+        assert_eq!(loaded_hash, source_hash);
+        assert_eq!(VfsBlobRepo::compute_hash(&loaded_bytes), source_hash);
+        reopened
+    }
+
+    #[test]
+    fn source_format_accepts_import_aliases_and_keeps_legacy_office_rejection() {
+        for (name, mime, file_type) in [
+            ("book.pdf", PDF_MIME, "pdf"),
+            ("book.pdf", PDF_MIME, "document"),
+            ("book.pdf", PDF_MIME, "file"),
+            ("guide.docx", DOCX_MIME, "docx"),
+            ("guide.docx", DOCX_MIME, "document"),
+            ("guide.docx", DOCX_MIME, "file"),
+            ("slides.pptx", PPTX_MIME, "pptx"),
+            ("slides.pptx", PPTX_MIME, "document"),
+            ("slides.pptx", PPTX_MIME, "file"),
+            ("scan.png", PNG_MIME, "image"),
+            ("photo.jpg", "image/jpeg", "image"),
+            ("photo.jpeg", "image/jpeg", "image"),
+            ("photo.webp", "image/webp", "image"),
+            ("photo.gif", "image/gif", "image"),
+        ] {
+            assert_eq!(
+                source_format(name, mime, file_type).unwrap(),
+                if mime == PDF_MIME {
+                    "pdf"
+                } else if mime.starts_with("image/") {
+                    "image"
+                } else if name.ends_with(".docx") {
+                    "docx"
+                } else {
+                    "pptx"
+                },
+                "{name} ({mime}, {file_type})"
+            );
+        }
+        for name in ["legacy.doc", "legacy.ppt", "legacy.xls", "legacy.xlsx"] {
+            let error = source_format(name, "application/octet-stream", "file").unwrap_err();
+            assert_eq!(error.code, "UNSUPPORTED_FORMAT");
+            assert_eq!(
+                error.message,
+                "This source format is not supported for Ink preparation."
+            );
+        }
+        let error = source_format("book.pdf", "image/png", "file").unwrap_err();
+        assert_eq!(error.code, "UNSUPPORTED_FORMAT");
+        assert_eq!(
+            error.message,
+            "The VFS file extension and MIME type are unsupported or inconsistent."
+        );
+    }
+
+    #[test]
+    fn unsupported_source_format_keeps_a_typed_job_error() {
+        let error = super::vfs_error(dstu_vfs::vfs::error::VfsError::InvalidArgument {
+            param: "file_name".to_owned(),
+            reason: "unsupported format".to_owned(),
+        });
+        assert_eq!(error.code, "UNSUPPORTED_FORMAT");
+        let error = super::vfs_error(dstu_vfs::vfs::error::VfsError::InvalidArgument {
+            param: "source_resource_id".to_owned(),
+            reason: "invalid id".to_owned(),
+        });
+        assert_eq!(error.code, "INVALID_ARGUMENT");
+    }
+
+    #[test]
+    fn real_textbook_imports_prepare_reuse_save_and_reopen_pdf_docx_pptx_image() {
+        for (name, mime, bytes, expected_kind, extracted_text) in [
+            (
+                "教材讲义.pdf",
+                PDF_MIME,
+                minimal_pdf(),
+                "pdf",
+                "PDF textbook extracted text",
+            ),
+            (
+                "课堂笔记.docx",
+                DOCX_MIME,
+                minimal_docx(),
+                "docx",
+                "DOCX textbook extracted text",
+            ),
+            (
+                "演示文稿.pptx",
+                PPTX_MIME,
+                minimal_pptx(),
+                "pptx",
+                "PPTX textbook extracted text",
+            ),
+            (
+                "教材插图.png",
+                PNG_MIME,
+                distinct_png(),
+                "image",
+                "PNG textbook extracted text",
+            ),
+        ] {
+            let (temp_dir, db) = setup_migrated_test_db();
+            let conn = db.get_conn_safe().unwrap();
+            let (resource_id, source_hash) =
+                textbook_import_source(&conn, &db, name, mime, &bytes, extracted_text);
+            let (stored_data, stored_blob_hash, stored_file_type, storage_mode): (
+                String,
+                Option<String>,
+                String,
+                String,
+            ) = conn
+                .query_row(
+                    "SELECT r.data, f.blob_hash, f.type, r.storage_mode FROM resources r JOIN files f ON f.id = r.source_id WHERE r.id = ?1",
+                    [&resource_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .unwrap();
+            assert_eq!(stored_data, extracted_text);
+            assert_eq!(stored_blob_hash.as_deref(), Some(source_hash.as_str()));
+            assert_eq!(stored_file_type, expected_kind);
+            assert_eq!(storage_mode, "inline");
+            conn.execute(
+                "UPDATE resources SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.custom', 'kept') WHERE id = ?1",
+                [&resource_id],
+            )
+            .unwrap();
+            drop(conn);
+
+            let (hash, kind, loaded_name, loaded_mime, loaded_bytes) =
+                load_source_bytes(&db, &resource_id).expect("textbook source bytes");
+            assert_eq!(hash, source_hash);
+            assert_eq!(kind, expected_kind);
+            assert_eq!(loaded_name, name);
+            assert_eq!(loaded_mime, mime);
+            assert_eq!(loaded_bytes, bytes);
+
+            let manifest = assert_prepared_source_chain(
+                temp_dir.path(),
+                &db,
+                &resource_id,
+                &source_hash,
+                "textbook-import-test-v1",
+                (expected_kind == "pdf").then_some(0),
+                "textbook-import",
+            );
+            assert_eq!(
+                manifest.title,
+                Path::new(name).file_stem().unwrap().to_str().unwrap()
+            );
+            match &manifest.pages[0].background {
+                InkBackground::PdfPage {
+                    source_page_index, ..
+                } => {
+                    assert_eq!(expected_kind, "pdf");
+                    assert_eq!(*source_page_index, 0);
+                }
+                InkBackground::Image { .. } => assert_ne!(expected_kind, "pdf"),
+                InkBackground::Blank { .. } => panic!("prepared source page must have a raster"),
+            }
+
+            let conn = db.get_conn_safe().unwrap();
+            let (data_after, blob_after): (String, Option<String>) = conn
+                .query_row(
+                    "SELECT r.data, f.blob_hash FROM resources r JOIN files f ON f.id = r.source_id WHERE r.id = ?1",
+                    [&resource_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(data_after, extracted_text);
+            assert_eq!(blob_after.as_deref(), Some(source_hash.as_str()));
+            let metadata: String = conn
+                .query_row(
+                    "SELECT metadata_json FROM resources WHERE id = ?1",
+                    [&resource_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+            assert_eq!(metadata["custom"], "kept");
+            assert_eq!(
+                metadata["default_ink_document_id"],
+                manifest.document_id.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn real_attachment_imports_prepare_reuse_save_and_reopen_pdf_docx_pptx_image() {
+        for (name, mime, bytes, expected_kind, attachment_type) in [
+            ("课堂讲义.pdf", PDF_MIME, minimal_pdf(), "pdf", "file"),
+            ("课堂笔记.docx", DOCX_MIME, minimal_docx(), "docx", "file"),
+            ("演示文稿.pptx", PPTX_MIME, minimal_pptx(), "pptx", "file"),
+            ("课堂图片.png", PNG_MIME, distinct_png(), "image", "image"),
+        ] {
+            let (temp_dir, db) = setup_migrated_test_db();
+            let (resource_id, source_hash) =
+                attachment_import_source(&db, name, mime, &bytes, attachment_type);
+            let (hash, kind, loaded_name, loaded_mime, loaded_bytes) =
+                load_source_bytes(&db, &resource_id).expect("attachment source bytes");
+            assert_eq!(hash, source_hash);
+            assert_eq!(kind, expected_kind);
+            assert_eq!(loaded_name, name);
+            assert_eq!(loaded_mime, mime);
+            assert_eq!(loaded_bytes, bytes);
+
+            let manifest = assert_prepared_source_chain(
+                temp_dir.path(),
+                &db,
+                &resource_id,
+                &source_hash,
+                "attachment-import-test-v1",
+                (expected_kind == "pdf").then_some(0),
+                "attachment-import",
+            );
+            assert_eq!(
+                manifest.title,
+                Path::new(name).file_stem().unwrap().to_str().unwrap()
+            );
+            match &manifest.pages[0].background {
+                InkBackground::PdfPage {
+                    source_page_index, ..
+                } => {
+                    assert_eq!(expected_kind, "pdf");
+                    assert_eq!(*source_page_index, 0);
+                }
+                InkBackground::Image { .. } => assert_ne!(expected_kind, "pdf"),
+                InkBackground::Blank { .. } => panic!("prepared source page must have a raster"),
+            }
+        }
     }
 
     #[test]
@@ -2969,6 +3416,447 @@ mod tests {
             .unwrap()
             .expect("background blob path");
         assert_eq!(std::fs::read(path).unwrap(), PNG_1X1);
+    }
+
+    #[test]
+    fn soft_deleted_prepared_target_is_rebuilt_on_retry_with_same_operation_id() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let (source_resource_id, _, source_hash) = source_file(&conn, &db);
+        let first_stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "first-page.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        let first = commit_prepared_source_pages(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+            &[first_stage],
+            "prepare-reused-operation-id",
+        )
+        .expect("initial prepared document");
+
+        let mut page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &first.document_id,
+            &first.pages[0].page_id,
+        )
+        .unwrap();
+        page.objects.push(InkObject {
+            id: "job-user-stroke".to_owned(),
+            author: InkAuthor::User,
+            created_at: 0,
+            content: InkObjectContent::Rect {
+                rect: InkRect {
+                    x: 0.2,
+                    y: 0.2,
+                    width: 0.4,
+                    height: 0.4,
+                },
+                color: "#000000".to_owned(),
+                width: 1.0,
+            },
+        });
+        let annotated = VfsInkRepo::save_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &first.document_id,
+            &first.revision,
+            "save-job-annotation",
+            &page,
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE resources SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.custom', 'kept', '$.trash', json(?1)) WHERE id = ?2",
+            rusqlite::params![r#"{"deleted_notes":["note-9"]}"#, source_resource_id],
+        )
+        .unwrap();
+        let metadata_before = conn
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap();
+        let files_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+
+        VfsFileRepo::delete_file_with_conn(&db.get_conn_safe().unwrap(), &first.document_id)
+            .unwrap();
+
+        // Regression from logcat: this used to surface ink.format_conflict ->
+        // UNSUPPORTED_FORMAT instead of reporting "not reusable".
+        let reusable = reusable_prepared_manifest(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+        )
+        .expect("deleted default target must not fail the read-side reuse check");
+        assert!(reusable.is_none());
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap(),
+            metadata_before,
+            "read-side reuse check must not rewrite the stale pointer",
+        );
+        drop(conn);
+
+        let retry_stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "retry-page.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        let second = commit_prepared_source_pages(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+            &[retry_stage],
+            "prepare-reused-operation-id",
+        )
+        .expect("retry with the same operation ID must rebuild after target deletion");
+
+        assert_ne!(second.document_id, first.document_id);
+        let conn = db.get_conn_safe().unwrap();
+        let metadata: serde_json::Value = serde_json::from_str(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap()
+            .as_str(),
+        )
+        .unwrap();
+        assert_eq!(metadata["custom"], "kept");
+        assert_eq!(metadata["trash"]["deleted_notes"][0], "note-9");
+        assert_eq!(
+            metadata["default_ink_document_id"],
+            second.document_id.as_str()
+        );
+        let old_file = VfsFileRepo::get_file_with_conn(&conn, &first.document_id)
+            .unwrap()
+            .expect("old deleted document must remain");
+        assert_eq!(old_file.status, "deleted");
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_before + 1,
+        );
+
+        VfsFileRepo::restore_file_with_conn(&conn, &first.document_id).unwrap();
+        assert_eq!(
+            VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &first.document_id).unwrap(),
+            annotated,
+        );
+        let old_page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &first.document_id,
+            &annotated.pages[0].page_id,
+        )
+        .unwrap();
+        assert_eq!(old_page.objects.len(), 1);
+        assert_eq!(old_page.objects[0].id, "job-user-stroke");
+    }
+
+    #[test]
+    fn missing_default_target_is_not_reusable_and_commit_replaces_pointer() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let (source_resource_id, _, source_hash) = source_file(&conn, &db);
+        assert!(reusable_prepared_manifest(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+        )
+        .unwrap()
+        .is_none());
+
+        let orphan = format!("file_ink_{}", "b".repeat(64));
+        conn.execute(
+            "UPDATE resources SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.default_ink_document_id', ?1, '$.custom', 'kept') WHERE id = ?2",
+            rusqlite::params![orphan, source_resource_id],
+        )
+        .unwrap();
+        let metadata_before = conn
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap();
+        drop(conn);
+
+        assert!(reusable_prepared_manifest(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+        )
+        .unwrap()
+        .is_none());
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap(),
+            metadata_before,
+            "the read-side missing-target check must not rewrite metadata",
+        );
+        drop(conn);
+
+        let stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "missing-target.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        let manifest = commit_prepared_source_pages(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+            &[stage],
+            "prepare-missing-target",
+        )
+        .expect("a missing default target must be replaceable");
+        assert_ne!(manifest.document_id, orphan);
+        let conn = db.get_conn_safe().unwrap();
+        let metadata: serde_json::Value = serde_json::from_str(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap()
+            .as_str(),
+        )
+        .unwrap();
+        assert_eq!(metadata["custom"], "kept");
+        assert_eq!(
+            metadata["default_ink_document_id"],
+            manifest.document_id.as_str()
+        );
+    }
+
+    #[test]
+    fn active_prepared_target_keeps_annotations_and_pointer_on_retry() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let (source_resource_id, _, source_hash) = source_file(&conn, &db);
+        let manifest = prepared_manifest(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "prepare-active-reuse",
+        );
+        let mut page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.pages[0].page_id,
+        )
+        .unwrap();
+        page.objects.push(InkObject {
+            id: "active-user-stroke".to_owned(),
+            author: InkAuthor::User,
+            created_at: 0,
+            content: InkObjectContent::Rect {
+                rect: InkRect {
+                    x: 0.3,
+                    y: 0.3,
+                    width: 0.2,
+                    height: 0.2,
+                },
+                color: "#000000".to_owned(),
+                width: 1.0,
+            },
+        });
+        let annotated = VfsInkRepo::save_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            "save-active-annotation",
+            &page,
+        )
+        .unwrap();
+        let metadata_before = conn
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap();
+        let files_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(
+            reusable_prepared_manifest(
+                &db,
+                &source_resource_id,
+                &source_hash,
+                "test-image-converter-v1",
+            )
+            .unwrap(),
+            Some(annotated.clone()),
+        );
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap(),
+            metadata_before,
+        );
+        drop(conn);
+
+        let stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "active-reuse.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        let reused = commit_prepared_source_pages(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "test-image-converter-v1",
+            &[stage],
+            "prepare-active-reuse-retry",
+        )
+        .unwrap();
+        assert_eq!(reused, annotated);
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap(),
+            metadata_before,
+        );
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_before,
+        );
+        let page = VfsInkRepo::get_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &reused.document_id,
+            &reused.pages[0].page_id,
+        )
+        .unwrap();
+        assert_eq!(page.objects.len(), 1);
+        assert_eq!(page.objects[0].id, "active-user-stroke");
+    }
+
+    #[test]
+    fn active_corrupt_prepared_target_is_rejected_without_replacement() {
+        let (temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let (source_resource_id, _, source_hash) = source_file(&conn, &db);
+        let manifest = prepared_manifest(
+            &db,
+            &source_resource_id,
+            &source_hash,
+            "prepare-corrupt-active",
+        );
+        let manifest_hash: String = conn
+            .query_row(
+                "SELECT blob_hash FROM files WHERE id = ?1",
+                [&manifest.document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let manifest_path =
+            VfsBlobRepo::get_blob_path_with_conn(&conn, db.blobs_dir(), &manifest_hash)
+                .unwrap()
+                .unwrap();
+        std::fs::write(manifest_path, b"{\"corrupt\":true}").unwrap();
+        let metadata_before = conn
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap();
+        let files_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(
+            reusable_prepared_manifest(
+                &db,
+                &source_resource_id,
+                &source_hash,
+                "test-image-converter-v1",
+            )
+            .unwrap_err()
+            .code,
+            "SOURCE_CHANGED",
+        );
+        let stage = InkStagedPage {
+            staged_upload_id: stage_bytes(temp_dir.path(), "corrupt-active.png", PNG_1X1),
+            width_px: 1,
+            height_px: 1,
+            source_page_index: None,
+        };
+        assert_eq!(
+            commit_prepared_source_pages(
+                &db,
+                &source_resource_id,
+                &source_hash,
+                "test-image-converter-v1",
+                &[stage],
+                "prepare-corrupt-active-retry",
+            )
+            .unwrap_err()
+            .code,
+            "SOURCE_CHANGED",
+        );
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                [&source_resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap(),
+            metadata_before,
+            "a rejected corrupt active target must not rewrite metadata",
+        );
+        assert_eq!(
+            conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                .unwrap(),
+            files_before,
+            "a rejected corrupt active target must not create a replacement",
+        );
     }
 
     #[test]

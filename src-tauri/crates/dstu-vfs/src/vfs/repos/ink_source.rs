@@ -16,6 +16,49 @@ pub const INK_SOURCE_MAX_BYTES: u64 = 128 * 1024 * 1024;
 const INLINE_MAX_BYTES: u64 = 1024 * 1024;
 const INLINE_MAX_BASE64_LEN: i64 = ((INLINE_MAX_BYTES + 2) / 3 * 4) as i64;
 
+const PDF_MIME: &str = "application/pdf";
+const DOCX_MIME: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PPTX_MIME: &str = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+/// Resolve the only four source formats accepted by Ink preparation.
+///
+/// The extension, MIME type, and VFS file category must all agree. Document
+/// formats accept the historical `document`/`file` categories plus their own
+/// type alias (`pdf`/`docx`/`pptx`), which is what the textbook import path
+/// stores. Images keep the existing PNG/JPEG/WebP/GIF whitelist and must be
+/// categorized as `image`.
+pub fn ink_source_format(
+    file_name: &str,
+    mime_type: &str,
+    file_type: &str,
+) -> Option<&'static str> {
+    let extension = Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())?
+        .to_ascii_lowercase();
+    let mime = mime_type.trim().to_ascii_lowercase();
+    match extension.as_str() {
+        "pdf" if mime == PDF_MIME && matches!(file_type, "document" | "file" | "pdf") => {
+            Some("pdf")
+        }
+        "docx" if mime == DOCX_MIME && matches!(file_type, "document" | "file" | "docx") => {
+            Some("docx")
+        }
+        "pptx" if mime == PPTX_MIME && matches!(file_type, "document" | "file" | "pptx") => {
+            Some("pptx")
+        }
+        "png" if mime == "image/png" && file_type == "image" => Some("image"),
+        "jpg" | "jpeg"
+            if matches!(mime.as_str(), "image/jpeg" | "image/jpg") && file_type == "image" =>
+        {
+            Some("image")
+        }
+        "webp" if mime == "image/webp" && file_type == "image" => Some("image"),
+        "gif" if mime == "image/gif" && file_type == "image" => Some("image"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InkSourceIdentity {
     pub resource_id: String,
@@ -139,10 +182,21 @@ fn load_ink_source_with_conn(
         .file_id
         .as_deref()
         .ok_or_else(|| source_changed("Source resource does not resolve to a VFS file"))?;
+    let file_name = row
+        .file_name
+        .as_deref()
+        .ok_or_else(|| source_changed("Source file name is missing"))?;
     let file_type = row
         .file_type
         .as_deref()
         .ok_or_else(|| source_changed("Source file type is missing"))?;
+    let mime_type = row
+        .mime_type
+        .as_deref()
+        .ok_or_else(|| source_changed("Source file MIME type is missing"))?;
+    let format = ink_source_format(file_name, mime_type, file_type).ok_or_else(|| {
+        unsupported_format("Only PDF, image, DOCX, and PPTX sources are supported")
+    })?;
     let sha256 = row
         .sha256
         .as_deref()
@@ -157,14 +211,27 @@ fn load_ink_source_with_conn(
             "Source file exceeds the 128 MiB preparation limit",
         ));
     }
-    let legacy_blob_resource = row.blob_hash.is_some()
+    // Textbook imports keep the original bytes in `blobs`, while the inline
+    // `resources.data` column stores extracted text (possibly larger than the
+    // 1 MiB inline payload limit). Blob-backed inline resources therefore use
+    // the blob as the only payload and never interpret `data` as bytes/base64.
+    let inline_blob_resource = row.blob_hash.is_some()
         && row.storage_mode == "inline"
-        && row.data_len == Some(0)
-        && row.external_hash.is_none();
-    let resource_type_matches = match file_type {
-        "document" | "file" => row.resource_type == "file",
+        && row.external_hash.is_none()
+        && row.data_len.is_some();
+    let external_blob_resource = row.blob_hash.is_some()
+        && row.storage_mode == "external"
+        && row.external_hash.as_deref() == row.blob_hash.as_deref()
+        && row.data_len.is_none();
+    let storage_matches = if row.blob_hash.is_some() {
+        inline_blob_resource || external_blob_resource
+    } else {
+        row.storage_mode == "inline" && row.external_hash.is_none() && row.data_len.is_some()
+    };
+    let resource_type_matches = match format {
+        "pdf" | "docx" | "pptx" => row.resource_type == "file",
         "image" => {
-            row.resource_type == "image" || (row.resource_type == "file" && legacy_blob_resource)
+            row.resource_type == "image" || (row.resource_type == "file" && inline_blob_resource)
         }
         _ => false,
     };
@@ -175,21 +242,19 @@ fn load_ink_source_with_conn(
         || row.file_deleted
         || row.resource_deleted
         || !resource_type_matches
+        || !storage_matches
         || !valid_hash(&row.resource_hash)
         || expected_hash.is_some_and(|expected| expected != sha256)
     {
         return Err(source_changed(
-            "Source file linkage, type, status, or hash changed",
+            "Source file linkage, type, storage, status, or hash changed",
         ));
     }
 
     let bytes = if let Some(blob_hash) = row.blob_hash.as_deref() {
-        let external_resource = row.storage_mode == "external"
-            && row.external_hash.as_deref() == Some(blob_hash)
-            && row.data_len.is_none();
         if blob_hash != sha256
             || row.resource_hash != sha256
-            || !(legacy_blob_resource || external_resource)
+            || !(inline_blob_resource || external_blob_resource)
         {
             return Err(source_changed(
                 "Source blob and resource identities disagree",
@@ -344,6 +409,13 @@ fn source_changed(message: &str) -> VfsError {
     }
 }
 
+fn unsupported_format(message: &str) -> VfsError {
+    VfsError::InvalidArgument {
+        param: "file_name".to_owned(),
+        reason: message.to_owned(),
+    }
+}
+
 fn limit_exceeded(message: &str) -> VfsError {
     VfsError::Conflict {
         key: "ink.limit_exceeded".to_owned(),
@@ -353,6 +425,8 @@ fn limit_exceeded(message: &str) -> VfsError {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     use image::ImageEncoder;
     use rusqlite::params;
@@ -360,13 +434,13 @@ mod tests {
     use crate::vfs::{
         database::{setup_migrated_test_db, VfsDatabase},
         error::VfsError,
-        repos::{blob_repo::VfsBlobRepo, VfsAttachmentRepo},
+        repos::{blob_repo::VfsBlobRepo, textbook_repo::VfsTextbookRepo, VfsAttachmentRepo},
         types::VfsUploadAttachmentParams,
     };
 
     use super::{
-        read_ink_source_with_conn, validate_ink_source_with_conn, INK_SOURCE_MAX_BYTES,
-        INLINE_MAX_BASE64_LEN,
+        ink_source_format, read_ink_source_with_conn, validate_ink_source_with_conn,
+        INK_SOURCE_MAX_BYTES, INLINE_MAX_BASE64_LEN,
     };
 
     fn png(color: u8) -> Vec<u8> {
@@ -375,6 +449,84 @@ mod tests {
             .write_image(&[color, 23, 51, 255], 1, 1, image::ColorType::Rgba8)
             .unwrap();
         bytes
+    }
+
+    fn minimal_pdf() -> Vec<u8> {
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+            .to_vec()
+    }
+
+    fn office_zip(parts: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
+            let options = zip::write::FileOptions::default();
+            for (name, content) in parts {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(content).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        bytes
+    }
+
+    fn docx_bytes() -> Vec<u8> {
+        office_zip(&[
+            (
+                "[Content_Types].xml",
+                br#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>"#,
+            ),
+            (
+                "word/document.xml",
+                br#"<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>docx source</w:t></w:r></w:p></w:body></w:document>"#,
+            ),
+        ])
+    }
+
+    fn pptx_bytes() -> Vec<u8> {
+        office_zip(&[
+            (
+                "[Content_Types].xml",
+                br#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>"#,
+            ),
+            (
+                "ppt/presentation.xml",
+                br#"<?xml version="1.0"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>"#,
+            ),
+        ])
+    }
+
+    fn textbook_source(
+        conn: &rusqlite::Connection,
+        db: &VfsDatabase,
+        bytes: &[u8],
+        file_name: &str,
+        mime_type: &str,
+        extracted_text: Option<&str>,
+        page_count: Option<i32>,
+    ) -> (String, String, String) {
+        let extension = file_name.rsplit('.').next().unwrap_or("bin");
+        let blob = VfsBlobRepo::store_blob_with_conn(
+            conn,
+            db.blobs_dir(),
+            bytes,
+            Some(mime_type),
+            Some(extension),
+        )
+        .unwrap();
+        let textbook = VfsTextbookRepo::create_textbook_with_preview(
+            conn,
+            &blob.hash,
+            file_name,
+            bytes.len() as i64,
+            Some(&blob.hash),
+            None,
+            None,
+            extracted_text,
+            page_count,
+        )
+        .unwrap();
+        (textbook.resource_id.unwrap(), textbook.id, blob.hash)
     }
 
     fn upload(conn: &rusqlite::Connection, db: &VfsDatabase, bytes: &[u8]) -> (String, String) {
@@ -439,6 +591,254 @@ mod tests {
             )
             .unwrap();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn ink_source_format_requires_matching_extension_mime_and_category() {
+        assert_eq!(
+            ink_source_format("讲义.pdf", "application/pdf", "document"),
+            Some("pdf")
+        );
+        assert_eq!(
+            ink_source_format("report.PDF", "Application/PDF", "file"),
+            Some("pdf")
+        );
+        assert_eq!(
+            ink_source_format("alias.pdf", "application/pdf", "pdf"),
+            Some("pdf")
+        );
+        assert_eq!(
+            ink_source_format(
+                "word.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx"
+            ),
+            Some("docx")
+        );
+        assert_eq!(
+            ink_source_format(
+                "slides.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx"
+            ),
+            Some("pptx")
+        );
+        for name in [
+            "photo.png",
+            "photo.jpg",
+            "photo.jpeg",
+            "photo.webp",
+            "photo.gif",
+        ] {
+            let mime = if name.ends_with(".png") {
+                "image/png"
+            } else if name.ends_with(".webp") {
+                "image/webp"
+            } else if name.ends_with(".gif") {
+                "image/gif"
+            } else {
+                "image/jpeg"
+            };
+            assert_eq!(ink_source_format(name, mime, "image"), Some("image"));
+        }
+        assert_eq!(
+            ink_source_format("photo.jpg", "image/jpg", "image"),
+            Some("image")
+        );
+
+        for (name, mime, file_type) in [
+            ("report.pdf", "application/pdf", "image"),
+            ("report.pdf", "application/pdf", "docx"),
+            ("report.pdf", "text/plain", "document"),
+            ("report.docx", "application/pdf", "document"),
+            ("report.docx", "application/octet-stream", "docx"),
+            ("report.doc", "application/msword", "document"),
+            ("report.ppt", "application/vnd.ms-powerpoint", "document"),
+            (
+                "report.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "document",
+            ),
+            ("report.epub", "application/epub+zip", "document"),
+            ("photo.png", "image/jpeg", "image"),
+            ("photo.png", "image/png", "file"),
+            ("photo.svg", "image/svg+xml", "image"),
+            ("photo.bmp", "image/bmp", "image"),
+            ("photo.heic", "image/heic", "image"),
+        ] {
+            assert_eq!(
+                ink_source_format(name, mime, file_type),
+                None,
+                "{name} / {mime} / {file_type} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn reads_and_validates_textbook_imports_for_all_four_supported_formats() {
+        let cases = vec![
+            (
+                "讲义.pdf",
+                "application/pdf",
+                "pdf",
+                minimal_pdf(),
+                Some("PDF extracted text"),
+            ),
+            ("图片.png", "image/png", "image", png(7), None),
+            (
+                "文档.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx",
+                docx_bytes(),
+                Some("DOCX extracted text"),
+            ),
+            (
+                "幻灯片.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx",
+                pptx_bytes(),
+                Some("PPTX extracted text"),
+            ),
+        ];
+
+        for (file_name, mime_type, expected_type, bytes, extracted_text) in cases {
+            let (_temp_dir, db) = setup_migrated_test_db();
+            let conn = db.get_conn_safe().unwrap();
+            let (resource_id, _file_id, hash) = textbook_source(
+                &conn,
+                &db,
+                &bytes,
+                file_name,
+                mime_type,
+                extracted_text,
+                Some(1),
+            );
+            let source =
+                read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash))
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(source.bytes, bytes, "{file_name}");
+            assert_eq!(source.identity.file_type, expected_type);
+            assert_eq!(source.identity.resource_type, "file");
+            assert_eq!(source.identity.storage_mode, "inline");
+            assert_eq!(source.identity.blob_hash.as_deref(), Some(hash.as_str()));
+            assert_eq!(source.identity.resource_hash, hash);
+            assert_eq!(source.identity.sha256, hash);
+            assert_eq!(source.identity.mime_type.as_deref(), Some(mime_type));
+            assert_eq!(
+                validate_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash),)
+                    .unwrap()
+                    .unwrap(),
+                source.identity,
+            );
+            let stored_text: String = conn
+                .query_row(
+                    "SELECT data FROM resources WHERE id = ?1",
+                    [&resource_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(stored_text, extracted_text.unwrap_or_default());
+        }
+    }
+
+    #[test]
+    fn textbook_extracted_text_over_inline_limit_is_never_used_as_payload() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let bytes = minimal_pdf();
+        let extracted_text =
+            "not base64 extracted text! ".repeat((INLINE_MAX_BASE64_LEN as usize / 26) + 32);
+        assert!(extracted_text.len() as i64 > INLINE_MAX_BASE64_LEN);
+        let (resource_id, _file_id, hash) = textbook_source(
+            &conn,
+            &db,
+            &bytes,
+            "large-text.pdf",
+            "application/pdf",
+            Some(&extracted_text),
+            Some(1),
+        );
+        let source = read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash))
+            .unwrap()
+            .unwrap();
+        assert_eq!(source.bytes, bytes);
+        assert_eq!(source.identity.sha256, hash);
+        assert!(
+            validate_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash),)
+                .unwrap()
+                .is_some()
+        );
+        let stored_len: i64 = conn
+            .query_row(
+                "SELECT length(CAST(data AS BLOB)) FROM resources WHERE id = ?1",
+                [&resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_len, extracted_text.len() as i64);
+    }
+
+    #[test]
+    fn textbook_copy_hash_suffix_hash_drift_and_corrupted_blob_are_rejected() {
+        let (_temp_dir, db) = setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let bytes = minimal_pdf();
+        let (resource_id, file_id, hash) = textbook_source(
+            &conn,
+            &db,
+            &bytes,
+            "source.pdf",
+            "application/pdf",
+            Some("extracted"),
+            Some(1),
+        );
+
+        conn.execute(
+            "UPDATE files SET sha256 = ?1 WHERE id = ?2",
+            params![format!("{hash}_copy_deadbeef"), file_id],
+        )
+        .unwrap();
+        assert_conflict(
+            read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash)),
+            "ink.source_changed",
+        );
+        assert_conflict(
+            validate_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash)),
+            "ink.source_changed",
+        );
+
+        let drifted = VfsBlobRepo::compute_hash(b"different source bytes");
+        conn.execute(
+            "UPDATE files SET sha256 = ?1 WHERE id = ?2",
+            params![drifted, file_id],
+        )
+        .unwrap();
+        assert_conflict(
+            read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&drifted)),
+            "ink.source_changed",
+        );
+        conn.execute(
+            "UPDATE files SET sha256 = ?1 WHERE id = ?2",
+            params![hash, file_id],
+        )
+        .unwrap();
+
+        let blob = VfsBlobRepo::get_blob_with_conn(&conn, &hash)
+            .unwrap()
+            .unwrap();
+        let blob_path = db.blobs_dir().join(&blob.relative_path);
+        let mut corrupted = std::fs::read(&blob_path).unwrap();
+        corrupted[0] ^= 1;
+        std::fs::write(&blob_path, &corrupted).unwrap();
+        assert_conflict(
+            read_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash)),
+            "ink.source_changed",
+        );
+        assert_conflict(
+            validate_ink_source_with_conn(&conn, db.blobs_dir(), &resource_id, Some(&hash)),
+            "ink.source_changed",
+        );
     }
 
     #[test]
