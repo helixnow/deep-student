@@ -19,6 +19,9 @@ import { MarkdownBlock } from '../components/MarkdownBlock';
 import { ChartBlock } from '../components/ChartBlock';
 import { StepsBlock } from '../components/StepsBlock';
 import { TableBlock } from '../components/TableBlock';
+import { ChoiceBlock } from '../components/ChoiceBlock';
+import { FormBlock } from '../components/FormBlock';
+import { ImageBlock } from '../components/ImageBlock';
 
 const components = {
   'stat-card': StatCardBlock,
@@ -39,6 +42,9 @@ const components = {
   'chart': ChartBlock,
   'steps': StepsBlock,
   'table': TableBlock,
+  'choice': ChoiceBlock,
+  'form': FormBlock,
+  'image': ImageBlock,
 };
 
 for (const config of BUILTIN_GENERATIVE_BLOCK_SCHEMAS) {
@@ -64,4 +70,7 @@ export {
   ChartBlock,
   StepsBlock,
   TableBlock,
+  ChoiceBlock,
+  FormBlock,
+  ImageBlock,
 };

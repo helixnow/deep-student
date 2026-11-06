@@ -3,6 +3,10 @@ use std::sync::{Arc, Mutex};
 
 use deep_student_lib::chat_v2::event_types;
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
+use deep_student_lib::chat_v2::tools::genui_interaction::{
+    build_rendered_output, list_pending_genui_awaits, GENUI_AWAIT_CONTEXT_REJECTED,
+    GENUI_INTERACTIVE_REQUIRES_AWAIT,
+};
 use deep_student_lib::chat_v2::tools::{ExecutionContext, GenerativeUiExecutor, ToolExecutor};
 use deep_student_lib::chat_v2::types::ToolCall;
 use deep_student_lib::hpias::HPIAS_EVENT_CHANNEL;
@@ -312,6 +316,10 @@ async fn execute_emits_generative_ui_start_chunk_end_events() {
         .expect("executor returns ToolResultInfo");
 
     assert!(result.success);
+    // 非 await：输出带「不要复述界面」note，与契约构造函数一致
+    assert_eq!(result.output, build_rendered_output(1));
+    assert!(result.output.get("note").and_then(Value::as_str).is_some());
+    assert!(result.output.get("interaction").is_none());
 
     for _ in 0..50 {
         let captured = events
@@ -323,10 +331,20 @@ async fn execute_emits_generative_ui_start_chunk_end_events() {
                 .iter()
                 .filter(|payload| payload["type"] == event_types::GENERATIVE_UI)
                 .collect();
-            assert!(
-                generative_events.iter().any(|e| e["phase"] == "start"),
-                "missing start event: {captured:?}"
+            let start = generative_events
+                .iter()
+                .find(|e| e["phase"] == "start")
+                .unwrap_or_else(|| panic!("missing start event: {captured:?}"));
+            // start payload 带 toolCallId（前端据此对齐 preparing 占位块）与 title
+            assert_eq!(
+                start.pointer("/payload/toolCallId").and_then(Value::as_str),
+                Some("call-generative-ui-e2e")
             );
+            assert_eq!(
+                start.pointer("/payload/title").and_then(Value::as_str),
+                Some("Briefing")
+            );
+            assert!(start.pointer("/payload/awaitAnswer").is_none());
             assert!(
                 generative_events.iter().any(|e| e["phase"] == "chunk"),
                 "missing chunk event: {captured:?}"
@@ -337,6 +355,7 @@ async fn execute_emits_generative_ui_start_chunk_end_events() {
                 .expect("missing end event");
             assert_eq!(end["blockId"], block_id);
             let end_result = &end["result"];
+            assert!(end_result.get("interaction").is_none());
             assert_eq!(
                 end_result
                     .pointer("/intent/blocks")
@@ -629,4 +648,103 @@ async fn execute_with_note_edit_preserves_input_payload() {
             .and_then(Value::as_str),
         Some("append")
     );
+}
+
+fn choice_intent() -> Value {
+    json!({
+        "version": "1.1",
+        "blocks": [{
+            "type": "choice",
+            "id": "q1",
+            "props": {
+                "question": "2+2=?",
+                "options": [
+                    { "id": "a", "label": "4" },
+                    { "id": "b", "label": "5" }
+                ]
+            }
+        }]
+    })
+}
+
+async fn assert_rejected_with_error_event(
+    harness: &GenerativeUiHarness,
+    events: &Arc<Mutex<Vec<Value>>>,
+    call_id: &str,
+    block_id: &str,
+    arguments: Value,
+    needle: &str,
+) {
+    let result = GenerativeUiExecutor::new()
+        .execute(
+            &ToolCall::new(
+                call_id.to_string(),
+                "builtin-render_generative_ui".to_string(),
+                arguments,
+            ),
+            &execution_context(harness, block_id),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(!result.success);
+    let error = result.error.as_deref().unwrap_or("");
+    assert!(error.contains(needle), "expected {needle:?} in {error:?}");
+
+    for _ in 0..50 {
+        let captured = events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let generative_events: Vec<&Value> = captured
+            .iter()
+            .filter(|payload| payload["type"] == event_types::GENERATIVE_UI)
+            .filter(|payload| payload["blockId"] == block_id)
+            .collect();
+        if generative_events.iter().any(|e| e["phase"] == "error") {
+            let start = generative_events
+                .iter()
+                .find(|e| e["phase"] == "start")
+                .expect("start precedes error");
+            assert_eq!(
+                start.pointer("/payload/toolCallId").and_then(Value::as_str),
+                Some(call_id)
+            );
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("timed out waiting for generative_ui rejection error event");
+}
+
+#[tokio::test]
+async fn execute_rejects_choice_without_await_answer() {
+    let harness = create_harness();
+    let events = capture_block_events(&harness.window, &harness.session_id);
+    assert_rejected_with_error_event(
+        &harness,
+        &events,
+        "call-generative-ui-choice-no-await-e2e",
+        "block-generative-ui-choice-no-await-e2e",
+        json!({ "intent": choice_intent() }),
+        GENUI_INTERACTIVE_REQUIRES_AWAIT,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn execute_await_answer_without_chat_db_fails_closed() {
+    let harness = create_harness();
+    let events = capture_block_events(&harness.window, &harness.session_id);
+    assert_rejected_with_error_event(
+        &harness,
+        &events,
+        "call-generative-ui-await-no-db-e2e",
+        "block-generative-ui-await-no-db-e2e",
+        json!({ "awaitAnswer": true, "intent": choice_intent() }),
+        GENUI_AWAIT_CONTEXT_REJECTED,
+    )
+    .await;
+    assert!(list_pending_genui_awaits(&harness.session_id).is_empty());
 }

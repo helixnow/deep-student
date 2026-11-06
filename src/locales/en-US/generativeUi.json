@@ -36,7 +36,9 @@
     "export_markdown": "Export Markdown",
     "copy_block": "Copy this block",
     "open_note": "Open note",
-    "open_pdf_page": "Open PDF page {{page}}"
+    "open_pdf_page": "Open PDF page {{page}}",
+    "followup_title": "Will send: {{prompt}}",
+    "followup_confirm": "Confirm send: {{label}}"
   },
   "export_markdown": {
     "empty_table": "Empty table",
@@ -410,5 +412,83 @@
     "diff_title": "Diff vs last snapshot",
     "diff_none": "No changes",
     "diff_summary": "+{{added}} / −{{removed}} / ~{{changed}}"
+  },
+  "interaction": {
+    "submit": "Submit",
+    "submitting": "Submitting…",
+    "skip": "Skip",
+    "skipping": "Skipping…",
+    "awaiting_hint": "Submit when you are done, or reply in the chat box instead",
+    "submitted": "Submitted, continuing…",
+    "answered": "Answered: {{summary}}",
+    "answered_plain": "Answered",
+    "replied_in_chat": "Replied in chat",
+    "skipped": "Skipped",
+    "stopped": "Not answered (stopped)",
+    "interrupted": "Not answered (session interrupted)",
+    "expired": "Expired",
+    "expired_hint": "This question has closed and can no longer be submitted",
+    "unavailable": "Answering is not available right now",
+    "validation_error": "Some answers are missing or invalid — check the highlighted items",
+    "invalid": "The answer did not pass validation. Please edit and submit again",
+    "invalid_detail": "The answer did not pass validation: {{detail}}",
+    "submit_failed": "Submit failed, please try again",
+    "display_only": "Answerable only in a tool call",
+    "required": "Required",
+    "optional": "Optional",
+    "choice": {
+      "single_hint": "Pick one",
+      "select_range": "Pick {{min}}–{{max}}",
+      "select_exact": "Pick {{count}}",
+      "selected_count": "{{count}} / {{max}} selected",
+      "other": "Other",
+      "other_placeholder": "Type your answer"
+    },
+    "form": {
+      "char_count": "{{count}}/{{max}}",
+      "not_set": "Not set",
+      "rating_value": "{{value}} / {{max}}",
+      "rating_option": "{{value}} of {{max}}"
+    },
+    "issue": {
+      "no_blocks": "Nothing to submit",
+      "duplicate_block": "Duplicate question",
+      "choice_required": "Please choose an option",
+      "choice_too_few": "Choose at least {{min}}",
+      "choice_too_many": "Choose at most {{max}}",
+      "choice_unknown_option": "Contains an invalid option",
+      "choice_other_not_allowed": "This question does not accept other answers",
+      "choice_other_too_long": "Keep it under {{max}} characters",
+      "field_required": "This field is required",
+      "field_too_long": "Keep it under {{max}} characters",
+      "field_not_number": "Enter a number",
+      "field_out_of_range": "Out of range ({{range}})",
+      "field_step_mismatch": "Use steps of {{step}}",
+      "field_invalid": "Invalid value",
+      "data_too_large": "The answer is too long — please shorten it"
+    },
+    "summary": {
+      "kv_separator": ": ",
+      "list_separator": ", ",
+      "field_separator": "; ",
+      "other": "Other",
+      "yes": "Yes",
+      "no": "No",
+      "not_selected": "(none)",
+      "fallback": "Submitted"
+    },
+    "a11y": {
+      "form_label": "Form",
+      "choice_label": "Question"
+    }
+  },
+  "image": {
+    "loading": "Loading image…",
+    "unavailable": "Image unavailable",
+    "unavailable_with_alt": "{{alt}} (image unavailable)"
+  },
+  "inline": {
+    "generating": "Generating UI…",
+    "invalid_fallback": "Invalid inline UI — showing source"
   }
 }

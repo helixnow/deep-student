@@ -1,5 +1,5 @@
 /**
- * 18 种内置块最小合法 props — 用于 SOTA 运行时渲染验收
+ * 21 种内置块最小合法 props — 用于 SOTA 运行时渲染验收
  */
 import type { GenerativeUIIntent } from '../types';
 
@@ -39,9 +39,36 @@ export const ALL_BLOCKS_MINIMAL_PROPS: Record<string, Record<string, unknown>> =
     columns: [{ key: 'topic', label: '主题' }, { key: 'rate', label: '错误率' }],
     rows: [{ topic: '代数', rate: '35%' }],
   },
+  choice: {
+    question: '你更喜欢哪种复习方式？',
+    mode: 'single',
+    options: [
+      { id: 'cards', label: '闪卡' },
+      { id: 'quiz', label: '练习题' },
+    ],
+  },
+  form: {
+    title: '学习偏好',
+    fields: [
+      { name: 'minutes', label: '每日分钟数', kind: 'slider', min: 10, max: 120, step: 10 },
+      { name: 'reminder', label: '开启提醒', kind: 'switch' },
+    ],
+  },
+  image: {
+    source: { kind: 'url', url: 'https://example.com/generative-ui-demo.png' },
+    alt: '示例图片',
+    caption: '图片说明',
+  },
 };
 
 export const ALL_BLOCK_TYPES = Object.keys(ALL_BLOCKS_MINIMAL_PROPS);
+
+/** 交互块（choice/form）在工具链路中块 id 必填；fixture 统一给 demo-<type> */
+const INTERACTIVE_FIXTURE_TYPES = new Set(['choice', 'form']);
+
+function fixtureBlockId(type: string): { id?: string } {
+  return INTERACTIVE_FIXTURE_TYPES.has(type) ? { id: `demo-${type}` } : {};
+}
 
 /** 单块意图 */
 export function buildSingleBlockIntent(blockType: string): GenerativeUIIntent {
@@ -52,17 +79,18 @@ export function buildSingleBlockIntent(blockType: string): GenerativeUIIntent {
   return {
     version: '1',
     meta: { title: `Block: ${blockType}` },
-    blocks: [{ type: blockType, props }],
+    blocks: [{ type: blockType, ...fixtureBlockId(blockType), props }],
   };
 }
 
-/** 18 块合一意图（用于全量 smoke） */
+/** 21 块合一意图（用于全量 smoke） */
 export function buildAllBlocksIntent(): GenerativeUIIntent {
   return {
     version: '1',
-    meta: { title: 'All 18 blocks' },
+    meta: { title: 'All 21 blocks' },
     blocks: ALL_BLOCK_TYPES.map((type) => ({
       type,
+      ...fixtureBlockId(type),
       props: ALL_BLOCKS_MINIMAL_PROPS[type]!,
     })),
   };
@@ -78,13 +106,13 @@ const WIDE_SHOWCASE_TYPES = new Set([
   'steps',
 ]);
 
-/** 18 块 v1.1 两列 grid Showcase（最小合法 props） */
+/** 21 块 v1.1 两列 grid Showcase（最小合法 props） */
 export function buildAllBlocksGridIntent(): GenerativeUIIntent {
   return {
     version: '1.1',
     layout: { mode: 'grid', columns: 2 },
     meta: {
-      title: '18 块 Showcase · v1.1 grid',
+      title: '21 块 Showcase · v1.1 grid',
       description: '全部内置块最小合法 props，两列栅格',
     },
     blocks: ALL_BLOCK_TYPES.map((type) => ({

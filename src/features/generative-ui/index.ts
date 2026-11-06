@@ -24,7 +24,90 @@ export {
   generativeBlockIntentSchema,
   parseGenerativeUIIntent,
   validateBlockProps,
+  generativeActionSchema,
+  generativeImageSourceSchema,
+  choiceOptionSchema,
+  choicePropsSchema,
+  formFieldSchema,
+  formPropsSchema,
+  imageBlockPropsSchema,
+  isAllowedGenerativeImageUrl,
+  isFollowupActionId,
+  resolveChoiceSelectBounds,
+  FOLLOWUP_ACTION_PREFIX,
 } from './schema';
+export type {
+  GenerativeAction,
+  GenerativeImageSource,
+  ChoiceOption,
+  ChoiceProps,
+  FormField,
+  FormFieldKind,
+  FormProps,
+  ImageBlockProps,
+} from './schema';
+export {
+  validateIntentRules,
+  isInlineSafeActionId,
+  INLINE_SAFE_ACTION_IDS,
+  INLINE_SAFE_ACTION_PREFIXES,
+  GENUI_INTERACTIVE_REQUIRES_AWAIT_MESSAGE,
+  GENUI_AWAIT_REQUIRES_INTERACTIVE_MESSAGE,
+} from './validateIntentRules';
+export type {
+  ValidateIntentRulesMode,
+  ValidateIntentRulesOptions,
+  ValidateIntentRulesResult,
+  GenUiIntentRuleCode,
+  GenUiAwaitSpec,
+  InteractiveBlockSpec,
+} from './validateIntentRules';
+export * from './interaction/limits';
+export type {
+  ChoiceAnswer,
+  FormAnswer,
+  GenerativeUIAnswerData,
+  GenerativeUIAnswerPayload,
+  GenerativeUIInteractionState,
+  GenerativeUIInteractionReason,
+  GenerativeUIInteraction,
+  GenerativeUIResolvedAnswerEntry,
+  GenerativeUIPersistedAnswer,
+  GenerativeUISubmitOutcome,
+  GenerativeUIInteractionBinding,
+  GenerativeUIInteractionMode,
+} from './interaction/types';
+export {
+  buildGenerativeUIAnswer,
+  buildChoiceAnswer,
+  buildFormAnswer,
+  buildGenerativeUIAnswerSummary,
+  sanitizeGenerativeUIAnswerSummary,
+  validateGenerativeUIAnswer,
+  stripGenuiControlChars,
+  DEFAULT_ANSWER_SUMMARY_LABELS,
+} from './interaction/buildAnswer';
+export type {
+  ChoiceDraftState,
+  FormDraftValue,
+  FormDraftState,
+  GenerativeUIInteractiveDraft,
+  GenerativeUIAnswerIssue,
+  GenerativeUIAnswerIssueCode,
+  GenerativeUIAnswerSummaryLabels,
+  BuildGenerativeUIAnswerResult,
+} from './interaction/buildAnswer';
+export {
+  readGenerativeUIInteraction,
+  parseGenerativeUIInteraction,
+  parseGenerativeUIPersistedAnswer,
+  buildPendingGenerativeUIInteraction,
+} from './interaction/readInteraction';
+export type {
+  GenerativeUIInteractionBlockLike,
+  ReadGenerativeUIInteractionContext,
+  GenerativeUIInteractionReadResult,
+} from './interaction/readInteraction';
 export { GenerativeUIStreamParser, tryParsePartialIntent } from './parser';
 export type { GenerativeUIStreamPhase, GenerativeUIStreamSnapshot } from './parser';
 export {

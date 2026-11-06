@@ -205,6 +205,9 @@ pub async fn chat_v2_emergency_stop(
     let newly_tripped = chat_v2_state.kill_switch.trip(reason.clone());
     pause_automation_scheduler();
     let cancelled_streams = chat_v2_state.cancel_all_streams();
+    // 生成式 UI awaitAnswer：drop 全部挂起 Sender，等待方立即以 stopped 收尾，
+    // 注册表不留残留条目（list_pending 随即为空）。
+    let cancelled_genui_awaits = super::tools::genui_interaction::cancel_all_genui_awaits();
     cancel_active_automation_runs_for_emergency_stop();
 
     // 🆕 取消语义贯通：脱管的 ChatAnki 后台制卡管线不持有 stream token，
@@ -239,12 +242,13 @@ pub async fn chat_v2_emergency_stop(
     emit_kill_switch_changed(&app_handle, &status);
 
     log::warn!(
-        "[ChatV2::kill_switch] emergency_stop: newly_tripped={}, cancelled_streams={}, rejected_approvals={}, cancelled_workers={}, cancelled_chatanki_pipelines={}, reason={}",
+        "[ChatV2::kill_switch] emergency_stop: newly_tripped={}, cancelled_streams={}, rejected_approvals={}, cancelled_workers={}, cancelled_chatanki_pipelines={}, cancelled_genui_awaits={}, reason={}",
         newly_tripped,
         cancelled_streams,
         rejected_approvals,
         cancelled_workers,
         cancelled_chatanki_pipelines,
+        cancelled_genui_awaits,
         reason
     );
 

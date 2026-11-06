@@ -12,6 +12,11 @@ import {
   finalizeGenerativeUIStream,
   resetGenerativeUIStream,
 } from './generativeUIStreamRegistry';
+import { extractIntentFromToolArgs } from './extractIntentFromToolArgs';
+import type {
+  GenerativeUIInteraction,
+  GenerativeUIPersistedAnswer,
+} from '../interaction/types';
 
 export const GENERATIVE_UI_BLOCK_TYPE = 'generative_ui';
 
@@ -20,6 +25,28 @@ const EMPTY_STREAMING_INTENT: GenerativeUIIntent = { version: '1', blocks: [] };
 export interface GenerativeUIBlockOutput {
   intent?: string | GenerativeUIIntent;
   isStreaming?: boolean;
+  /**
+   * 交互作答（awaitAnswer）：live start 写 { awaitAnswer, interaction: pending }，
+   * end / DB 回放写 { interaction, answer? }。这些输出可能不带 intent——
+   * 此时 intent 回退到流式 content（live 完整 intent chunk）或 toolInput.intent（回放）。
+   */
+  awaitAnswer?: boolean;
+  interaction?: GenerativeUIInteraction;
+  answer?: GenerativeUIPersistedAnswer;
+}
+
+/**
+ * tool_call_preparing 阶段（block.isPreparing，content 是原始工具参数而非 intent）：
+ * 从参数里截取 intent 源文本喂给流式解析器，只渲染已闭合 block；
+ * 还没流到 intent 时返回空意图（流式骨架）。
+ */
+export function extractPreparingGenerativeUIIntent(
+  blockId: string,
+  toolArgs: string | null | undefined,
+): { intent: GenerativeUIIntent; isStreaming: true } {
+  const source = extractIntentFromToolArgs(toolArgs) ?? '';
+  const snapshot = appendGenerativeUIStreamContent(blockId, source);
+  return { intent: snapshot.intent ?? EMPTY_STREAMING_INTENT, isStreaming: true };
 }
 
 function validateIntentObject(value: unknown): GenerativeUIIntent | null {

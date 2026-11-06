@@ -33,3 +33,33 @@ fn removed_cardforge_callback_stays_off_command_surfaces() {
         );
     }
 }
+
+/// 生成式 UI 交互作答命令须同时出现在命令重导出、`generate_handler!` 与 ACL 白名单。
+#[test]
+fn genui_interaction_commands_are_registered_on_all_command_surfaces() {
+    let commands = [
+        "chat_v2_genui_submit_answer",
+        "chat_v2_genui_dismiss_answer",
+        "chat_v2_genui_list_pending_answers",
+    ];
+    let lib_rs = include_str!("../../lib.rs");
+    let handlers_mod = include_str!("../../../crates/dstu-agent/src/chat_v2/handlers/mod.rs");
+    let permissions = include_str!("../../../permissions/application-commands.toml");
+
+    for command in commands {
+        assert!(
+            lib_rs.contains(&format!(
+                "crate::chat_v2::handlers::genui_interaction_handlers::{command}"
+            )),
+            "{command} must be registered in lib.rs generate_handler!"
+        );
+        assert!(
+            handlers_mod.contains(command),
+            "{command} must be re-exported from chat_v2::handlers"
+        );
+        assert!(
+            permissions.contains(&format!("\"{command}\"")),
+            "{command} must be allowed in permissions/application-commands.toml"
+        );
+    }
+}

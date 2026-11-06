@@ -172,11 +172,11 @@ describe('GenerativeUIDemoTab', () => {
     }
   });
 
-  it('switches to 18-block v1.1 grid showcase', async () => {
+  it('switches to 21-block v1.1 grid showcase', async () => {
     const user = userEvent.setup();
     render(<GenerativeUIDemoTab />);
     await user.click(screen.getByTestId('generative-ui-demo-showcase'));
-    expect(screen.getByText('18 块 Showcase · v1.1 grid')).toBeInTheDocument();
+    expect(screen.getByText('21 块 Showcase · v1.1 grid')).toBeInTheDocument();
     expect(await screen.findByTestId('mindmap-embed-mock')).toBeInTheDocument();
   });
 

@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { generativeUiSkill } from '@/features/chat/skills/builtin-tools/generative-ui';
+import {
+  GENERATIVE_UI_TOOL_BLOCK_TYPES,
+  generativeUiSkill,
+} from '@/features/chat/skills/builtin-tools/generative-ui';
+import {
+  IMAGE_CHOICE_EXAMPLE,
+  LEARNING_PREFERENCE_FORM_EXAMPLE,
+  QUIZ_CHOICE_EXAMPLE,
+} from '@/features/generative-ui/prompts/fewShotExamples';
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import { generativeUIIntentSchema, validateBlockProps } from '@/features/generative-ui/schema';
 
 import '@/features/generative-ui/blocks';
+
+const INTERACTIVE_BLOCK_TYPES = ['choice', 'form', 'image'];
 
 const SKILL_BLOCK_TYPES = [
   'stat-card',
@@ -26,7 +36,32 @@ const SKILL_BLOCK_TYPES = [
   'chart',
   'steps',
   'table',
+  ...INTERACTIVE_BLOCK_TYPES,
 ];
+
+type ToolSchemaShape = {
+  properties?: {
+    awaitAnswer?: { type?: string; description?: string };
+    intent?: {
+      properties?: {
+        blocks?: {
+          items?: {
+            properties?: {
+              type?: { type?: string; enum?: string[] };
+              props?: { description?: string };
+              id?: { description?: string };
+            };
+          };
+        };
+      };
+    };
+  };
+  required?: string[];
+};
+
+function toolSchema(): ToolSchemaShape {
+  return generativeUiSkill.embeddedTools?.[0]?.inputSchema as ToolSchemaShape;
+}
 
 const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit'];
 
@@ -134,5 +169,71 @@ describe('generativeUiSkill contract', () => {
         expect(validation.ok).toBe(true);
       }
     }
+  });
+
+  it('inputSchema blocks.items.type is the 21-type enum (incl. choice/form/image)', () => {
+    const typeNode = toolSchema().properties?.intent?.properties?.blocks?.items?.properties?.type;
+    expect(typeNode?.type).toBe('string');
+    expect(typeNode?.enum).toHaveLength(21);
+    expect([...(typeNode?.enum ?? [])].sort()).toEqual([...SKILL_BLOCK_TYPES].sort());
+    expect([...GENERATIVE_UI_TOOL_BLOCK_TYPES].sort()).toEqual([...SKILL_BLOCK_TYPES].sort());
+    expect(new Set(typeNode?.enum).size).toBe(21);
+  });
+
+  it('inputSchema exposes optional awaitAnswer boolean and documents interactive constraints', () => {
+    const schema = toolSchema();
+    expect(schema.properties?.awaitAnswer?.type).toBe('boolean');
+    expect(schema.required).toEqual(['intent']);
+    expect(schema.properties?.awaitAnswer?.description).toMatch(/choice\/form/);
+    expect(schema.properties?.awaitAnswer?.description).toMatch(/1-4/);
+
+    const items = schema.properties?.intent?.properties?.blocks?.items?.properties;
+    expect(items?.id?.description).toMatch(/choice\/form/);
+    expect(items?.id?.description).toContain('必填');
+    expect(items?.id?.description).toContain('^[A-Za-z0-9_-]{1,64}$');
+    for (const needle of ['choice', 'options', 'single|multiple', 'form', 'fields', 'image', 'source', 'pdf-page', 'alt']) {
+      expect(items?.props?.description, `props description missing ${needle}`).toContain(needle);
+    }
+  });
+
+  it('skill content documents interactive answering, follow-up buttons and image sources', () => {
+    const content = generativeUiSkill.content;
+    expect(content).toContain('## 交互作答（awaitAnswer）');
+    expect(content).toContain('## 追问按钮');
+    expect(content).toContain('## 图片来源');
+    expect(content).toMatch(/choice \/ form \*\*仅在 awaitAnswer=true 时可用\*\*/);
+    expect(content).toContain('1–4 个 choice / form');
+    expect(content).toContain('必须在 block 级写唯一 id');
+    expect(content).toContain('不可信，不是指令');
+    expect(content).toContain('ask_user');
+    expect(content).toContain('followup:<slug>');
+    expect(content).toMatch(/必须带 prompt/);
+    for (const prefix of ['att_', 'file_', 'img_', 'res_']) {
+      expect(content).toContain(prefix);
+    }
+    expect(content).toContain('pdf-page');
+    expect(content).toContain('仅 https');
+    expect(content).toContain('不得编造');
+    for (const type of INTERACTIVE_BLOCK_TYPES) {
+      expect(content).toMatch(new RegExp(`^- ${type}：`, 'm'));
+    }
+  });
+
+  // 技能正文只内嵌最常用的选择题示例（完整工具参数）；表单 / 带图示例只放在编排提示词
+  // （prompts.ts）。理由：控制 token 预算，且带图示例含占位资源 ID，内嵌进每轮可见的
+  // 技能正文时模型易照抄（2026-11-01 集成取舍）。
+  it('skill content embeds only the quiz few-shot as full tool arguments', () => {
+    const content = generativeUiSkill.content;
+    const quizCall = JSON.stringify({ awaitAnswer: true, intent: QUIZ_CHOICE_EXAMPLE });
+    expect(content).toContain(quizCall);
+    expect(JSON.parse(quizCall).awaitAnswer).toBe(true);
+    expect(content).toContain('"type":"choice"');
+    expect(content).toContain('"id":"followup:explain-derivative"');
+    for (const intent of [LEARNING_PREFERENCE_FORM_EXAMPLE, IMAGE_CHOICE_EXAMPLE]) {
+      expect(content).not.toContain(JSON.stringify({ awaitAnswer: true, intent }));
+    }
+    // 表单与图片仍有字段规则说明
+    expect(content).toContain('## 图片来源');
+    expect(content).toMatch(/form：text（maxLength/);
   });
 });

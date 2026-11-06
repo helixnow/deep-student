@@ -6,6 +6,10 @@
 
 import type { ComponentType } from 'react';
 import type { z } from 'zod';
+import type {
+  GenerativeUIInteractionBinding,
+  GenerativeUIInteractionMode,
+} from './interaction/types';
 
 /** 单个 UI 块的 props 基类 */
 export interface GenerativeBlockProps {
@@ -119,5 +123,13 @@ export interface GenerativeUIRendererProps {
   /** 容器级强制 compact（单列 stack + 4/8/12 间距）：嵌在窄面板（如产物面板，
       宽 320-720px 但视口 ≥ sm）时由调用方传入，绕开仅看视口的 useGenerativeUICompact */
   forceCompact?: boolean;
+  /**
+   * 交互模式（缺省 'interactive'）。'display-only'（正文内联 ```genui）下渲染器只放行
+   * INLINE_SAFE action（copy-block、copy-intent、open-note:*、open-pdf:*），
+   * choice/form 只读并提示「仅在工具调用中可作答」。
+   */
+  interactionMode?: GenerativeUIInteractionMode;
+  /** awaitAnswer 交互绑定；缺省时 choice/form 只读 */
+  interaction?: GenerativeUIInteractionBinding;
   className?: string;
 }

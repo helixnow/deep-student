@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PaperPlaneTilt } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
-import type { ActionBarProps } from '../schema';
+import { isFollowupActionId, type ActionBarProps } from '../schema';
 import type { GenerativeActionDefinition, GenerativeUIAction, RiskLevel } from '../types';
 import { lookupGenerativeActionHandler, resolveEffectiveRiskLevel } from '../actions';
 import {
@@ -18,6 +19,8 @@ export interface ActionBarBlockProps extends ActionBarProps {
   onAction?: (action: GenerativeUIAction) => void;
   /** 可注入撤销栈；默认模块单例。不改变 HITL risk 确认行为。 */
   undoStack?: GenerativeActionUndoStack;
+  /** 整栏禁用（流式生成中）；不影响已注册 handler 与风险确认机制 */
+  disabled?: boolean;
 }
 
 const UNDO_TOOLBAR_ID = '__generative-undo__';
@@ -40,6 +43,7 @@ export function ActionBarBlock({
   actionHandlers,
   onAction,
   undoStack = getDefaultGenerativeActionUndoStack(),
+  disabled = false,
 }: ActionBarBlockProps) {
   const { t } = useTranslation('generativeUi');
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
@@ -73,11 +77,11 @@ export function ActionBarBlock({
   const showToolbar = visibleActions.length > 0 || showUndoControl;
 
   const focusableItemIds = useMemo(() => {
-    if (executing) return [];
+    if (executing || disabled) return [];
     const ids = visibleActions.map((action) => action.id);
     if (showUndoControl && undoAvailable) ids.push(UNDO_TOOLBAR_ID);
     return ids;
-  }, [executing, showUndoControl, undoAvailable, visibleActions]);
+  }, [disabled, executing, showUndoControl, undoAvailable, visibleActions]);
 
   const resolvedTabStop =
     tabStopId && focusableItemIds.includes(tabStopId)
@@ -132,7 +136,7 @@ export function ActionBarBlock({
 
   const runAction = useCallback(
     async (actionId: string) => {
-      if (executingRef.current) return;
+      if (executingRef.current || disabled) return;
       const handler = lookupGenerativeActionHandler(actionHandlers, actionId);
       if (enforceHandlerRegistry && !handler) return;
       const label = trustedLabel(
@@ -173,7 +177,7 @@ export function ActionBarBlock({
         setDialogActionId(null);
       }
     },
-    [actionHandlers, actions, announce, enforceHandlerRegistry, onAction, t, undoStack],
+    [actionHandlers, actions, announce, disabled, enforceHandlerRegistry, onAction, t, undoStack],
   );
 
   const runUndo = useCallback(async () => {
@@ -194,6 +198,7 @@ export function ActionBarBlock({
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {
+      if (disabled) return;
       if (enforceHandlerRegistry && !lookupGenerativeActionHandler(actionHandlers, actionId)) {
         return;
       }
@@ -211,7 +216,7 @@ export function ActionBarBlock({
       }
       void runAction(actionId);
     },
-    [actionHandlers, enforceHandlerRegistry, pendingMediumId, runAction],
+    [actionHandlers, disabled, enforceHandlerRegistry, pendingMediumId, runAction],
   );
 
   const dialogAction = dialogActionId
@@ -263,6 +268,8 @@ export function ActionBarBlock({
         role="toolbar"
         aria-label={t('a11y.action_bar_label')}
         aria-busy={executing || undefined}
+        aria-disabled={disabled || undefined}
+        data-action-bar-disabled={disabled || undefined}
         onKeyDown={handleToolbarKeyDown}
       >
         {visibleActions.map((action) => {
@@ -277,7 +284,9 @@ export function ActionBarBlock({
               : action.variant === 'primary'
                 ? 'default'
                 : 'outline';
-          const itemEnabled = !executing;
+          const itemEnabled = !executing && !disabled;
+          const followup = isFollowupActionId(action.id) && typeof action.prompt === 'string';
+          const followupTitle = followup ? t('action.followup_title', { prompt: action.prompt }) : undefined;
           return (
             <DsButton
               key={action.id}
@@ -286,14 +295,19 @@ export function ActionBarBlock({
               size="sm"
               disabled={!itemEnabled}
               tabIndex={itemEnabled && resolvedTabStop === action.id ? 0 : -1}
+              title={followupTitle}
+              data-followup-action={followup || undefined}
               onFocus={() => {
                 if (itemEnabled) setTabStopId(action.id);
               }}
               onClick={() => handleClick(action.id, effectiveRisk)}
             >
+              {followup ? <PaperPlaneTilt className="h-3.5 w-3.5" aria-hidden /> : null}
               <span dir="auto">
                 {isConfirmingMedium
-                  ? t('action.confirm_inline', { label: displayLabel })
+                  ? followup
+                    ? t('action.followup_confirm', { label: displayLabel })
+                    : t('action.confirm_inline', { label: displayLabel })
                   : displayLabel}
               </span>
             </DsButton>
@@ -304,7 +318,7 @@ export function ActionBarBlock({
             ref={setItemRef(UNDO_TOOLBAR_ID)}
             variant="outline"
             size="sm"
-            disabled={executing || !undoAvailable}
+            disabled={executing || disabled || !undoAvailable}
             tabIndex={
               !executing && undoAvailable && resolvedTabStop === UNDO_TOOLBAR_ID ? 0 : -1
             }

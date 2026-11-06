@@ -1,5 +1,5 @@
 /**
- * SOTA 运行时验收 — 18 种内置块经 GenerativeUIRenderer 全量渲染
+ * SOTA 运行时验收 — 21 种内置块经 GenerativeUIRenderer 全量渲染
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -43,9 +43,9 @@ vi.mock('@/features/mindmap/components/mindmap/MindMapEmbed', () => ({
 import '@/features/generative-ui/blocks';
 
 describe('generativeUIAllBlocksRuntime', () => {
-  it('registry contains all 18 built-in block types', () => {
+  it('registry contains all 21 built-in block types', () => {
     const registered = new Set(generativeUIRegistry.keys());
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
     for (const type of ALL_BLOCK_TYPES) {
       expect(registered.has(type), `missing registry entry: ${type}`).toBe(true);
     }
@@ -73,7 +73,7 @@ describe('generativeUIAllBlocksRuntime', () => {
     const marked = Array.from(container.querySelectorAll('[data-generative-block]')).map(
       (el) => el.getAttribute('data-generative-block'),
     );
-    expect(marked).toHaveLength(18);
+    expect(marked).toHaveLength(21);
     expect(marked.sort()).toEqual([...ALL_BLOCK_TYPES].sort());
   });
 
@@ -86,7 +86,7 @@ describe('generativeUIAllBlocksRuntime', () => {
     const layout = container.querySelector('[data-layout-mode="grid"]');
     expect(layout).toBeTruthy();
     expect(layout?.className).toContain('sm:grid-cols-2');
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
     for (const type of ALL_BLOCK_TYPES) {
       expect(
         container.querySelector(`[data-generative-block="${type}"]`),

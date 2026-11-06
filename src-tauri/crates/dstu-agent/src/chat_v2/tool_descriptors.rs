@@ -534,7 +534,9 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     // —— ImageGenerationExecutor（1）——
     d("image_generate", Low, false, WriteLocal).with_timeout(300),
     // —— GenerativeUiExecutor（1）——
-    d("render_generative_ui", Low, false, WriteLocal),
+    // awaitAnswer=true 时阻塞等待用户在界面作答（无上限），豁免 120s 看门狗；
+    // 取消走注册表 cancel token + GenUiAwaitGuard 清理（tools/genui_interaction.rs）。
+    d("render_generative_ui", Low, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
     // —— WorkspaceFsExecutor（8）——
     d("workspace_file_list", Low, true, Read),
     d("workspace_file_read", Low, true, Read),
@@ -882,5 +884,22 @@ mod tests {
             Some(GrantsScopeHint::Builtin)
         );
         assert_eq!(grants_scope_hint("mcp_brave_search"), None);
+    }
+
+    /// 生成式 UI awaitAnswer 同步：render_generative_ui 必须豁免看门狗
+    /// （与 ask_user 同口径），且敏感度/副作用类别保持不变。
+    #[test]
+    fn render_generative_ui_descriptor_is_watchdog_exempt() {
+        let descriptor = lookup("render_generative_ui").expect("descriptor registered");
+        assert_eq!(descriptor.timeout_secs, Some(NO_TIMEOUT_SECS));
+        assert_eq!(descriptor.sensitivity, ToolSensitivity::Low);
+        assert!(!descriptor.read_only);
+        assert_eq!(descriptor.side_effect_class, SideEffectClass::WriteLocal);
+        assert!(!descriptor.headless_allowed);
+        assert!(!descriptor.ptc_allowed);
+        assert_eq!(
+            lookup("ask_user").and_then(|d| d.timeout_secs),
+            Some(NO_TIMEOUT_SECS)
+        );
     }
 }

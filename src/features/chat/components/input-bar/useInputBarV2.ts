@@ -25,6 +25,7 @@ import {
 } from './injectModeUtils';
 import { resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 import { clearComposerDraft } from './composerDraftStorage';
+import { dismissPendingGenerativeUiAwait } from '@/features/generative-ui/bridge/genuiAwaitRuntime';
 // ============================================================================
 // InputBar 选项
 // ============================================================================
@@ -392,6 +393,8 @@ export function useInputBarV2(
         const nonStickyRefs = state.pendingContextRefs.filter((r) => r.isSticky !== true);
         state.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
         state.clearAttachments();
+        // 生成式 UI 正在等待作答：用户改在输入框回复 → 中止等待，本轮让位给队列消息
+        void dismissPendingGenerativeUiAwait(store, 'user_message');
       } else {
         // 直发：sendMessage 内部会再清空 attachments/contextRefs（保留 sticky）
         await state.sendMessage(finalContent, allAttachments);

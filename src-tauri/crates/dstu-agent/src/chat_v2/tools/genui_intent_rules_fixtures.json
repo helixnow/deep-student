@@ -1,0 +1,5388 @@
+{
+  "$comment": "Shared by Rust (tools/genui_interaction.rs tests) and frontend validateIntentRules/buildAnswer consistency tests. intent: validate_genui_intent_rules(intent, awaitAnswer) -> ok; negative cases carry errorContains (substring of the Rust error message: a JSON path like intent.blocks[0].props.options or a stable phrase). answer: spec = validate_genui_intent_rules(intent, true); validate_genui_answer(spec, summary, data) -> ok. Lengths are counted in Unicode scalar values; fixtures avoid astral characters so UTF-16 length agrees.",
+  "intent": [
+    {
+      "name": "display_only_without_interactive",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "text",
+            "props": {
+              "body": "说明"
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "await_single_choice",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "await_multiple_choice_with_bounds_and_other",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 1,
+              "maxSelect": 3,
+              "allowOther": true,
+              "required": false,
+              "description": "可多选"
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "await_form_all_field_kinds",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "prefs",
+            "props": {
+              "fields": [
+                {
+                  "name": "goal",
+                  "label": "goal",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 200,
+                  "placeholder": "例如：通过考试",
+                  "multiline": true
+                },
+                {
+                  "name": "hours",
+                  "label": "hours",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 40,
+                  "step": 0.5,
+                  "unit": "h"
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5,
+                  "unit": "级"
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating",
+                  "max": 10
+                },
+                {
+                  "name": "remind",
+                  "label": "remind",
+                  "kind": "switch",
+                  "default": true
+                }
+              ],
+              "title": "学习偏好",
+              "description": "帮助我调整计划",
+              "submitLabel": "提交"
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "await_four_interactive_blocks",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q2",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q3",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "note",
+                  "label": "note",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "await_with_display_blocks",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "text",
+            "props": {
+              "body": "说明"
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_abc"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "copy-block",
+                  "label": "复制"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "image_resource_each_prefix",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "att_1"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "file_A-b_2"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_x"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "res_x"
+              },
+              "alt": "示意图",
+              "caption": "图注",
+              "fit": "cover",
+              "maxHeight": 640
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "image_pdf_page",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "res_doc1",
+                "page": 10000
+              },
+              "alt": "示意图",
+              "maxHeight": 120
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "image_https_url",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://upload.example.org/a/b.png?w=200"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "choice_option_images",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "A",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_a"
+                  },
+                  "description": "左图"
+                },
+                {
+                  "id": "b",
+                  "label": "B",
+                  "image": {
+                    "kind": "url",
+                    "url": "https://cdn.example.com/b.webp"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "eight_image_refs_at_limit",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o0",
+                  "label": "O0",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_0"
+                  }
+                },
+                {
+                  "id": "o1",
+                  "label": "O1",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_1"
+                  }
+                },
+                {
+                  "id": "o2",
+                  "label": "O2",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_2"
+                  }
+                },
+                {
+                  "id": "o3",
+                  "label": "O3",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_3"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_0"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_1"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_2"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_3"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "followup_with_prompt_and_confirm",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:next-step",
+                  "label": "继续",
+                  "prompt": "请给我下一步的练习",
+                  "confirm": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "four_followups_at_limit",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:a",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:b",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:c",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          },
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:d",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "plain_action_without_prompt",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "open-note:n1",
+                  "label": "打开笔记"
+                },
+                {
+                  "id": "copy-intent",
+                  "label": "复制"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "followup_prompt_500_chars",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:long",
+                  "label": "继续",
+                  "prompt": "问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "choice_twelve_options",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                },
+                {
+                  "id": "o5",
+                  "label": "选项5"
+                },
+                {
+                  "id": "o6",
+                  "label": "选项6"
+                },
+                {
+                  "id": "o7",
+                  "label": "选项7"
+                },
+                {
+                  "id": "o8",
+                  "label": "选项8"
+                },
+                {
+                  "id": "o9",
+                  "label": "选项9"
+                },
+                {
+                  "id": "o10",
+                  "label": "选项10"
+                },
+                {
+                  "id": "o11",
+                  "label": "选项11"
+                },
+                {
+                  "id": "o12",
+                  "label": "选项12"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "form_twelve_fields",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "f0",
+                  "label": "f0",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f1",
+                  "label": "f1",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f2",
+                  "label": "f2",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f3",
+                  "label": "f3",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f4",
+                  "label": "f4",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f5",
+                  "label": "f5",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f6",
+                  "label": "f6",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f7",
+                  "label": "f7",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f8",
+                  "label": "f8",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f9",
+                  "label": "f9",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f10",
+                  "label": "f10",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f11",
+                  "label": "f11",
+                  "kind": "switch"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "slider_exactly_1000_steps",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "s",
+                  "label": "s",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 1000,
+                  "step": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "name": "choice_without_await",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "choice/form 仅在 awaitAnswer=true 时可用"
+    },
+    {
+      "name": "form_without_await",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "choice/form 仅在 awaitAnswer=true 时可用"
+    },
+    {
+      "name": "await_without_interactive",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "text",
+            "props": {
+              "body": "说明"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "awaitAnswer=true 时必须至少包含一个 choice/form 交互块"
+    },
+    {
+      "name": "five_interactive_blocks",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q2",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q3",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q4",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q5",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "交互块（choice/form）最多 4 个"
+    },
+    {
+      "name": "choice_missing_id",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].id"
+    },
+    {
+      "name": "choice_invalid_id_chars",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q 1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].id"
+    },
+    {
+      "name": "form_id_too_long",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].id"
+    },
+    {
+      "name": "duplicate_block_id",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "text",
+            "props": {
+              "body": "说明"
+            },
+            "id": "q1"
+          },
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "块 id 重复"
+    },
+    {
+      "name": "duplicate_interactive_ids",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "form",
+            "id": "q1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "块 id 重复"
+    },
+    {
+      "name": "choice_one_option",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options"
+    },
+    {
+      "name": "choice_thirteen_options",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                },
+                {
+                  "id": "o5",
+                  "label": "选项5"
+                },
+                {
+                  "id": "o6",
+                  "label": "选项6"
+                },
+                {
+                  "id": "o7",
+                  "label": "选项7"
+                },
+                {
+                  "id": "o8",
+                  "label": "选项8"
+                },
+                {
+                  "id": "o9",
+                  "label": "选项9"
+                },
+                {
+                  "id": "o10",
+                  "label": "选项10"
+                },
+                {
+                  "id": "o11",
+                  "label": "选项11"
+                },
+                {
+                  "id": "o12",
+                  "label": "选项12"
+                },
+                {
+                  "id": "o13",
+                  "label": "选项13"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options"
+    },
+    {
+      "name": "choice_duplicate_option_id",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "A"
+                },
+                {
+                  "id": "a",
+                  "label": "B"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "选项 id 重复"
+    },
+    {
+      "name": "choice_invalid_option_id",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "A"
+                },
+                {
+                  "id": "a.b",
+                  "label": "B"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options[1].id"
+    },
+    {
+      "name": "choice_option_missing_label",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a"
+                },
+                {
+                  "id": "b",
+                  "label": "B"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options[0].label"
+    },
+    {
+      "name": "choice_option_label_too_long",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL"
+                },
+                {
+                  "id": "b",
+                  "label": "B"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options[0].label"
+    },
+    {
+      "name": "choice_empty_question",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "   ",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.question"
+    },
+    {
+      "name": "choice_question_too_long",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.question"
+    },
+    {
+      "name": "choice_invalid_mode",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "mode": "many"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.mode"
+    },
+    {
+      "name": "multiple_max_exceeds_options",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                }
+              ],
+              "mode": "multiple",
+              "maxSelect": 4
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.maxSelect"
+    },
+    {
+      "name": "multiple_min_greater_than_max",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 3,
+              "maxSelect": 2
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.minSelect"
+    },
+    {
+      "name": "choice_min_select_not_integer",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 1.5
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.minSelect"
+    },
+    {
+      "name": "choice_required_not_boolean",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "required": "yes"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.required"
+    },
+    {
+      "name": "choice_props_not_object",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": "x"
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props"
+    },
+    {
+      "name": "form_no_fields",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": []
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields"
+    },
+    {
+      "name": "form_thirteen_fields",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "f0",
+                  "label": "f0",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f1",
+                  "label": "f1",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f2",
+                  "label": "f2",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f3",
+                  "label": "f3",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f4",
+                  "label": "f4",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f5",
+                  "label": "f5",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f6",
+                  "label": "f6",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f7",
+                  "label": "f7",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f8",
+                  "label": "f8",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f9",
+                  "label": "f9",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f10",
+                  "label": "f10",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f11",
+                  "label": "f11",
+                  "kind": "switch"
+                },
+                {
+                  "name": "f12",
+                  "label": "f12",
+                  "kind": "switch"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields"
+    },
+    {
+      "name": "form_invalid_field_name",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "2x",
+                  "label": "2x",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].name"
+    },
+    {
+      "name": "form_duplicate_field_name",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "a",
+                  "label": "a",
+                  "kind": "text"
+                },
+                {
+                  "name": "a",
+                  "label": "a",
+                  "kind": "switch"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "字段名重复"
+    },
+    {
+      "name": "form_unknown_kind",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "d",
+                  "label": "d",
+                  "kind": "date"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].kind"
+    },
+    {
+      "name": "form_empty_label",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].label"
+    },
+    {
+      "name": "text_max_length_over_2000",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "text",
+                  "maxLength": 2001
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].maxLength"
+    },
+    {
+      "name": "number_min_greater_than_max",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "number",
+                  "min": 5,
+                  "max": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].min"
+    },
+    {
+      "name": "number_non_positive_step",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "n",
+                  "label": "n",
+                  "kind": "number",
+                  "step": 0
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].step"
+    },
+    {
+      "name": "slider_too_many_steps",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "s",
+                  "label": "s",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 2000,
+                  "step": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].step"
+    },
+    {
+      "name": "slider_missing_min",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "s",
+                  "label": "s",
+                  "kind": "slider",
+                  "max": 10
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].min"
+    },
+    {
+      "name": "slider_max_not_greater_than_min",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "s",
+                  "label": "s",
+                  "kind": "slider",
+                  "min": 5,
+                  "max": 5
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].max"
+    },
+    {
+      "name": "rating_max_above_10",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "r",
+                  "label": "r",
+                  "kind": "rating",
+                  "max": 11
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].max"
+    },
+    {
+      "name": "rating_max_below_3",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "r",
+                  "label": "r",
+                  "kind": "rating",
+                  "max": 2
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fields[0].max"
+    },
+    {
+      "name": "image_resource_bad_prefix",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "tb_x"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.resourceId"
+    },
+    {
+      "name": "image_resource_traversal",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "res_../etc"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.resourceId"
+    },
+    {
+      "name": "image_resource_id_too_long",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "res_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.resourceId"
+    },
+    {
+      "name": "pdf_page_non_res_prefix",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "att_x",
+                "page": 1
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.resourceId"
+    },
+    {
+      "name": "pdf_page_zero",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "res_x",
+                "page": 0
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.page"
+    },
+    {
+      "name": "pdf_page_over_10000",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "res_x",
+                "page": 10001
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.page"
+    },
+    {
+      "name": "pdf_page_not_integer",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "res_x",
+                "page": 1.5
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.page"
+    },
+    {
+      "name": "pdf_page_missing_page",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "pdf-page",
+                "resourceId": "res_x"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.page"
+    },
+    {
+      "name": "image_url_http",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "http://example.com/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "仅允许 https 链接"
+    },
+    {
+      "name": "image_url_file_scheme",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "file:///C:/secret.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "仅允许 https 链接"
+    },
+    {
+      "name": "image_url_data_uri",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "data:image/svg+xml;base64,PHN2Zz4="
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "仅允许 https 链接"
+    },
+    {
+      "name": "image_url_localhost",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://localhost/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "localhost"
+    },
+    {
+      "name": "image_url_localhost_subdomain",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://api.localhost/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "localhost"
+    },
+    {
+      "name": "image_url_ipv4",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://127.0.0.1/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "IP 地址字面量"
+    },
+    {
+      "name": "image_url_ipv6",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://[::1]/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "IP 地址字面量"
+    },
+    {
+      "name": "image_url_credentials",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://user:pass@example.com/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "用户名或密码"
+    },
+    {
+      "name": "image_url_single_label_host",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://intranet/a.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "单标签主机名"
+    },
+    {
+      "name": "image_url_path_traversal",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://example.com/a/../b.png"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "路径穿越"
+    },
+    {
+      "name": "image_url_too_long",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "url",
+                "url": "https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "字符上限"
+    },
+    {
+      "name": "image_unknown_kind",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "svg",
+                "data": "<svg/>"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source.kind"
+    },
+    {
+      "name": "image_missing_source",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "alt": "x"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.source"
+    },
+    {
+      "name": "image_missing_alt",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_x"
+              }
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.alt"
+    },
+    {
+      "name": "image_bad_fit",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_x"
+              },
+              "alt": "示意图",
+              "fit": "fill"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.fit"
+    },
+    {
+      "name": "image_max_height_out_of_range",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_x"
+              },
+              "alt": "示意图",
+              "maxHeight": 100
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.maxHeight"
+    },
+    {
+      "name": "nine_image_refs",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_0"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_1"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_2"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_3"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_4"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_5"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_6"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_7"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_8"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "图片引用最多 8 个"
+    },
+    {
+      "name": "option_images_count_toward_limit",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o0",
+                  "label": "O0",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_0"
+                  }
+                },
+                {
+                  "id": "o1",
+                  "label": "O1",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_1"
+                  }
+                },
+                {
+                  "id": "o2",
+                  "label": "O2",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_2"
+                  }
+                },
+                {
+                  "id": "o3",
+                  "label": "O3",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_3"
+                  }
+                },
+                {
+                  "id": "o4",
+                  "label": "O4",
+                  "image": {
+                    "kind": "resource",
+                    "resourceId": "att_4"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_0"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_1"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_2"
+              },
+              "alt": "示意图"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "source": {
+                "kind": "resource",
+                "resourceId": "img_3"
+              },
+              "alt": "示意图"
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "图片引用最多 8 个"
+    },
+    {
+      "name": "option_image_invalid_source",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "A",
+                  "image": {
+                    "kind": "url",
+                    "url": "http://example.com/a.png"
+                  }
+                },
+                {
+                  "id": "b",
+                  "label": "B"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.options[0].image.url"
+    },
+    {
+      "name": "followup_without_prompt",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:next",
+                  "label": "继续"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].prompt"
+    },
+    {
+      "name": "followup_blank_prompt",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:next",
+                  "label": "继续",
+                  "prompt": "   "
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].prompt"
+    },
+    {
+      "name": "followup_prompt_too_long",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:next",
+                  "label": "继续",
+                  "prompt": "问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问问"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].prompt"
+    },
+    {
+      "name": "followup_bad_slug",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:Next_Step",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].id"
+    },
+    {
+      "name": "followup_empty_slug",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:",
+                  "label": "继续",
+                  "prompt": "继续"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].id"
+    },
+    {
+      "name": "prompt_on_non_followup_action",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "copy-block",
+                  "label": "复制",
+                  "prompt": "偷偷发送"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "只有 id 以 followup: 开头的按钮可以带 prompt"
+    },
+    {
+      "name": "confirm_not_boolean",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:next",
+                  "label": "继续",
+                  "prompt": "继续",
+                  "confirm": "yes"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "intent.blocks[0].props.actions[0].confirm"
+    },
+    {
+      "name": "five_followups_in_one_bar",
+      "awaitAnswer": false,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:a",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:b",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:c",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:d",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:e",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "追问按钮（followup:*）最多 4 个"
+    },
+    {
+      "name": "followups_across_bars_exceed_limit",
+      "awaitAnswer": true,
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:a",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:b",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:c",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          },
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "action-bar",
+            "props": {
+              "actions": [
+                {
+                  "id": "followup:d",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                },
+                {
+                  "id": "followup:e",
+                  "label": "继续",
+                  "prompt": "继续讲下一步"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ok": false,
+      "errorContains": "追问按钮（followup:*）最多 4 个"
+    }
+  ],
+  "answer": [
+    {
+      "name": "single_ok",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "选了 4",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "single_none_selected_required",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "没选",
+      "data": {
+        "q1": {
+          "selected": []
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "single_two_selected",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "选了两个",
+      "data": {
+        "q1": {
+          "selected": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "single_unknown_option",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "选了 z",
+      "data": {
+        "q1": {
+          "selected": [
+            "z"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "single_duplicate_selection_dedup",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "选了 4",
+      "data": {
+        "q1": {
+          "selected": [
+            "a",
+            "a"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "required_block_missing",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "空",
+      "data": {},
+      "ok": false
+    },
+    {
+      "name": "required_block_null",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "空",
+      "data": {
+        "q1": null
+      },
+      "ok": false
+    },
+    {
+      "name": "optional_block_omitted",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "required": false
+            }
+          }
+        ]
+      },
+      "summary": "跳过",
+      "data": {},
+      "ok": true
+    },
+    {
+      "name": "optional_block_empty_selection",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "required": false
+            }
+          }
+        ]
+      },
+      "summary": "跳过",
+      "data": {
+        "q1": {
+          "selected": []
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "other_not_allowed",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "自填",
+      "data": {
+        "q1": {
+          "selected": [],
+          "other": "自定义"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "other_blank_ignored_when_not_allowed",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "选了 4",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ],
+          "other": "   "
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "other_only_when_allowed",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "自填",
+      "data": {
+        "q1": {
+          "selected": [],
+          "other": "都不喜欢"
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "other_plus_option_exceeds_single",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "两个",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1"
+          ],
+          "other": "还有"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "other_too_long",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "太长",
+      "data": {
+        "q1": {
+          "selected": [],
+          "other": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "other_not_string",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ],
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "数字",
+      "data": {
+        "q1": {
+          "selected": [],
+          "other": 5
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "choice_unknown_key",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "多字段",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ],
+          "extra": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "choice_selected_not_array",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "字符串",
+      "data": {
+        "q1": {
+          "selected": "a"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "choice_selected_non_string_item",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "数字",
+      "data": {
+        "q1": {
+          "selected": [
+            1
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "choice_answer_not_object",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "数组",
+      "data": {
+        "q1": [
+          "a"
+        ]
+      },
+      "ok": false
+    },
+    {
+      "name": "multi_two_ok",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 2,
+              "maxSelect": 3,
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "两项",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1",
+            "o3"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "multi_below_min",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 2,
+              "maxSelect": 3,
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "一项",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "multi_above_max",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 2,
+              "maxSelect": 3,
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "四项",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1",
+            "o2",
+            "o3",
+            "o4"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "multi_other_counts_toward_min",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 2,
+              "maxSelect": 3,
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "一项加自填",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1"
+          ],
+          "other": "其他"
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "multi_other_counts_toward_max",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                },
+                {
+                  "id": "o3",
+                  "label": "选项3"
+                },
+                {
+                  "id": "o4",
+                  "label": "选项4"
+                }
+              ],
+              "mode": "multiple",
+              "minSelect": 2,
+              "maxSelect": 3,
+              "allowOther": true
+            }
+          }
+        ]
+      },
+      "summary": "三项加自填",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1",
+            "o2",
+            "o3"
+          ],
+          "other": "其他"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "extra_block_key",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "多块",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        },
+        "zz": {
+          "selected": []
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "data_not_object",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "数组",
+      "data": [],
+      "ok": false
+    },
+    {
+      "name": "summary_blank",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "   ",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "summary_control_chars_only",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "\u0001\u0002",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "summary_too_long",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "summary_500_cjk_chars",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "summary_with_newline_and_tab",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "2+2=?",
+              "options": [
+                {
+                  "id": "a",
+                  "label": "4"
+                },
+                {
+                  "id": "b",
+                  "label": "5"
+                },
+                {
+                  "id": "c",
+                  "label": "22"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "第一行\n\t第二行",
+      "data": {
+        "q1": {
+          "selected": [
+            "a"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "data_serialized_too_large",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f2",
+            "props": {
+              "fields": [
+                {
+                  "name": "note",
+                  "label": "note",
+                  "kind": "text",
+                  "maxLength": 2000
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "很长",
+      "data": {
+        "f2": {
+          "note": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_full_ok",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "填好了",
+      "data": {
+        "f1": {
+          "name": "小明",
+          "age": 18,
+          "level": 2.5,
+          "stars": 5,
+          "agree": true
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "form_missing_required_text",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "漏填",
+      "data": {
+        "f1": {
+          "age": 3,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_required_text_whitespace",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "空白",
+      "data": {
+        "f1": {
+          "name": "   ",
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_text_too_long",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "太长",
+      "data": {
+        "f1": {
+          "name": "abcdefghijk",
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_text_not_string",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "数字",
+      "data": {
+        "f1": {
+          "name": 5,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_number_out_of_range",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "超范围",
+      "data": {
+        "f1": {
+          "name": "a",
+          "age": 121,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_number_as_string",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "字符串",
+      "data": {
+        "f1": {
+          "name": "a",
+          "age": "5",
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_number_null_optional",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "可选空",
+      "data": {
+        "f1": {
+          "name": "a",
+          "age": null,
+          "agree": false
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "form_slider_on_step",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "刻度上",
+      "data": {
+        "f1": {
+          "name": "a",
+          "level": 10,
+          "agree": true
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "form_slider_off_step",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "刻度外",
+      "data": {
+        "f1": {
+          "name": "a",
+          "level": 0.3,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_slider_out_of_range",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "超范围",
+      "data": {
+        "f1": {
+          "name": "a",
+          "level": 10.5,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_rating_fraction",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "小数",
+      "data": {
+        "f1": {
+          "name": "a",
+          "stars": 3.5,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_rating_zero",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "零分",
+      "data": {
+        "f1": {
+          "name": "a",
+          "stars": 0,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_rating_above_max",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "六分",
+      "data": {
+        "f1": {
+          "name": "a",
+          "stars": 6,
+          "agree": true
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_switch_not_boolean",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "字符串",
+      "data": {
+        "f1": {
+          "name": "a",
+          "agree": "true"
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_required_switch_null",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "空开关",
+      "data": {
+        "f1": {
+          "name": "a",
+          "agree": null
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_required_switch_false_ok",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "不同意",
+      "data": {
+        "f1": {
+          "name": "a",
+          "agree": false
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "form_unknown_field",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "多字段",
+      "data": {
+        "f1": {
+          "name": "a",
+          "agree": true,
+          "evil": 1
+        }
+      },
+      "ok": false
+    },
+    {
+      "name": "form_answer_not_object",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f1",
+            "props": {
+              "fields": [
+                {
+                  "name": "name",
+                  "label": "name",
+                  "kind": "text",
+                  "required": true,
+                  "maxLength": 10
+                },
+                {
+                  "name": "age",
+                  "label": "age",
+                  "kind": "number",
+                  "min": 0,
+                  "max": 120
+                },
+                {
+                  "name": "level",
+                  "label": "level",
+                  "kind": "slider",
+                  "min": 0,
+                  "max": 10,
+                  "step": 0.5
+                },
+                {
+                  "name": "stars",
+                  "label": "stars",
+                  "kind": "rating"
+                },
+                {
+                  "name": "agree",
+                  "label": "agree",
+                  "kind": "switch",
+                  "required": true
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "数组",
+      "data": {
+        "f1": []
+      },
+      "ok": false
+    },
+    {
+      "name": "form_without_required_fields_omitted",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "form",
+            "id": "f2",
+            "props": {
+              "fields": [
+                {
+                  "name": "note",
+                  "label": "note",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "只答选择题",
+      "data": {
+        "q1": {
+          "selected": [
+            "o1"
+          ]
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "form_optional_all_null",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "form",
+            "id": "f2",
+            "props": {
+              "fields": [
+                {
+                  "name": "note",
+                  "label": "note",
+                  "kind": "text",
+                  "maxLength": 2000
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "没填",
+      "data": {
+        "f2": {
+          "note": null
+        }
+      },
+      "ok": true
+    },
+    {
+      "name": "two_blocks_both_answered",
+      "intent": {
+        "version": "1.1",
+        "blocks": [
+          {
+            "type": "choice",
+            "id": "q1",
+            "props": {
+              "question": "你更喜欢哪种？",
+              "options": [
+                {
+                  "id": "o1",
+                  "label": "选项1"
+                },
+                {
+                  "id": "o2",
+                  "label": "选项2"
+                }
+              ]
+            }
+          },
+          {
+            "type": "form",
+            "id": "f2",
+            "props": {
+              "fields": [
+                {
+                  "name": "note",
+                  "label": "note",
+                  "kind": "text"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "都答了",
+      "data": {
+        "q1": {
+          "selected": [
+            "o2"
+          ]
+        },
+        "f2": {
+          "note": "备注"
+        }
+      },
+      "ok": true
+    }
+  ]
+}

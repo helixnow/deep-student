@@ -52,9 +52,11 @@ pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
 pub mod file_manager_executor;
 pub mod general_executor;
+pub mod genui_interaction; // 生成式 UI 交互核心（awaitAnswer 规则/答案校验/挂起注册表/输出构造）
 pub mod git_executor; // 语义 Git 工具组（status/diff/log/branch/commit）
 pub mod goal_executor; // 🆕 Goal 模式工具执行器（P0：会话级持久目标）
 pub mod injector;
+pub mod interaction_wait; // 通用挂起等待注册表（PendingWaits + RAII Guard）
 pub mod legacy_tool_provider; // A2：旧 executor 花名册 → dstu-agent-api ToolRegistryBuilder（LegacyToolProvider）
 pub mod llm_usage_executor; // Agent-safe local LLM usage reporting
 pub mod local_shell_execute_executor;

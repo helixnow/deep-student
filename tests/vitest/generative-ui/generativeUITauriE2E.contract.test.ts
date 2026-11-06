@@ -1,5 +1,5 @@
 /**
- * Tauri E2E contract — Rust harness + 文档 + Playwright CT smoke + 18 块
+ * Tauri E2E contract — Rust harness + 文档 + Playwright CT smoke + 21 块
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ import '@/features/generative-ui/blocks';
 
 const REPO = process.cwd();
 
-const EXPECTED_EIGHTEEN_BLOCK_TYPES = [
+const EXPECTED_BLOCK_TYPES = [
   'stat-card',
   'alert',
   'list',
@@ -30,6 +30,9 @@ const EXPECTED_EIGHTEEN_BLOCK_TYPES = [
   'chart',
   'steps',
   'table',
+  'choice',
+  'form',
+  'image',
 ] as const;
 
 describe('generativeUI Tauri E2E contract', () => {
@@ -55,11 +58,11 @@ describe('generativeUI Tauri E2E contract', () => {
     ).toBe(true);
   });
 
-  it('asserts 18 block types including markdown/chart/steps/table', () => {
-    expect(EXPECTED_EIGHTEEN_BLOCK_TYPES).toHaveLength(18);
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
+  it('asserts 21 block types including markdown/chart/steps/table/choice/form/image', () => {
+    expect(EXPECTED_BLOCK_TYPES).toHaveLength(21);
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
     const registered = new Set(generativeUIRegistry.keys());
-    for (const type of EXPECTED_EIGHTEEN_BLOCK_TYPES) {
+    for (const type of EXPECTED_BLOCK_TYPES) {
       expect(ALL_BLOCK_TYPES, `fixture missing ${type}`).toContain(type);
       expect(registered.has(type), `registry missing ${type}`).toBe(true);
     }

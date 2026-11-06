@@ -846,6 +846,26 @@ mod tests {
     }
 
     #[test]
+    fn generative_ui_await_answer_is_exempt_from_registry_watchdog() {
+        // render_generative_ui(awaitAnswer=true) 无上限等待用户作答；取消走 cancel token
+        assert_eq!(
+            get_tool_timeout_secs("builtin-render_generative_ui"),
+            NO_TOOL_TIMEOUT_SECS
+        );
+        assert_eq!(
+            get_tool_timeout_secs("render_generative_ui"),
+            NO_TOOL_TIMEOUT_SECS
+        );
+
+        let registry = ToolExecutorRegistry::new();
+        assert!(registry.is_no_timeout_tool("builtin-render_generative_ui"));
+        assert!(registry.is_no_timeout_tool("render_generative_ui"));
+        // 豁免只针对本工具：相似名字与同类生成工具不受影响
+        assert!(!registry.is_no_timeout_tool("builtin-render_generative_ui_extra"));
+        assert!(!registry.is_no_timeout_tool("builtin-image_generate"));
+    }
+
+    #[test]
     fn acr_capable_executors_outlive_the_full_bridge_transaction_budget() {
         assert_eq!(
             get_executor_timeout_secs("builtin-note_update", "CanvasToolExecutor"),
@@ -898,6 +918,8 @@ mod tests {
             // 2026-11 Super 会话：dispatch/message 委托 subagent 派发，同样豁免看门狗
             "super_dispatch_worker" | "super_message_worker" => NO_TOOL_TIMEOUT_SECS,
             "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
+            // 2026-11 生成式 UI awaitAnswer：阻塞等待用户作答，豁免看门狗
+            "render_generative_ui" => NO_TOOL_TIMEOUT_SECS,
             "tool_pack" => 600,
             // Question generation was deliberately extended for multi-round LLM work.
             "qbank_generate_questions" => 600,

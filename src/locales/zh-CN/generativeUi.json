@@ -36,7 +36,9 @@
     "export_markdown": "导出 Markdown",
     "copy_block": "复制该组件",
     "open_note": "打开笔记",
-    "open_pdf_page": "打开 PDF 第 {{page}} 页"
+    "open_pdf_page": "打开 PDF 第 {{page}} 页",
+    "followup_title": "将发送：{{prompt}}",
+    "followup_confirm": "确认发送：{{label}}"
   },
   "export_markdown": {
     "empty_table": "空表格",
@@ -410,5 +412,83 @@
     "diff_title": "与上一快照差异",
     "diff_none": "无变更",
     "diff_summary": "新增 {{added}} · 删除 {{removed}} · 变更 {{changed}}"
+  },
+  "interaction": {
+    "submit": "提交",
+    "submitting": "提交中…",
+    "skip": "跳过",
+    "skipping": "跳过中…",
+    "awaiting_hint": "完成作答后点击提交；也可以直接在输入框回复",
+    "submitted": "已提交，等待继续…",
+    "answered": "已回答：{{summary}}",
+    "answered_plain": "已回答",
+    "replied_in_chat": "已在对话中回复",
+    "skipped": "已跳过",
+    "stopped": "未作答（已停止）",
+    "interrupted": "未作答（会话已中断）",
+    "expired": "已失效",
+    "expired_hint": "该问题已结束，无法再提交",
+    "unavailable": "当前无法作答",
+    "validation_error": "还有未完成或不符合要求的内容，请检查标记处",
+    "invalid": "回答未通过校验，请修改后重新提交",
+    "invalid_detail": "回答未通过校验：{{detail}}",
+    "submit_failed": "提交失败，请重试",
+    "display_only": "仅在工具调用中可作答",
+    "required": "必填",
+    "optional": "选填",
+    "choice": {
+      "single_hint": "单选",
+      "select_range": "选 {{min}}–{{max}} 项",
+      "select_exact": "选 {{count}} 项",
+      "selected_count": "已选 {{count}} / {{max}}",
+      "other": "其他",
+      "other_placeholder": "请输入你的答案"
+    },
+    "form": {
+      "char_count": "{{count}}/{{max}}",
+      "not_set": "未设置",
+      "rating_value": "{{value}} / {{max}}",
+      "rating_option": "{{value}} 分（满分 {{max}}）"
+    },
+    "issue": {
+      "no_blocks": "没有可提交的问题",
+      "duplicate_block": "问题重复",
+      "choice_required": "请选择一项",
+      "choice_too_few": "至少选择 {{min}} 项",
+      "choice_too_many": "最多选择 {{max}} 项",
+      "choice_unknown_option": "包含无效的选项",
+      "choice_other_not_allowed": "此题不支持填写其他答案",
+      "choice_other_too_long": "补充内容不能超过 {{max}} 字",
+      "field_required": "此项为必填",
+      "field_too_long": "不能超过 {{max}} 字",
+      "field_not_number": "请输入数字",
+      "field_out_of_range": "超出允许范围（{{range}}）",
+      "field_step_mismatch": "请按 {{step}} 的步长取值",
+      "field_invalid": "格式不正确",
+      "data_too_large": "回答内容过长，请精简后再提交"
+    },
+    "summary": {
+      "kv_separator": "：",
+      "list_separator": "、",
+      "field_separator": "；",
+      "other": "其他",
+      "yes": "是",
+      "no": "否",
+      "not_selected": "（未选择）",
+      "fallback": "已提交"
+    },
+    "a11y": {
+      "form_label": "表单",
+      "choice_label": "选择题"
+    }
+  },
+  "image": {
+    "loading": "图片加载中…",
+    "unavailable": "图片不可用",
+    "unavailable_with_alt": "{{alt}}（图片不可用）"
+  },
+  "inline": {
+    "generating": "界面生成中…",
+    "invalid_fallback": "内联界面无效，已显示源码"
   }
 }

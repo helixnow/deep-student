@@ -57,6 +57,9 @@ const SUBAGENT_EMBED_TOOL_NAMES: ReadonlySet<string> = new Set([
   'super_message_worker',
 ]);
 
+/** 生成式 UI 工具（去前缀后的名字）；preparing 阶段即建 generative_ui 块 */
+export const GENERATIVE_UI_TOOL_NAME = 'render_generative_ui';
+
 export function isSubagentEmbedToolName(toolName: string | undefined | null): boolean {
   return SUBAGENT_EMBED_TOOL_NAMES.has(stripToolNamePrefix(toolName));
 }
@@ -67,7 +70,7 @@ export function isSubagentEmbedToolName(toolName: string | undefined | null): bo
  * 返回顺序：同消息的块优先（按 blockIds 顺序），其后为其它消息中的匹配块
  * （向后兼容旧行为：消息 ID 异常时仍能复用占位块）。
  */
-function findPreparingBlockIds(
+export function findPreparingBlockIds(
   store: ChatStore,
   messageId: string,
   toolCallId: string
@@ -1100,6 +1103,9 @@ const toolCallPreparingEventHandler: EventHandler = {
     const isSubagentCallTool = SUBAGENT_EMBED_TOOL_NAMES.has(strippedToolName);
     // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块（与执行块类型保持一致）
     const isWorkspaceSendTool = strippedToolName === 'workspace_send';
+    // render_generative_ui → generative_ui 占位块：块组件从参数增量里截取 intent 流式预览，
+    // 执行器 generative_ui start（带 toolCallId）时由 generativeUI.ts 原地接管。
+    const isGenerativeUITool = strippedToolName === GENERATIVE_UI_TOOL_NAME;
     // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops
     const blockType = isSleepTool
       ? 'sleep'
@@ -1109,9 +1115,11 @@ const toolCallPreparingEventHandler: EventHandler = {
           ? 'subagent_embed'
           : isWorkspaceSendTool
             ? 'workspace_send'
-            : isWorkbenchOpsToolName(toolName)
-              ? 'workbench_ops'
-              : 'mcp_tool';
+            : isGenerativeUITool
+              ? 'generative_ui'
+              : isWorkbenchOpsToolName(toolName)
+                ? 'workbench_ops'
+                : 'mcp_tool';
 
     // 幂等：同一 toolCallId 已有 preparing 占位块时不再新建（否则 tool_call start
     // 只会提升其中一个，其余成为孤儿行）。后端换了 block_id 时原地改名，
