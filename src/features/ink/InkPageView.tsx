@@ -1,10 +1,57 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { objectHitTest, objectHitTestSweep, screenToPage } from './geometry';
+import { objectHitTest, objectHitTestSweep, screenToPage, type InkViewport } from './geometry';
 import { collectPointerSamples } from './input';
+import { captureInkPointerEvent, isInkDiagnosticsEnabled, recordInkDiagnostic } from './inkDiagnostics';
 import { renderInkPage } from './renderer';
 import { selectionBounds } from './selection';
 import type { InkObject, InkPage, InkPageRef, InkPoint, InkRect, InkSample, InkStrokeStyle } from './types';
+
+const diagnosticsEnabled = (): boolean => {
+  try {
+    return isInkDiagnosticsEnabled();
+  } catch {
+    return false;
+  }
+};
+
+const safeCaptureInkPointerEvent = (event: PointerEvent, data: () => Record<string, unknown>): void => {
+  try {
+    if (!isInkDiagnosticsEnabled()) return;
+    captureInkPointerEvent(event, data(), { includeCoalesced: false });
+  } catch {
+    // Diagnostics are a pure side channel and must never affect input.
+  }
+};
+
+const safeRecordInkDiagnostic = (event: string, data: () => Record<string, unknown>): void => {
+  try {
+    if (!isInkDiagnosticsEnabled()) return;
+    recordInkDiagnostic(event, data());
+  } catch {
+    // Diagnostics are a pure side channel and must never affect input.
+  }
+};
+
+const diagnosticsNow = (): number => {
+  try {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now();
+    return Date.now();
+  } catch {
+    return Date.now();
+  }
+};
+
+const diagnosticError = (error: unknown): string => {
+  try {
+    if (error instanceof Error && typeof error.name === 'string' && error.name) return error.name;
+    return typeof error === 'string' ? 'Error' : typeof error;
+  } catch {
+    return 'Error';
+  }
+};
+
+const PAGE_TOUCH_ACTION = 'none' as const;
 
 export type InkSelectionMode = 'none' | 'rectangle' | 'lasso';
 
@@ -68,6 +115,12 @@ interface SelectionGesture {
   points: InkPoint[];
 }
 
+interface PanGesture {
+  pointerId: number;
+  lastClientX: number;
+  lastClientY: number;
+}
+
 const makeObjectId = (): string => globalThis.crypto?.randomUUID?.()
   ?? `ink-object-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -97,6 +150,8 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
   const activeStrokeRef = useRef<ActiveStroke | null>(null);
   const eraserGestureRef = useRef<EraserGesture | null>(null);
   const selectionGestureRef = useRef<SelectionGesture | null>(null);
+  const panGestureRef = useRef<PanGesture | null>(null);
+  const renderSequenceRef = useRef(0);
   const [eraserCursor, setEraserCursor] = useState<{ x: number; y: number } | null>(null);
   const [selectionDraft, setSelectionDraft] = useState<InkPoint[] | null>(null);
   const [selectionRegion, setSelectionRegion] = useState<InkSelectionRegion | null>(null);
@@ -128,17 +183,77 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     if (!viewport) return;
     viewport.scrollLeft = 0;
     viewport.scrollTop = 0;
+    panGestureRef.current = null;
   }, [documentId, pageRef.page_id]);
 
   const render = (target: HTMLCanvasElement, page: InkPage, transparent = false) => {
     const current = currentRef.current;
     const scale = Math.min(current.tool.zoom, Math.sqrt(16_000_000 / (current.pageRef.width * current.pageRef.height)));
-    return renderInkPage(target, current.pageRef, page, {
-      background: transparent ? undefined : current.background,
-      scale,
-      max_pixels: 16_000_000,
-      transparent,
-    });
+    const diagnosticsOn = diagnosticsEnabled();
+    const renderId = diagnosticsOn ? ++renderSequenceRef.current : 0;
+    const renderStartedAt = diagnosticsOn ? diagnosticsNow() : 0;
+    const renderTarget = target === canvasRef.current ? 'page' : target === overlayRef.current ? 'overlay' : 'other';
+    if (diagnosticsOn) {
+      safeRecordInkDiagnostic('page.render.start', () => ({
+        renderId,
+        documentId,
+        pageId: page.page_id,
+        target: renderTarget,
+        transparent,
+        scale,
+        objectCount: page.objects.length,
+        backgroundPresent: Boolean(current.background),
+        backgroundDrawn: !transparent && Boolean(current.background),
+        pageWidth: current.pageRef.width,
+        pageHeight: current.pageRef.height,
+        canvasWidth: target.width,
+        canvasHeight: target.height,
+        activePointerId: activeStrokeRef.current?.pointerId ?? null,
+        activeSamples: activeStrokeRef.current?.samples.length ?? 0,
+      }));
+    }
+    try {
+      const result = renderInkPage(target, current.pageRef, page, {
+        background: transparent ? undefined : current.background,
+        scale,
+        max_pixels: 16_000_000,
+        transparent,
+      });
+      if (diagnosticsOn) {
+        safeRecordInkDiagnostic('page.render.end', () => ({
+          renderId,
+          documentId,
+          pageId: page.page_id,
+          target: renderTarget,
+          transparent,
+          durationMs: diagnosticsNow() - renderStartedAt,
+          widthPx: result.width_px,
+          heightPx: result.height_px,
+          objectCount: page.objects.length,
+          backgroundPresent: Boolean(current.background),
+          backgroundDrawn: !transparent && Boolean(current.background),
+          pageWidth: current.pageRef.width,
+          pageHeight: current.pageRef.height,
+          activePointerId: activeStrokeRef.current?.pointerId ?? null,
+          activeSamples: activeStrokeRef.current?.samples.length ?? 0,
+        }));
+      }
+      return result;
+    } catch (error) {
+      if (diagnosticsOn) {
+        safeRecordInkDiagnostic('page.render.error', () => ({
+          renderId,
+          documentId,
+          pageId: page.page_id,
+          target: renderTarget,
+          transparent,
+          durationMs: diagnosticsNow() - renderStartedAt,
+          objectCount: page.objects.length,
+          errorType: diagnosticError(error),
+        }));
+      }
+      throw error;
+    }
   };
 
   const renderActiveStroke = () => {
@@ -222,10 +337,35 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     }
     const active = activeStrokeRef.current;
     if (!active) return;
+    const diagnosticsOn = diagnosticsEnabled();
+    const finishStartedAt = diagnosticsOn ? diagnosticsNow() : 0;
+    if (diagnosticsOn) {
+      safeRecordInkDiagnostic('page.stroke.finish.start', () => ({
+        documentId,
+        pageId: currentRef.current.pageRef.page_id,
+        pointerId: active.pointerId,
+        startedAt: active.startedAt,
+        samples: active.samples.length,
+        objectCount: currentRef.current.page.objects.length,
+        activePointerId: active.pointerId,
+        backgroundPresent: Boolean(currentRef.current.background),
+        pageWidth: currentRef.current.pageRef.width,
+        pageHeight: currentRef.current.pageRef.height,
+      }));
+    }
     activeStrokeRef.current = null;
     callbacksRef.current.onActiveStrokeChange?.(false);
     renderActiveStroke();
-    if (!active.samples.length) return;
+    if (!active.samples.length) {
+      safeRecordInkDiagnostic('page.stroke.finish.empty', () => ({
+        documentId,
+        pageId: currentRef.current.pageRef.page_id,
+        pointerId: active.pointerId,
+        startedAt: active.startedAt,
+        samples: 0,
+      }));
+      return;
+    }
 
     const current = currentRef.current;
     const stroke: InkObject = {
@@ -240,7 +380,40 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     };
     const nextPage = { ...current.page, objects: [...current.page.objects, stroke] };
     currentRef.current = { ...current, page: nextPage };
-    await callbacksRef.current.onPageChange(nextPage);
+    try {
+      await callbacksRef.current.onPageChange(nextPage);
+    } catch (error) {
+      safeRecordInkDiagnostic('page.stroke.finish.error', () => ({
+        documentId,
+        pageId: current.pageRef.page_id,
+        pointerId: active.pointerId,
+        startedAt: active.startedAt,
+        strokeId: stroke.id,
+        lastObjectId: stroke.id,
+        samples: active.samples.length,
+        objectCount: nextPage.objects.length,
+        durationMs: diagnosticsOn ? diagnosticsNow() - finishStartedAt : 0,
+        errorType: diagnosticError(error),
+      }));
+      throw error;
+    }
+    safeRecordInkDiagnostic('page.stroke.finish.commit', () => ({
+      documentId,
+      pageId: current.pageRef.page_id,
+      pointerId: active.pointerId,
+      startedAt: active.startedAt,
+      strokeId: stroke.id,
+      lastObjectId: stroke.id,
+      samples: active.samples.length,
+      objectCount: nextPage.objects.length,
+      addedObjects: nextPage.objects.length - current.page.objects.length,
+      durationMs: diagnosticsOn ? diagnosticsNow() - finishStartedAt : 0,
+      backgroundPresent: Boolean(currentRef.current.background),
+      pageWidth: current.pageRef.width,
+      pageHeight: current.pageRef.height,
+      activePointerId: activeStrokeRef.current?.pointerId ?? null,
+      activeSamples: activeStrokeRef.current?.samples.length ?? 0,
+    }));
   };
 
   const eraseAt = async (point: InkPoint) => {
@@ -332,6 +505,10 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     setSelectionRegion(null);
   }, [selectionMode]);
 
+  useEffect(() => {
+    panGestureRef.current = null;
+  }, [tool.touchDrawing, selectionMode]);
+
   // 宿主清空选区（切模式/翻页/发 Chat 后）时同步清掉本地预览；
   // 拖拽过程中宿主仍为 null，不能误清 draft。
   useEffect(() => {
@@ -359,15 +536,151 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     };
   };
 
+  const pointerDiagnosticData = (event: React.PointerEvent<HTMLElement>, extra: Record<string, unknown> = {}) => {
+    const current = currentRef.current;
+    const active = activeStrokeRef.current;
+    const selection = selectionGestureRef.current;
+    const eraser = eraserGestureRef.current;
+    const pan = panGestureRef.current;
+    const viewportElement = viewportRef.current;
+    return {
+      documentId,
+      pageId: current.pageRef.page_id,
+      tool: current.tool.tool,
+      touchDrawing: current.tool.touchDrawing,
+      touchAction: PAGE_TOUCH_ACTION,
+      scrollLeft: viewportElement?.scrollLeft ?? 0,
+      scrollTop: viewportElement?.scrollTop ?? 0,
+      panActive: Boolean(pan),
+      panPointerId: pan?.pointerId ?? null,
+      erasing: current.erasing,
+      selectionMode: current.selectionMode,
+      mode: active ? 'stroke' : eraser ? 'eraser' : selection ? 'selection' : pan ? 'pan' : 'idle',
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      eventType: event.type,
+      activePointerId: active?.pointerId ?? eraser?.pointerId ?? selection?.pointerId ?? pan?.pointerId ?? null,
+      samples: active?.samples.length ?? 0,
+      selectionPoints: selection?.points.length ?? 0,
+      eraserHits: eraser?.hitIds.size ?? 0,
+      ...(event.type === 'pointercancel' ? { cancelSampled: false } : {}),
+      ...extra,
+    };
+  };
+
+  const recordPointerCaptureRequest = (
+    event: React.PointerEvent<HTMLElement>,
+    gesture: 'stroke' | 'eraser' | 'selection' | 'pan',
+    result: 'got' | 'lost',
+  ) => {
+    safeRecordInkDiagnostic('page.pointer.capture.request', () => ({
+      ...pointerDiagnosticData(event, { gesture }),
+      result,
+    }));
+  };
+
+  const recordPointerCaptureLifecycle = (event: React.PointerEvent<HTMLElement>, phase: 'got' | 'lost') => {
+    safeRecordInkDiagnostic(`page.pointer.capture.${phase}`, () => ({
+      ...pointerDiagnosticData(event, {
+        gesture: activeStrokeRef.current ? 'stroke' : eraserGestureRef.current ? 'eraser' : selectionGestureRef.current ? 'selection' : panGestureRef.current ? 'pan' : null,
+      }),
+      capturePhase: phase,
+    }));
+  };
+
+  const startPan = (event: React.PointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      recordPointerCaptureRequest(event, 'pan', 'got');
+    } catch {
+      recordPointerCaptureRequest(event, 'pan', 'lost');
+    }
+  };
+
+  const movePan = (event: React.PointerEvent<HTMLElement>): boolean => {
+    const pan = panGestureRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return false;
+    const viewportElement = viewportRef.current;
+    if (viewportElement) {
+      viewportElement.scrollLeft -= event.clientX - pan.lastClientX;
+      viewportElement.scrollTop -= event.clientY - pan.lastClientY;
+    }
+    pan.lastClientX = event.clientX;
+    pan.lastClientY = event.clientY;
+    return true;
+  };
+
+  const endPan = (pointerId: number): boolean => {
+    if (panGestureRef.current?.pointerId !== pointerId) return false;
+    panGestureRef.current = null;
+    return true;
+  };
+
+  const recordSampleBatch = (
+    phase: 'down' | 'move' | 'up' | 'cancel',
+    event: React.PointerEvent<HTMLCanvasElement>,
+    active: ActiveStroke,
+    batch: InkSample[],
+    previousLast: InkSample | undefined,
+    view: InkViewport | null,
+    terminal = false,
+  ) => {
+    if (!diagnosticsEnabled()) return;
+    safeRecordInkDiagnostic('page.stroke.samples', () => {
+      const first = batch[0];
+      const last = batch[batch.length - 1];
+      const prior = batch.length >= 2 ? batch[batch.length - 2] : previousLast;
+      const jump = (from: InkSample | undefined, to: InkSample | undefined) => {
+        if (!from || !to) return null;
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        return { dx, dy, distance: Math.hypot(dx, dy) };
+      };
+      const sampleData = (sample: InkSample) => ({
+        x: sample.x,
+        y: sample.y,
+        pressure: sample.pressure,
+        elapsed_ms: sample.elapsed_ms,
+      });
+      return {
+        ...pointerDiagnosticData(event, {
+          phase,
+          terminal,
+          cancelled: event.type === 'pointercancel',
+          mode: 'stroke',
+          activePointerId: active.pointerId,
+          samples: active.samples.length,
+        }),
+        batchCount: batch.length,
+        first: first ? sampleData(first) : null,
+        last: last ? sampleData(last) : null,
+        previousLast: previousLast ? { x: previousLast.x, y: previousLast.y } : null,
+        firstJump: jump(previousLast, first),
+        tailJump: jump(prior, last),
+        viewport: view,
+      };
+    });
+  };
+
   const samplesFor = (event: React.PointerEvent<HTMLCanvasElement>, active: ActiveStroke, terminal = false) => {
     const element = canvasRef.current;
-    if (!element) return [];
-    return collectPointerSamples(event.nativeEvent, viewport(element), active.startedAt,
-      active.pointerType === 'pen' && currentRef.current.tool.pressure_enabled, {
-        terminal,
-        cancelled: event.type === 'pointercancel',
-        pageBounds: { width: currentRef.current.pageRef.width, height: currentRef.current.pageRef.height },
-      });
+    if (!element) return { samples: [] as InkSample[], viewport: null };
+    const view = viewport(element);
+    return {
+      samples: collectPointerSamples(event.nativeEvent, view, active.startedAt,
+        active.pointerType === 'pen' && currentRef.current.tool.pressure_enabled, {
+          terminal,
+          cancelled: event.type === 'pointercancel',
+          pageBounds: { width: currentRef.current.pageRef.width, height: currentRef.current.pageRef.height },
+        }),
+      viewport: view,
+    };
   };
 
   const updateEraserCursor = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -426,10 +739,23 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const current = currentRef.current;
-    const selectionTouch = event.pointerType === 'touch' && current.selectionMode !== 'none';
+    const touch = event.pointerType === 'touch';
+    const activePan = panGestureRef.current;
+    if (activePan && !touch) panGestureRef.current = null;
+    const touchPan = touch && !current.tool.touchDrawing && current.selectionMode === 'none';
+    const ignored = activeStrokeRef.current ? 'active'
+      : eraserGestureRef.current ? 'eraser'
+      : selectionGestureRef.current ? 'selection'
+      : activePan && touch ? 'pan-active'
+      : null;
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'down', ignored }));
     if (activeStrokeRef.current || eraserGestureRef.current || selectionGestureRef.current
-      || (event.pointerType === 'touch' && !current.tool.touchDrawing && !selectionTouch)) return;
-    if (event.pointerType === 'touch') event.preventDefault();
+      || (activePan && touch)) return;
+    if (touch) event.preventDefault();
+    if (touchPan) {
+      startPan(event);
+      return;
+    }
     updateEraserCursor(event);
     const point = screenToPage({ x: event.clientX, y: event.clientY }, viewport(event.currentTarget));
     if (current.erasing) {
@@ -443,7 +769,13 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
       collectEraserHits(gesture, point, point);
       eraserGestureRef.current = gesture;
       callbacksRef.current.onActiveStrokeChange?.(true);
-      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Synthetic input may not support capture. */ }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        recordPointerCaptureRequest(event, 'eraser', 'got');
+      } catch {
+        recordPointerCaptureRequest(event, 'eraser', 'lost');
+        /* Synthetic input may not support capture. */
+      }
       renderEraserPreview();
       return;
     }
@@ -458,7 +790,13 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
       setSelectionRegion(null);
       setSelectionDraft([start]);
       callbacksRef.current.onSelectionChange?.(null);
-      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Synthetic input may not support capture. */ }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        recordPointerCaptureRequest(event, 'selection', 'got');
+      } catch {
+        recordPointerCaptureRequest(event, 'selection', 'lost');
+        /* Synthetic input may not support capture. */
+      }
       return;
     }
 
@@ -474,14 +812,25 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
         pressure_enabled: current.tool.tool === 'pen' && event.pointerType === 'pen' && current.tool.pressure_enabled,
       },
     };
-    active.samples.push(...samplesFor(event, active));
+    const previousLast = active.samples[active.samples.length - 1];
+    const collected = samplesFor(event, active);
+    active.samples.push(...collected.samples);
+    recordSampleBatch('down', event, active, collected.samples, previousLast, collected.viewport);
     activeStrokeRef.current = active;
     callbacksRef.current.onActiveStrokeChange?.(true);
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Synthetic input may not support capture. */ }
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      recordPointerCaptureRequest(event, 'stroke', 'got');
+    } catch {
+      recordPointerCaptureRequest(event, 'stroke', 'lost');
+      /* Synthetic input may not support capture. */
+    }
     renderActiveStroke();
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'move' }));
+    if (movePan(event)) return;
     updateEraserCursor(event);
     const selection = selectionGestureRef.current;
     if (selection && selection.pointerId === event.pointerId) {
@@ -503,44 +852,102 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
     }
     const active = activeStrokeRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    active.samples.push(...samplesFor(event, active));
+    const previousLast = active.samples[active.samples.length - 1];
+    const collected = samplesFor(event, active);
+    active.samples.push(...collected.samples);
+    recordSampleBatch('move', event, active, collected.samples, previousLast, collected.viewport);
     renderActiveStroke();
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'up' }));
+    if (endPan(event.pointerId)) return;
     const selection = selectionGestureRef.current;
     if (selection && selection.pointerId === event.pointerId) {
-      const cancelled = event.type === 'pointercancel';
-      if (!cancelled) {
-        const point = selectionPoint(event);
-        const previous = selection.points[selection.points.length - 1];
-        if (!previous || previous.x !== point.x || previous.y !== point.y) {
-          selection.points.push(point);
-        }
+      const point = selectionPoint(event);
+      const previous = selection.points[selection.points.length - 1];
+      if (!previous || previous.x !== point.x || previous.y !== point.y) {
+        selection.points.push(point);
       }
-      finalizeSelectionGesture(cancelled);
+      finalizeSelectionGesture();
       return;
     }
     const gesture = eraserGestureRef.current;
     if (gesture && gesture.pointerId === event.pointerId) {
-      if (event.type !== 'pointercancel') {
-        const point = screenToPage({ x: event.clientX, y: event.clientY }, viewport(event.currentTarget));
-        collectEraserHits(gesture, gesture.lastPoint, point);
-        gesture.lastPoint = point;
-        renderEraserPreview();
-      }
+      const point = screenToPage({ x: event.clientX, y: event.clientY }, viewport(event.currentTarget));
+      collectEraserHits(gesture, gesture.lastPoint, point);
+      gesture.lastPoint = point;
+      renderEraserPreview();
       void finishEraserGesture().catch((error) => callbacksRef.current.onError?.(error));
       return;
     }
     const active = activeStrokeRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    active.samples.push(...samplesFor(event, active, true));
+    const previousLast = active.samples[active.samples.length - 1];
+    const collected = samplesFor(event, active, true);
+    active.samples.push(...collected.samples);
+    recordSampleBatch('up', event, active, collected.samples, previousLast, collected.viewport, true);
     void finishStroke().catch((error) => callbacksRef.current.onError?.(error));
+  };
+
+  const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'cancel', cancelled: true }));
+    if (endPan(event.pointerId)) return;
+    const selection = selectionGestureRef.current;
+    if (selection && selection.pointerId === event.pointerId) {
+      finalizeSelectionGesture(true);
+      return;
+    }
+    const gesture = eraserGestureRef.current;
+    if (gesture && gesture.pointerId === event.pointerId) {
+      void finishEraserGesture().catch((error) => callbacksRef.current.onError?.(error));
+      return;
+    }
+    const active = activeStrokeRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const previousLast = active.samples[active.samples.length - 1];
+    recordSampleBatch('cancel', event, active, [], previousLast, null, true);
+    void finishStroke().catch((error) => callbacksRef.current.onError?.(error));
+  };
+
+  const onLostPointerCapture = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    recordPointerCaptureLifecycle(event, 'lost');
+    endPan(event.pointerId);
+  };
+
+  const onViewportPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.pointerType !== 'touch') return;
+    const ignored = activeStrokeRef.current ? 'active'
+      : eraserGestureRef.current ? 'eraser'
+      : selectionGestureRef.current ? 'selection'
+      : panGestureRef.current ? 'pan-active'
+      : null;
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'down', ignored, area: 'padding' }));
+    if (!ignored) startPan(event);
+  };
+
+  const onViewportPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.pointerType !== 'touch') return;
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: 'move', area: 'padding' }));
+    movePan(event);
+  };
+
+  const onViewportPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.pointerType !== 'touch') return;
+    const cancelled = event.type === 'pointercancel';
+    safeCaptureInkPointerEvent(event.nativeEvent, () => pointerDiagnosticData(event, { phase: cancelled ? 'cancel' : 'up', cancelled, area: 'padding' }));
+    endPan(event.pointerId);
+  };
+
+  const onViewportCaptureChange = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    const phase = event.type === 'lostpointercapture' ? 'lost' : 'got';
+    recordPointerCaptureLifecycle(event, phase);
+    if (phase === 'lost') endPan(event.pointerId);
   };
 
   const previewPoints = selectionDraft ?? selectionRegion?.polygon ?? null;
   const previewBounds = previewPoints ? selectionBounds(previewPoints) : null;
-  const canvasTouchAction = tool.touchDrawing || selectionMode !== 'none' ? 'none' : 'pan-x pan-y';
 
   return (
     <div
@@ -549,6 +956,13 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
       data-testid="ink-page-viewport"
       tabIndex={0}
       aria-label={ariaLabel}
+      style={{ touchAction: PAGE_TOUCH_ACTION }}
+      onPointerDown={onViewportPointerDown}
+      onPointerMove={onViewportPointerMove}
+      onPointerUp={onViewportPointerEnd}
+      onPointerCancel={onViewportPointerEnd}
+      onGotPointerCapture={onViewportCaptureChange}
+      onLostPointerCapture={onViewportCaptureChange}
       onPointerDownCapture={() => callbacksRef.current.onViewportInteraction?.()}
       onWheel={() => callbacksRef.current.onViewportInteraction?.()}
       onKeyDown={(event) => {
@@ -565,7 +979,7 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
           height: pageRef.height * tool.zoom,
           left: tool.panX,
           top: tool.panY,
-          touchAction: canvasTouchAction,
+          touchAction: PAGE_TOUCH_ACTION,
         }}
       >
         <canvas
@@ -574,17 +988,17 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
           data-document-id={documentId}
           data-page-id={pageRef.page_id}
           className="absolute inset-0 block max-w-none"
-          style={{ width: pageRef.width * tool.zoom, height: pageRef.height * tool.zoom }}
+          style={{ width: pageRef.width * tool.zoom, height: pageRef.height * tool.zoom, touchAction: PAGE_TOUCH_ACTION }}
           aria-label={ariaLabel}
         />
         <canvas
           ref={overlayRef}
           data-testid="ink-active-stroke-canvas"
-          className="absolute inset-0 block max-w-none touch-pan-y"
+          className="absolute inset-0 block max-w-none"
           style={{
             width: pageRef.width * tool.zoom,
             height: pageRef.height * tool.zoom,
-            touchAction: canvasTouchAction,
+            touchAction: PAGE_TOUCH_ACTION,
             mixBlendMode: activeStrokeRef.current?.style.tool === 'highlighter' ? 'multiply' : 'normal',
           }}
           tabIndex={0}
@@ -592,7 +1006,9 @@ export const InkPageView = forwardRef<InkPageViewHandle, InkPageViewProps>(funct
           onPointerEnter={updateEraserCursor}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onGotPointerCapture={(event) => recordPointerCaptureLifecycle(event, 'got')}
+          onLostPointerCapture={onLostPointerCapture}
           onPointerLeave={() => setEraserCursor(null)}
         />
         {previewPoints && previewBounds && previewBounds.width > 0 && previewBounds.height > 0 && (

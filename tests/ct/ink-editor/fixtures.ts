@@ -1,7 +1,22 @@
 import type { CtInvokeHandler } from '../mocks/tauri-core-mock';
 import { dispatchCtEvent } from '../mocks/tauri-event-mock';
+import * as inkDiagnostics from '@/features/ink/inkDiagnostics';
 import { frozenSourceHighlight } from '../ink/frozenPageFixture';
 import type { InkManifest, InkObject, InkPage, InkPageRef, InkRuling } from '@/features/ink/types';
+
+/** Test-only gates consumed when the harness creates its backend. */
+export interface InkEditorFixtureInitialGates {
+  saves?: boolean;
+  background?: boolean;
+  frozenInputs?: boolean;
+}
+
+declare global {
+  interface Window {
+    __INK_EDITOR_CT_INITIAL_GATES__?: InkEditorFixtureInitialGates;
+    __INK_DIAGNOSTICS_API__?: typeof inkDiagnostics;
+  }
+}
 
 export const inkEditorDocumentId = 'ink-editor-ct-document';
 export const inkEditorPageId = 'ink-editor-ct-page-2';
@@ -120,7 +135,28 @@ export function createInkEditorBackend(
   ]);
   let selectedPageId = inkEditorPageId;
   let saveAttempted = false;
+  const initialGates = typeof window === 'undefined' ? undefined : window.__INK_EDITOR_CT_INITIAL_GATES__;
+  if (typeof window !== 'undefined') {
+    delete window.__INK_EDITOR_CT_INITIAL_GATES__;
+    // CT bridge: the fixture and the editor share the same bundled module instance.
+    window.__INK_DIAGNOSTICS_API__ = inkDiagnostics;
+  }
   let saveCalls = 0;
+  let pendingSaveCalls = 0;
+  let holdSaves = initialGates?.saves === true;
+  const heldSaveResolvers: Array<() => void> = [];
+  let backgroundReadCalls = 0;
+  let pendingBackgroundReads = 0;
+  let holdBackgroundReads = initialGates?.background === true;
+  const heldBackgroundReadResolvers: Array<() => void> = [];
+  let frozenInputReadCalls = 0;
+  let pendingFrozenInputReads = 0;
+  let holdFrozenInputReads = initialGates?.frozenInputs === true;
+  const heldFrozenInputReadResolvers: Array<() => void> = [];
+  let sourceAnnotationRevision = 1;
+  let backgroundReadFailuresRemaining = 0;
+  let saveDialogPath: string | null = null;
+  const savedTextFiles: Array<{ path?: string; content?: string }> = [];
   let getCalls = 0;
   let getPageCalls = 0;
   const saveOperationIds: string[] = [];
@@ -130,10 +166,32 @@ export function createInkEditorBackend(
   let renameRequest: { document_id?: string; expected_revision?: string; operation_id?: string; title?: string } | undefined;
 
   const handlers: Record<string, CtInvokeHandler> = {
-    vfs_get_blob_base64: (_command, payload) => {
-      if ((payload as { blobHash?: string } | undefined)?.blobHash !== 'ink-editor-background-blob') throw new Error('Unknown fixture blob');
-      const base64 = preparedPngBase64(background === 'pdf_page' ? '#dddddd' : '#ff0000', manifestPages[1].width, manifestPages[1].height);
+    vfs_get_blob_base64: async (_command, payload) => {
+      const blobHash = (payload as { blobHash?: string } | undefined)?.blobHash;
+      const pageRef = manifest.pages.find((candidate) => (
+        candidate.background.kind !== 'blank' && candidate.background.blob_hash === blobHash
+      ));
+      if (!pageRef || blobHash !== 'ink-editor-background-blob') {
+        throw new Error('Unknown fixture blob');
+      }
+      backgroundReadCalls += 1;
+      if (backgroundReadFailuresRemaining > 0) {
+        backgroundReadFailuresRemaining -= 1;
+        throw new Error('Fixture background read failed');
+      }
+      const base64 = preparedPngBase64(background === 'pdf_page' ? '#dddddd' : '#ff0000', pageRef.width, pageRef.height);
+      if (holdBackgroundReads) {
+        pendingBackgroundReads += 1;
+        await new Promise<void>((resolve) => { heldBackgroundReadResolvers.push(resolve); });
+        pendingBackgroundReads -= 1;
+      }
       return { mimeType: 'image/png', size: atob(base64).length, base64 };
+    },
+    'plugin:dialog|save': () => saveDialogPath,
+    save_text_to_file: (_command, payload) => {
+      const request = payload as { path?: string; content?: string } | undefined;
+      savedTextFiles.push({ path: request?.path, content: request?.content });
+      return null;
     },
     vfs_get_resource: (_command, payload) => {
       const request = payload as { resourceId?: string } | undefined;
@@ -155,7 +213,7 @@ export function createInkEditorBackend(
       selectedPageId = page.page_id;
       return structuredClone(page);
     },
-    vfs_ink_get_render_inputs: (_command, payload) => {
+    vfs_ink_get_render_inputs: async (_command, payload) => {
       const request = payload as { documentId?: string; expectedRevision?: string; pageId?: string } | undefined;
       if (request?.documentId !== manifest.document_id || request.expectedRevision !== manifest.revision) {
         throw new Error('Unknown fixture frozen Ink revision');
@@ -163,15 +221,22 @@ export function createInkEditorBackend(
       const pageRef = manifest.pages.find((candidate) => candidate.page_id === request.pageId);
       const page = request.pageId ? pages.get(request.pageId) : undefined;
       if (!pageRef || !page || page.page_id !== pageRef.page_id) throw new Error('Unknown fixture frozen Ink page');
+      frozenInputReadCalls += 1;
       const highlights = pdfResource && pdfPageHighlights ? pdfResource.metadata.extra.highlights ?? [] : [];
-      return structuredClone({
+      const inputs = structuredClone({
         revision: manifest.revision,
         source: manifest.source,
         page_ref: pageRef,
         page,
         highlights,
-        source_annotation_revision: pdfResource ? 'annotations-fixture-v1' : undefined,
+        source_annotation_revision: pdfResource ? `annotations-fixture-v${sourceAnnotationRevision}` : undefined,
       });
+      if (holdFrozenInputReads) {
+        pendingFrozenInputReads += 1;
+        await new Promise<void>((resolve) => { heldFrozenInputReadResolvers.push(resolve); });
+        pendingFrozenInputReads -= 1;
+      }
+      return inputs;
     },
     vfs_ink_append_page: (_command, payload) => {
       const request = payload?.request as {
@@ -224,6 +289,11 @@ export function createInkEditorBackend(
       if (request?.document_id !== manifest.document_id || !request.page) throw new Error('Invalid fixture save');
       saveCalls += 1;
       if (request.operation_id) saveOperationIds.push(request.operation_id);
+      if (holdSaves) {
+        pendingSaveCalls += 1;
+        await new Promise<void>((resolve) => { heldSaveResolvers.push(resolve); });
+        pendingSaveCalls -= 1;
+      }
       if (saveMode === 'operation-unknown') {
         throw {
           code: 'OPERATION_STATE_UNKNOWN',
@@ -296,8 +366,65 @@ export function createInkEditorBackend(
           : pageRef),
       };
     },
+    updateSourceHighlights(highlights: Array<Record<string, unknown>>) {
+      if (!pdfResource) throw new Error('Fixture document has no source resource');
+      const extra = pdfResource.metadata.extra as { highlights?: Array<Record<string, unknown>> };
+      extra.highlights = structuredClone(highlights);
+      sourceAnnotationRevision += 1;
+    },
+    failNextBackgroundReads(count = 1) {
+      backgroundReadFailuresRemaining = Math.max(0, Math.floor(count));
+    },
+    setSaveDialogPath(path: string | null) {
+      saveDialogPath = path;
+    },
+    readSavedTextFiles() {
+      return structuredClone(savedTextFiles);
+    },
+    holdSaves(hold: boolean) {
+      holdSaves = hold;
+    },
+    releaseHeldSaves() {
+      holdSaves = false;
+      const resolvers = heldSaveResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    holdBackgroundReads(hold: boolean) {
+      holdBackgroundReads = hold;
+    },
+    releaseHeldBackgroundReads() {
+      holdBackgroundReads = false;
+      const resolvers = heldBackgroundReadResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
+    holdFrozenInputReads(hold: boolean) {
+      holdFrozenInputReads = hold;
+    },
+    releaseHeldFrozenInputReads() {
+      holdFrozenInputReads = false;
+      const resolvers = heldFrozenInputReadResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      return resolvers.length;
+    },
     get saveCalls() {
       return saveCalls;
+    },
+    get pendingSaveCalls() {
+      return pendingSaveCalls;
+    },
+    get backgroundReadCalls() {
+      return backgroundReadCalls;
+    },
+    get pendingBackgroundReads() {
+      return pendingBackgroundReads;
+    },
+    get frozenInputReadCalls() {
+      return frozenInputReadCalls;
+    },
+    get pendingFrozenInputReads() {
+      return pendingFrozenInputReads;
     },
     get saveOperationIds() {
       return [...saveOperationIds];
@@ -322,3 +449,5 @@ export function createInkEditorBackend(
     },
   };
 }
+
+export type InkEditorBackend = ReturnType<typeof createInkEditorBackend>;

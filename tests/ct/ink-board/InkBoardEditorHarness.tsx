@@ -87,7 +87,7 @@ export function InkBoardEditorHarness({ mode, label = 'doc' }: InkBoardEditorHar
       >
         Remount document
       </button>
-      <div style={{ height: 480, width: 640 }}>
+      <div style={{ height: 480, width: 'min(640px, 100%)' }}>
         {mounted && (
           <DstuFileViewer
             key={mountKey}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -16,6 +16,7 @@ import { useInkDocument } from './useInkDocument';
 import { loadInkBackground, type InkBackgroundLease } from './background';
 import { getFrozenInkRenderInputs } from './renderBridge';
 import { composeSourceHighlights } from './sourceHighlights';
+import { isInkDiagnosticsEnabled, recordInkDiagnostic } from './inkDiagnostics';
 import {
   clampEraserSize,
   clampInkOpacity,
@@ -35,7 +36,7 @@ import {
   serializeInkClipboard,
 } from './clipboard';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
-import type { InkPage, InkRect, InkRuling } from './types';
+import type { InkManifest, InkPage, InkPageRef, InkRect, InkRuling } from './types';
 
 export interface InkAskAiRequest {
   documentId: string;
@@ -54,6 +55,117 @@ export interface InkEditorProps {
 }
 
 type InkHistory = { undo: InkPage[]; redo: InkPage[] };
+
+interface PublishedInkBackground {
+  identityKey: string;
+  highlightSignature: string;
+  background?: CanvasImageSource;
+  dispose(): void;
+}
+
+/** Stable raster identity: revision/page hashes change on every save, the pixels do not. */
+function inkBackgroundIdentityKey(
+  documentId: string,
+  manifest: InkManifest,
+  pageRef: InkPageRef,
+): string {
+  const source = manifest.source;
+  const background = pageRef.background;
+  return JSON.stringify([
+    documentId,
+    source.kind,
+    source.kind === 'resource' ? source.resource_id : null,
+    source.kind === 'resource' ? source.source_hash : null,
+    source.kind === 'resource' ? source.conversion_revision : null,
+    pageRef.page_id,
+    pageRef.width,
+    pageRef.height,
+    background.kind,
+    background.kind === 'blank' ? background.ruling : null,
+    background.kind === 'image' ? background.blob_hash : null,
+    background.kind === 'pdf_page' ? background.blob_hash : null,
+    background.kind === 'pdf_page' ? background.source_page_index : null,
+  ]);
+}
+
+function sameInkSource(left: InkManifest['source'], right: InkManifest['source']): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'blank') return true;
+  if (right.kind !== 'resource') return false;
+  return left.resource_id === right.resource_id
+    && left.source_hash === right.source_hash
+    && left.conversion_revision === right.conversion_revision;
+}
+
+function sameInkBackground(left: InkPageRef['background'], right: InkPageRef['background']): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'blank') return right.kind === 'blank' && left.ruling === right.ruling;
+  if (left.kind === 'image') return right.kind === 'image' && left.blob_hash === right.blob_hash;
+  return right.kind === 'pdf_page'
+    && left.blob_hash === right.blob_hash
+    && left.source_page_index === right.source_page_index;
+}
+
+function sameInkPageBackgroundIdentity(left: InkPageRef, right: InkPageRef): boolean {
+  return left.page_id === right.page_id
+    && left.width === right.width
+    && left.height === right.height
+    && sameInkBackground(left.background, right.background);
+}
+
+/** Order-independent JSON so reseeded highlight objects with the same fields reuse the lease. */
+function stableInkJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableInkJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().filter((key) => record[key] !== undefined).map((key) => (
+      `${JSON.stringify(key)}:${stableInkJson(record[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** Signature of the actual highlighter input, not of an optional source revision. */
+function inkHighlightSignature(highlights: Array<Record<string, unknown>>): string {
+  return stableInkJson(highlights);
+}
+
+function logInkBackground(
+  event: string,
+  data: Record<string, unknown>,
+): void {
+  try {
+    if (!isInkDiagnosticsEnabled()) return;
+    recordInkDiagnostic(event, data);
+  } catch {
+    // Diagnostics are strictly best-effort.
+  }
+}
+
+function createPublishedInkBackground(
+  identityKey: string,
+  highlightSignature: string,
+  lease: InkBackgroundLease,
+  composed: HTMLCanvasElement | undefined,
+  diagnostics: Record<string, unknown>,
+): PublishedInkBackground {
+  let disposed = false;
+  return {
+    identityKey,
+    highlightSignature,
+    background: composed ?? lease.background,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      lease.dispose();
+      if (composed) {
+        composed.width = 0;
+        composed.height = 0;
+      }
+      logInkBackground('ink.background.release', { ...diagnostics, phase: 'release' });
+    },
+  };
+}
 
 export function InkEditor({ documentId, className, initialPageId, exportControls, onAskAi, onExport }: InkEditorProps) {
   const { t } = useTranslation('ink');
@@ -98,7 +210,23 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     }
   }, [documentId]);
   const [renameValue, setRenameValue] = useState('');
-  const [publishedBackground, setPublishedBackground] = useState<InkBackgroundLease>();
+  const [publishedBackground, setPublishedBackground] = useState<PublishedInkBackground>();
+  /** The state value React has actually committed (and therefore InkPageView may still draw). */
+  const committedBackgroundRef = useRef<PublishedInkBackground>();
+  /** A published value whose state update has not committed yet; it was never drawn. */
+  const pendingBackgroundRef = useRef<PublishedInkBackground>();
+  const backgroundRequestRef = useRef(0);
+
+  // Keep the committed/pending split explicit: a state update React discarded
+  // was never painted, while the committed value stays alive until its own
+  // effect cleanup runs after a replacement commits.
+  useLayoutEffect(() => {
+    committedBackgroundRef.current = publishedBackground;
+    if (pendingBackgroundRef.current === publishedBackground) {
+      pendingBackgroundRef.current = undefined;
+    }
+  }, [publishedBackground]);
+
   const [backgroundError, setBackgroundError] = useState(false);
   const [pageError, setPageError] = useState(false);
   const [selectionMode, setSelectionMode] = useState<InkSelectionMode>('none');
@@ -285,45 +413,123 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
   useEffect(() => {
     const pageRef = docState.pageRef;
     const manifest = docState.manifest;
+    const requestId = ++backgroundRequestRef.current;
     let cancelled = false;
-    setPublishedBackground(undefined);
     setBackgroundError(false);
     if (docState.status !== 'ready' || !pageRef || !manifest) return;
 
+    // A render can briefly pair the new documentId prop with the previous
+    // document's still-published state; never load or reuse against it.
+    if (manifest.document_id !== documentId) {
+      logInkBackground('ink.background.stale', {
+        pageId: pageRef.page_id,
+        manifestDocumentId: manifest.document_id,
+        documentId,
+        phase: 'stale',
+      });
+      return;
+    }
+
+    const identityKey = inkBackgroundIdentityKey(documentId, manifest, pageRef);
+    const diagnostics = {
+      pageId: pageRef.page_id,
+      backgroundKind: pageRef.background.kind,
+      sourceKind: manifest.source.kind,
+    };
+    const isCurrent = () => !cancelled && requestId === backgroundRequestRef.current;
+
+    const publish = (next: PublishedInkBackground): void => {
+      const pending = pendingBackgroundRef.current;
+      // A superseded pending value was never committed, so React will never run
+      // its cleanup: release it now. The committed value may still be visible
+      // through the background prop and is left to its own cleanup.
+      if (pending && pending !== committedBackgroundRef.current) pending.dispose();
+      pendingBackgroundRef.current = next;
+      setPublishedBackground(next);
+    };
+
     void (async () => {
       let lease: InkBackgroundLease | undefined;
+      let composed: HTMLCanvasElement | undefined;
+      let stage = 'render_inputs';
       try {
         let highlights: Array<Record<string, unknown>> = [];
         if (manifest.source.kind === 'resource') {
           const inputs = await getFrozenInkRenderInputs(documentId, manifest.revision, pageRef.page_id);
+          if (!isCurrent()) return;
+          // The frozen revision must still describe this source/page geometry.
           if (inputs.revision !== manifest.revision || inputs.page_ref.page_id !== pageRef.page_id
-            || inputs.page.page_id !== pageRef.page_id) throw new Error('Frozen Ink render inputs do not match the open page revision.');
+            || inputs.page.page_id !== pageRef.page_id
+            || !sameInkSource(inputs.source, manifest.source)
+            || !sameInkPageBackgroundIdentity(inputs.page_ref, pageRef)) {
+            throw new Error('Frozen Ink render inputs do not match the open page revision.');
+          }
           highlights = inputs.highlights;
         }
-        lease = await loadInkBackground(pageRef);
-        if (cancelled) {
-          lease.dispose();
+
+        const highlightSignature = inkHighlightSignature(highlights);
+        const committed = committedBackgroundRef.current;
+        if (committed && committed.identityKey === identityKey
+          && committed.highlightSignature === highlightSignature) {
+          logInkBackground('ink.background.reuse', { ...diagnostics, phase: 'reuse' });
           return;
         }
-        const composed = composeSourceHighlights(lease.background, pageRef, highlights);
-        const owned = lease;
-        lease = undefined;
-        let disposed = false;
-        setPublishedBackground({
-          background: composed ?? owned.background,
-          dispose() {
-            if (disposed) return;
-            disposed = true;
-            owned.dispose();
-            if (composed) {
-              composed.width = 0;
-              composed.height = 0;
-            }
-          },
+        if (!isCurrent()) return;
+
+        // A real highlight change must rebuild the composite from a fresh lease.
+        // Normal saves hit the reuse branch above and skip this decode entirely.
+        stage = 'load';
+        logInkBackground('ink.background.load', {
+          ...diagnostics,
+          phase: 'load',
+          reason: committed?.identityKey === identityKey ? 'highlights-changed' : 'identity-changed',
         });
+        lease = await loadInkBackground(pageRef);
+        if (!isCurrent()) {
+          lease.dispose();
+          lease = undefined;
+          return;
+        }
+
+        stage = 'compose';
+        composed = composeSourceHighlights(lease.background, pageRef, highlights);
+        if (!isCurrent()) {
+          lease.dispose();
+          lease = undefined;
+          if (composed) {
+            composed.width = 0;
+            composed.height = 0;
+            composed = undefined;
+          }
+          return;
+        }
+
+        const next = createPublishedInkBackground(
+          identityKey,
+          highlightSignature,
+          lease,
+          composed,
+          diagnostics,
+        );
+        // Ownership moved into the published value; the catch must not reuse it.
+        lease = undefined;
+        composed = undefined;
+        publish(next);
+        logInkBackground('ink.background.publish', { ...diagnostics, phase: 'publish' });
       } catch {
         lease?.dispose();
-        if (!cancelled) setBackgroundError(true);
+        if (composed) {
+          composed.width = 0;
+          composed.height = 0;
+        }
+        if (isCurrent()) {
+          logInkBackground('ink.background.failure', {
+            ...diagnostics,
+            phase: 'failure',
+            stage,
+          });
+          setBackgroundError(true);
+        }
       }
     })();
 
@@ -332,11 +538,17 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     };
   }, [documentId, docState.status, docState.pageRef, docState.manifest]);
 
-  // Disposing from this effect (not the loader's cleanup) ties the lease to the
-  // value React actually published: React runs this cleanup only after the
-  // background prop has been replaced or detached, so InkPageView can no longer
-  // redraw a closed ImageBitmap in the same commit.
+  // Ties the lease to the value React actually committed: this cleanup runs
+  // only after the background prop has been replaced (or InkPageView unmounted),
+  // so a bitmap still drawn in the same commit is never closed underneath it.
   useEffect(() => () => publishedBackground?.dispose(), [publishedBackground]);
+  // Covers a publish whose state update is discarded by an immediate unmount or
+  // superseded before commit. The committed value is disposed by the effect above.
+  useEffect(() => () => {
+    const pending = pendingBackgroundRef.current;
+    pendingBackgroundRef.current = undefined;
+    if (pending && pending !== committedBackgroundRef.current) pending.dispose();
+  }, []);
 
   const onPageChange = useCallback(async (page: InkPage, expectedRevision?: string) => {
     const previous = documentRef.current.page;
@@ -515,6 +727,17 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
     eraserSize,
   };
 
+  // Gate during render so the first frame after a page/document switch cannot
+  // paint the previous page's bitmap before the passive loader effect runs.
+  const visibleBackgroundKey = docState.status === 'ready' && docState.manifest
+    && docState.manifest.document_id === documentId && docState.pageRef
+    ? inkBackgroundIdentityKey(documentId, docState.manifest, docState.pageRef)
+    : undefined;
+  const visibleBackground = publishedBackground && visibleBackgroundKey
+    && publishedBackground.identityKey === visibleBackgroundKey
+    ? publishedBackground.background
+    : undefined;
+
   const content = docState.status === 'loading' ? (
     <div className="p-3 text-sm text-muted-foreground" role="status">{t('status.loading')}</div>
   ) : docState.status === 'error' ? (
@@ -613,7 +836,7 @@ export function InkEditor({ documentId, className, initialPageId, exportControls
         documentId={documentId}
         pageRef={docState.pageRef}
         page={docState.page}
-        background={publishedBackground?.background}
+        background={visibleBackground}
         tool={toolSettings}
         erasing={erasing}
         selectionMode={selectionMode}

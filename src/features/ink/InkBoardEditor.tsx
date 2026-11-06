@@ -8,7 +8,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch } from '@phosphor-icons/react';
+import { CircleNotch, Minus, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/shad/Dialog';
@@ -16,19 +16,19 @@ import { cn } from '@/utils/cn';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
+import { InkDrawingToolbar, inkToolButtonClass } from './InkDrawingToolbar';
 import {
   getInkBoardOverview as fetchInkBoardOverview,
   type InkBoardOverview as InkBoardOverviewWire,
 } from './api';
 import {
-  INK_COLOR_PRESETS,
-  INK_ERASER_SIZES,
   clampEraserSize,
   clampInkWidth,
+  clampInkOpacity,
   inkStyleColor,
   loadInkToolPreferences,
+  normalizeHexColor,
   saveInkToolPreferences,
-  widthPresetsFor,
   type InkToolName,
   type InkToolStyleSettings,
 } from './toolSettings';
@@ -237,7 +237,6 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
   const [spaceDown, setSpaceDown] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<InkBoardExportFormat>('png');
@@ -838,7 +837,6 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
     ? (overviewReady ? 'ready' : 'revision-mismatch')
     : overview.status;
   const currentSettings = settingsByTool[tool];
-  const widthPresets = widthPresetsFor(tool);
 
   return (
     <section
@@ -848,115 +846,47 @@ export function InkBoardEditor({ documentId, className, onAskAi, onExport }: Ink
       className={cn('flex h-full min-h-0 flex-col', className)}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-1 border-b border-border/50 px-2 py-1">
-        <output
-          data-testid="ink-board-save-state"
-          data-state={doc.saveStatus}
-          role={doc.saveStatus === 'storage-error' ? 'alert' : 'status'}
-          aria-live="polite"
-          className="min-h-6 text-xs text-muted-foreground"
-        >
-          {t(`ink:status.${doc.saveStatus}`)}
-        </output>
-        <span data-testid="ink-board-title" className="max-w-48 truncate text-sm font-medium" title={manifest.title}>
-          {manifest.title}
-        </span>
-        <DsButton data-testid="ink-board-tool-pen" size="sm" variant={tool === 'pen' && !erasing ? 'default' : 'ghost'} aria-pressed={tool === 'pen' && !erasing} onClick={() => selectTool('pen')}>
-          {t('ink:tools.pen')}
-        </DsButton>
-        <DsButton data-testid="ink-board-tool-highlighter" size="sm" variant={tool === 'highlighter' && !erasing ? 'default' : 'ghost'} aria-pressed={tool === 'highlighter' && !erasing} onClick={() => selectTool('highlighter')}>
-          {t('ink:tools.highlighter')}
-        </DsButton>
-        <DsButton data-testid="ink-board-eraser-tool" size="sm" variant={erasing ? 'default' : 'ghost'} aria-pressed={erasing} onClick={() => { setErasing((value) => !value); setSelectionMode('none'); setSelection(null); }}>
-          {t('ink:tools.eraser')}
-        </DsButton>
-        <DsButton data-testid="ink-board-undo" size="sm" variant="ghost" disabled={doc.undoDepth === 0} onClick={handleUndo}>{t('ink:actions.undo')}</DsButton>
-        <DsButton data-testid="ink-board-redo" size="sm" variant="ghost" disabled={doc.redoDepth === 0} onClick={handleRedo}>{t('ink:actions.redo')}</DsButton>
-        <DsButton data-testid="ink-board-select-rectangle" size="sm" variant={selectionMode === 'rectangle' ? 'default' : 'ghost'} aria-pressed={selectionMode === 'rectangle'} onClick={() => toggleSelectionMode('rectangle')}>{t('ink:actions.selectRectangle')}</DsButton>
-        <DsButton data-testid="ink-board-select-lasso" size="sm" variant={selectionMode === 'lasso' ? 'default' : 'ghost'} aria-pressed={selectionMode === 'lasso'} onClick={() => toggleSelectionMode('lasso')}>{t('ink:actions.selectLasso')}</DsButton>
-        <DsButton data-testid="ink-board-selection-copy" size="sm" variant="ghost" disabled={selectedObjects.length === 0} onClick={() => void handleCopy()}>{t('ink:actions.copySelection')}</DsButton>
-        <DsButton data-testid="ink-board-selection-paste" size="sm" variant="ghost" onClick={() => void handlePaste()}>{t('ink:actions.pasteSelection')}</DsButton>
-        <DsButton data-testid="ink-board-touch-draw-toggle" size="sm" variant={touchDrawing ? 'default' : 'ghost'} aria-pressed={touchDrawing} onClick={() => setTouchDrawing((value) => !value)}>
-          {t(touchDrawing ? 'ink:actions.touchDrawOn' : 'ink:actions.touchDrawOff')}
-        </DsButton>
-        <DsButton data-testid="ink-board-zoom-out" size="sm" variant="ghost" onClick={() => zoomBoardBy(1 / 1.25)}>{t('ink:actions.zoomOut')}</DsButton>
-        <output data-testid="ink-board-zoom-level" className="min-w-12 text-center text-xs tabular-nums">{Math.round(camera.zoom * 100)}%</output>
-        <DsButton data-testid="ink-board-zoom-in" size="sm" variant="ghost" onClick={() => zoomBoardBy(1.25)}>{t('ink:actions.zoomIn')}</DsButton>
-        <DsButton data-testid="ink-board-save" size="sm" variant="ghost" disabled={doc.saveStatus === 'saved'} onClick={handleSave}>{t('ink:board.save')}</DsButton>
-        <DsButton
-          data-testid="ink-board-ask-ai"
-          size="sm"
-          variant="ghost"
-          disabled={!onAskAi}
-          aria-disabled={!onAskAi}
-          title={onAskAi ? t('ink:actions.askAi') : t('ink:board.askAiUnavailable')}
-          onClick={handleAskAi}
-        >
-          {t('ink:actions.askAi')}
-        </DsButton>
-        <DsButton
-          data-testid="ink-board-export"
-          size="sm"
-          variant="ghost"
-          disabled={!onExport}
-          aria-disabled={!onExport}
-          title={onExport ? t('ink:actions.export') : t('ink:board.exportUnavailable')}
-          onClick={openExportDialog}
-        >
-          {t('ink:actions.export')}
-        </DsButton>
-        <DsButton data-testid="ink-board-settings-toggle" size="sm" variant="ghost" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((value) => !value)}>
-          {t('ink:styleSettings.open')}
-        </DsButton>
-      </div>
-
-      {settingsOpen && (
-        <div data-testid="ink-board-settings" className="flex min-w-0 flex-wrap items-center gap-1 border-b border-border/50 px-2 py-1">
-          <div role="group" aria-label={t('ink:colors.label')} className="flex flex-wrap items-center gap-1">
-            {INK_COLOR_PRESETS.map((preset) => (
-              <DsButton
-                key={preset.id}
-                data-testid={`ink-board-color-${preset.id}`}
-                size="icon"
-                variant={currentSettings.color === preset.value ? 'default' : 'ghost'}
-                aria-label={t(preset.labelKey)}
-                aria-pressed={currentSettings.color === preset.value}
-                onClick={() => { updateSettings({ color: preset.value }); setErasing(false); }}
-              >
-                <span className="block h-4 w-4 rounded-full border border-border" style={{ backgroundColor: preset.value }} />
-              </DsButton>
-            ))}
+      <div className="z-10 flex w-full min-w-0 max-w-full shrink-0 flex-col border-b border-border/60 bg-background">
+        <InkDrawingToolbar
+          variant="board"
+          canUndo={doc.undoDepth > 0} canRedo={doc.redoDepth > 0}
+          tool={tool} color={currentSettings.color} width={currentSettings.width} opacity={currentSettings.opacity}
+          eraserSize={eraserSize} erasing={erasing} touchDrawing={touchDrawing}
+          selectionMode={selectionMode} selectionActive={selection !== null} selectionCanCopy={selectedObjects.length > 0}
+          onSelectSelectionMode={(mode) => { if (mode !== 'none') toggleSelectionMode(mode); }}
+          onSelectionCopy={() => void handleCopy()} onSelectionPaste={() => void handlePaste()}
+          onSelectTool={selectTool}
+          onSelectColor={(value) => {
+            const normalized = normalizeHexColor(value);
+            if (normalized) { updateSettings({ color: normalized }); setErasing(false); }
+          }}
+          onSelectWidth={(value) => updateSettings({ width: clampInkWidth(tool, value) })}
+          onSelectOpacity={(value) => updateSettings({ opacity: clampInkOpacity(value) })}
+          onSelectEraserSize={(value) => setEraserSize(clampEraserSize(value))}
+          onToggleEraser={() => { setErasing((value) => !value); setSelectionMode('none'); setSelection(null); }}
+          onUndo={handleUndo} onRedo={handleRedo}
+          onToggleTouchDrawing={() => setTouchDrawing((value) => !value)}
+          translate={(key) => t(`ink:${key}`)}
+        />
+        <div data-testid="ink-board-controls" className="flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain border-t border-border/40 px-2 py-1 [scrollbar-width:thin]">
+          <div className="flex w-24 min-w-0 shrink-0 flex-col px-1">
+            <span data-testid="ink-board-title" className="truncate text-xs font-medium" title={manifest.title}>{manifest.title}</span>
+            <output data-testid="ink-board-save-state" data-state={doc.saveStatus}
+              role={doc.saveStatus === 'storage-error' ? 'alert' : 'status'} aria-live="polite"
+              className="truncate text-xs text-muted-foreground" title={t(`ink:status.${doc.saveStatus}`)}>
+              {t(`ink:status.${doc.saveStatus}`)}
+            </output>
           </div>
-          <div role="group" aria-label={t('ink:width.label')} className="flex flex-wrap items-center gap-1">
-            {widthPresets.map((preset) => (
-              <DsButton
-                key={preset.value}
-                data-testid={`ink-board-width-${preset.value}`}
-                size="sm"
-                variant={currentSettings.width === preset.value ? 'default' : 'ghost'}
-                aria-pressed={currentSettings.width === preset.value}
-                onClick={() => updateSettings({ width: clampInkWidth(tool, preset.value) })}
-              >
-                {preset.value}
-              </DsButton>
-            ))}
-          </div>
-          <div role="group" aria-label={t('ink:eraser.label')} className="flex flex-wrap items-center gap-1">
-            {INK_ERASER_SIZES.map((size) => (
-              <DsButton
-                key={size}
-                data-testid={`ink-board-eraser-size-${size}`}
-                size="sm"
-                variant={eraserSize === size ? 'default' : 'ghost'}
-                aria-pressed={eraserSize === size}
-                onClick={() => setEraserSize(clampEraserSize(size))}
-              >
-                {size}
-              </DsButton>
-            ))}
-          </div>
+          <DsButton data-testid="ink-board-zoom-out" size="sm" iconOnly className={inkToolButtonClass} aria-label={t('ink:actions.zoomOut')} title={t('ink:actions.zoomOut')} onClick={() => zoomBoardBy(1 / 1.25)}><Minus size={20} aria-hidden /></DsButton>
+          <output data-testid="ink-board-zoom-level" className="min-w-12 shrink-0 text-center text-xs tabular-nums">{Math.round(camera.zoom * 100)}%</output>
+          <DsButton data-testid="ink-board-zoom-in" size="sm" iconOnly className={inkToolButtonClass} aria-label={t('ink:actions.zoomIn')} title={t('ink:actions.zoomIn')} onClick={() => zoomBoardBy(1.25)}><Plus size={20} aria-hidden /></DsButton>
+          <DsButton data-testid="ink-board-save" size="sm" disabled={doc.saveStatus === 'saved'} onClick={handleSave}>{t('ink:board.save')}</DsButton>
+          <DsButton data-testid="ink-board-ask-ai" size="sm" disabled={!onAskAi} aria-disabled={!onAskAi}
+            title={onAskAi ? t('ink:actions.askAi') : t('ink:board.askAiUnavailable')} onClick={handleAskAi}>{t('ink:actions.askAi')}</DsButton>
+          <DsButton data-testid="ink-board-export" size="sm" disabled={!onExport} aria-disabled={!onExport}
+            title={onExport ? t('ink:actions.export') : t('ink:board.exportUnavailable')} onClick={openExportDialog}>{t('ink:actions.export')}</DsButton>
         </div>
-      )}
+      </div>
 
       {notice && (
         <div role="alert" className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">

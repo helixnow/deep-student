@@ -16,6 +16,10 @@
   min-height: 0;
 }
 
+.notebook-scroll {
+  height: 100%;
+}
+
 .notebook-scroll-viewport {
   height: 100%;
 }
@@ -216,6 +220,38 @@
 .notebook-card-grid .notebook-card:hover {
   border-color: hsl(var(--primary) / 45%);
   background: hsl(var(--muted) / 15%);
+}
+
+.notebook-card .notebook-card-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  white-space: normal;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.notebook-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 8px 8px;
+  border-top: 1px solid hsl(var(--border) / 40%);
+}
+
+.notebook-card-actions > button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .notebook-card-cover {

@@ -74,6 +74,8 @@ export interface NotebookCtBackendOptions {
   label?: string;
   holdSaves?: boolean;
   listFailures?: number;
+  renameFailures?: number;
+  deleteFailures?: number;
 }
 
 export interface NotebookCtBackend {
@@ -139,7 +141,7 @@ function publicManifest(document: NotebookCtDocument, manifest = document.backen
   return manifest;
 }
 
-export function createNotebookCtBackend({ label = 'library', holdSaves = false, listFailures = 0 }: NotebookCtBackendOptions = {}): NotebookCtBackend {
+export function createNotebookCtBackend({ label = 'library', holdSaves = false, listFailures = 0, renameFailures = 0, deleteFailures = 0 }: NotebookCtBackendOptions = {}): NotebookCtBackend {
   const namespace = crypto.randomUUID();
   const folderPath = '/Notebook courses/Term one';
   const pagedId = createInkBoardCtDocumentId('paged-v1', `notebook-${label}-existing`);
@@ -152,6 +154,8 @@ export function createNotebookCtBackend({ label = 'library', holdSaves = false, 
   const listCalls: NotebookCtListCall[] = [];
   const createCalls: NotebookCtCreateCall[] = [];
   let remainingFailures = listFailures;
+  let remainingRenameFailures = renameFailures;
+  let remainingDeleteFailures = deleteFailures;
   let savesHeld = holdSaves;
   let clock = 1_800_000_000_000;
   const pending = new Set<() => void>();
@@ -247,6 +251,27 @@ export function createNotebookCtBackend({ label = 'library', holdSaves = false, 
     dstu_get: (_command, payload) => {
       const entry = nodes.find((candidate) => candidate.path === payload?.path || `/${candidate.id}` === payload?.path);
       return entry ? copy(entry) : null;
+    },
+    dstu_rename: (_command, payload) => {
+      if (remainingRenameFailures > 0) {
+        remainingRenameFailures -= 1;
+        throw new Error('Notebook CT rename unavailable');
+      }
+      const entry = nodes.find((candidate) => candidate.path === payload?.path || `/${candidate.id}` === payload?.path);
+      if (!entry || typeof payload?.newName !== 'string' || !payload.newName.trim()) throw new Error('Invalid Notebook CT rename');
+      entry.name = payload.newName;
+      entry.updatedAt = ++clock;
+      entry.resourceHash = `notebook-ct-rename-${clock}`;
+      return copy(entry);
+    },
+    dstu_delete: (_command, payload) => {
+      if (remainingDeleteFailures > 0) {
+        remainingDeleteFailures -= 1;
+        throw new Error('Notebook CT trash unavailable');
+      }
+      const index = nodes.findIndex((candidate) => candidate.path === payload?.path || `/${candidate.id}` === payload?.path);
+      if (index < 0) throw new Error('Unknown Notebook CT deletion');
+      nodes.splice(index, 1);
     },
     vfs_ink_create: create,
     vfs_ink_create_board: create,

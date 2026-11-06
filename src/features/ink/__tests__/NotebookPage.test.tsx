@@ -6,6 +6,8 @@ import type { Result } from '@/shared/result';
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn<(path: string, options?: DstuListOptions) => Promise<Result<DstuNode[]>>>(),
+  rename: vi.fn<(path: string, name: string) => Promise<Result<DstuNode>>>(),
+  delete: vi.fn<(path: string) => Promise<Result<void>>>(),
   createEmpty: vi.fn(),
   createInk: vi.fn(),
   createInkBoard: vi.fn(),
@@ -17,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/dstu', async () => ({
   ...(await vi.importActual('@/dstu/inkFormat')),
-  dstu: { list: mocks.list },
+  dstu: { list: mocks.list, rename: mocks.rename, delete: mocks.delete },
   createEmpty: mocks.createEmpty,
 }));
 
@@ -88,6 +90,8 @@ async function waitForLoaded() {
 
 beforeEach(() => {
   mocks.list.mockReset();
+  mocks.rename.mockReset();
+  mocks.delete.mockReset();
   installLists([], []);
   mocks.createEmpty.mockReset();
   mocks.createInk.mockReset().mockResolvedValue({ document_id: 'file_new_paged', title: '新分页' });
@@ -290,5 +294,154 @@ describe('NotebookPage library and workspace boundary', () => {
     await waitForLoaded();
     expect(screen.getAllByTestId('notebook-sliding-layout-mock-header')).toHaveLength(1);
     expect(mocks.useMobileHeader.mock.calls.at(-1)?.[1]).toMatchObject({ hidden: false, showMenu: true });
+  });
+});
+
+
+describe('NotebookPage card actions', () => {
+  it.each(['text', 'ink'] as const)('renames a %s notebook directly and refreshes without opening it', async (kind) => {
+    const existing = node('notebook_rename', { type: kind === 'ink' ? 'file' : 'note', name: kind === 'ink' ? '旧标题.dsink' : '旧标题' });
+    installLists(kind === 'text' ? [existing] : [], kind === 'ink' ? [existing] : []);
+    mocks.rename.mockImplementation(async (_path, name) => {
+      existing.name = name;
+      return { ok: true, value: { ...existing } };
+    });
+    render(<NotebookPage />);
+    await waitForLoaded();
+    fireEvent.click(screen.getByTestId(`notebook-rename-${existing.id}`));
+    const dialog = await screen.findByRole('alertdialog', { name: '重命名笔记' });
+    const input = within(dialog).getByRole('textbox', { name: '笔记名称' });
+    expect(input).toHaveValue('旧标题');
+    fireEvent.change(input, { target: { value: kind === 'ink' ? ' 新标题.dsink.dsink ' : ' 新标题 ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '重命名', exact: true }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await waitForLoaded();
+    expect(mocks.rename).toHaveBeenCalledExactlyOnceWith(`/${existing.id}`, kind === 'ink' ? '新标题.dsink' : '新标题');
+    expect(screen.getByTestId(`notebook-card-${existing.id}`)).toHaveTextContent('新标题');
+    expect(mocks.inkProps).toHaveLength(0);
+    expect(mocks.textProps).toHaveLength(0);
+  });
+
+  it.each(['', '   ', '.dsink', 'invalid/name', 'invalid\\name', 'invalid:name', 'bad?name'])(
+    'rejects an invalid handwritten title %j without invoking rename', async (value) => {
+      installLists([], [node('ink_invalid', { type: 'file', name: '旧标题.dsink' })]);
+      render(<NotebookPage />);
+      await waitForLoaded();
+      fireEvent.click(screen.getByTestId('notebook-rename-ink_invalid'));
+      const dialog = await screen.findByRole('alertdialog');
+      const input = within(dialog).getByRole('textbox');
+      fireEvent.change(input, { target: { value } });
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      const confirm = within(dialog).getByRole('button', { name: '重命名', exact: true });
+      expect(confirm).toBeDisabled();
+      fireEvent.click(confirm);
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(mocks.rename).not.toHaveBeenCalled();
+    },
+  );
+
+  it('cancels either action without invoking the API or opening a workspace', async () => {
+    installLists([node('note_cancel')], []);
+    render(<NotebookPage />);
+    await waitForLoaded();
+    for (const action of ['rename', 'delete']) {
+      fireEvent.click(screen.getByTestId(`notebook-${action}-note_cancel`));
+      fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '取消' }));
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    }
+    expect(mocks.rename).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
+    expect(screen.getByTestId('notebook-card-note_cancel')).toBeInTheDocument();
+    expect(mocks.textProps).toHaveLength(0);
+  });
+
+  it('keeps a failed rename editable for retry and suppresses duplicate Enter/click submissions', async () => {
+    const existing = node('rename_retry');
+    installLists([existing], []);
+    mocks.rename.mockRejectedValueOnce(new Error('temporary rename failure'));
+    let finish!: (value: Result<DstuNode>) => void;
+    render(<NotebookPage />);
+    await waitForLoaded();
+    fireEvent.click(screen.getByTestId('notebook-rename-rename_retry'));
+    const dialog = await screen.findByRole('alertdialog');
+    const input = within(dialog).getByRole('textbox');
+    fireEvent.change(input, { target: { value: '重试成功' } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(mocks.rename).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('temporary rename failure');
+    expect(input).toHaveValue('重试成功');
+    mocks.rename.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const confirm = within(dialog).getByRole('button', { name: '重命名', exact: true });
+    fireEvent.click(confirm);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(confirm);
+    expect(mocks.rename).toHaveBeenCalledTimes(2);
+    expect(within(dialog).getByRole('button', { name: '取消' })).toBeDisabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(dialog).toBeInTheDocument();
+    existing.name = '重试成功';
+    await act(async () => finish({ ok: true, value: existing }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await waitForLoaded();
+    expect(screen.getByTestId('notebook-card-rename_retry')).toHaveTextContent('重试成功');
+  });
+
+  it.each(['text', 'ink'] as const)('deletes a %s notebook through the trash API after confirmation', async (kind) => {
+    const existing = node('delete_notebook', { type: kind === 'ink' ? 'file' : 'note', name: kind === 'ink' ? '删除.dsink' : '删除' });
+    installLists(kind === 'text' ? [existing] : [], kind === 'ink' ? [existing] : []);
+    mocks.delete.mockImplementation(async () => {
+      installLists([], []);
+      return { ok: true, value: undefined };
+    });
+    render(<NotebookPage />);
+    await waitForLoaded();
+    fireEvent.click(screen.getByTestId('notebook-delete-delete_notebook'));
+    const dialog = await screen.findByRole('alertdialog', { name: '删除笔记' });
+    expect(dialog).toHaveTextContent('资源库回收站恢复');
+    expect(mocks.delete).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '移入回收站' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await waitForLoaded();
+    expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('/delete_notebook');
+    expect(screen.queryByTestId('notebook-card-delete_notebook')).not.toBeInTheDocument();
+    expect(mocks.inkProps).toHaveLength(0);
+    expect(mocks.textProps).toHaveLength(0);
+  });
+
+  it('retains a failed deletion and allows retry without losing the card', async () => {
+    installLists([node('delete_retry')], []);
+    mocks.delete.mockResolvedValueOnce({ ok: false, error: { toUserMessage: () => '回收站暂不可用' } } as unknown as Result<void>);
+    mocks.delete.mockImplementationOnce(async () => {
+      installLists([], []);
+      return { ok: true, value: undefined };
+    });
+    render(<NotebookPage />);
+    await waitForLoaded();
+    fireEvent.click(screen.getByTestId('notebook-delete-delete_retry'));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '移入回收站' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('回收站暂不可用');
+    expect(screen.getByTestId('notebook-card-delete_retry')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '移入回收站' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await waitForLoaded();
+    expect(mocks.delete).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('notebook-card-delete_retry')).not.toBeInTheDocument();
+  });
+
+  it('does not allow a pending dialog to submit when the page becomes inactive', async () => {
+    installLists([node('inactive_action')], []);
+    const view = render(<NotebookPage />);
+    await waitForLoaded();
+    fireEvent.click(screen.getByTestId('notebook-rename-inactive_action'));
+    const dialog = await screen.findByRole('alertdialog');
+    view.rerender(<NotebookPage isActive={false} />);
+    fireEvent.click(within(dialog).getByRole('button', { name: '重命名', exact: true }));
+    fireEvent.keyDown(within(dialog).getByRole('textbox'), { key: 'Enter' });
+    expect(mocks.rename).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.getByTestId('notebook-delete-inactive_action')).toBeDisabled();
   });
 });

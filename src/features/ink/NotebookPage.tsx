@@ -2,15 +2,18 @@ import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo
 import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise, ArrowRight, BookOpen, CircleNotch, FileText,
-  Infinity as InfinityIcon, MagnifyingGlass, Notebook, PencilLine, Plus, WarningCircle, X,
+  Infinity as InfinityIcon, MagnifyingGlass, Notebook, PencilLine, Plus, Trash, WarningCircle, X,
 } from '@phosphor-icons/react';
-import { createEmpty, INK_MIME, type DstuNode } from '@/dstu';
+import { createEmpty, dstu, INK_MIME, type DstuNode } from '@/dstu';
+import { isValidName } from '@/dstu/naming';
 import { InkWorkspace, createInk, createInkBoard } from '@/features/ink';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
 import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   NOTEBOOK_CARD_PAGE_SIZE, NotebookPaginationError, notebookFolder, notebookTitle,
@@ -43,6 +46,11 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
   const [visibleCount, setVisibleCount] = useState(NOTEBOOK_CARD_PAGE_SIZE);
   const [creating, setCreating] = useState<CreateMode | null>(null);
   const [createFailure, setCreateFailure] = useState<{ mode: CreateMode; error: unknown } | null>(null);
+  const [action, setAction] = useState<{
+    kind: 'rename' | 'delete'; entry: NotebookEntry; value: string; error?: unknown;
+  } | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const actionPendingRef = useRef(false);
   const mountedRef = useRef(true);
   const activeRef = useRef(isActive);
   const creatingRef = useRef(false);
@@ -194,7 +202,7 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
   }, [isActive, selected, toggleDrawer, t], isActive);
 
   const handleCreate = useCallback(async (mode: CreateMode) => {
-    if (!activeRef.current || creatingRef.current) return;
+    if (!activeRef.current || creatingRef.current || actionPendingRef.current) return;
     creatingRef.current = true;
     setCreating(mode);
     setCreateFailure(null);
@@ -233,6 +241,36 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
     }
   }, [openNotebook, t]);
 
+  const renameTitle = action?.kind === 'rename'
+    ? (action.entry.kind === 'ink' ? action.value.trim().replace(/(?:\.dsink)+$/i, '').trim() : action.value.trim())
+    : '';
+  const renameValid = isValidName(renameTitle);
+  const submitAction = async () => {
+    if (!action || !activeRef.current || actionPendingRef.current || (action.kind === 'rename' && !renameValid)) return;
+    actionPendingRef.current = true;
+    setActionPending(true);
+    setAction((current) => current ? { ...current, error: undefined } : null);
+    try {
+      const path = `/${action.entry.node.id}`;
+      const result = action.kind === 'rename'
+        ? await dstu.rename(path, action.entry.kind === 'ink' ? `${renameTitle}.dsink` : renameTitle)
+        : await dstu.delete(path);
+      if (!result.ok) throw result.error;
+      if (mountedRef.current) {
+        setAction(null);
+        library.refresh();
+      }
+    } catch (error) {
+      if (mountedRef.current) setAction((current) => current ? { ...current, error } : null);
+    } finally {
+      actionPendingRef.current = false;
+      if (mountedRef.current) setActionPending(false);
+    }
+  };
+  const closeAction = (open: boolean) => {
+    if (!open && !actionPendingRef.current) setAction(null);
+  };
+
   const allEntries = useMemo(() => selectNotebookEntries(library.nodes), [library.nodes]);
   const entries = useMemo(() => selectNotebookEntries(library.nodes, query, filter), [library.nodes, query, filter]);
   const visibleEntries = entries.slice(0, visibleCount);
@@ -240,7 +278,7 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, {
     month: 'short', day: 'numeric',
   }), [i18n.resolvedLanguage, i18n.language]);
-  const disabled = !isActive || creating !== null;
+  const disabled = !isActive || creating !== null || actionPending;
 
   const createChoices = (
     <section className="notebook-create-grid" aria-label={t('notebook.createSection')}>
@@ -350,26 +388,40 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
                 const title = notebookTitle(entry);
                 const folder = notebookFolder(entry.node);
                 return (
-                  <DsButton
-                    key={entry.node.id} variant="ghost" className="notebook-card"
-                    onClick={() => openNotebook(entry)} disabled={!isActive}
-                    aria-label={t('notebook.openNote', { title })}
-                    data-testid={`notebook-card-${entry.node.id}`}
-                  >
-                    <span className={`notebook-card-cover notebook-card-cover-${entry.kind}`} aria-hidden>
-                      <span className="notebook-card-paper" />
-                      {entry.kind === 'text' ? <FileText size={30} weight="duotone" /> : <PencilLine size={30} weight="duotone" />}
-                      <span className="notebook-card-kind">{t(`notebook.types.${entry.kind}`)}</span>
-                    </span>
-                    <span className="notebook-card-body">
-                      <strong className="notebook-card-title" title={title}>{title}</strong>
-                      <span className="notebook-card-folder" title={folder || t('notebook.rootFolder')}>{folder || t('notebook.rootFolder')}</span>
-                      <span className="notebook-card-footer">
-                        <span>{t('notebook.updatedOn', { date: dateFormatter.format(entry.node.updatedAt) })}</span>
-                        <ArrowRight size={16} aria-hidden />
+                  <article key={entry.node.id} className="notebook-card">
+                    <DsButton
+                      variant="ghost" className="notebook-card-open"
+                      onClick={() => openNotebook(entry)} disabled={!isActive || actionPending}
+                      aria-label={t('notebook.openNote', { title })}
+                      data-testid={`notebook-card-${entry.node.id}`}
+                    >
+                      <span className={`notebook-card-cover notebook-card-cover-${entry.kind}`} aria-hidden>
+                        <span className="notebook-card-paper" />
+                        {entry.kind === 'text' ? <FileText size={30} weight="duotone" /> : <PencilLine size={30} weight="duotone" />}
+                        <span className="notebook-card-kind">{t(`notebook.types.${entry.kind}`)}</span>
                       </span>
-                    </span>
-                  </DsButton>
+                      <span className="notebook-card-body">
+                        <strong className="notebook-card-title" title={title}>{title}</strong>
+                        <span className="notebook-card-folder" title={folder || t('notebook.rootFolder')}>{folder || t('notebook.rootFolder')}</span>
+                        <span className="notebook-card-footer">
+                          <span>{t('notebook.updatedOn', { date: dateFormatter.format(entry.node.updatedAt) })}</span>
+                          <ArrowRight size={16} aria-hidden />
+                        </span>
+                      </span>
+                    </DsButton>
+                    <div className="notebook-card-actions">
+                      <DsButton variant="ghost" size="icon" data-testid={`notebook-rename-${entry.node.id}`}
+                        aria-label={t('notebook.renameNote', { title })} title={t('notebook.renameNote', { title })}
+                        disabled={!isActive || actionPending} onClick={() => {
+                          if (activeRef.current && !actionPendingRef.current) setAction({ kind: 'rename', entry, value: title });
+                        }}><PencilLine size={18} aria-hidden /></DsButton>
+                      <DsButton variant="ghost" size="icon" data-testid={`notebook-delete-${entry.node.id}`}
+                        aria-label={t('notebook.deleteNote', { title })} title={t('notebook.deleteNote', { title })}
+                        disabled={!isActive || actionPending} onClick={() => {
+                          if (activeRef.current && !actionPendingRef.current) setAction({ kind: 'delete', entry, value: '' });
+                        }}><Trash size={18} aria-hidden /></DsButton>
+                    </div>
+                  </article>
                 );
               })}
             </div>
@@ -424,6 +476,35 @@ export function NotebookPage({ isActive = true, onHostStateChange }: NotebookPag
           enableGesture={isActive} className="notebook-mobile-layout" showSidebarAppNavigation
         >{content}</MobileSlidingLayout>
       ) : content}
+      <DsAlertDialog
+        open={action !== null && isActive} onOpenChange={closeAction}
+        title={t(action?.kind === 'delete' ? 'notebook.deleteTitle' : 'notebook.renameTitle')}
+        description={action?.kind === 'delete' ? t('notebook.deleteDescription', { title: notebookTitle(action.entry) }) : undefined}
+        confirmText={t(action?.kind === 'delete' ? 'notebook.deleteConfirm' : 'notebook.renameConfirm')}
+        cancelText={t('notebook.cancel')} confirmVariant={action?.kind === 'delete' ? 'danger' : 'primary'}
+        onConfirm={() => void submitAction()} loading={actionPending}
+        disabled={!isActive || (action?.kind === 'rename' && !renameValid)}
+      >
+        {action?.kind === 'rename' && (
+          <div className="space-y-2">
+            <Input data-testid="notebook-rename-input" aria-label={t('notebook.renameLabel')}
+              autoFocus value={action.value} disabled={actionPending || !isActive}
+              aria-invalid={!renameValid} aria-describedby={!renameValid ? 'notebook-rename-invalid' : undefined}
+              onChange={(event) => setAction((current) => current ? { ...current, value: event.target.value, error: undefined } : null)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !isComposingKeyEvent(event)) {
+                  event.preventDefault();
+                  void submitAction();
+                }
+              }}
+            />
+            {!renameValid && <p id="notebook-rename-invalid" className="text-sm text-destructive">{t('notebook.renameInvalid')}</p>}
+          </div>
+        )}
+        {action?.error !== undefined && <p role="alert" className="mt-2 break-words text-sm text-destructive">
+          {t(action.kind === 'delete' ? 'notebook.deleteFailed' : 'notebook.renameFailed', { message: errorMessage(action.error) })}
+        </p>}
+      </DsAlertDialog>
     </div>
   );
 }

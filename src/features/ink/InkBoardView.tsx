@@ -17,6 +17,11 @@ import {
   type Camera,
 } from './camera';
 import { collectPointerSamples } from './input';
+import {
+  captureInkPointerEvent,
+  isInkDiagnosticsEnabled,
+  recordInkDiagnostic,
+} from './inkDiagnostics';
 import { objectHitTestSweep } from './geometry';
 import { objectIntersectsPolygon, selectionBounds } from './selection';
 import { renderInkBoard } from './boardRenderer';
@@ -28,6 +33,7 @@ import type {
   InkObjectContent,
   InkPoint,
   InkRect,
+  InkSample,
 } from './types';
 
 export type InkBoardSelectionMode = 'none' | 'rectangle' | 'lasso';
@@ -126,6 +132,72 @@ function midpoint(left: InkPoint, right: InkPoint): InkPoint {
   return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
 }
 
+type DiagnosticData = Record<string, unknown>;
+
+function diagnosticsEnabled(): boolean {
+  try {
+    return isInkDiagnosticsEnabled();
+  } catch {
+    return false;
+  }
+}
+
+function diagnosticNow(): number {
+  try {
+    const perf = globalThis.performance;
+    return perf && typeof perf.now === 'function' ? perf.now() : Date.now();
+  } catch {
+    return Date.now();
+  }
+}
+
+function logDiagnostic(event: string, data?: DiagnosticData): void {
+  if (!diagnosticsEnabled()) return;
+  try {
+    recordInkDiagnostic(event, data);
+  } catch {
+    /* Diagnostics are observational and must never affect input. */
+  }
+}
+
+function capturePointerDiagnostic(
+  event: React.PointerEvent<HTMLCanvasElement>,
+  context: () => DiagnosticData,
+): void {
+  if (!diagnosticsEnabled()) return;
+  try {
+    // Sampling already records the real coalesced batch; capture stays metadata-only.
+    captureInkPointerEvent(event.nativeEvent, context(), { includeCoalesced: false });
+  } catch {
+    /* Diagnostics are observational and must never affect input. */
+  }
+}
+
+function sampleEdge(sample: InkSample | undefined): DiagnosticData | null {
+  if (!sample) return null;
+  return {
+    x: sample.x,
+    y: sample.y,
+    pressure: sample.pressure,
+    elapsed_ms: sample.elapsed_ms ?? null,
+  };
+}
+
+function errorSummary(error: unknown): DiagnosticData {
+  try {
+    if (error instanceof Error) {
+      const code = (error as Error & { code?: unknown }).code;
+      return {
+        errorName: error.name,
+        ...(typeof code === 'string' || typeof code === 'number' ? { errorCode: code } : {}),
+      };
+    }
+    return { errorType: typeof error };
+  } catch {
+    return { errorType: 'unknown' };
+  }
+}
+
 export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(function InkBoardView(
   {
     surface,
@@ -173,16 +245,31 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   const [selectionDraft, setSelectionDraft] = useState<InkPoint[] | null>(null);
   const [eraserCursor, setEraserCursor] = useState<InkPoint | null>(null);
 
-  const renderFrame = useCallback(() => {
+  const logBoardDiagnostic = (event: string, data?: DiagnosticData): void => {
+    logDiagnostic(event, {
+      scope: 'board',
+      surfaceId: surfaceRef.current.page_id,
+      ...data,
+    });
+  };
+
+  const renderFrame = useCallback((reason = 'unspecified') => {
+    const diagnostics = diagnosticsEnabled();
+    const startedAt = diagnostics ? diagnosticNow() : 0;
     const main = canvasRef.current;
     const overlay = overlayRef.current;
-    if (!main || !overlay) return;
+    if (!main || !overlay) {
+      if (diagnostics) {
+        logBoardDiagnostic('board.render', { reason, skipped: 'missing-canvas' });
+      }
+      return;
+    }
     const currentSurface = surfaceRef.current;
     const currentCamera = finiteCamera(cameraRef.current);
     const currentObjects = objectsRef.current;
     const dpr = globalThis.devicePixelRatio || 1;
 
-    renderInkBoard(main, currentSurface, currentObjects, currentCamera, { dpr });
+    const mainRender = renderInkBoard(main, currentSurface, currentObjects, currentCamera, { dpr });
 
     const active = activeStrokeRef.current;
     if (active?.samples.length) {
@@ -194,10 +281,38 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         content: { kind: 'stroke', samples: active.samples, style: active.style },
       };
       renderInkBoard(overlay, currentSurface, [preview], currentCamera, { dpr, transparent: true });
+      if (diagnostics) {
+        logBoardDiagnostic('board.render', {
+          reason,
+          durationMs: diagnosticNow() - startedAt,
+          objectCount: currentObjects.length,
+          sampleCount: active.samples.length,
+          overlay: 'preview',
+          camera: { x: currentCamera.x, y: currentCamera.y, zoom: currentCamera.zoom },
+          viewport: mainRender?.metrics
+            ? { width: mainRender.metrics.cssWidth, height: mainRender.metrics.cssHeight }
+            : { width: main.clientWidth, height: main.clientHeight },
+          dpr,
+        });
+      }
       return;
     }
     const context = overlay.getContext('2d');
     context?.clearRect(0, 0, overlay.width, overlay.height);
+    if (diagnostics) {
+      logBoardDiagnostic('board.render', {
+        reason,
+        durationMs: diagnosticNow() - startedAt,
+        objectCount: currentObjects.length,
+        sampleCount: 0,
+        overlay: 'cleared',
+        camera: { x: currentCamera.x, y: currentCamera.y, zoom: currentCamera.zoom },
+        viewport: mainRender?.metrics
+          ? { width: mainRender.metrics.cssWidth, height: mainRender.metrics.cssHeight }
+          : { width: main.clientWidth, height: main.clientHeight },
+        dpr,
+      });
+    }
   }, []);
 
   const cameraForEvent = (): Camera => finiteCamera(cameraRef.current);
@@ -226,7 +341,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   const updateCamera = useCallback((next: Camera) => {
     cameraRef.current = next;
     onCameraChange(next);
-    renderFrame();
+    renderFrame('camera');
   }, [onCameraChange, renderFrame]);
 
   const collectSamples = useCallback((
@@ -246,6 +361,76 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     );
   }, [viewportForCanvas]);
 
+  const activeGestureName = (): string => {
+    if (pinchGestureRef.current) return 'pinch';
+    if (panGestureRef.current) return 'pan';
+    if (selectionGestureRef.current) return 'selection';
+    if (eraserGestureRef.current) return 'eraser';
+    if (activeStrokeRef.current) return 'stroke';
+    return 'idle';
+  };
+
+  const pointerDiagnosticContext = (phase: string): DiagnosticData => {
+    const currentCamera = finiteCamera(cameraRef.current);
+    return {
+      scope: 'board',
+      surfaceId: surfaceRef.current.page_id,
+      phase,
+      gesture: activeGestureName(),
+      pointerCount: pointersRef.current.size,
+      camera: { x: currentCamera.x, y: currentCamera.y, zoom: currentCamera.zoom },
+    };
+  };
+
+  const logPointerAction = (
+    phase: string,
+    action: string,
+    reason: string,
+    event: React.PointerEvent<HTMLCanvasElement>,
+    extra?: () => DiagnosticData,
+  ): void => {
+    if (!diagnosticsEnabled()) return;
+    try {
+      recordInkDiagnostic('board.pointer.action', {
+        scope: 'board',
+        surfaceId: surfaceRef.current.page_id,
+        phase,
+        action,
+        reason,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        button: event.button,
+        gesture: activeGestureName(),
+        ...(extra ? extra() : {}),
+      });
+    } catch {
+      /* Diagnostics are observational and must never affect input. */
+    }
+  };
+
+  const logSampleBatch = (
+    phase: string,
+    samples: readonly InkSample[],
+    pointerId: number,
+    terminal: boolean,
+  ): void => {
+    if (!diagnosticsEnabled()) return;
+    try {
+      recordInkDiagnostic('board.stroke.samples', {
+        scope: 'board',
+        surfaceId: surfaceRef.current.page_id,
+        phase,
+        pointerId,
+        terminal,
+        count: samples.length,
+        first: sampleEdge(samples[0]),
+        last: sampleEdge(samples[samples.length - 1]),
+      });
+    } catch {
+      /* Diagnostics are observational and must never affect input. */
+    }
+  };
+
   const clearOverlay = () => {
     const overlay = overlayRef.current;
     const context = overlay?.getContext('2d');
@@ -253,6 +438,11 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   };
 
   const cancelActiveGesture = () => {
+    logBoardDiagnostic('board.gesture.cancel', {
+      gesture: activeGestureName(),
+      strokeSamples: activeStrokeRef.current?.samples.length ?? 0,
+      pointerCount: pointersRef.current.size,
+    });
     activeStrokeRef.current = null;
     eraserGestureRef.current = null;
     selectionGestureRef.current = null;
@@ -266,6 +456,11 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     const gesture = selectionGestureRef.current;
     selectionGestureRef.current = null;
     setSelectionDraft(null);
+    logBoardDiagnostic('board.selection.finish', {
+      cancelled,
+      mode: gesture?.mode ?? null,
+      pointCount: gesture?.points.length ?? 0,
+    });
     if (!gesture) {
       onSelectionChange(null);
       return;
@@ -298,6 +493,11 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     const objectIds = objectsRef.current
       .filter((object) => objectIntersectsPolygon(object, points))
       .map((object) => object.id);
+    logBoardDiagnostic('board.selection.commit', {
+      mode: gesture.mode,
+      pointCount: points.length,
+      objectCount: objectIds.length,
+    });
     onSelectionChange({ polygon: points, bounds, objectIds });
   };
 
@@ -324,15 +524,61 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     const active = activeStrokeRef.current;
     activeStrokeRef.current = null;
     clearOverlay();
-    if (!active || cancelled || active.samples.length === 0) return Promise.resolve();
+    if (!active || cancelled || active.samples.length === 0) {
+      logBoardDiagnostic('board.stroke.finish', {
+        cancelled,
+        reason: !active ? 'no-active' : cancelled ? 'cancelled' : 'empty',
+        pointerId: active?.pointerId ?? null,
+        pointerType: active?.pointerType ?? null,
+        sampleCount: active?.samples.length ?? 0,
+      });
+      return Promise.resolve();
+    }
+    logBoardDiagnostic('board.stroke.finish', {
+      cancelled: false,
+      reason: 'commit',
+      pointerId: active.pointerId,
+      pointerType: active.pointerType,
+      sampleCount: active.samples.length,
+      first: sampleEdge(active.samples[0]),
+      last: sampleEdge(active.samples[active.samples.length - 1]),
+    });
     return trackCommit(async () => {
+      logBoardDiagnostic('board.stroke.commit', {
+        phase: 'start',
+        pointerId: active.pointerId,
+        sampleCount: active.samples.length,
+      });
       try {
         const accepted = await onCommitStroke({ kind: 'stroke', samples: active.samples, style: active.style });
-        if (accepted === false) throw new Error('Ink board stroke was not queued.');
+        if (accepted === false) {
+          logBoardDiagnostic('board.stroke.commit', {
+            phase: 'rejected',
+            pointerId: active.pointerId,
+            sampleCount: active.samples.length,
+          });
+          throw new Error('Ink board stroke was not queued.');
+        }
+        logBoardDiagnostic('board.stroke.commit', {
+          phase: 'settled',
+          pointerId: active.pointerId,
+          sampleCount: active.samples.length,
+          accepted: true,
+        });
       } catch (error) {
+        logBoardDiagnostic('board.stroke.commit', {
+          phase: 'error',
+          pointerId: active.pointerId,
+          sampleCount: active.samples.length,
+          ...errorSummary(error),
+        });
         if (!activeStrokeRef.current) {
           activeStrokeRef.current = active;
-          renderFrame();
+          renderFrame('commit-restore');
+          logBoardDiagnostic('board.stroke.restore', {
+            pointerId: active.pointerId,
+            sampleCount: active.samples.length,
+          });
         }
         throw error;
       }
@@ -343,11 +589,41 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     const gesture = eraserGestureRef.current;
     eraserGestureRef.current = null;
     clearOverlay();
-    if (!gesture || cancelled || gesture.hitIds.size === 0) return Promise.resolve();
+    if (!gesture || cancelled || gesture.hitIds.size === 0) {
+      logBoardDiagnostic('board.eraser.finish', {
+        cancelled,
+        reason: !gesture ? 'no-active' : cancelled ? 'cancelled' : 'empty',
+        pointerId: gesture?.pointerId ?? null,
+        hitCount: gesture?.hitIds.size ?? 0,
+      });
+      return Promise.resolve();
+    }
+    logBoardDiagnostic('board.eraser.finish', {
+      cancelled: false,
+      reason: 'commit',
+      pointerId: gesture.pointerId,
+      hitCount: gesture.hitIds.size,
+    });
     return trackCommit(async () => {
+      logBoardDiagnostic('board.eraser.commit', {
+        phase: 'start',
+        pointerId: gesture.pointerId,
+        hitCount: gesture.hitIds.size,
+      });
       try {
         await onErase([...gesture.hitIds]);
+        logBoardDiagnostic('board.eraser.commit', {
+          phase: 'settled',
+          pointerId: gesture.pointerId,
+          hitCount: gesture.hitIds.size,
+        });
       } catch (error) {
+        logBoardDiagnostic('board.eraser.commit', {
+          phase: 'error',
+          pointerId: gesture.pointerId,
+          hitCount: gesture.hitIds.size,
+          ...errorSummary(error),
+        });
         if (!eraserGestureRef.current) eraserGestureRef.current = gesture;
         throw error;
       }
@@ -392,17 +668,20 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('down'));
     const currentTool = toolRef.current;
     pointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
     if (event.pointerType === 'touch') {
       event.preventDefault();
       const touchCount = [...pointersRef.current.keys()].length;
       if (touchCount >= 2) {
+        logPointerAction('down', 'pinch', 'second-touch', event, () => ({ touchCount }));
         cancelActiveGesture();
         beginPinch();
         return;
       }
       if (!currentTool.touchDrawing && selectionModeRef.current === 'none') {
+        logPointerAction('down', 'pan', 'touch-pan', event, () => ({ touchCount }));
         panGestureRef.current = { pointerId: event.pointerId, last: { x: event.clientX, y: event.clientY } };
         try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
         return;
@@ -411,13 +690,18 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
 
     if (event.button === 1 || (event.pointerType === 'mouse' && (spaceDownRef.current || event.button === 2))) {
       event.preventDefault();
+      logPointerAction('down', 'pan', spaceDownRef.current ? 'space-pan' : event.button === 1 ? 'middle-button-pan' : 'right-button-pan', event);
       panGestureRef.current = { pointerId: event.pointerId, last: { x: event.clientX, y: event.clientY } };
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
       return;
     }
-    if (event.pointerType !== 'touch' && event.button !== 0) return;
+    if (event.pointerType !== 'touch' && event.button !== 0) {
+      logPointerAction('down', 'ignore', 'non-primary-button', event);
+      return;
+    }
 
     if (erasingRef.current) {
+      logPointerAction('down', 'erase', 'eraser-active', event);
       const point = pointFromEvent(event);
       const gesture: EraserGesture = { pointerId: event.pointerId, lastPoint: point, hitIds: new Set() };
       for (const object of objectsRef.current) {
@@ -425,11 +709,12 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
       }
       eraserGestureRef.current = gesture;
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
-      renderFrame();
+      renderFrame('pointer-down');
       return;
     }
 
     if (selectionModeRef.current !== 'none') {
+      logPointerAction('down', 'selection', `selection-${selectionModeRef.current}`, event);
       const start = pointFromEvent(event);
       selectionGestureRef.current = {
         pointerId: event.pointerId,
@@ -443,6 +728,7 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     }
 
     const pressureEnabled = currentTool.tool === 'pen' && event.pointerType === 'pen';
+    logPointerAction('down', 'stroke', 'pen-or-touch-draw', event, () => ({ tool: currentTool.tool, pressureEnabled }));
     const active: ActiveStroke = {
       pointerId: event.pointerId,
       pointerType: event.pointerType,
@@ -455,13 +741,16 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         pressure_enabled: pressureEnabled,
       },
     };
-    active.samples.push(...collectSamples(event, active));
+    const downSamples = collectSamples(event, active);
+    active.samples.push(...downSamples);
+    logSampleBatch('down', downSamples, active.pointerId, false);
     activeStrokeRef.current = active;
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* synthetic input */ }
-    renderFrame();
+    renderFrame('pointer-down');
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('move'));
     const pointer = pointersRef.current.get(event.pointerId);
     if (pointer) {
       pointer.clientX = event.clientX;
@@ -473,7 +762,10 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
     if (pinch) {
       const first = pointersRef.current.get(pinch.ids[0]);
       const second = pointersRef.current.get(pinch.ids[1]);
-      if (!first || !second) return;
+      if (!first || !second) {
+        logPointerAction('move', 'ignore', 'pinch-pointer-missing', event);
+        return;
+      }
       const firstLocal = localFromClient(first.clientX, first.clientY);
       const secondLocal = localFromClient(second.clientX, second.clientY);
       const center = midpoint(firstLocal, secondLocal);
@@ -515,24 +807,43 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         }
       }
       eraserGesture.lastPoint = point;
-      renderFrame();
+      renderFrame('pointer-move');
       return;
     }
 
     const active = activeStrokeRef.current;
     if (active && active.pointerId === event.pointerId) {
-      active.samples.push(...collectSamples(event, active));
-      renderFrame();
+      const moveSamples = collectSamples(event, active);
+      active.samples.push(...moveSamples);
+      logSampleBatch('move', moveSamples, active.pointerId, false);
+      renderFrame('pointer-move');
+      return;
     }
+    logPointerAction(
+      'move',
+      'ignore',
+      activeGestureName() === 'idle' ? 'no-active-gesture' : 'active-pointer-mismatch',
+      event,
+    );
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('up'));
     pointersRef.current.delete(event.pointerId);
     if (activeStrokeRef.current?.pointerId === event.pointerId) {
       const active = activeStrokeRef.current;
       if (active && event.type !== 'pointercancel') {
-        active.samples.push(...collectSamples(event, active, true));
+        const upSamples = collectSamples(event, active, true);
+        active.samples.push(...upSamples);
+        logSampleBatch('up', upSamples, active.pointerId, true);
       }
+      logPointerAction(
+        'up',
+        event.type === 'pointercancel' ? 'stroke-cancel' : 'stroke-commit',
+        event.type === 'pointercancel' ? 'pointercancel' : 'pointerup',
+        event,
+        () => ({ sampleCount: active?.samples.length ?? 0 }),
+      );
       void finishStroke(event.type === 'pointercancel');
       return;
     }
@@ -549,52 +860,100 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         }
         gesture.lastPoint = point;
       }
+      logPointerAction(
+        'up',
+        event.type === 'pointercancel' ? 'eraser-cancel' : 'eraser-commit',
+        event.type === 'pointercancel' ? 'pointercancel' : 'pointerup',
+        event,
+        () => ({ hitCount: gesture?.hitIds.size ?? 0 }),
+      );
       finishEraser(event.type === 'pointercancel');
       return;
     }
     if (selectionGestureRef.current?.pointerId === event.pointerId) {
+      logPointerAction(
+        'up',
+        event.type === 'pointercancel' ? 'selection-cancel' : 'selection-commit',
+        event.type === 'pointercancel' ? 'pointercancel' : 'pointerup',
+        event,
+      );
       finishSelection(event.type === 'pointercancel');
       return;
     }
     if (panGestureRef.current?.pointerId === event.pointerId) {
+      logPointerAction('up', 'pan-end', 'pointerup', event);
       panGestureRef.current = null;
       return;
     }
     if (pinchGestureRef.current) {
+      logPointerAction('up', 'pinch-end', 'pointerup', event);
       pinchGestureRef.current = null;
+      return;
     }
+    logPointerAction('up', 'ignore', 'no-active-gesture', event);
   };
 
   const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('cancel'));
     pointersRef.current.delete(event.pointerId);
     pinchGestureRef.current = null;
     if (activeStrokeRef.current?.pointerId === event.pointerId) {
       // An OS pointercancel ends the gesture at its last sample. Only the
       // explicit pinch promotion path discards an active stroke.
+      logPointerAction('cancel', 'stroke-commit', 'os-pointercancel-continues-stroke', event, () => ({
+        sampleCount: activeStrokeRef.current?.samples.length ?? 0,
+      }));
       void finishStroke(false);
       return;
     }
     if (eraserGestureRef.current?.pointerId === event.pointerId) {
+      logPointerAction('cancel', 'eraser-commit', 'os-pointercancel-continues-eraser', event, () => ({
+        hitCount: eraserGestureRef.current?.hitIds.size ?? 0,
+      }));
       finishEraser(false);
       return;
     }
     if (selectionGestureRef.current?.pointerId === event.pointerId) {
+      logPointerAction('cancel', 'selection-cancel', 'os-pointercancel', event);
       finishSelection(true);
       return;
     }
     if (panGestureRef.current?.pointerId === event.pointerId) {
+      logPointerAction('cancel', 'pan-cancel', 'os-pointercancel', event);
       panGestureRef.current = null;
+      return;
     }
+    logPointerAction('cancel', 'ignore', 'no-active-gesture', event);
+  };
+
+  const onPointerLeave = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('leave'));
+    if (diagnosticsEnabled()) {
+      logBoardDiagnostic('board.pointer.leave', {
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        gesture: activeGestureName(),
+      });
+    }
+    setEraserCursor(null);
+  };
+
+  const onGotPointerCapture = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('gotcapture'));
+  };
+
+  const onLostPointerCapture = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    capturePointerDiagnostic(event, () => pointerDiagnosticContext('lostcapture'));
   };
 
   useEffect(() => {
-    renderFrame();
+    renderFrame('effect');
   }, [renderFrame, surface, objects, camera]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => renderFrame());
+    const observer = new ResizeObserver(() => renderFrame('resize'));
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [renderFrame]);
@@ -670,7 +1029,9 @@ export const InkBoardView = forwardRef<InkBoardViewHandle, InkBoardViewProps>(fu
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
-        onPointerLeave={() => setEraserCursor(null)}
+        onPointerLeave={onPointerLeave}
+        onGotPointerCapture={onGotPointerCapture}
+        onLostPointerCapture={onLostPointerCapture}
         onContextMenu={(event) => event.preventDefault()}
       />
       <canvas

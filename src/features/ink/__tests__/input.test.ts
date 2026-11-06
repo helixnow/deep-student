@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { InkViewport } from '../geometry';
 import { collectPointerSamples, pointerSample } from '../input';
 
@@ -43,8 +43,23 @@ describe('ink input', () => {
     ]);
   });
 
-  it('finishes pointercancel with available valid samples rather than discarding the stroke', () => {
-    expect(collectPointerSamples(pointer(), viewport, 100, true, { terminal: true, cancelled: true }))
-      .toEqual([{ x: 10, y: 12, pressure: 0.8, elapsed_ms: 25 }]);
+  it('keeps a legitimate origin pointerup sample while clamping it to the page', () => {
+    const origin = pointer({ clientX: 0, clientY: 0, timeStamp: 110 });
+    expect(collectPointerSamples(origin, viewport, 100, true, {
+      terminal: true,
+      pageBounds: { width: 794, height: 1123 },
+    })).toEqual([{ x: 0, y: 0, pressure: 0.8, elapsed_ms: 10 }]);
+  });
+
+  it('returns no samples for pointercancel without reading coalesced events', () => {
+    const getCoalescedEvents = vi.fn(() => [pointer({ clientX: 30, clientY: 44, timeStamp: 115 })]);
+    const cancel = pointer({ clientX: 0, clientY: 0, timeStamp: 120, getCoalescedEvents });
+
+    expect(collectPointerSamples(cancel, viewport, 100, true, {
+      terminal: true,
+      cancelled: true,
+      pageBounds: { width: 794, height: 1123 },
+    })).toEqual([]);
+    expect(getCoalescedEvents).not.toHaveBeenCalled();
   });
 });

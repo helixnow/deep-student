@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import 'overlayscrollbars/overlayscrollbars.css';
 import { MobileHeaderActiveViewSync, MobileHeaderProvider } from '@/components/layout/MobileHeaderContext';
 import { MobileLayoutProvider } from '@/components/layout/MobileLayoutContext';
 import { NotebookPage } from '@/features/ink/NotebookPage';
