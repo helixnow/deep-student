@@ -3,10 +3,8 @@
  */
 
 // Main components（历史 NotesHome 视图已下线删除，2026-08）
-export { NotesCrepeEditor } from './NotesCrepeEditor';
-export { NotesContextPanel } from './NotesContextPanel';
-export { NotesLibraryManager } from './NotesLibraryManager';
-export { AIDiffPanel } from './AIDiffPanel';
+export { NotesCrepeEditor, NotesContextPanel, NotesLibraryManager, AIDiffPanel } from './LazyNotesEntry';
+export { NotesChromeSlotContext, useNotesChromeSlot } from './notesChromeSlot';
 
 // Context
 export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';

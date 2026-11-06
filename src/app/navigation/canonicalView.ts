@@ -7,7 +7,6 @@ import type { CurrentView } from '@/types/navigation';
 const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   analysis: 'chat-v2',
   chat: 'chat-v2',
-  notes: 'learning-hub',
   'markdown-editor': 'learning-hub',
   'textbook-library': 'learning-hub',
   'exam-sheet': 'learning-hub',
@@ -44,6 +43,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'ui-lab',
   'pdf-reader',
   'learning-hub',
+  'notes',
   'media',
   'skills-management',
   'todo',

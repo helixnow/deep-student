@@ -26,11 +26,14 @@ pub mod attachment_config;
 pub mod database;
 pub mod embedding_service;
 pub mod error;
+pub mod file_reclassify;
 pub mod handlers;
 pub mod hooks;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
+pub mod ink;
+pub mod ink_commands;
 #[cfg(feature = "lance")]
 pub mod lance_store;
 pub mod lexical_bm25;
@@ -85,9 +88,10 @@ pub use repos::{
     VFS_EMB_TABLE_PREFIX,
 };
 pub use repos::{
-    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsMindMapRepo, VfsNoteMetadataUpdate, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo,
-    VfsTextbookRepo, VfsTodoRepo, VfsTranslationRepo,
+    InkBoardOperationPreview, VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo,
+    VfsFileRepo, VfsFolderRepo, VfsInkOperationRepo, VfsMindMapRepo, VfsNoteMetadataUpdate,
+    VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
+    VfsTranslationRepo,
 };
 pub use retrieval_planner::{
     fuse_route_results, plan_generation, plan_retrieval, ActiveGenerationModel, CapabilityKind,

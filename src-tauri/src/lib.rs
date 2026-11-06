@@ -41,6 +41,11 @@ pub use dstu_sync::backup_job_manager;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
+// Public only so the native E2E target can register the real ink commands;
+// the command set, state types, and behavior are unchanged.
+pub mod ink_bridge;
+pub mod ink_jobs;
+mod ink_undo;
 pub use dstu_llm::config_recovery;
 pub mod crash_logger;
 pub use dstu_security::crypto;
@@ -1903,6 +1908,9 @@ pub fn run() {
         })
         // Provide ChatV2State for Chat V2 stream management (Arc wrapped for spawn usage)
         .manage(std::sync::Arc::new(crate::chat_v2::ChatV2State::new()))
+        .manage(crate::ink_bridge::PendingRenderBus::default())
+        .manage(crate::ink_bridge::PendingFlushBus::default())
+        .manage(crate::ink_jobs::PendingInkJobBus::default())
         .manage(crate::secret_prompt::SecretPromptStore::default())
         // NOTE: ChatV2Pipeline is now initialized in setup() closure after AppState is available
         .invoke_handler(tauri::generate_handler![
@@ -2191,6 +2199,7 @@ pub fn run() {
             crate::staged_upload::staged_upload_begin,
             crate::staged_upload::staged_upload_append,
             crate::staged_upload::staged_upload_from_path,
+            crate::staged_upload::resolve_import_file_info,
             crate::staged_upload::staged_upload_abort,
             crate::commands::copy_file,
             crate::commands::save_text_to_file,
@@ -2601,6 +2610,25 @@ pub fn run() {
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================
+            ,crate::vfs::ink_commands::vfs_ink_create
+            ,crate::vfs::ink_commands::vfs_ink_get
+            ,crate::vfs::ink_commands::vfs_ink_get_page
+            ,crate::vfs::ink_commands::vfs_ink_save_page
+            ,crate::vfs::ink_commands::vfs_ink_copy
+            ,crate::vfs::ink_commands::vfs_ink_append_page
+            ,crate::vfs::ink_commands::vfs_ink_rename
+            ,crate::vfs::ink_commands::vfs_ink_create_board
+            ,crate::vfs::ink_commands::vfs_ink_get_chunks
+            ,crate::vfs::ink_commands::vfs_ink_get_board_overview
+            ,crate::vfs::ink_commands::vfs_ink_save_chunks
+            ,crate::ink_undo::vfs_ink_undo_tool_operation
+            ,crate::ink_bridge::vfs_ink_render
+            ,crate::ink_bridge::vfs_ink_get_render_inputs
+            ,crate::ink_bridge::vfs_ink_render_result
+            ,crate::ink_bridge::vfs_ink_flush_result
+            ,crate::ink_jobs::vfs_ink_prepare
+            ,crate::ink_jobs::vfs_ink_export
+            ,crate::ink_jobs::vfs_ink_job_result
             // 🆕 资源操作（已启用 - 替代独立 resources.db）
             ,crate::vfs::handlers::vfs_create_or_reuse
             ,crate::vfs::handlers::vfs_get_resource
@@ -2803,6 +2831,7 @@ pub fn run() {
             ,crate::dstu::handlers::dstu_list
             ,crate::dstu::handlers::dstu_get
             ,crate::dstu::handlers::dstu_create
+            ,crate::dstu::handlers::dstu_reclassify_file
             ,crate::dstu::handlers::dstu_update
             ,crate::dstu::handlers::dstu_delete
             ,crate::dstu::handlers::dstu_restore

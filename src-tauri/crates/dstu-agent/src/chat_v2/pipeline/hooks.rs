@@ -1647,4 +1647,364 @@ mod tests {
     // step 10：`phase9_non_low_tools_enter_the_fail_closed_approval_path` 与
     // `phase2_phase3_and_phase8_non_low_tools_fail_closed_without_approval_manager`
     // （需 app 域执行器）已迁到 app `agent_wiring::tests::hooks_tests`（函数名不变）。
+
+    struct InkGateTestExecutor;
+
+    #[async_trait::async_trait]
+    impl crate::chat_v2::tools::ToolExecutor for InkGateTestExecutor {
+        fn can_handle(&self, tool_name: &str) -> bool {
+            matches!(
+                tool_name,
+                "ink_apply_ops" | "builtin-ink_apply_ops" | "builtin:ink_apply_ops"
+            )
+        }
+
+        async fn execute(
+            &self,
+            _call: &ToolCall,
+            _ctx: &crate::chat_v2::tools::ExecutionContext,
+        ) -> Result<ToolResultInfo, String> {
+            Err("gate test executor must not run".to_string())
+        }
+
+        fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
+            ToolSensitivity::Medium
+        }
+
+        fn name(&self) -> &'static str {
+            "InkGateTestExecutor"
+        }
+    }
+
+    fn ink_gate_test_pipeline(
+        authority: crate::chat_v2::types::SessionAuthorityState,
+    ) -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        ChatV2Pipeline,
+        Arc<ChatV2EventEmitter>,
+        String,
+    ) {
+        use crate::chat_v2::types::ChatSession;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+        use crate::llm_manager::LLMManager;
+        use crate::tools::ToolRegistry;
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut chat_migrations =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        chat_migrations
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_migrations =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_migrations
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        let session_id = ChatSession::generate_id();
+        let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
+        session.metadata = Some(authority.apply_to_metadata(None));
+        ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
+
+        let mut pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        pipeline.executor_registry =
+            Arc::new(crate::chat_v2::tools::ToolExecutorRegistry::from_vec(vec![
+                Arc::new(InkGateTestExecutor),
+            ]));
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.clone(),
+        ));
+        (chat_dir, main_dir, pipeline, emitter, session_id)
+    }
+
+    fn destructive_ink_gate_call() -> ToolCall {
+        ToolCall {
+            id: "ink-destructive-call".to_string(),
+            name: "builtin-ink_apply_ops".to_string(),
+            arguments: json!({
+                "document_id": "doc-1",
+                "expected_revision": "rev-1",
+                "ops": [{"op": "remove_object", "object_id": "obj-1"}],
+            }),
+        }
+    }
+
+    async fn call_ink_gate(
+        pipeline: &ChatV2Pipeline,
+        emitter: &Arc<ChatV2EventEmitter>,
+        session_id: &str,
+        tool_call: &ToolCall,
+        round_id: Option<&str>,
+        cancellation_token: Option<&CancellationToken>,
+    ) -> ToolGateOutcome {
+        let skill_package_roots = None;
+        let execution_allowed_tools = None;
+        let tool_ctx = ToolHookContext {
+            tool_call,
+            block_id: "ink-gate-block",
+            emitter,
+            session_id,
+            message_id: "ink-gate-message",
+            variant_id: None,
+            skill_state_version: None,
+            round_id,
+            skill_package_roots: &skill_package_roots,
+            execution_allowed_tools: &execution_allowed_tools,
+            cancellation_token,
+            memory_enabled: true,
+            rag_enabled: true,
+            web_search_enabled: true,
+        };
+        let mut admission = ToolAdmission::new(&tool_call.arguments);
+        ApprovalGateHook
+            .before_tool(pipeline, &tool_ctx, &mut admission)
+            .await
+    }
+
+    #[tokio::test]
+    async fn ink_gate_blocks_destructive_ops_without_manager_under_full_access_presets() {
+        use crate::chat_v2::types::{AuthorityMode, PermissionPreset, SessionAuthorityState};
+
+        for preset in [
+            PermissionPreset::FullAccess,
+            PermissionPreset::DangerFullAccess,
+        ] {
+            let authority = SessionAuthorityState {
+                authority_mode: AuthorityMode::Craft,
+                permission_preset: preset,
+                plan: None,
+            };
+            let (_chat_dir, _main_dir, pipeline, emitter, session_id) =
+                ink_gate_test_pipeline(authority);
+            let tool_call = destructive_ink_gate_call();
+
+            match call_ink_gate(
+                &pipeline,
+                &emitter,
+                &session_id,
+                &tool_call,
+                Some("ink-round"),
+                None,
+            )
+            .await
+            {
+                ToolGateOutcome::Block(result) => assert!(result
+                    .error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("审批服务不可用"))),
+                ToolGateOutcome::Proceed => {
+                    panic!("destructive ink must require one-shot approval for {preset:?}")
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ink_gate_active_plan_binding_does_not_bypass_destructive_ops() {
+        use crate::chat_v2::pipeline::authority_mode::plan_call_binding_key;
+        use crate::chat_v2::types::{
+            AuthorityMode, PermissionPreset, PlanAuthorityState, SessionAuthorityState,
+        };
+
+        let tool_call = destructive_ink_gate_call();
+        let round_id = "ink-plan-round";
+        let binding = plan_call_binding_key(&tool_call.name, &tool_call.arguments, Some(round_id));
+        let mut plan = PlanAuthorityState::new_pending("approve ink mutation");
+        plan.bind_to_call(binding);
+        plan.mark_approved(60);
+        let authority = SessionAuthorityState {
+            authority_mode: AuthorityMode::Plan,
+            permission_preset: PermissionPreset::FullAccess,
+            plan: Some(plan),
+        };
+        let (_chat_dir, _main_dir, pipeline, emitter, session_id) =
+            ink_gate_test_pipeline(authority);
+
+        match call_ink_gate(
+            &pipeline,
+            &emitter,
+            &session_id,
+            &tool_call,
+            Some(round_id),
+            None,
+        )
+        .await
+        {
+            ToolGateOutcome::Block(result) => assert!(result
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("审批服务不可用"))),
+            ToolGateOutcome::Proceed => {
+                panic!("an active Plan binding must not replace destructive ink approval")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ink_gate_does_not_force_approval_for_non_destructive_ops() {
+        use crate::chat_v2::types::{AuthorityMode, PermissionPreset, SessionAuthorityState};
+
+        let authority = SessionAuthorityState {
+            authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::FullAccess,
+            plan: None,
+        };
+        let (_chat_dir, _main_dir, pipeline, emitter, session_id) =
+            ink_gate_test_pipeline(authority);
+        let tool_call = ToolCall {
+            id: "ink-nondestructive-call".to_string(),
+            name: "builtin-ink_apply_ops".to_string(),
+            arguments: json!({
+                "document_id": "doc-1",
+                "expected_revision": "rev-1",
+                "ops": [{"op": "add_text", "text": "note", "x": 1, "y": 2}],
+            }),
+        };
+
+        match call_ink_gate(
+            &pipeline,
+            &emitter,
+            &session_id,
+            &tool_call,
+            Some("ink-round"),
+            None,
+        )
+        .await
+        {
+            ToolGateOutcome::Proceed => {}
+            ToolGateOutcome::Block(result) => panic!(
+                "non-destructive ink must not be forced into approval: {:?}",
+                result.error
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn ink_gate_manager_registers_pending_and_blocks_on_rejection() {
+        use crate::chat_v2::approval_manager::ApprovalResponse;
+        use crate::chat_v2::types::{AuthorityMode, PermissionPreset, SessionAuthorityState};
+        use std::time::Duration;
+
+        let authority = SessionAuthorityState {
+            authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::FullAccess,
+            plan: None,
+        };
+        let (_chat_dir, _main_dir, pipeline, emitter, session_id) =
+            ink_gate_test_pipeline(authority);
+        let manager = Arc::new(ApprovalManager::new().with_timeout(3));
+        let pipeline = pipeline.with_approval_manager(manager.clone());
+        let tool_call = destructive_ink_gate_call();
+        let gate = tokio::spawn({
+            let pipeline = pipeline.clone();
+            let emitter = emitter.clone();
+            let session_id = session_id.clone();
+            let tool_call = tool_call.clone();
+            async move {
+                call_ink_gate(
+                    &pipeline,
+                    &emitter,
+                    &session_id,
+                    &tool_call,
+                    Some("ink-approval-round"),
+                    None,
+                )
+                .await
+            }
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while manager.pending_count() == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("hook should register a pending ApprovalManager request");
+        assert_eq!(manager.pending_count(), 1);
+        assert!(manager.respond(ApprovalResponse::rejected(
+            session_id.clone(),
+            tool_call.id,
+            tool_call.name,
+            Some("review denied".to_string()),
+        )));
+
+        match tokio::time::timeout(Duration::from_secs(1), gate)
+            .await
+            .expect("hook should return after rejection")
+            .expect("hook task should not panic")
+        {
+            ToolGateOutcome::Block(result) => assert!(result
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("review denied"))),
+            ToolGateOutcome::Proceed => panic!("a rejected ink approval must block execution"),
+        }
+        assert_eq!(manager.pending_count(), 0);
+
+        let cancelled_call = ToolCall {
+            id: "ink-cancelled-call".to_string(),
+            ..destructive_ink_gate_call()
+        };
+        let cancellation = CancellationToken::new();
+        let gate = tokio::spawn({
+            let pipeline = pipeline.clone();
+            let emitter = emitter.clone();
+            let session_id = session_id.clone();
+            let tool_call = cancelled_call.clone();
+            let cancellation = cancellation.clone();
+            async move {
+                call_ink_gate(
+                    &pipeline,
+                    &emitter,
+                    &session_id,
+                    &tool_call,
+                    Some("ink-cancel-round"),
+                    Some(&cancellation),
+                )
+                .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while manager.pending_count() == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("hook should register approval before cancellation");
+        assert_eq!(manager.pending_count(), 1);
+        cancellation.cancel();
+        match tokio::time::timeout(Duration::from_secs(1), gate)
+            .await
+            .expect("hook should return after cancellation")
+            .expect("hook task should not panic")
+        {
+            ToolGateOutcome::Block(result) => assert!(result
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("工具审批中止"))),
+            ToolGateOutcome::Proceed => panic!("cancelled ink approval must block execution"),
+        }
+        assert_eq!(manager.pending_count(), 0);
+    }
 }

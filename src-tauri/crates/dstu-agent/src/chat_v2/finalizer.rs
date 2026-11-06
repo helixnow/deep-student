@@ -1742,6 +1742,8 @@ mod tests {
             ended_at: Some(2),
             first_chunk_at: Some(1),
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         }
     }
 

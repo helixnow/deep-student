@@ -851,13 +851,14 @@ mod vfs_migration_tests {
 
         // 核心资源表
         let core_tables = [
-            "resources",    // 001: 资源元数据
-            "blobs",        // 001: Blob 存储
-            "notes",        // 001: 笔记
-            "files",        // 001: 文件（教材、附件）
-            "translations", // 001: 翻译
-            "exam_sheets",  // 001: 题目集
-            "essays",       // 001: 作文
+            "resources",            // 001: 资源元数据
+            "blobs",                // 001: Blob 存储
+            "notes",                // 001: 笔记
+            "files",                // 001: 文件（教材、附件）
+            "ink_render_artifacts", // 20261103: immutable Ink render provenance
+            "translations",         // 001: 翻译
+            "exam_sheets",          // 001: 题目集
+            "essays",               // 001: 作文
         ];
 
         // 文件夹组织表

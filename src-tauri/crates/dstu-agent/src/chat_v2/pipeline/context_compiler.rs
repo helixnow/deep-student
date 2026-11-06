@@ -26,6 +26,7 @@ use crate::vfs::retrieval_planner::{
 };
 
 mod images;
+mod ink_images;
 mod model_selection;
 mod preprocess;
 mod retrieval_images;
@@ -34,9 +35,10 @@ pub(crate) use images::{
     select_images_with_budget, ImageBudgetCandidate, DEFAULT_HISTORY_IMAGE_BUDGET,
     DEFAULT_IMAGE_BUDGET,
 };
+pub(crate) use ink_images::{compile_ink_visual_message, InkImageError};
 pub(crate) use retrieval_images::{
-    canonical_image_blob_hashes, count_request_images, insert_retrieval_page_image_message,
-    RetrievalPageImageBudget,
+    canonical_image_blob_hashes, count_request_image_bytes, count_request_images,
+    insert_retrieval_page_image_message, RetrievalPageImageBudget,
 };
 
 use images::{
@@ -499,6 +501,17 @@ impl ChatV2Pipeline {
         let snapshot = ctx.execution_snapshot.clone().ok_or_else(|| {
             ChatV2Error::Other("model execution snapshot was not frozen".to_string())
         })?;
+
+        if !snapshot.resolved_model_is_multimodal
+            && ctx.chat_history.iter().any(|message| {
+                message.metadata.as_ref().is_some_and(|metadata| {
+                    metadata.get("kind").and_then(serde_json::Value::as_str)
+                        == Some("ink_visual_artifacts")
+                })
+            })
+        {
+            return Err(ChatV2Error::Llm("VISION_MODEL_REQUIRED".to_string()));
+        }
 
         let mut messages = ctx.chat_history.clone();
         let mut current_message = self.build_current_user_message(ctx);

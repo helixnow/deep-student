@@ -51,6 +51,7 @@ const EXPECTED_ZH_CN: Record<string, string> = {
   get_content_failed: '获取资源内容失败',
   set_metadata_failed: '设置元数据失败',
   set_favorite_failed: '设置收藏状态失败',
+  reclassify_failed: '重新识别文件类型失败',
   watch_failed: '监听资源变化失败',
   unwatch_failed: '取消监听失败',
   delete_many_failed: '批量删除资源失败',

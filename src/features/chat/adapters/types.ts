@@ -400,6 +400,7 @@ export interface BackendBlock {
   toolName?: string;
   toolInput?: unknown;
   toolOutput?: unknown;
+  inkArtifacts?: import('../core/types/block').InkVisualArtifactRef[];
   citations?: Array<{
     type: 'rag' | 'memory' | 'web' | 'multimodal' | 'image' | 'search';
     title?: string;
@@ -567,6 +568,7 @@ export function convertBackendBlock(b: BackendBlock): Block {
     toolName: b.toolName,
     toolInput: b.toolInput as Record<string, unknown> | undefined,
     toolOutput: b.toolOutput,
+    inkArtifacts: b.inkArtifacts,
     citations: b.citations,
     error: b.error,
     startedAt: b.startedAt,

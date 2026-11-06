@@ -7099,6 +7099,7 @@ impl ChatAnkiToolExecutor {
             started_at: Some(now_ms),
             ended_at: None,
             first_chunk_at: Some(now_ms),
+            ink_artifacts: Vec::new(),
             block_index: anki_block_index,
         };
         upsert_block_allow_orphan(&chat_db, &anki_block)?;
@@ -14498,6 +14499,7 @@ fn persist_anki_cards_running_patch(
         started_at: Some(started_at),
         ended_at: None,
         first_chunk_at: Some(first_chunk_at),
+        ink_artifacts: Vec::new(),
         block_index,
     };
 
@@ -14583,6 +14585,7 @@ fn persist_anki_cards_terminal_block(
         started_at: Some(started_at),
         ended_at: Some(now_ms),
         first_chunk_at: Some(first_chunk_at),
+        ink_artifacts: Vec::new(),
         block_index,
     };
 

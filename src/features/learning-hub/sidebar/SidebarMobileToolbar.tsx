@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { DstuNode } from '@/dstu';
-import { MagnifyingGlass, Plus, X, Trash } from '@phosphor-icons/react';
+import { MagnifyingGlass, PenNib, Plus, X, Trash } from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuContent,
@@ -18,6 +18,8 @@ import {
   EssayIcon,
   MindmapIcon,
 } from '../icons';
+import { INK_BOARD_CREATE_ENABLED } from '@/features/ink';
+import { visibleInkCreateChoices, type InkCreateMode } from '../inkCreateChoices';
 import type { SidebarT } from './sidebarConstants';
 
 export interface SidebarMobileToolbarProps {
@@ -41,6 +43,7 @@ export interface SidebarMobileToolbarProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
+  handleNewInk: (folderId?: string | null, mode?: InkCreateMode) => Promise<void>;
   isTrashView: boolean;
   handleEmptyTrash: () => void;
   items: DstuNode[];
@@ -68,6 +71,7 @@ export function SidebarMobileToolbar({
   handleNewTranslation,
   handleNewEssay,
   handleNewMindMap,
+  handleNewInk,
   isTrashView,
   handleEmptyTrash,
   items,
@@ -188,6 +192,17 @@ export function SidebarMobileToolbar({
               >
                 {t('finder.toolbar.newMindMap')}
               </AppMenuItem>
+              {visibleInkCreateChoices(INK_BOARD_CREATE_ENABLED).map((choice) => (
+                <AppMenuItem
+                  key={choice.mode}
+                  data-testid={choice.testId}
+                  data-ink-mode={choice.mode}
+                  icon={<PenNib size={16} />}
+                  onClick={() => { void handleNewInk(undefined, choice.mode); }}
+                >
+                  {t(choice.labelKey)}
+                </AppMenuItem>
+              ))}
             </AppMenuContent>
           </AppMenu>
           {/* 回收站视图显示清空按钮 */}

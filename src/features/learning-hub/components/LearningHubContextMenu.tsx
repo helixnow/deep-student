@@ -27,6 +27,7 @@ import {
   StarHalf,
   CheckCircle,
   Cards,
+  PenNib,
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,7 @@ import type { FolderTreeNode, VfsFolderItem } from '@/dstu/types/folder';
 import { useShallow } from 'zustand/react/shallow';
 import { useDesktopStore } from '../stores/desktopStore';
 import type { DstuNodeType } from '@/dstu/types';
+import { visibleInkCreateChoices, type InkCreateMode } from '../inkCreateChoices';
 
 // ============================================================================
 // 类型定义
@@ -79,6 +81,10 @@ export interface LearningHubContextMenuProps {
   // ========== 回调函数 ==========
   /** 新建文件夹 */
   onCreateFolder?: (parentId: string | null) => void;
+  /** 新建手写笔记（分页 / 自由画布） */
+  onCreateInk?: (folderId: string | null, mode: InkCreateMode) => void;
+  /** Board menu row stays hidden until the native capability flag opens. */
+  boardInkEnabled?: boolean;
   /** 新建内容（笔记、题目集识别等） */
   onCreateItem?: (type: 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap', folderId: string | null) => void;
   /** 导入 Markdown 笔记 */
@@ -93,6 +99,8 @@ export interface LearningHubContextMenuProps {
   onDeleteFolder?: (folderId: string) => void;
   /** 打开资源/内容项 */
   onOpenResource?: (resource: ResourceListItem | VfsFolderItem) => void;
+  /** 从选中的受支持文件准备并打开笔迹批注 */
+  onAnnotateSource?: (resource: ResourceListItem) => void;
   /** 重命名资源 */
   onRenameResource?: (resource: ResourceListItem) => void;
   /** 删除资源 */
@@ -136,14 +144,18 @@ interface MenuItemProps {
   disabled?: boolean;
   /** 危险操作（删除 / 清空回收站等）：红字 + 红色 hover 高亮 */
   danger?: boolean;
+  testId?: string;
+  inkMode?: InkCreateMode;
   onClick?: () => void;
   children: React.ReactNode;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, onClick, children }) => (
+const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, testId, inkMode, onClick, children }) => (
   <button
     type="button"
     role="menuitem"
+    data-testid={testId}
+    data-ink-mode={inkMode}
     // 触屏：菜单行是长按菜单主命中区，保证 ≥44px 触控高度（与 DesktopView 同款写法）
     className={cn('wb-desk-menu-item [@media(pointer:coarse)]:min-h-11', danger && 'wb-desk-menu-item--danger')}
     disabled={disabled}
@@ -182,6 +194,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   canMove = true,
   canAddToChat = true,
   onCreateFolder,
+  onCreateInk,
+  boardInkEnabled = false,
   onCreateItem,
   onImportMarkdownNote,
   onRefresh,
@@ -189,6 +203,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onRenameFolder,
   onDeleteFolder,
   onOpenResource,
+  onAnnotateSource,
   onRenameResource,
   onDeleteResource,
   onReferenceToChat,
@@ -341,6 +356,24 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   const closeMenu = useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
+
+  const renderInkCreateItems = (folderId: string | null) => {
+    if (!onCreateInk) return null;
+    return visibleInkCreateChoices(boardInkEnabled).map((choice) => (
+      <MenuItem
+        key={choice.mode}
+        icon={<PenNib size={15} weight="duotone" />}
+        testId={choice.testId}
+        inkMode={choice.mode}
+        onClick={() => {
+          onCreateInk(folderId, choice.mode);
+          closeMenu();
+        }}
+      >
+        {t(choice.labelKey)}
+      </MenuItem>
+    ));
+  };
 
   // ========== 桌面快捷方式 Store（必须在条件返回之前调用） ==========
   const { addResourceShortcut, addFolderShortcut, hasResourceShortcut, hasFolderShortcut } = useDesktopStore(
@@ -497,6 +530,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       >
         {t('contextMenu.importMarkdown')}
       </MenuItem>
+      {renderInkCreateItems(currentFolderId ?? null)}
       <MenuItem
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
@@ -597,6 +631,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       >
         {t('contextMenu.importMarkdownHere')}
       </MenuItem>
+      {renderInkCreateItems(folder.folder.id)}
       <MenuSeparator />
         </>
       )}
@@ -700,6 +735,17 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         >
           {t('contextMenu.open')}
         </MenuItem>
+        {resourceItem && onAnnotateSource && ['pdf', 'image', 'docx', 'pptx'].includes(resourceItem.previewType) && (
+          <MenuItem
+            icon={<PenNib size={15} weight="duotone" />}
+            onClick={() => {
+              closeMenu();
+              setTimeout(() => onAnnotateSource(resourceItem), 50);
+            }}
+          >
+            {t('contextMenu.annotateWithInk')}
+          </MenuItem>
+        )}
         <MenuSeparator />
         
         {/* 引用到对话 */}

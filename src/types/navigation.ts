@@ -3,7 +3,7 @@
  * 支持参数化历史、状态恢复、中转页过滤
  *
  * 清理说明（2026-02）：
- * - 已彻底移除废弃视图类型：analysis、chat、notes、markdown-editor、
+ * - 已彻底移除废弃视图类型：analysis、chat、markdown-editor、
  *   textbook-library、exam-sheet、batch、review
  * - 历史兼容入口统一在 canonicalizeView(string) 做字符串级重定向
  */
@@ -20,6 +20,7 @@ export type CurrentView =
   | 'crepe-demo'
   | 'pdf-reader'
   | 'learning-hub'      // Learning Hub 学习资源全屏模式
+  | 'notes'
   | 'media'             // 音视频（资源库音视频的专用视角：转写 / 字幕 / 讲义 / 问答 / 练习）
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面

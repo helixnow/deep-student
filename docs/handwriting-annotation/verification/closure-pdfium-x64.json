@@ -1,0 +1,8 @@
+{
+  "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7350/pdfium-android-x64.tgz",
+  "archive_sha256": "156d86099d2704badd2c79f2f39a40be979bb804a99ea130a45098e8d5de297b",
+  "elf_sha256": "14e3bdd53b68840c24ed6ef25e1e9441c9a02aa713b3f80ca710e4903443b55f",
+  "size": 5142432,
+  "abi": "ELF64 x86_64 Android",
+  "license_members": 17
+}

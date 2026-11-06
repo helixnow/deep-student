@@ -106,6 +106,8 @@ export interface ContentViewProps {
   externalSettingsNavigation?: boolean;
   /** 宿主设置标签的受控选中状态 */
   externalSettingsOpen?: boolean;
+  /** A3: 用户显式重识别后回传修正节点，用于同标签页原地改路由。 */
+  onNodeReclassified?: (node: DstuNode) => void;
 }
 
 // ============================================================================
@@ -179,6 +181,8 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [node, setNode] = useState<DstuNode | null>(null);
+  // A3: 显式重识别修正后的类型优先于启动时 type hint，实现同标签页原地改路由。
+  const [reclassifiedType, setReclassifiedType] = useState<ResourceType | null>(null);
   const [localReloadNonce, setLocalReloadNonce] = useState(0);
 
   // ★ 标签页修复：用 ref 持有 onTitleChange，避免其引用变化导致 useEffect 重新触发 dstu.get()
@@ -196,6 +200,18 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const onSaveStateChangeRef = useRef(onSaveStateChange);
   onSaveStateChangeRef.current = onSaveStateChange;
 
+  // A3: 只接受当前资源 ID 的修正节点，避免过期/跨资源回调把标签页改错路由。
+  const currentNodeIdRef = useRef<string | null>(null);
+  currentNodeIdRef.current = node?.id ?? null;
+  const handleNodeReclassified = useCallback((next: DstuNode) => {
+    if (currentNodeIdRef.current !== next.id) return;
+    if (SUPPORTED_TYPES.includes(next.type as ResourceType)) {
+      setReclassifiedType(next.type as ResourceType);
+    }
+    setNode(next);
+    onNodeLoadedRef.current?.(next);
+  }, []);
+
   // ★ 资源标识变化时在 render 阶段同步进入加载态（React 官方「根据 props 调整 state」模式），
   //   消除 effect 生效前旧资源内容在新标识下多渲染一帧的问题
   const loadKey = `${resourceId}:${dstuPath}:${reloadNonce}:${localReloadNonce}`;
@@ -204,6 +220,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     setPrevLoadKey(loadKey);
     setIsLoading(true);
     setError(null);
+    setReclassifiedType(null);
   }
 
   // 加载资源数据
@@ -280,11 +297,12 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
           actual: rawNodeType || 'unknown',
         })
       : null;
-  const resolvedType: ResourceType = shouldPreferExplicitType
-    ? type
-    : (nodeType
-      ? nodeType
-      : type);
+  const resolvedType: ResourceType = reclassifiedType
+    ?? (shouldPreferExplicitType
+      ? type
+      : (nodeType
+        ? nodeType
+        : type));
 
   // ★ 性能：memo 化 commonProps，避免每次渲染都传新对象给内容视图（导致其内部 effect/memo 失效）
   const commonProps = useMemo<ContentViewProps | null>(() => {
@@ -302,8 +320,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       propertiesPanelDisabled,
       externalSettingsNavigation,
       externalSettingsOpen,
+      onNodeReclassified: handleNodeReclassified,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen, handleNodeReclassified]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图

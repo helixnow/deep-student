@@ -38,6 +38,7 @@ import {
 } from '../../components/CompletionCard';
 import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
+import { InkToolOutputCard } from './inkToolOutput';
 import type { Block } from '../../core/types/block';
 import {
   getExternalToolProviderName,
@@ -520,6 +521,15 @@ function extractNoteId(toolOutput: unknown, toolInput: Record<string, unknown>):
 /**
  * McpToolBlock - MCP 工具块渲染组件
  */
+const INK_TOOL_NAMES = new Set([
+  'ink_prepare', 'builtin-ink_prepare',
+  'ink_create', 'builtin-ink_create',
+  'ink_get', 'builtin-ink_get',
+  'ink_render', 'builtin-ink_render',
+  'ink_apply_ops', 'builtin-ink_apply_ops',
+  'ink_export', 'builtin-ink_export',
+]);
+
 const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
   isStreaming,
@@ -617,6 +627,10 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
   // 🆕 检测 TodoList 工具（永续执行 Agent）
   const isTodoTool = TODO_TOOLS.includes(toolName);
+
+  if (INK_TOOL_NAMES.has(toolName) && (block.status === 'success' || block.status === 'error')) {
+    return <InkToolOutputCard block={block} store={store} />;
+  }
 
   // 如果是 TodoList 工具，使用专用组件渲染
   if (isTodoTool) {

@@ -20,6 +20,8 @@ import { useTranslation } from 'react-i18next';
 import { CircleNotch } from '@phosphor-icons/react';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { dstu } from '@/dstu';
+import type { DstuNode } from '@/dstu/types';
 import { PreviewProvider, usePreviewContext, type PreviewType } from './PreviewContext';
 import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
@@ -36,6 +38,7 @@ import { archiveManifestDisplayText, isArchiveManifestText } from './archiveMani
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { isMobilePlatform } from '@/utils/platform';
+import { InkWorkspace } from '@/features/ink';
 
 /**
  * 富文档（docx/xlsx/pptx/epub）在 WebView 内整份解析，且预览组件需要 base64：
@@ -65,7 +68,7 @@ import {
   resolveAudioMimeType,
   resolveVideoMimeType,
 } from './mediaPreviewUtils';
-import { PreviewStatus } from './PreviewStatus';
+import { PreviewStatus, type PreviewStatusAction } from './PreviewStatus';
 import { MediaStudyView } from './media/MediaStudyView';
 import {
   bilibiliLinkApi,
@@ -90,6 +93,12 @@ const LOADING_INDICATOR_DELAY_MS = 150;
 interface MediaSourceState {
   url: string;
   kind: 'stream' | 'blob';
+}
+
+/** A3：unsupported 页重识别的同页反馈（不伪装成功）。 */
+interface ReclassifyFeedback {
+  tone: 'warning' | 'error';
+  message: string;
 }
 
 /**
@@ -120,6 +129,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   node,
   isActive = true,
   focusScopeId,
+  onNodeReclassified,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'pdf']);
@@ -148,6 +158,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const [isPreviewTooLarge, setIsPreviewTooLarge] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [mediaRenderFailed, setMediaRenderFailed] = useState(false);
+  const [isReclassifying, setIsReclassifying] = useState(false);
+  const [reclassifyFeedback, setReclassifyFeedback] = useState<ReclassifyFeedback | null>(null);
+  // ★ A3 请求代际：资源切换 / ABA / unmount 后，旧请求的结果一律丢弃。
+  const reclassifyRequestRef = useRef(0);
+  const reclassifyInFlightRef = useRef(false);
 
   // ★ isActive 门控：非活跃标签页不响应全局事件（pdf-page-refs 清除等）
   const isActiveRef = useRef(isActive);
@@ -233,9 +248,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setIsPreviewTooLarge(false);
     setMediaRenderFailed(false);
     setSelectedPages(new Set());
+    // A3：切换资源时同步作废旧重识别请求并清理其同页反馈。
+    reclassifyRequestRef.current += 1;
+    reclassifyInFlightRef.current = false;
+    setIsReclassifying(false);
+    setReclassifyFeedback(null);
     const nextBookmarks = (node.metadata as Record<string, unknown> | undefined)?.bookmarks as Bookmark[] | undefined;
     setBookmarks(Array.isArray(nextBookmarks) ? nextBookmarks : []);
   }
+
+  // unmount 后同样作废在途重识别，避免回调/状态写入已卸载视图。
+  useEffect(() => () => {
+    reclassifyRequestRef.current += 1;
+    reclassifyInFlightRef.current = false;
+  }, []);
 
   const readingProgress = useMemo<ReadingProgress | undefined>(() => {
     const progress = (node.metadata as Record<string, unknown> | undefined)?.readingProgress as
@@ -377,6 +403,107 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setStreamBlocked(false);
     setRetryCount((c) => c + 1);
   }, []);
+
+  // ★ A3：unsupported 页由用户显式触发重识别；不在挂载/切换时自动扫描。
+  const handleReclassify = useCallback(async () => {
+    // 没有宿主接收修正节点时，重识别结果无处可去；动作本身也不会渲染。
+    if (!onNodeReclassified || reclassifyInFlightRef.current) return;
+
+    const requestId = reclassifyRequestRef.current + 1;
+    reclassifyRequestRef.current = requestId;
+    reclassifyInFlightRef.current = true;
+    setIsReclassifying(true);
+    setReclassifyFeedback(null);
+
+    try {
+      const result = await dstu.reclassifyFile(node.id);
+      if (reclassifyRequestRef.current !== requestId) return;
+
+      if (!result.ok || !result.value) {
+        setReclassifyFeedback({
+          tone: 'error',
+          message: t('learningHub:file.reclassifyFailed'),
+        });
+        return;
+      }
+
+      switch (result.value.status) {
+        case 'recognized': {
+          const corrected: DstuNode | null = result.value.node;
+          // 只接受同一资源 ID 的修正节点，避免错误结果改错当前 tab。
+          if (!corrected || corrected.id !== node.id) {
+            setReclassifyFeedback({
+              tone: 'error',
+              message: t('learningHub:file.reclassifyFailed'),
+            });
+            return;
+          }
+
+          // image 等非 file 类型由宿主路由，必须交给 onNodeReclassified；
+          // filePreviewResolver 只覆盖 FileContentView 自身的预览模式，不含 image，
+          // 直接用它会误判为 none。
+          const correctedIsHostRouted = corrected.type !== 'file';
+          if (!correctedIsHostRouted) {
+            const correctedMetadata = corrected.metadata as Record<string, unknown> | undefined;
+            const correctedMimeType =
+              (correctedMetadata?.mimeType as string) || 'application/octet-stream';
+            const correctedPreviewMode = resolveFilePreviewMode(
+              correctedMimeType,
+              corrected.name,
+              corrected.previewType,
+            );
+            if (correctedPreviewMode === 'none') {
+              setReclassifyFeedback({
+                tone: 'warning',
+                message: t('learningHub:file.reclassifyStillUnsupported'),
+              });
+              // 仍回传，让宿主刷新必要的派生 metadata；同 ID 更新不会清掉本反馈。
+              onNodeReclassified?.(corrected);
+              return;
+            }
+          }
+
+          setReclassifyFeedback(null);
+          onNodeReclassified?.(corrected);
+          return;
+        }
+        case 'unknown':
+          setReclassifyFeedback({
+            tone: 'warning',
+            message: t('learningHub:file.reclassifyUnknown'),
+          });
+          return;
+        case 'missing':
+          setReclassifyFeedback({
+            tone: 'warning',
+            message: t('learningHub:file.reclassifyMissing'),
+          });
+          return;
+        case 'corrupt':
+          setReclassifyFeedback({
+            tone: 'warning',
+            message: t('learningHub:file.reclassifyCorrupt'),
+          });
+          return;
+        default:
+          setReclassifyFeedback({
+            tone: 'error',
+            message: t('learningHub:file.reclassifyFailed'),
+          });
+      }
+    } catch {
+      if (reclassifyRequestRef.current !== requestId) return;
+      setReclassifyFeedback({
+        tone: 'error',
+        message: t('learningHub:file.reclassifyFailed'),
+      });
+    } finally {
+      if (reclassifyRequestRef.current === requestId) {
+        reclassifyInFlightRef.current = false;
+        setIsReclassifying(false);
+      }
+    }
+  }, [node.id, onNodeReclassified, t]);
 
   // B 站链接条目：读描述（bvid / 分 P / 时长），交给内嵌播放器
   useEffect(() => {
@@ -908,32 +1035,50 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     }
 
     // 无法预览 — 显示文件信息以帮助排查
+    const unsupportedActions: PreviewStatusAction[] = [];
+    if (onNodeReclassified) {
+      unsupportedActions.push({
+        id: 'reclassify',
+        label: isReclassifying
+          ? t('learningHub:file.reclassifying')
+          : t('learningHub:file.reclassify'),
+        onClick: () => { void handleReclassify(); },
+        variant: 'primary',
+        loading: isReclassifying,
+        disabled: isReclassifying,
+      });
+    }
+    unsupportedActions.push(
+      {
+        id: 'save',
+        label: t('learningHub:file.saveToDevice'),
+        onClick: () => { void handleSaveFile(); },
+        variant: 'primary',
+        loading: isSaving,
+      },
+      {
+        id: 'retry',
+        label: t('common:retry'),
+        onClick: handleRetry,
+        variant: 'ghost',
+      },
+    );
+
     return (
       <PreviewStatus
-        tone="empty"
-        icon="file"
-        title={isArchive ? t('learningHub:file.archiveNoPreview') : t('learningHub:file.noPreview')}
+        tone={reclassifyFeedback?.tone ?? 'empty'}
+        icon={reclassifyFeedback ? undefined : 'file'}
+        title={
+          reclassifyFeedback?.message
+          ?? (isArchive ? t('learningHub:file.archiveNoPreview') : t('learningHub:file.noPreview'))
+        }
         description={
           isArchive ? t('learningHub:file.archiveNoManifestHint') : t('learningHub:file.downloadHint')
         }
         meta={`${node.name} · ${mimeType}${
           typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''
         }`}
-        actions={[
-          {
-            id: 'save',
-            label: t('learningHub:file.saveToDevice'),
-            onClick: () => { void handleSaveFile(); },
-            variant: 'primary',
-            loading: isSaving,
-          },
-          {
-            id: 'retry',
-            label: t('common:retry'),
-            onClick: handleRetry,
-            variant: 'ghost',
-          },
-        ]}
+        actions={unsupportedActions}
       />
     );
   };
@@ -947,12 +1092,21 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
 /**
  * 文件内容视图组件
- * 使用 PreviewProvider 包装，提供统一的预览状态管理
+ * 手写文件先进入独立全屏宿主；其他文件使用 PreviewProvider 管理预览状态
  */
-const FileContentView: React.FC<ContentViewProps> = (props) => (
-  <PreviewProvider>
-    <FileContentViewInner {...props} />
-  </PreviewProvider>
-);
+const FileContentView: React.FC<ContentViewProps> = (props) => {
+  const metadata = props.node.metadata as Record<string, unknown> | undefined;
+  const mimeType = typeof metadata?.canonicalMime === 'string'
+    ? metadata.canonicalMime
+    : typeof metadata?.mimeType === 'string' ? metadata.mimeType : 'application/octet-stream';
+  if (resolveFilePreviewMode(mimeType, props.node.name, props.node.previewType) === 'ink') {
+    return <InkWorkspace documentId={props.node.id} title={props.node.name} isActive={props.isActive} onClose={props.onClose} />;
+  }
+  return (
+    <PreviewProvider>
+      <FileContentViewInner {...props} />
+    </PreviewProvider>
+  );
+};
 
 export default FileContentView;

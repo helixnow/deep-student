@@ -33,12 +33,25 @@ describe('WorkbenchEventBridge classic navigation events (previously dead in wor
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({ typeId: 'exam', instanceKey: 'exam_1' }));
   });
 
-  it('opens the resource window for NAVIGATE_TO_VIEW{openResource} and ignores plain view switches', () => {
+  it('opens the resource window for NAVIGATE_TO_VIEW{openResource} and ignores plain library switches', () => {
     render(<WorkbenchEventBridge />);
     fire('NAVIGATE_TO_VIEW', { view: 'learning-hub' });
     expect(launch).not.toHaveBeenCalled();
     fire('NAVIGATE_TO_VIEW', { view: 'learning-hub', openResource: '/tb_42' });
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({ instanceKey: 'tb_42' }));
+  });
+
+  it('opens the independent notebook app for a plain classic notes navigation event', () => {
+    render(<WorkbenchEventBridge />);
+    fire('NAVIGATE_TO_VIEW', { view: 'notes' });
+    expect(launch).toHaveBeenCalledWith({ typeId: 'notebook', reason: 'api' });
+  });
+
+  it('keeps resource navigation ahead of the notebook library when a note resource is supplied', () => {
+    render(<WorkbenchEventBridge />);
+    fire('NAVIGATE_TO_VIEW', { view: 'notes', openResource: '/note_text' });
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ instanceKey: undefined, payload: { resourceType: 'note', resourceId: 'note_text' } }));
+    expect(launch).not.toHaveBeenCalledWith(expect.objectContaining({ typeId: 'notebook' }));
   });
 
   it('routes knowledge-base locate to the document and memory locate to the Files memory view', () => {

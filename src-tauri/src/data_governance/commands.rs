@@ -311,6 +311,10 @@ fn run_slot_d_clone_db_test(app_data_dir: &Path) -> SlotMigrationTestResponse {
                     rusqlite::Connection::open(&src).map_err(|e| format!("打开源库失败: {}", e))?;
                 let mut dst_conn = rusqlite::Connection::open(&dst)
                     .map_err(|e| format!("创建快照库失败: {}", e))?;
+                // Backup API 是页面级复制，本身不触发 guard；注册 dst 使该快照
+                // 连接与其它允许写连接保持一致，不放开命令层写入口。
+                dstu_storage::sqlite_capability::register_vfs_writer_capability(&dst_conn)
+                    .map_err(|e| format!("注册快照库 writer capability 失败: {}", e))?;
                 let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)
                     .map_err(|e| format!("初始化 SQLite backup 失败: {}", e))?;
                 backup

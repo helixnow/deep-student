@@ -537,6 +537,8 @@ impl ExecutionContext {
             // （同一轮并行工具无法在此处得知最终排序），依赖 Pipeline 末轮
             // save_results 以真实 block_index 覆盖本行的 UPSERT。
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
 
         // 使用 UPSERT 保存（通过消息占位行满足 FK 约束）
@@ -554,6 +556,8 @@ impl ExecutionContext {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|e| e.to_string())?;
+        let ink_artifacts_json =
+            serde_json::to_string(&block.ink_artifacts).map_err(|e| e.to_string())?;
 
         // 确保消息占位行存在（避免 FK 违反，无需关闭 FK 约束）
         conn.execute(
@@ -570,8 +574,8 @@ impl ExecutionContext {
         conn.execute(
             r#"
             INSERT INTO chat_v2_blocks
-            (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at, ink_artifacts_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(id) DO UPDATE SET
                 message_id = excluded.message_id,
                 block_type = excluded.block_type,
@@ -585,7 +589,12 @@ impl ExecutionContext {
                 error = excluded.error,
                 started_at = excluded.started_at,
                 ended_at = excluded.ended_at,
-                first_chunk_at = excluded.first_chunk_at
+                first_chunk_at = excluded.first_chunk_at,
+                ink_artifacts_json = CASE
+                    WHEN excluded.ink_artifacts_json = '[]'
+                    THEN COALESCE(chat_v2_blocks.ink_artifacts_json, excluded.ink_artifacts_json)
+                    ELSE excluded.ink_artifacts_json
+                END
             "#,
             rusqlite::params![
                 block.id,
@@ -602,6 +611,7 @@ impl ExecutionContext {
                 block.started_at,
                 block.ended_at,
                 block.first_chunk_at,
+                ink_artifacts_json,
             ],
         )
         .map_err(|e| e.to_string())?;

@@ -137,6 +137,9 @@ impl VfsDatabase {
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             // 设置 busy_timeout 避免无界等待（5秒，与主数据库保持一致）
             conn.pragma_update(None, "busy_timeout", 5000i64)?;
+            // 允许本池连接在 board writer guard 安装后继续写入 files/blobs。
+            // 未注册该能力的旧连接会 fail closed，读取不受影响。
+            dstu_storage::sqlite_capability::register_vfs_writer_capability(conn)?;
             Ok(())
         });
 

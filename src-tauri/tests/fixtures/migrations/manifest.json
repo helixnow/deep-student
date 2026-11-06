@@ -178,7 +178,9 @@
         { "database": "mistakes", "query": "SELECT COUNT(*) FROM anki_cards WHERE typeof(source_type) = 'null' OR typeof(source_id) = 'null'", "expected": "0" },
         { "database": "mistakes", "query": "SELECT COUNT(*) FROM (SELECT 1 FROM anki_cards WHERE is_error_card = 0 AND deleted_at IS NULL GROUP BY source_type, source_id, CASE WHEN source_type = 'apkg_import' THEN id WHEN text IS NOT NULL AND length(text) > 0 THEN text ELSE printf('%d:%s|%s', length(front), front, back) END HAVING COUNT(*) > 1)", "expected": "0" },
         { "database": "mistakes", "query": "SELECT json_extract(extra_fields_json, '$._qa_flags') FROM anki_cards WHERE id='card_v0944_qa_occlusion'", "expected": "[{\"severity\":\"warn\",\"rule\":\"maxLength\",\"message\":\"review wording\"}]" },
-        { "database": "mistakes", "query": "SELECT json_extract(extra_fields_json, '$._occlusion') FROM anki_cards WHERE id='card_v0944_qa_occlusion'", "expected": "{\"imageRef\":\"heart.png\",\"boxes\":[{\"x\":10,\"y\":20,\"width\":30,\"height\":40,\"clozeIndex\":1,\"label\":\"Left atrium\"}]}" }
+        { "database": "mistakes", "query": "SELECT json_extract(extra_fields_json, '$._occlusion') FROM anki_cards WHERE id='card_v0944_qa_occlusion'", "expected": "{\"imageRef\":\"heart.png\",\"boxes\":[{\"x\":10,\"y\":20,\"width\":30,\"height\":40,\"clozeIndex\":1,\"label\":\"Left atrium\"}]}" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ink_render_artifacts'", "expected": "1" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM refinery_schema_history WHERE version=20261103 AND name='ink_render_artifacts'", "expected": "1" }
       ]
     }
   ]

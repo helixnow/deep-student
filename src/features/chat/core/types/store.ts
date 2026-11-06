@@ -87,6 +87,7 @@ export interface BackendBlockForRestore {
   endedAt?: number;
   /** 🔧 P3修复：第一个有效 chunk 到达时间（用于排序，保持思维链交替顺序） */
   firstChunkAt?: number;
+  inkArtifacts?: import('./block').InkVisualArtifactRef[];
 }
 
 /**

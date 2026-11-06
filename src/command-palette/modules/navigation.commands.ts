@@ -3,7 +3,7 @@
  * 覆盖所有应用视图的完整导航命令
  *
  * 清理说明（2026-02）：
- * - 移除废弃视图命令：notes、review
+ * - 移除废弃视图命令：review
  * - 所有命令仅导航到当前仍受支持的视图
  */
 
@@ -25,8 +25,10 @@ import {
   Lightning,
   Cards,
   MonitorPlay,
+  Notebook,
 } from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
@@ -51,6 +53,21 @@ export function getNavigationCommands(): Command[] {
       priority: 100,
       execute: (deps) => {
         deps.navigate('chat-v2');
+      },
+    },
+    {
+      id: 'nav.goto.notes',
+      name: i18next.t('sidebar:navigation.notes', 'Notes'),
+      category: 'navigation',
+      icon: Notebook,
+      keywords: ['notebook', 'handwriting', '笔记', '手写'],
+      priority: 97,
+      execute: (deps) => {
+        if (workbenchBus.isEnabled()) {
+          workbenchBus.launch({ typeId: 'notebook', reason: 'command' });
+          return;
+        }
+        deps.navigate('notes');
       },
     },
     {

@@ -2,12 +2,12 @@
  * MobileSidebarNavigation - 移动统一抽屉的全局应用入口
  *
  * - settingsOnly：抽屉 head 右侧设置齿轮
- * - 默认：head 之下的二行三列入口（会话 / 资源 / 待办 / 技能 / 闪卡 / 数据）
+ * - 默认：head 之下的三列应用入口（会话 / 资源 / 笔记 / 音视频 / 待办 / 技能 / 闪卡 / 数据）
  */
 
 import React, { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Database } from '@phosphor-icons/react';
+import { Database, Notebook } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import {
@@ -53,6 +53,7 @@ export const MobileAppNavigationProvider: React.FC<{
 const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
   'chat-v2': StudyChatIcon,
   'learning-hub': StudyBooksIcon,
+  notes: Notebook,
   media: StudyMediaIcon,
   todo: StudyTodoIcon,
   'skills-management': StudyMagicWandIcon,
@@ -63,6 +64,7 @@ const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
 const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
   'chat-v2': { key: 'sidebar:navigation.launcher.chat_v2', fallback: '会话' },
   'learning-hub': { key: 'sidebar:navigation.launcher.learning_hub', fallback: '资源' },
+  notes: { key: 'sidebar:navigation.launcher.notes', fallback: '笔记' },
   media: { key: 'sidebar:navigation.launcher.media', fallback: '音视频' },
   todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
@@ -73,6 +75,7 @@ const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallbac
 const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
   'chat-v2': { key: 'sidebar:navigation.sessions', fallback: '会话' },
   'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '资源库' },
+  notes: { key: 'sidebar:navigation.notes', fallback: '笔记' },
   media: { key: 'sidebar:navigation.media', fallback: '音视频' },
   todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },

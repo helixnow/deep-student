@@ -2,6 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import todoUrl from './app-icons/todo.svg';
 import notesUrl from './app-icons/notes.svg';
+import notebookUrl from './app-icons/notebook.svg';
 import examUrl from './app-icons/exam.svg';
 import translationUrl from './app-icons/translation.svg';
 import essayUrl from './app-icons/essay.svg';
@@ -30,6 +31,7 @@ import mediaUrl from './app-icons/media.svg';
 export const APP_ICON_URLS: Record<string, string> = {
   todo: todoUrl,
   notes: notesUrl,
+  notebook: notebookUrl,
   exam: examUrl,
   translation: translationUrl,
   essay: essayUrl,

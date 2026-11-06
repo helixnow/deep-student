@@ -13,6 +13,7 @@ import {
   Star,
   Trash,
   X,
+  PenNib,
 } from '@phosphor-icons/react';
 import {
   NoteIcon,
@@ -36,6 +37,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { QuickAccessType } from '../../learningHubContracts';
+import { visibleInkCreateChoices, type InkCreateMode } from '../../inkCreateChoices';
+import { INK_BOARD_CREATE_ENABLED } from '@/features/ink';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { IndexStatusMiniBar } from './IndexStatusMiniBar';
 import {
@@ -63,6 +66,7 @@ interface FinderQuickAccessProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
+  onNewInk?: (mode: InkCreateMode) => void;
   createDisabled?: boolean;
   favoriteCount?: number;
   noteCount?: number;
@@ -86,6 +90,8 @@ export interface FinderCreateMenuItemsProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
+  onNewInk?: (mode: InkCreateMode) => void;
+  boardInkEnabled?: boolean;
 }
 
 /** 学习资源「新建」菜单项：快捷访问侧栏与顶栏 + 菜单共用 */
@@ -99,6 +105,8 @@ export function FinderCreateMenuItems({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
+  onNewInk,
+  boardInkEnabled = false,
 }: FinderCreateMenuItemsProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   return (
@@ -148,6 +156,17 @@ export function FinderCreateMenuItems({
           {t('finder.toolbar.newMindMap')}
         </AppMenuItem>
       )}
+      {onNewInk && visibleInkCreateChoices(boardInkEnabled).map((choice) => (
+        <AppMenuItem
+          key={choice.mode}
+          data-testid={choice.testId}
+          data-ink-mode={choice.mode}
+          icon={<PenNib size={16} />}
+          onClick={() => onNewInk(choice.mode)}
+        >
+          {t(choice.labelKey)}
+        </AppMenuItem>
+      ))}
     </>
   );
 }
@@ -174,6 +193,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
+  onNewInk,
   createDisabled = false,
   favoriteCount,
   recentCount,
@@ -335,6 +355,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       onNewTranslation={onNewTranslation}
       onNewEssay={onNewEssay}
       onNewMindMap={onNewMindMap}
+      onNewInk={onNewInk}
+      boardInkEnabled={INK_BOARD_CREATE_ENABLED}
     />
   );
 

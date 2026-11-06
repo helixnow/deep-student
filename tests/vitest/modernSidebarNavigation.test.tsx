@@ -147,9 +147,26 @@ describe('ModernSidebar shell navigation', () => {
 
     expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '资源库' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /待办|sidebar:navigation\.todo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '技能管理' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+  });
+
+  it('opens the standalone notes view and highlights it independently of the resource library', async () => {
+    const onViewChange = vi.fn();
+    const { rerender } = render(<ModernSidebar currentView="learning-hub" onViewChange={onViewChange} />);
+
+    const notesEntry = await screen.findByRole('button', { name: '笔记' });
+    expect(notesEntry.querySelector('svg')).not.toBeNull();
+    expect(notesEntry).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: '资源库' })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(notesEntry);
+    expect(onViewChange).toHaveBeenLastCalledWith('notes');
+
+    rerender(<ModernSidebar currentView="notes" onViewChange={onViewChange} />);
+    expect(screen.getByRole('button', { name: '笔记' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: '资源库' })).not.toHaveAttribute('aria-current');
   });
 
   it('collapses flashcards, card tasks and templates into one flashcards hub entry', async () => {
@@ -228,6 +245,7 @@ describe('ModernSidebar shell navigation', () => {
 
     expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '资源库' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '笔记' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /待办|sidebar:navigation\.todo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '技能管理' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '制卡任务' })).not.toBeInTheDocument();

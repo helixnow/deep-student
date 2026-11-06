@@ -690,6 +690,80 @@ impl VfsAttachmentRepo {
     // 若要加强保护：可对 INSERT files 之后的多个 UPDATE 操作用 SAVEPOINT 包裹，
     // 确保 backfill（resource_id、source_id、ocr_text、ocr_pages_json）要么全部成功要么全部回滚。
     // 当前这些 backfill 失败已用 warn! 日志记录并继续执行，风险较低。
+    /// A3: 新附件写入前用同一有界内容检测修正通用/缺失的 MIME。
+    ///
+    /// 仅在原 MIME 是通用占位，或强二进制/OOXML 内容与具体 MIME 冲突时修正；
+    /// 弱文本/XML 识别只用于回填通用占位，不得覆盖更具体的后缀/MIME；不重命名。
+    fn correct_upload_from_content(
+        params: &VfsUploadAttachmentParams,
+        data: &[u8],
+    ) -> Option<VfsUploadAttachmentParams> {
+        // 上传内容可能是数百 MiB；类型识别只需有界头部。
+        let sample = &data[..data.len().min(64 * 1024)];
+        let detected_extension = crate::unified_file_manager::detect_import_extension(sample)?;
+        let detected_mime =
+            crate::unified_file_manager::import_mime_type(Some(&detected_extension));
+        if detected_mime == "application/octet-stream" {
+            return None;
+        }
+        let strong_detected = matches!(
+            detected_extension.as_str(),
+            "pdf"
+                | "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "bmp"
+                | "heic"
+                | "heif"
+                | "docx"
+                | "xlsx"
+                | "pptx"
+                | "ods"
+                | "epub"
+        );
+
+        let current_mime = params.mime_type.trim().to_ascii_lowercase();
+        let current_is_generic = current_mime.is_empty()
+            || current_mime == "application/octet-stream"
+            || current_mime == "binary/octet-stream"
+            || !current_mime.contains('/');
+        let name_extension = Path::new(&params.name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.trim_start_matches('.').to_ascii_lowercase())
+            .filter(|ext| !ext.is_empty());
+
+        let should_correct = if current_is_generic {
+            // 弱识别只在名称后缀不与结果冲突时回填通用占位。
+            let weak_name_conflict = !strong_detected
+                && name_extension
+                    .as_deref()
+                    .is_some_and(|ext| ext != detected_extension);
+            !weak_name_conflict && current_mime != detected_mime
+        } else {
+            // 具体 MIME 只接受强二进制/OOXML 内容的纠正，弱文本识别不得降级。
+            strong_detected && current_mime != detected_mime
+        };
+        if !should_correct {
+            return None;
+        }
+
+        let attachment_type = if detected_mime.starts_with("image/") {
+            "image"
+        } else {
+            "file"
+        };
+        Some(VfsUploadAttachmentParams {
+            name: params.name.clone(),
+            mime_type: detected_mime.to_string(),
+            // 原始 bytes 路径忽略该字段；保留空串避免复制大 base64。
+            base64_content: String::new(),
+            attachment_type: Some(attachment_type.to_string()),
+        })
+    }
+
     pub fn upload_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
@@ -716,6 +790,16 @@ impl VfsAttachmentRepo {
         params: &VfsUploadAttachmentParams,
         data: &[u8],
     ) -> VfsResult<VfsUploadAttachmentResult> {
+        // A3: 通用/缺失类型的新附件先按同一有界内容检测回填可靠 MIME。
+        // 只修正类型字段，不改用户显示名称。
+        let corrected_params;
+        let params = if let Some(corrected) = Self::correct_upload_from_content(params, data) {
+            corrected_params = corrected;
+            &corrected_params
+        } else {
+            params
+        };
+
         // 1. 基础类型校验与大小校验
         Self::validate_upload_type(&params.name, &params.mime_type)?;
         Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
@@ -837,6 +921,16 @@ impl VfsAttachmentRepo {
                     }
                 }
 
+                // A3: 新上传字节是可靠证据，可回填旧条目的通用 MIME。
+                let _ = super::file_repo::VfsFileRepo::upgrade_existing_file_from_verified_bytes_with_conn(
+                    conn,
+                    &existing.id,
+                    &data,
+                );
+                if let Some(refreshed) = Self::get_by_id_with_conn(conn, &existing.id)? {
+                    existing = refreshed;
+                }
+
                 let (processing_status, processing_progress, ready_modes) =
                     Self::get_processing_status_with_conn(conn, &existing.id)?;
 
@@ -861,6 +955,11 @@ impl VfsAttachmentRepo {
                     existing.id, params.name
                 );
                 Self::restore_and_rename_with_conn(conn, &existing.id, &params.name)?;
+                let _ = super::file_repo::VfsFileRepo::upgrade_existing_file_from_verified_bytes_with_conn(
+                    conn,
+                    &existing.id,
+                    &data,
+                );
 
                 // 重新查询获取更新后的记录
                 let restored = Self::get_by_id_with_conn(conn, &existing.id)?.ok_or_else(|| {
@@ -3636,5 +3735,55 @@ mod tests {
             .unwrap()
             .expect("blob content");
         assert_eq!(STANDARD.decode(content).unwrap(), png);
+    }
+
+    fn upload_params_for_test(
+        name: &str,
+        mime_type: &str,
+        attachment_type: &str,
+    ) -> VfsUploadAttachmentParams {
+        VfsUploadAttachmentParams {
+            name: name.to_string(),
+            mime_type: mime_type.to_string(),
+            base64_content: String::new(),
+            attachment_type: Some(attachment_type.to_string()),
+        }
+    }
+
+    /// 生成真实可解码的 PNG（带 IHDR/IDAT/IEND），与 file_repo 夹具同风格。
+    fn real_png_bytes_fixture() -> Vec<u8> {
+        use image::{ColorType, ImageEncoder};
+
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(&[12, 34, 56, 255], 1, 1, ColorType::Rgba8)
+            .expect("encode real PNG fixture");
+        bytes
+    }
+
+    #[test]
+    fn correct_upload_from_content_does_not_downgrade_svg_to_xml() {
+        let svg = br#"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"></svg>"#;
+        let params = upload_params_for_test("x.svg", "image/svg+xml", "image");
+
+        let corrected = VfsAttachmentRepo::correct_upload_from_content(&params, svg);
+        // 弱 XML 文本识别不得覆盖更具体的名称/MIME；返回 None 或保持 SVG/image 均可。
+        if let Some(corrected) = corrected {
+            assert_eq!(corrected.mime_type, "image/svg+xml");
+            assert_eq!(corrected.attachment_type.as_deref(), Some("image"));
+        }
+    }
+
+    #[test]
+    fn correct_upload_from_content_corrects_jpeg_mime_for_real_png_content() {
+        let png = real_png_bytes_fixture();
+        let params = upload_params_for_test("x.png", "image/jpeg", "image");
+
+        let corrected = VfsAttachmentRepo::correct_upload_from_content(&params, &png)
+            .expect("strong PNG content must correct mismatched image/jpeg");
+        assert_eq!(corrected.mime_type, "image/png");
+        assert_eq!(corrected.attachment_type.as_deref(), Some("image"));
+        assert_eq!(corrected.name, "x.png");
     }
 }

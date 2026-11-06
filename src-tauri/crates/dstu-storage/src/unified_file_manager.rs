@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
 };
 
+use serde::Serialize;
 use tauri::Window;
 use tauri_plugin_fs::{FsExt, OpenOptions, SafeFilePath};
 use uuid::Uuid;
@@ -762,50 +763,289 @@ const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
     "json", "xml",
 ];
 
+/// 导入通道分类使用的图片扩展名（与前端 IMAGE_EXTENSIONS / 附件白名单同一语义）。
+const IMPORT_IMAGE_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "heic", "heif",
+];
+
+/// 音视频扩展名（走附件/媒体通道，不进入文档解析）。
+const IMPORT_MEDIA_EXTENSIONS: &[&str] = &[
+    "mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", "mp4", "webm", "mov", "avi", "mkv",
+    "m4v", "wmv", "flv",
+];
+
+/// 文档通道扩展名：命中后走 textbooks_add / 文档解析，而不是普通附件。
+const IMPORT_DOCUMENT_EXTENSIONS: &[&str] = &[
+    "pdf",
+    "docx",
+    "txt",
+    "md",
+    "markdown",
+    "html",
+    "htm",
+    "xlsx",
+    "xls",
+    "xlsb",
+    "ods",
+    "pptx",
+    "epub",
+    "rtf",
+    "csv",
+    "json",
+    "xml",
+    // 代码/纯文本（与前端 ATTACHMENT_CODE_TEXT_EXTENSIONS 对齐，按 txt 解析）
+    "py",
+    "pyw",
+    "ipynb",
+    "rs",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "java",
+    "c",
+    "cpp",
+    "cc",
+    "cxx",
+    "h",
+    "hpp",
+    "hh",
+    "cs",
+    "go",
+    "rb",
+    "php",
+    "swift",
+    "kt",
+    "kts",
+    "scala",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "ps1",
+    "bat",
+    "cmd",
+    "sql",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "properties",
+    "env",
+    "log",
+    "tex",
+    "bib",
+    "rst",
+    "adoc",
+    "vue",
+    "svelte",
+    "astro",
+    "lua",
+    "pl",
+    "pm",
+    "r",
+    "jl",
+    "dart",
+    "gradle",
+    "cmake",
+    "makefile",
+    "mk",
+    "dockerfile",
+    "gitignore",
+    "editorconfig",
+    "proto",
+    "graphql",
+    "gql",
+    "prisma",
+    "sol",
+    "asm",
+    "s",
+    "vb",
+    "fs",
+    "fsx",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "clj",
+    "cljs",
+    "hs",
+    "elm",
+    "nim",
+    "zig",
+];
+
+/// 导入描述：分流唯一依据，不直接决定内容是否完整/可解析。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedImportInfo {
+    pub display_name: String,
+    pub extension: Option<String>,
+    pub mime_type: String,
+    /// `document` | `image` | `media` | `file`
+    pub kind: String,
+}
+
+/// 扩展名 -> 规范化 MIME。未知/缺失返回 `application/octet-stream`。
+///
+/// 这是导入分流与附件元数据的共享 helper；A3 重识别也应复用它，避免
+/// 前端/后端各自维护一套映射。扩展名不区分大小写。
+pub fn import_mime_type(extension: Option<&str>) -> &'static str {
+    let ext = extension
+        .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())
+        .unwrap_or_default();
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "doc" => "application/msword",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
+        "xlsb" => "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "epub" => "application/epub+zip",
+        "rtf" => "application/rtf",
+        "txt" => "text/plain",
+        "md" | "markdown" => "text/markdown",
+        "html" | "htm" => "text/html",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        "heic" => "image/heic",
+        "heif" => "image/heif",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "flac" => "audio/flac",
+        "aac" => "audio/aac",
+        "wma" => "audio/x-ms-wma",
+        "opus" => "audio/opus",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "avi" => "video/x-msvideo",
+        "mkv" => "video/x-matroska",
+        "m4v" => "video/x-m4v",
+        "wmv" => "video/x-ms-wmv",
+        "flv" => "video/x-flv",
+        "zip" => "application/zip",
+        "rar" => "application/vnd.rar",
+        "7z" => "application/x-7z-compressed",
+        "apkg" | "colpkg" => "application/apkg",
+        _ if IMPORT_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 扩展名 -> 导入通道：`document` | `image` | `media` | `file`。
+pub fn import_kind(extension: Option<&str>) -> &'static str {
+    let ext = extension
+        .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())
+        .unwrap_or_default();
+    if IMPORT_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+        "image"
+    } else if IMPORT_MEDIA_EXTENSIONS.contains(&ext.as_str()) {
+        "media"
+    } else if IMPORT_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+        "document"
+    } else {
+        "file"
+    }
+}
+
 /// 从文件头 magic bytes 检测文件扩展名。
-/// 只读取前 8 字节进行初步判断；对 ZIP 容器再读取更多字节区分 DOCX/XLSX/PPTX/EPUB/ODS。
+/// 只读取前 64KB（有界），对 ZIP 容器在头部内区分 DOCX/XLSX/PPTX/EPUB/ODS。
 /// 返回 None 表示无法识别。
 pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<String> {
-    let header = read_first_bytes(window, raw_path, 8).ok()?;
-    if header.len() < 4 {
+    let data = read_first_bytes(window, raw_path, 64 * 1024).ok()?;
+    detect_import_extension(&data)
+}
+
+/// 纯字节版导入类型检测：不访问文件系统，调用方负责提供有界头部（<= 64KB）。
+///
+/// 与 `detect_extension_from_magic` 共用同一实现，供暂存/描述解析和测试复用。
+pub fn detect_import_extension(data: &[u8]) -> Option<String> {
+    if data.len() < 4 {
         return None;
     }
 
     // PDF: %PDF
-    if header.starts_with(b"%PDF") {
+    if data.starts_with(b"%PDF") {
         return Some("pdf".into());
     }
 
     // ZIP 容器（DOCX/XLSX/PPTX/EPUB/ODS）
-    if header.starts_with(b"PK\x03\x04") {
-        return detect_zip_subtype(window, raw_path);
+    if data.starts_with(b"PK\x03\x04") {
+        return detect_zip_subtype(data);
     }
 
     // RTF: {\rtf
-    if header.starts_with(b"{\\rtf") {
+    if data.starts_with(b"{\\rtf") {
         return Some("rtf".into());
     }
 
     // OLE2 Compound Document (旧版 .doc/.xls/.ppt)
-    if header.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) {
+    if data.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) {
         return None; // 不支持旧版 Office 格式
     }
 
+    // 图片签名：provider 的 opaque 名称/octet-stream 不能作为通道依据，
+    // 这里用有界文件头识别常见图片，避免 PNG/JPEG/WebP 落进普通附件。
+    if data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("png".into());
+    }
+    if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("jpg".into());
+    }
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return Some("gif".into());
+    }
+    if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP".as_slice() {
+        return Some("webp".into());
+    }
+    if looks_like_bmp_header(data) {
+        return Some("bmp".into());
+    }
+    if data.len() >= 12 && &data[4..8] == b"ftyp".as_slice() {
+        let brand = &data[8..12];
+        if brand == b"heic".as_slice()
+            || brand == b"heix".as_slice()
+            || brand == b"hevc".as_slice()
+            || brand == b"hevx".as_slice()
+        {
+            return Some("heic".into());
+        }
+        if brand == b"mif1".as_slice() || brand == b"msf1".as_slice() {
+            return Some("heif".into());
+        }
+    }
+
     // 跳过可能的 UTF-8 BOM
-    let content = if header.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        &header[3..]
+    let content = if data.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        &data[3..]
     } else {
-        &header[..]
+        data
     };
 
     // XML: <?xml
     if content.starts_with(b"<?xm") {
-        // 读取更多内容来区分 XML 和 HTML (XHTML)
-        if let Ok(more) = read_first_bytes(window, raw_path, 512) {
-            let lower = String::from_utf8_lossy(&more).to_lowercase();
-            if lower.contains("<html") || lower.contains("<!doctype html") {
-                return Some("html".into());
-            }
+        // 用同一份有界头部区分 XML 和 HTML (XHTML)
+        let more = &data[..data.len().min(512)];
+        let lower = String::from_utf8_lossy(more).to_lowercase();
+        if lower.contains("<html") || lower.contains("<!doctype html") {
+            return Some("html".into());
         }
         return Some("xml".into());
     }
@@ -819,9 +1059,26 @@ pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<St
         return Some("html".into());
     }
 
-    // 读取更多字节做文本格式启发式检测
-    let text_sample = read_first_bytes(window, raw_path, 1024).ok()?;
-    let text_str = String::from_utf8_lossy(&text_sample);
+    // 控制字节（含 NUL）说明不是可靠纯文本；不得被 UTF-8 兜底或
+    // Markdown/CSV 启发式误判为可读文档。调用方保证头部 <= 64KiB，
+    // 这里仍显式截断，扫描整个有界样本而不是只看前 1024 字节。
+    let control_sample = &data[..data.len().min(64 * 1024)];
+    let has_binary_controls = control_sample
+        .iter()
+        .any(|byte| *byte == 0 || (*byte < 0x20 && !matches!(*byte, b'\n' | b'\r' | b'\t' | 0x0C)));
+    if has_binary_controls {
+        return None;
+    }
+    // 文本启发式仍使用小样本；UTF-8 校验需容忍样本在字符中间截断。
+    let text_sample = &data[..data.len().min(1024)];
+    let utf8_text = match std::str::from_utf8(text_sample) {
+        Ok(text) => Some(text),
+        Err(err) if err.error_len().is_none() => {
+            std::str::from_utf8(&text_sample[..err.valid_up_to()]).ok()
+        }
+        Err(_) => None,
+    };
+    let text_str = String::from_utf8_lossy(text_sample);
     let trimmed_text = text_str.trim_start_matches('\u{FEFF}').trim();
 
     // JSON: 以 { 或 [ 开头
@@ -842,12 +1099,68 @@ pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<St
         return Some("md".into());
     }
 
-    // 纯文本兜底：全部为合法 UTF-8 可打印字符
-    if !text_sample.is_empty() && std::str::from_utf8(&text_sample).is_ok() {
+    // 纯文本兜底：合法 UTF-8（允许样本在末尾字符中间截断）
+    if !text_sample.is_empty() && utf8_text.is_some() {
         return Some("txt".into());
     }
 
     None
+}
+
+/// 有界 BMP 结构校验：只用于路由，不承诺能完整解码。
+///
+/// 支持 12 字节 OS/2 v1 BITMAPCOREHEADER（u16 宽高/planes/bpp）和
+/// >= 40 字节 Windows BITMAPINFOHEADER；文件大小、像素偏移、DIB 大小、
+/// 宽高、planes、bpp、compression 必须自洽，以排除仅以 `BM` 开头的普通文本。
+/// 样本截断在像素数据中仍然接受，因此不要求 `data.len()` 覆盖整个文件。
+fn looks_like_bmp_header(data: &[u8]) -> bool {
+    if data.len() < 26 || !data.starts_with(b"BM") {
+        return false;
+    }
+    let file_size = u32::from_le_bytes([data[2], data[3], data[4], data[5]]) as usize;
+    let pixel_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
+    let dib_size = u32::from_le_bytes([data[14], data[15], data[16], data[17]]) as usize;
+
+    let header_end = match 14usize.checked_add(dib_size) {
+        Some(value) => value,
+        None => return false,
+    };
+    if header_end > data.len() || header_end > file_size {
+        return false;
+    }
+    if pixel_offset < header_end || pixel_offset > file_size {
+        return false;
+    }
+
+    // OS/2 v1 BITMAPCOREHEADER：宽高与 planes/bpp 均为 u16，无 compression 字段。
+    if dib_size == 12 {
+        let width = u16::from_le_bytes([data[18], data[19]]);
+        let height = u16::from_le_bytes([data[20], data[21]]);
+        let planes = u16::from_le_bytes([data[22], data[23]]);
+        let bits_per_pixel = u16::from_le_bytes([data[24], data[25]]);
+        return width > 0
+            && height > 0
+            && planes == 1
+            && matches!(bits_per_pixel, 1 | 4 | 8 | 16 | 24 | 32);
+    }
+
+    if dib_size < 40 {
+        return false;
+    }
+
+    let width = i32::from_le_bytes([data[18], data[19], data[20], data[21]]);
+    let height = i32::from_le_bytes([data[22], data[23], data[24], data[25]]);
+    let planes = u16::from_le_bytes([data[26], data[27]]);
+    let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]);
+    let compression = u32::from_le_bytes([data[30], data[31], data[32], data[33]]);
+
+    if width <= 0 || height == 0 || planes != 1 {
+        return false;
+    }
+    if !matches!(bits_per_pixel, 1 | 4 | 8 | 16 | 24 | 32) {
+        return false;
+    }
+    matches!(compression, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 11 | 12 | 13)
 }
 
 /// 读取文件的前 N 字节。兼容本地路径与 content:// 等虚拟 URI。
@@ -874,85 +1187,101 @@ fn read_first_bytes(window: &Window, raw_path: &str, n: usize) -> Result<Vec<u8>
 /// 不使用 `ZipArchive::new()`，因为它需要文件末尾的 End-of-Central-Directory 记录，
 /// 而我们只读取了前 N 字节——对大文件（>64KB）会失败。
 /// 改为直接解析 ZIP Local File Header（位于文件头部），只需前 64KB 即可覆盖大多数条目名称。
-fn detect_zip_subtype(window: &Window, raw_path: &str) -> Option<String> {
-    let data = read_first_bytes(window, raw_path, 64 * 1024).ok()?;
-
-    // 手动解析 ZIP Local File Headers 提取条目名称
-    let mut offset = 0;
-    let mut has_content_xml = false;
+fn detect_zip_subtype(data: &[u8]) -> Option<String> {
+    // 手动解析 ZIP Local File Headers 提取条目名称；所有偏移加法都用 checked，
+    // 样本在条目内容中截断时停止，不把不完整条目当成类型证据。
+    let mut offset: usize = 0;
     let mut mimetype_content: Option<String> = None;
 
-    while offset + 30 <= data.len() {
+    loop {
+        let Some(header_end) = offset.checked_add(30) else {
+            break;
+        };
+        if header_end > data.len() {
+            break;
+        }
+        let header = &data[offset..header_end];
         // Local File Header signature = PK\x03\x04
-        if data[offset..offset + 4] != [0x50, 0x4B, 0x03, 0x04] {
+        if !header.starts_with(&[0x50, 0x4B, 0x03, 0x04]) {
             break;
         }
 
-        let name_len = u16::from_le_bytes([data[offset + 26], data[offset + 27]]) as usize;
-        let extra_len = u16::from_le_bytes([data[offset + 28], data[offset + 29]]) as usize;
-        let compressed_size = u32::from_le_bytes([
-            data[offset + 18],
-            data[offset + 19],
-            data[offset + 20],
-            data[offset + 21],
-        ]) as usize;
+        let compression = u16::from_le_bytes([header[8], header[9]]);
+        let compressed_size =
+            u32::from_le_bytes([header[18], header[19], header[20], header[21]]) as usize;
+        let uncompressed_size =
+            u32::from_le_bytes([header[22], header[23], header[24], header[25]]) as usize;
+        let name_len = u16::from_le_bytes([header[26], header[27]]) as usize;
+        let extra_len = u16::from_le_bytes([header[28], header[29]]) as usize;
 
-        let name_start = offset + 30;
-        let name_end = name_start + name_len;
+        let name_start = header_end;
+        let Some(name_end) = name_start.checked_add(name_len) else {
+            break;
+        };
         if name_end > data.len() {
             break;
         }
 
         let entry_name = String::from_utf8_lossy(&data[name_start..name_end]).to_lowercase();
 
-        if entry_name.starts_with("word/") {
+        // 只认 OOXML 的精确主 part；任意 word/xl/ppt 目录不算 OOXML。
+        let is_ppt_slide = entry_name
+            .strip_prefix("ppt/slides/slide")
+            .and_then(|rest| rest.strip_suffix(".xml"))
+            .is_some_and(|digits| {
+                !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+            });
+        if entry_name == "word/document.xml" {
             return Some("docx".into());
         }
-        if entry_name.starts_with("xl/") {
+        if entry_name == "xl/workbook.xml" {
             return Some("xlsx".into());
         }
-        if entry_name.starts_with("ppt/") {
+        if entry_name == "ppt/presentation.xml" || is_ppt_slide {
             return Some("pptx".into());
         }
+
+        let Some(data_start) = name_end.checked_add(extra_len) else {
+            break;
+        };
+        let Some(data_end) = data_start.checked_add(compressed_size) else {
+            break;
+        };
+        // 样本在大条目内容中截断：无法跳到下一个头部，也不能从不完整
+        // container.xml/extra 或截断的 mimetype 宣称类型。
+        if data_end > data.len() {
+            break;
+        }
+
+        // EPUB 的 container.xml 必须在样本内完整。
         if entry_name == "meta-inf/container.xml" {
             return Some("epub".into());
         }
-        if entry_name == "content.xml" {
-            has_content_xml = true;
-        }
-
-        // 读取 mimetype 条目的内容（通常是 ZIP 中的第一个条目，且不压缩）
-        if entry_name == "mimetype" {
-            let data_start = name_end + extra_len;
-            let data_end = data_start + compressed_size;
-            if data_end <= data.len() {
-                let mime = String::from_utf8_lossy(&data[data_start..data_end]);
-                mimetype_content = Some(mime.to_string());
-            }
+        // mimetype 必须是样本内完整、未压缩的 payload。
+        if entry_name == "mimetype"
+            && compression == 0
+            && compressed_size == uncompressed_size
+            && compressed_size > 0
+        {
+            let mime = String::from_utf8_lossy(&data[data_start..data_end]);
+            mimetype_content = Some(mime.to_string());
         }
 
         // 跳到下一个 Local File Header
-        let next_offset = name_end + extra_len + compressed_size;
-        if next_offset <= offset {
+        if data_end <= offset {
             break; // 防止无限循环
         }
-        offset = next_offset;
+        offset = data_end;
     }
 
-    // ODF 判断
+    // 只按精确 stored mimetype 识别明确支持的 ODF/EPUB；ODT/ODP 等保持不支持，
+    // 不能因任意 content.xml 或 opendocument 前缀冒充 OOXML/ODS。
     if let Some(ref mime) = mimetype_content {
-        if mime.contains("spreadsheet") {
-            return Some("ods".into());
+        match mime.trim() {
+            "application/vnd.oasis.opendocument.spreadsheet" => return Some("ods".into()),
+            "application/epub+zip" => return Some("epub".into()),
+            _ => {}
         }
-        if mime.contains("presentation") {
-            return Some("pptx".into());
-        }
-        if mime.contains("text") || mime.contains("opendocument") {
-            return Some("docx".into());
-        }
-    }
-    if has_content_xml || mimetype_content.is_some() {
-        return Some("ods".into()); // ODF 兜底
     }
 
     None
@@ -1043,6 +1372,220 @@ pub fn resolve_file_info(window: &Window, raw_path: &str) -> (String, Option<Str
     (sanitize_file_name_for_fs(&uri_name), uri_ext)
 }
 
+/// Android provider 元数据。只作为描述线索，不证明内容完整或格式有效。
+#[derive(Debug, Clone, Default)]
+pub struct AndroidSafDisplayInfo {
+    pub display_name: Option<String>,
+    pub mime_type: Option<String>,
+}
+
+/// 通过既有 saf-permission 插件查询 content:// 的 DISPLAY_NAME / MIME。
+/// 查询失败返回 None，由有界内容检测继续兜底；不缓存、不复制 URI grant。
+#[cfg(target_os = "android")]
+pub async fn query_android_saf_display_info(path: &str) -> Option<AndroidSafDisplayInfo> {
+    use tauri::Manager;
+
+    let app = APP_HANDLE.get()?;
+    let state = app.try_state::<SafPermissionHandle>()?;
+    let plugin = state.0.clone();
+    let value = plugin
+        .run_mobile_plugin_async::<serde_json::Value>(
+            "resolveFileInfo",
+            serde_json::json!({ "path": path }),
+        )
+        .await
+        .ok()?;
+    Some(AndroidSafDisplayInfo {
+        display_name: value
+            .get("displayName")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        mime_type: value
+            .get("mimeType")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+/// 从名称中取“真正的点号后缀”，opaque ID 和过长的伪扩展名返回 None。
+fn extension_from_name(name: &str) -> Option<String> {
+    if is_opaque_document_id(name) {
+        return None;
+    }
+    Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.trim().trim_start_matches('.').to_ascii_lowercase())
+        .filter(|ext| {
+            !ext.is_empty() && ext.len() <= 16 && ext.chars().all(|c| c.is_ascii_alphanumeric())
+        })
+}
+
+/// provider MIME 缺失扩展名时的保守回退（仅常见可识别类型）。
+fn extension_from_mime(mime: &str) -> Option<&'static str> {
+    let normalized = mime
+        .split(';')
+        .next()
+        .unwrap_or(mime)
+        .trim()
+        .to_ascii_lowercase();
+    match normalized.as_str() {
+        "application/pdf" => Some("pdf"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
+        "application/epub+zip" => Some("epub"),
+        "text/markdown" => Some("md"),
+        "text/html" => Some("html"),
+        "text/csv" => Some("csv"),
+        "application/json" => Some("json"),
+        "application/xml" | "text/xml" => Some("xml"),
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "image/gif" => Some("gif"),
+        "image/webp" => Some("webp"),
+        "image/svg+xml" => Some("svg"),
+        "image/bmp" => Some("bmp"),
+        "image/heic" => Some("heic"),
+        "image/heif" => Some("heif"),
+        "audio/mpeg" => Some("mp3"),
+        "video/mp4" => Some("mp4"),
+        _ => None,
+    }
+}
+
+/// 强内容签名 > 可靠 provider 名称后缀 > provider 可识别 MIME > URI 后缀/code 名 > 弱检测。
+/// `text/plain` / `application/octet-stream` 不映射为具体后缀，不会覆盖普通路径。
+fn pick_import_extension(
+    detected: Option<String>,
+    provider_ext: Option<String>,
+    provider_mime_ext: Option<&'static str>,
+    uri_ext: Option<String>,
+) -> Option<String> {
+    let detected_is_strong = detected.as_deref().is_some_and(|ext| {
+        matches!(
+            ext,
+            "pdf"
+                | "docx"
+                | "xlsx"
+                | "pptx"
+                | "epub"
+                | "ods"
+                | "rtf"
+                | "png"
+                | "jpg"
+                | "gif"
+                | "webp"
+                | "bmp"
+                | "heic"
+                | "heif"
+        )
+    });
+    if detected_is_strong {
+        return detected;
+    }
+    provider_ext
+        .or_else(|| provider_mime_ext.map(str::to_string))
+        .or(uri_ext)
+        .or(detected)
+}
+
+/// 同一格式的常见后缀别名；HEIC/HEIF 是不同容器标识，不在此列。
+fn extensions_are_equivalent(left: &str, right: &str) -> bool {
+    left == right
+        || matches!(
+            (left, right),
+            ("jpg", "jpeg")
+                | ("jpeg", "jpg")
+                | ("html", "htm")
+                | ("htm", "html")
+                | ("md", "markdown")
+                | ("markdown", "md")
+        )
+}
+
+/// 组装导入描述：native 有界检测 + Android provider 元数据。
+///
+/// 返回 Err 仅用于“既无可靠名称/后缀、又无法从内容识别”的 opaque 输入；
+/// 此时调用方必须显式报失败，不能以 octet-stream 静默落库。检测到头部
+/// 不等于文件完整或可解析，后续解析器仍需独立校验。
+pub fn resolve_import_info(
+    window: &Window,
+    raw_path: &str,
+    provider: Option<AndroidSafDisplayInfo>,
+) -> Result<ResolvedImportInfo, AppError> {
+    let uri_name = extract_file_name(raw_path);
+    let detected = detect_extension_from_magic(window, raw_path);
+    build_import_info(&uri_name, provider, detected)
+}
+
+/// 纯描述组装接缝：调用方提供 URI 名称和有界检测结果，不触碰 IO。
+fn build_import_info(
+    uri_name: &str,
+    provider: Option<AndroidSafDisplayInfo>,
+    detected: Option<String>,
+) -> Result<ResolvedImportInfo, AppError> {
+    let uri_ext = extension_from_name(uri_name);
+    let provider = provider.unwrap_or_default();
+    let provider_name = provider
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    let provider_ext = provider_name
+        .and_then(extension_from_name)
+        .filter(|ext| import_mime_type(Some(ext.as_str())) != "application/octet-stream");
+    let provider_name_is_reliable = provider_name.is_some_and(|name| !is_opaque_document_id(name));
+    let provider_mime = provider
+        .mime_type
+        .as_deref()
+        .map(|mime| mime.split(';').next().unwrap_or(mime).trim())
+        .filter(|mime| !mime.is_empty() && *mime != "application/octet-stream");
+
+    let provider_mime_ext = provider_mime.and_then(extension_from_mime);
+    let extension = pick_import_extension(detected, provider_ext, provider_mime_ext, uri_ext);
+
+    if extension.is_none() && is_opaque_document_id(uri_name) && !provider_name_is_reliable {
+        return Err(AppError::validation(
+            "无法从内容或文件元数据识别导入文件类型",
+        ));
+    }
+
+    let raw_display_name = provider_name
+        .map(str::to_string)
+        .unwrap_or_else(|| uri_name.to_string());
+    let mut display_name: String = raw_display_name
+        .chars()
+        .map(|c| if c.is_control() { '_' } else { c })
+        .collect();
+    display_name = display_name.trim().to_string();
+    if display_name.is_empty() || is_opaque_document_id(&display_name) {
+        display_name = "imported-document".to_string();
+    }
+    if let Some(ext) = extension.as_deref() {
+        match extension_from_name(&display_name) {
+            Some(display_ext) if extensions_are_equivalent(&display_ext, ext) => {}
+            _ => display_name = format!("{}.{}", display_name, ext),
+        }
+    }
+
+    let mime_type = extension
+        .as_deref()
+        .map(|ext| import_mime_type(Some(ext)))
+        .filter(|mime| *mime != "application/octet-stream")
+        .map(str::to_string)
+        .or_else(|| provider_mime.map(str::to_string))
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let kind = import_kind(extension.as_deref()).to_string();
+
+    Ok(ResolvedImportInfo {
+        display_name,
+        extension,
+        mime_type,
+        kind,
+    })
+}
+
 pub fn ensure_local_path(
     window: &Window,
     raw_path: &str,
@@ -1101,12 +1644,227 @@ pub fn ensure_local_path(
 #[cfg(test)]
 mod tests {
     use super::{
-        digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
-        persistable_saf_queue_file, queue_persistable_saf_uri, reject_double_encoded_virtual_uri,
-        required_temp_copy_bytes, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_DIR,
+        build_import_info, detect_import_extension, digest_copy, digest_read,
+        ensure_enough_temp_space, ensure_identical_copy, persistable_saf_queue_file,
+        queue_persistable_saf_uri, reject_double_encoded_virtual_uri, required_temp_copy_bytes,
+        AndroidSafDisplayInfo, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_DIR,
         PENDING_SAF_PERSIST_FILE,
     };
     use std::io::Cursor;
+
+    #[test]
+    fn build_import_info_uses_provider_mime_when_detected_is_none() {
+        // 对应 >64KiB OOXML ZIP：有界样本看不到 word/xl/ppt 条目名，
+        // detected 为 None，描述必须回退到 provider MIME。
+        let cases = [
+            (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx",
+            ),
+            (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xlsx",
+            ),
+            (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx",
+            ),
+        ];
+        for (mime, expected_ext) in cases {
+            let provider = AndroidSafDisplayInfo {
+                display_name: Some("provider-export".to_string()),
+                mime_type: Some(mime.to_string()),
+            };
+            let info = build_import_info("provider-export", Some(provider), None)
+                .expect("provider MIME should describe the import");
+
+            assert_eq!(info.extension.as_deref(), Some(expected_ext));
+            assert_eq!(info.mime_type, mime);
+            assert_eq!(info.kind, "document");
+            assert_eq!(info.display_name, format!("provider-export.{expected_ext}"));
+        }
+    }
+
+    #[test]
+    fn build_import_info_prefers_provider_name_for_opaque_uri() {
+        let provider = AndroidSafDisplayInfo {
+            display_name: Some("课程讲义.pdf".to_string()),
+            mime_type: None,
+        };
+        let info = build_import_info("446", Some(provider), None)
+            .expect("provider display name should describe the import");
+
+        assert_eq!(info.display_name, "课程讲义.pdf");
+        assert_eq!(info.extension.as_deref(), Some("pdf"));
+        assert_eq!(info.kind, "document");
+        assert_eq!(info.mime_type, "application/pdf");
+    }
+
+    #[test]
+    fn build_import_info_strong_magic_suffix_conflicts_with_provider_name() {
+        let provider = AndroidSafDisplayInfo {
+            display_name: Some("sheet.docx".to_string()),
+            mime_type: None,
+        };
+        let info = build_import_info("upload", Some(provider), Some("xlsx".to_string()))
+            .expect("strong xlsx magic should describe the import");
+
+        assert_eq!(info.extension.as_deref(), Some("xlsx"));
+        assert_eq!(
+            info.mime_type,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        let actual_suffix = std::path::Path::new(&info.display_name)
+            .extension()
+            .and_then(|ext| ext.to_str());
+        assert_eq!(
+            actual_suffix,
+            Some("xlsx"),
+            "display_name 的真实后缀必须跟 effective extension 一致，got {:?}",
+            info.display_name
+        );
+    }
+
+    #[test]
+    fn build_import_info_prefers_provider_mime_over_generic_uri_suffix() {
+        let provider = AndroidSafDisplayInfo {
+            display_name: Some("sheet".to_string()),
+            mime_type: Some(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
+            ),
+        };
+        let info = build_import_info("upload.bin", Some(provider), None)
+            .expect("provider MIME should describe the opaque .bin import");
+
+        assert_eq!(info.extension.as_deref(), Some("xlsx"));
+        assert_eq!(
+            info.mime_type,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        let actual_suffix = std::path::Path::new(&info.display_name)
+            .extension()
+            .and_then(|ext| ext.to_str());
+        assert_eq!(
+            actual_suffix,
+            Some("xlsx"),
+            "display_name 的真实后缀必须跟 effective extension 一致，got {:?}",
+            info.display_name
+        );
+    }
+
+    #[test]
+    fn build_import_info_prefers_provider_mime_over_weak_text_detection() {
+        let provider = AndroidSafDisplayInfo {
+            display_name: Some("sheet".to_string()),
+            mime_type: Some(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    .to_string(),
+            ),
+        };
+        let info = build_import_info("446", Some(provider), Some("txt".to_string()))
+            .expect("provider MIME should override weak text detection");
+
+        assert_eq!(info.extension.as_deref(), Some("docx"));
+        assert_eq!(
+            info.mime_type,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        let actual_suffix = std::path::Path::new(&info.display_name)
+            .extension()
+            .and_then(|ext| ext.to_str());
+        assert_eq!(
+            actual_suffix,
+            Some("docx"),
+            "display_name 的真实后缀必须跟 effective extension 一致，got {:?}",
+            info.display_name
+        );
+    }
+
+    #[test]
+    fn build_import_info_ignores_unreliable_provider_suffix_for_specific_mime() {
+        let cases = [
+            ("lecture 1.2", "application/pdf", "pdf"),
+            (
+                "paper.bin",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx",
+            ),
+        ];
+        for (provider_name, mime, expected_ext) in cases {
+            let provider = AndroidSafDisplayInfo {
+                display_name: Some(provider_name.to_string()),
+                mime_type: Some(mime.to_string()),
+            };
+            let info = build_import_info("upload", Some(provider), None)
+                .expect("specific provider MIME should beat an unreliable name suffix");
+
+            assert_eq!(info.extension.as_deref(), Some(expected_ext));
+            assert_eq!(info.mime_type, mime);
+            let actual_suffix = std::path::Path::new(&info.display_name)
+                .extension()
+                .and_then(|ext| ext.to_str());
+            assert_eq!(
+                actual_suffix,
+                Some(expected_ext),
+                "display_name 的真实后缀必须跟 effective extension 一致，got {:?}",
+                info.display_name
+            );
+        }
+    }
+
+    #[test]
+    fn build_import_info_rejects_two_opaque_names_without_content_evidence() {
+        let provider = AndroidSafDisplayInfo {
+            display_name: Some("789".to_string()),
+            mime_type: None,
+        };
+        let result = build_import_info("446", Some(provider), None);
+        assert!(
+            result.is_err(),
+            "opaque provider name must not make an opaque URI trustworthy"
+        );
+    }
+
+    #[test]
+    fn build_import_info_does_not_append_equivalent_alias_suffixes() {
+        let jpeg = build_import_info("photo.jpeg", None, Some("jpg".to_string()))
+            .expect("strong jpg detection should describe the import");
+        assert_eq!(jpeg.extension.as_deref(), Some("jpg"));
+        assert_eq!(jpeg.display_name, "photo.jpeg", "jpg/jpeg 不应重复追加");
+
+        let html_provider = AndroidSafDisplayInfo {
+            display_name: None,
+            mime_type: Some("text/html".to_string()),
+        };
+        let html = build_import_info("page.htm", Some(html_provider), Some("html".to_string()))
+            .expect("html MIME should describe the import");
+        assert_eq!(html.extension.as_deref(), Some("html"));
+        assert_eq!(html.display_name, "page.htm", "html/htm 不应重复追加");
+
+        let markdown_provider = AndroidSafDisplayInfo {
+            display_name: None,
+            mime_type: Some("text/markdown".to_string()),
+        };
+        let markdown = build_import_info(
+            "note.markdown",
+            Some(markdown_provider),
+            Some("md".to_string()),
+        )
+        .expect("markdown MIME should describe the import");
+        assert_eq!(markdown.extension.as_deref(), Some("md"));
+        assert_eq!(
+            markdown.display_name, "note.markdown",
+            "md/markdown 不应重复追加"
+        );
+
+        let heic = build_import_info("photo.heif", None, Some("heic".to_string()))
+            .expect("strong heic detection should describe the import");
+        assert_eq!(heic.extension.as_deref(), Some("heic"));
+        assert_eq!(
+            heic.display_name, "photo.heif.heic",
+            "heic/heif 不是等价别名，必须保留真实后缀"
+        );
+    }
 
     #[test]
     fn lexical_normalize_path_resolves_dot_segments() {
@@ -1314,5 +2072,321 @@ mod tests {
         assert!(entries
             .iter()
             .all(|entry| entry.path().extension().is_some_and(|ext| ext == "uri")));
+    }
+
+    /// 手工核对的 2x2、24bpp、BI_RGB 小 BMP：
+    /// 14 字节文件头 + 40 字节 BITMAPINFOHEADER + 16 字节像素 = 70 字节。
+    /// 每行 2 个像素 * 3 字节 = 6，按 4 字节对齐补 2 字节，共两行 16 字节。
+    fn hand_checked_2x2_24bit_bmp() -> Vec<u8> {
+        let mut bmp = Vec::with_capacity(70);
+        bmp.extend_from_slice(b"BM");
+        bmp.extend_from_slice(&70u32.to_le_bytes()); // 文件总大小
+        bmp.extend_from_slice(&0u32.to_le_bytes()); // 保留
+        bmp.extend_from_slice(&54u32.to_le_bytes()); // 像素数据偏移
+        bmp.extend_from_slice(&40u32.to_le_bytes()); // DIB 头大小
+        bmp.extend_from_slice(&2i32.to_le_bytes()); // 宽
+        bmp.extend_from_slice(&2i32.to_le_bytes()); // 高（正数表示自底向上）
+        bmp.extend_from_slice(&1u16.to_le_bytes()); // planes
+        bmp.extend_from_slice(&24u16.to_le_bytes()); // 每像素位数
+        bmp.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+        bmp.extend_from_slice(&16u32.to_le_bytes()); // 像素数据大小
+        bmp.extend_from_slice(&2835i32.to_le_bytes()); // 水平像素/米
+        bmp.extend_from_slice(&2835i32.to_le_bytes()); // 垂直像素/米
+        bmp.extend_from_slice(&0u32.to_le_bytes()); // 调色板颜色数
+        bmp.extend_from_slice(&0u32.to_le_bytes()); // 重要颜色数
+                                                    // 自底向上：底行红、绿；顶行蓝、白（BGR + 每行 2 字节对齐）
+        bmp.extend_from_slice(&[0, 0, 255, 0, 255, 0, 0, 0]);
+        bmp.extend_from_slice(&[255, 0, 0, 255, 255, 255, 0, 0]);
+        bmp
+    }
+
+    /// 手工核对的 4x4、24bpp、OS/2 v1 BITMAPCOREHEADER 小 BMP：
+    /// 14 字节文件头 + 12 字节 DIB 头 + 48 字节像素 = 74 字节。
+    /// 每行 4 个像素 * 3 字节 = 12，无需行对齐；共 4 行 48 字节。
+    fn hand_checked_4x4_24bit_os2_bmp() -> Vec<u8> {
+        let mut bmp = Vec::with_capacity(74);
+        bmp.extend_from_slice(b"BM");
+        bmp.extend_from_slice(&74u32.to_le_bytes()); // 文件总大小
+        bmp.extend_from_slice(&0u32.to_le_bytes()); // 保留
+        bmp.extend_from_slice(&26u32.to_le_bytes()); // 像素数据偏移
+        bmp.extend_from_slice(&12u32.to_le_bytes()); // BITMAPCOREHEADER 大小
+        bmp.extend_from_slice(&4u16.to_le_bytes()); // 宽
+        bmp.extend_from_slice(&4u16.to_le_bytes()); // 高
+        bmp.extend_from_slice(&1u16.to_le_bytes()); // planes
+        bmp.extend_from_slice(&24u16.to_le_bytes()); // 每像素位数
+        bmp.extend_from_slice(&[0u8; 48]); // 4 行 * 12 字节，全黑像素
+        bmp
+    }
+
+    /// 构造一段文本样本：prefix 后补 'x' 到 `pad_to`，再追加一个控制字节。
+    /// 用于验证控制字节检查覆盖整个有界样本，而不只前 1024 字节。
+    fn text_sample_with_control_after(prefix: &str, pad_to: usize, control: u8) -> Vec<u8> {
+        let mut data = prefix.as_bytes().to_vec();
+        assert!(data.len() <= pad_to);
+        data.resize(pad_to, b'x');
+        data.push(control);
+        data
+    }
+
+    /// 构造单个 ZIP Local File Header 夹具，允许声明任意 extra 长度和压缩后大小，
+    /// 用于验证检测器面对自相矛盾的头部必须有界失败。
+    fn zip_local_header_with_declared_sizes(
+        entry: &str,
+        extra_len: u16,
+        compressed_size: u32,
+    ) -> Vec<u8> {
+        let name = entry.as_bytes();
+        let mut data = Vec::new();
+        data.extend_from_slice(&[0x50, 0x4B, 0x03, 0x04]); // local header
+        data.extend_from_slice(&[20, 0]); // version needed
+        data.extend_from_slice(&[0, 0]); // flags
+        data.extend_from_slice(&[0, 0]); // compression: stored
+        data.extend_from_slice(&[0, 0, 0, 0]); // mod time/date
+        data.extend_from_slice(&[0, 0, 0, 0]); // crc32
+        data.extend_from_slice(&compressed_size.to_le_bytes());
+        data.extend_from_slice(&[0, 0, 0, 0]); // uncompressed size
+        data.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        data.extend_from_slice(&extra_len.to_le_bytes());
+        data.extend_from_slice(name);
+        data
+    }
+
+    /// 仅构造 ZIP Local File Header 的头部夹具：检测器只扫描文件头，
+    /// 不依赖中央目录。用于验证类型识别边界，不冒充完整可解压文档。
+    fn zip_with_local_entries(entries: &[&str]) -> Vec<u8> {
+        let mut data = Vec::new();
+        for entry in entries {
+            let name = entry.as_bytes();
+            data.extend_from_slice(&[0x50, 0x4B, 0x03, 0x04]); // local header
+            data.extend_from_slice(&[20, 0]); // version needed
+            data.extend_from_slice(&[0, 0]); // flags
+            data.extend_from_slice(&[0, 0]); // compression: stored
+            data.extend_from_slice(&[0, 0, 0, 0]); // mod time/date
+            data.extend_from_slice(&[0, 0, 0, 0]); // crc32
+            data.extend_from_slice(&[0, 0, 0, 0]); // compressed size
+            data.extend_from_slice(&[0, 0, 0, 0]); // uncompressed size
+            data.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            data.extend_from_slice(&[0, 0]); // extra length
+            data.extend_from_slice(name);
+        }
+        data
+    }
+
+    #[test]
+    fn detect_import_extension_classifies_document_signatures() {
+        assert_eq!(
+            detect_import_extension(b"%PDF-1.7\n1 0 obj\n"),
+            Some("pdf".to_string())
+        );
+        assert_eq!(
+            detect_import_extension(&zip_with_local_entries(&["word/document.xml"])),
+            Some("docx".to_string())
+        );
+        assert_eq!(
+            detect_import_extension(&zip_with_local_entries(&["ppt/slides/slide1.xml"])),
+            Some("pptx".to_string())
+        );
+        assert_eq!(
+            detect_import_extension(&zip_with_local_entries(&["xl/workbook.xml"])),
+            Some("xlsx".to_string())
+        );
+        assert_eq!(
+            detect_import_extension(b"{\\rtf1\\ansi"),
+            Some("rtf".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_import_extension_classifies_supported_image_signatures() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0, 16, b'J', b'F', b'I', b'F'];
+        let mut webp = Vec::from(*b"RIFF");
+        webp.extend_from_slice(&[0, 0, 0, 0]);
+        webp.extend_from_slice(b"WEBP");
+
+        assert_eq!(detect_import_extension(&png), Some("png".to_string()));
+        assert_eq!(detect_import_extension(&jpeg), Some("jpg".to_string()));
+        assert_eq!(detect_import_extension(&webp), Some("webp".to_string()));
+    }
+
+    #[test]
+    fn detect_import_extension_keeps_malformed_and_binary_data_unknown() {
+        // 截断的 ZIP 头：不得把任意 ZIP/办公文档前缀当成可识别格式。
+        assert_eq!(
+            detect_import_extension(&[0x50, 0x4B, 0x03, 0x04, 0, 0]),
+            None
+        );
+
+        let mut malformed_zip = zip_with_local_entries(&["word/document.xml"]);
+        malformed_zip[26] = 0xFF;
+        malformed_zip[27] = 0xFF; // 声称超长条目名，但头部没有对应数据
+        assert_eq!(detect_import_extension(&malformed_zip), None);
+
+        // 控制字节（包括 NUL）不得按 UTF-8 纯文本兜底。
+        assert_eq!(detect_import_extension(b"hello\0world"), None);
+        assert_eq!(detect_import_extension(b"hello\x01world"), None);
+        assert_eq!(detect_import_extension(&[0x00, 0x01, 0x02, 0xFF]), None);
+    }
+
+    #[test]
+    fn detect_import_extension_does_not_misclassify_bmp_prefixed_text() {
+        // 以 BM 开头、长度 >= 14 的普通文本不是位图，应按纯文本处理。
+        assert_eq!(
+            detect_import_extension(b"BMP is a raster image format.\n"),
+            Some("txt".to_string())
+        );
+        // 同样的 BM 前缀下，真实 Markdown 结构仍应走 md。
+        assert_eq!(
+            detect_import_extension(b"BMW owners guide\n\n# Chapter 1\n"),
+            Some("md".to_string())
+        );
+        // 长度越过 54 字节的 BM 普通可打印文本仍不是位图。
+        let long_text = format!("BM{}", "printable text ".repeat(4));
+        assert!(long_text.len() >= 60);
+        assert_eq!(
+            detect_import_extension(long_text.as_bytes()),
+            Some("txt".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_import_extension_accepts_hand_checked_small_bmp() {
+        // 正对照：真正有效的小 BMP 不能被更严格的 BMP 结构校验误伤。
+        let bmp = hand_checked_2x2_24bit_bmp();
+        assert_eq!(bmp.len(), 70);
+        assert_eq!(&bmp[2..6], &[70, 0, 0, 0]); // 文件大小与像素偏移须自洽
+        assert_eq!(&bmp[10..14], &[54, 0, 0, 0]);
+        assert_eq!(detect_import_extension(&bmp), Some("bmp".to_string()));
+    }
+
+    #[test]
+    fn detect_import_extension_accepts_hand_checked_os2_bitmapcoreheader_bmp() {
+        // 12 字节 BITMAPCOREHEADER 也是有效 BMP；routing 不应要求 40 字节 DIB 头。
+        let bmp = hand_checked_4x4_24bit_os2_bmp();
+        assert_eq!(bmp.len(), 74);
+        assert_eq!(&bmp[10..14], &[26, 0, 0, 0]); // 像素偏移 26
+        assert_eq!(&bmp[14..18], &[12, 0, 0, 0]); // DIB 头大小 12
+        assert_eq!(detect_import_extension(&bmp), Some("bmp".to_string()));
+    }
+
+    #[test]
+    fn detect_import_extension_accepts_bmp_sample_truncated_in_pixels() {
+        // 只采样 54 字节头、像素数据被截断时仍应按头部结构识别为 bmp。
+        let bmp = hand_checked_2x2_24bit_bmp();
+        assert_eq!(detect_import_extension(&bmp[..54]), Some("bmp".to_string()));
+    }
+
+    #[test]
+    fn detect_import_extension_rejects_control_bytes_past_first_kib() {
+        // 前 1024 字节为普通文本，之后出现 NUL：整个有界样本仍是二进制。
+        assert_eq!(
+            detect_import_extension(&text_sample_with_control_after(
+                "plain text without markup\n",
+                4096,
+                0
+            )),
+            None
+        );
+        // Markdown 前缀同样不得因 1024 字节窗口干净而被判为 md。
+        assert_eq!(
+            detect_import_extension(&text_sample_with_control_after("# Heading\n\n", 4096, 0x01)),
+            None
+        );
+        // CSV 前缀 + 第 1024 字节后的 NUL 不得被判为 csv。
+        let csv_prefix = "a,b\n".repeat(256);
+        assert_eq!(csv_prefix.len(), 1024);
+        assert_eq!(
+            detect_import_extension(&text_sample_with_control_after(&csv_prefix, 4096, 0)),
+            None
+        );
+        // 64KiB 有界样本的最末端出现 NUL 也必须拒绝。
+        let at_limit = text_sample_with_control_after("plain text\n", 65_535, 0);
+        assert_eq!(at_limit.len(), 65_536);
+        assert_eq!(detect_import_extension(&at_limit), None);
+    }
+
+    #[test]
+    fn detect_import_extension_bounds_malformed_zip_local_headers() {
+        // 声明 u32::MAX compressed_size：条目无法在样本内跳过，不能退化成 ODF。
+        let unbounded_compressed = zip_local_header_with_declared_sizes("content.xml", 0, u32::MAX);
+        assert_eq!(detect_import_extension(&unbounded_compressed), None);
+
+        // extra 长度声明超出实际样本。
+        let extra_out_of_bounds = zip_local_header_with_declared_sizes("content.xml", u16::MAX, 0);
+        assert_eq!(detect_import_extension(&extra_out_of_bounds), None);
+
+        // 条目名长度声明超出实际样本。
+        let mut name_out_of_bounds =
+            zip_local_header_with_declared_sizes("word/document.xml", 0, 0);
+        name_out_of_bounds[26] = 0xFF;
+        name_out_of_bounds[27] = 0xFF;
+        assert_eq!(detect_import_extension(&name_out_of_bounds), None);
+    }
+
+    /// 真实 ZIP 容器夹具：使用 `zip::ZipWriter` 的 stored 条目，
+    /// 本地文件头带真实名称/大小，而不是只拼签名。
+    fn zip_with_stored_entries(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::{Cursor, Write};
+        use zip::write::FileOptions;
+
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, content) in entries {
+            writer.start_file(*name, options).expect("start zip entry");
+            writer.write_all(content).expect("write zip entry");
+        }
+        writer.finish().expect("finish zip").into_inner()
+    }
+
+    #[test]
+    fn detect_import_extension_keeps_odf_text_and_presentation_unsupported() {
+        // ODF 的 stored mimetype 不能伪装成 docx/pptx；ODT/ODP 保持不支持。
+        let odt =
+            zip_with_stored_entries(&[("mimetype", b"application/vnd.oasis.opendocument.text")]);
+        assert_eq!(detect_import_extension(&odt), None);
+
+        let odp = zip_with_stored_entries(&[(
+            "mimetype",
+            b"application/vnd.oasis.opendocument.presentation",
+        )]);
+        assert_eq!(detect_import_extension(&odp), None);
+    }
+
+    #[test]
+    fn detect_import_extension_requires_real_ooxml_entry_names() {
+        // 普通 ZIP 里仅有 word/xl/ppt 前缀的文本不是 OOXML。
+        for entry in ["word/readme.txt", "xl/readme.txt", "ppt/readme.txt"] {
+            let zip = zip_with_stored_entries(&[(entry, b"not an OOXML part")]);
+            assert_eq!(
+                detect_import_extension(&zip),
+                None,
+                "{entry} 不得识别为 OOXML"
+            );
+        }
+
+        // 真正的 OOXML 条目名继续识别。
+        assert_eq!(
+            detect_import_extension(&zip_with_stored_entries(&[(
+                "word/document.xml",
+                b"<w:document/>",
+            )])),
+            Some("docx".to_string())
+        );
+        assert_eq!(
+            detect_import_extension(&zip_with_stored_entries(&[(
+                "xl/workbook.xml",
+                b"<workbook/>",
+            )])),
+            Some("xlsx".to_string())
+        );
+        for entry in ["ppt/presentation.xml", "ppt/slides/slide1.xml"] {
+            assert_eq!(
+                detect_import_extension(&zip_with_stored_entries(&[
+                    (entry, b"<p:presentation/>",)
+                ])),
+                Some("pptx".to_string()),
+                "{entry} 应识别为 pptx"
+            );
+        }
     }
 }

@@ -1,0 +1,124 @@
+{
+  "apk": "/home/xutao/deepstudent/deep-student/build-android/DeepStudent-0.11.0-arm64-mobile-slim-ink-test.apk",
+  "bytes": 135634180,
+  "sha256": "6ed3018626f39f99c2a5d2123ba170f843b4f273f276282a3c3cdc2e6e6254bf",
+  "source_commit": "bc48e6eb42caaeaee894346b155b5e52f0ad8d55",
+  "generated_git_hash": "bc48e6eb",
+  "generated_build_number": "15983",
+  "version_name": "0.11.0",
+  "version_code": 214586,
+  "published_version_code_floor": 14640,
+  "min_sdk": 24,
+  "target_sdk": 36,
+  "abi": [
+    "arm64-v8a"
+  ],
+  "certificate_sha256": "edf4c9868fbc1eb197aceaeb98fcad74d074d3a3cbb2af1ea16ecba1b58e3397",
+  "signature_schemes": [
+    "v2",
+    "v3"
+  ],
+  "native": [
+    {
+      "path": "lib/arm64-v8a/libdeep_student_lib.so",
+      "bytes": 127790456,
+      "sha256": "3fc3482d8de7dd24232d186b3b5f7f8b266b89e169ebccc9684c5d6941a38ca8",
+      "load_segments": [
+        {
+          "offset": 0,
+          "virtual_address": 0,
+          "alignment": 16384
+        },
+        {
+          "offset": 122555360,
+          "virtual_address": 122571744,
+          "alignment": 16384
+        },
+        {
+          "offset": 127054064,
+          "virtual_address": 127086832,
+          "alignment": 16384
+        }
+      ],
+      "zip_compression": "stored"
+    },
+    {
+      "path": "lib/arm64-v8a/libpdfium.so",
+      "bytes": 4971128,
+      "sha256": "de6d8f4e4047fdabdc6fbde379c81761ffb565422e007a853a95ebc0801d652b",
+      "load_segments": [
+        {
+          "offset": 0,
+          "virtual_address": 0,
+          "alignment": 16384
+        },
+        {
+          "offset": 4907112,
+          "virtual_address": 4923496,
+          "alignment": 16384
+        },
+        {
+          "offset": 4957728,
+          "virtual_address": 4990496,
+          "alignment": 16384
+        }
+      ],
+      "zip_compression": "stored"
+    }
+  ],
+  "checks": {
+    "signature": true,
+    "zipalign_P16": true,
+    "elf_16KiB": true,
+    "native_size_guard": true,
+    "required_permissions": true,
+    "source_clean": true,
+    "release_certificate_match": false
+  },
+  "release_certificate_explanation": "Intentionally different local TEST signature; not a production release and cannot overwrite production-signed installs.",
+  "command": "npx --no-install tauri android build --target aarch64 --apk --ci --features mobile-slim -- --locked --no-default-features",
+  "workflow": ".github/workflows/reusable-build-android.yml",
+  "workflow_sha256": "d849d24f3b22c6e8e28339a9822517bcf2ed5b55ca1ca8ce85373a42b67b3922",
+  "toolchain": {
+    "rust": "1.98.1 (48a229cea 2026-09-01)",
+    "ndk": "29.0.13846066",
+    "build_tools": "36.0.0",
+    "sdk": 36,
+    "jdk": "Zulu21.0.13",
+    "node": "22.23.4",
+    "npm": "10.9.9"
+  },
+  "features": [
+    "mobile-slim",
+    "tauri/custom-protocol"
+  ],
+  "cargo_locked": true,
+  "cargo_no_default_features": true,
+  "profile": {
+    "name": "release",
+    "lto": false,
+    "opt_level": "z",
+    "codegen_units": 16,
+    "debug": 0,
+    "jobs": 2
+  },
+  "runtime_build_limits": {
+    "node_heap_mib": 6144,
+    "gradle_workers": 2,
+    "gradle_heap_mib": 2048
+  },
+  "prebuilt_native_guard": {
+    "DS_ANDROID_PREBUILT_NATIVE": "1",
+    "target": "aarch64 release only",
+    "elf_and_jni_checked": true
+  },
+  "ci_differences": [
+    "Local Zulu JDK21 instead of CI Temurin17; meets17+",
+    "Independent local TEST certificate, not official release certificate",
+    "No production model keys injected",
+    "Uses checked-in release-tooling scripts rather than separate workflow-SHA checkout; workflow SHA256 recorded",
+    "Runs locally with existing caches rather than hosted Ubuntu22.04/sccache"
+  ],
+  "embedded_source_hash_verified": true,
+  "emulator_runtime": "Separate x86_64 diagnostic package tested on API36; this ARM64 APK not run on physical ARM64 hardware"
+}

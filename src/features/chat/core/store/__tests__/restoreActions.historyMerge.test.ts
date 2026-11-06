@@ -299,6 +299,58 @@ describe('mergeHistoryMessageOrder', () => {
     expect(state.messageMap.get('old')?.blockIds).toEqual(['old_block']);
   });
 
+  it('restores typed inkArtifacts and variant block references from backend snapshot', () => {
+    const artifact = {
+      artifactId: 'artifact-1',
+      renderId: 'render-1',
+      sessionId: 'sess_test',
+      toolCallId: 'call-1',
+      roundLastToolCallId: 'call-last',
+      documentId: 'doc-1',
+      pageId: 'page-2',
+      revision: 'r_7',
+      blobHash: 'a'.repeat(64),
+      resourceId: 'res_1',
+      contentHash: 'b'.repeat(64),
+      mimeType: 'image/png',
+      widthPx: 640,
+      heightPx: 480,
+    };
+    const assistant = backendMessage('msg_ink', 100, ['blk_ink']);
+    assistant.activeVariantId = 'var_ink';
+    assistant.variants = [{
+      id: 'var_ink',
+      modelId: 'model-1',
+      blockIds: ['blk_ink'],
+      status: 'success',
+      createdAt: 100,
+    }];
+    let state = {
+      sessionId: 'sess_test',
+      isDataLoaded: true,
+      messageMap: new Map<string, Message>(),
+      messageOrder: [] as string[],
+      blocks: new Map(),
+    } as unknown as ChatStoreState;
+    const set: SetState = (partial) => {
+      const patch = typeof partial === 'function' ? partial(state) : partial;
+      state = { ...state, ...patch } as ChatStoreState;
+    };
+    const actions = createRestoreActions(set, () => state as ReturnType<GetState>);
+    actions.prependHistoryFromBackend(response([assistant], [{
+      id: 'blk_ink',
+      messageId: 'msg_ink',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName: 'builtin-ink_render',
+      toolOutput: { status: 'success' },
+      inkArtifacts: [artifact],
+    } as LoadSessionResponseType['blocks'][number]]));
+
+    expect((state.blocks.get('blk_ink') as { inkArtifacts?: unknown[] } | undefined)?.inkArtifacts).toEqual([artifact]);
+    expect(state.messageMap.get('msg_ink')?.variants?.[0].blockIds).toEqual(['blk_ink']);
+  });
+
   it('preserves an autonomous stream that starts while initial restore is in flight', () => {
     const streamingMessage: Message = {
       ...message('live_assistant', 200),

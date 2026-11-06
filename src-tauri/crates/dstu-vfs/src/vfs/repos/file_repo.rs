@@ -9,9 +9,10 @@
 //! - `list_files_by_folder`: 按文件夹列出文件
 //! - `list_files_by_type`: 按类型列出文件
 
+use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
 use crate::vfs::database::VfsDatabase;
@@ -27,10 +28,317 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
         }
     }
 }
+use crate::vfs::file_reclassify::{
+    detect_file_identity, mime_is_generic, read_bounded_header, resolve_file_identity,
+    sha256_matches_blob_pointer, structure_tail_bytes, validate_detected_structure,
+    validate_detected_structure_bytes, validate_png_structure_bytes, verify_file_sha256,
+    DetectedFileIdentity, FileReclassifyStatus,
+};
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
-use crate::vfs::repos::blob_repo::VfsBlobRepo;
+use crate::vfs::repos::blob_repo::{acquire_blob_mutation_guard, BlobMutationGuard, VfsBlobRepo};
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::types::{PdfPreviewJson, VfsFile, VfsFolderItem};
+
+/// A3 重识别结果：状态 + 当前文件记录（缺失时无记录）。
+#[derive(Debug, Clone)]
+pub struct FileReclassifyOutcome {
+    pub status: FileReclassifyStatus,
+    pub file: Option<VfsFile>,
+}
+
+/// A3 verified folder 创建结果：created=false 表示命中去重旧条目，
+/// 调用方应补偿本次 store_blob 的引用计数。
+#[derive(Debug, Clone)]
+pub struct VerifiedFileFolderOutcome {
+    pub file: VfsFile,
+    pub created: bool,
+}
+
+/// inline 文件内容上限：与附件存储的 `INLINE_SIZE_THRESHOLD`（1 MiB）一致。
+const MAX_INLINE_FILE_BYTES: usize = 1024 * 1024;
+
+/// inline `resources.data`（base64）允许读取的最大字符串长度。
+const MAX_INLINE_BASE64_LEN: i64 = ((MAX_INLINE_FILE_BYTES + 2) / 3 * 4) as i64;
+
+/// 资源镜像中需要同步的 type/metadata 字段及其旧值快照。
+#[derive(Debug)]
+struct ResourceMirrorPlan {
+    resource_id: String,
+    old_type: String,
+    old_metadata_json: Option<String>,
+    new_type: String,
+    new_metadata_json: Option<String>,
+}
+
+/// 文件类别/资源镜像的同步计划；只有全部一致时才允许零写入。
+#[derive(Debug)]
+struct MetadataSyncPlan {
+    file_id: String,
+    target_mime: String,
+    target_file_type: String,
+    folder_changed: bool,
+    resource_mirror: Option<ResourceMirrorPlan>,
+}
+
+/// 只更新 metadata_json 的 `mimeType`，保留其余所有字段（含 name/size/自定义键）。
+///
+/// 返回 `None` 仅表示无法安全改写（metadata 不是 JSON object），调用方应保留原值。
+fn merge_resource_metadata_mime(raw: Option<&str>, target_mime: &str) -> Option<String> {
+    match raw {
+        Some(text) if !text.trim().is_empty() => match serde_json::from_str::<Value>(text) {
+            Ok(Value::Object(mut map)) => {
+                let target = Value::String(target_mime.to_string());
+                if map.get("mimeType") == Some(&target) {
+                    return Some(text.to_string());
+                }
+                map.insert("mimeType".to_string(), target);
+                Some(Value::Object(map).to_string())
+            }
+            _ => None,
+        },
+        _ => Some(serde_json::json!({ "mimeType": target_mime }).to_string()),
+    }
+}
+
+/// 计算 resources 镜像是否落后于文件记录，不写库。
+fn plan_resource_mirror_with_conn(
+    conn: &Connection,
+    file: &VfsFile,
+    target_mime: &str,
+    target_file_type: &str,
+) -> VfsResult<Option<ResourceMirrorPlan>> {
+    let Some(resource_id) = file.resource_id.as_deref() else {
+        return Ok(None);
+    };
+    let row: Option<(String, Option<String>)> = conn
+        .query_row(
+            "SELECT type, metadata_json FROM resources WHERE id = ?1",
+            params![resource_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((old_type, old_metadata_json)) = row else {
+        return Ok(None);
+    };
+
+    let desired_type = if target_file_type == "image" {
+        "image"
+    } else {
+        "file"
+    };
+    // 只纠正 file/image 资源；其他资源类型不越权改写。
+    let new_type =
+        if old_type.eq_ignore_ascii_case("file") || old_type.eq_ignore_ascii_case("image") {
+            desired_type.to_string()
+        } else {
+            old_type.clone()
+        };
+    let new_metadata_json = merge_resource_metadata_mime(old_metadata_json.as_deref(), target_mime)
+        .or_else(|| old_metadata_json.clone());
+
+    if old_type == new_type && old_metadata_json == new_metadata_json {
+        return Ok(None);
+    }
+    Ok(Some(ResourceMirrorPlan {
+        resource_id: resource_id.to_string(),
+        old_type,
+        old_metadata_json,
+        new_type,
+        new_metadata_json,
+    }))
+}
+
+fn plan_metadata_sync_with_conn(
+    conn: &Connection,
+    existing: &VfsFile,
+    target_mime: &str,
+    target_file_type: &str,
+) -> VfsResult<MetadataSyncPlan> {
+    let folder_item_type = if target_file_type == "image" {
+        "image"
+    } else {
+        "file"
+    };
+    let folder_changed: i64 = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM folder_items WHERE item_id = ?1 AND item_type IN ('file', 'image') AND item_type != ?2)",
+        params![existing.id, folder_item_type],
+        |row| row.get(0),
+    )?;
+    let resource_mirror =
+        plan_resource_mirror_with_conn(conn, existing, target_mime, target_file_type)?;
+    Ok(MetadataSyncPlan {
+        file_id: existing.id.clone(),
+        target_mime: target_mime.to_string(),
+        target_file_type: target_file_type.to_string(),
+        folder_changed: folder_changed != 0,
+        resource_mirror,
+    })
+}
+
+fn metadata_sync_is_consistent(existing: &VfsFile, plan: &MetadataSyncPlan) -> bool {
+    existing.mime_type.as_deref() == Some(plan.target_mime.as_str())
+        && existing.file_type == plan.target_file_type
+        && !plan.folder_changed
+        && plan.resource_mirror.is_none()
+}
+
+/// 在调用方 SAVEPOINT 内同步 folder_items 与 resources 镜像；files 行由调用方
+/// 用自己的 CAS 更新。任一镜像 CAS 失败即返回错误，由调用方整体回滚。
+fn apply_metadata_sync_plan(
+    conn: &Connection,
+    plan: &MetadataSyncPlan,
+    now_ms: i64,
+) -> VfsResult<()> {
+    if plan.folder_changed {
+        let folder_item_type = if plan.target_file_type == "image" {
+            "image"
+        } else {
+            "file"
+        };
+        conn.execute(
+            "UPDATE folder_items SET item_type = ?1, updated_at = ?2 WHERE item_id = ?3 AND item_type IN ('file', 'image')",
+            params![folder_item_type, now_ms, plan.file_id],
+        )?;
+    }
+    if let Some(mirror) = &plan.resource_mirror {
+        let updated = conn.execute(
+            r#"UPDATE resources SET type = ?1, metadata_json = ?2, updated_at = ?3
+               WHERE id = ?4 AND type = ?5 AND metadata_json IS ?6"#,
+            params![
+                mirror.new_type,
+                mirror.new_metadata_json,
+                now_ms,
+                mirror.resource_id,
+                mirror.old_type,
+                mirror.old_metadata_json,
+            ],
+        )?;
+        if updated == 0 {
+            warn!(
+                "[VFS::FileRepo] Resource mirror CAS lost for {}; state changed concurrently",
+                mirror.resource_id
+            );
+            return Err(VfsError::Conflict {
+                key: "resources.mirror_conflict".to_string(),
+                message: format!(
+                    "Resource {} mirror changed concurrently",
+                    mirror.resource_id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 去重命中旧条目时，用**已验证字节**识别出的可靠 MIME 回填类型。
+///
+/// 仅供上传入口/重识别等持有真实 bytes 的路径调用；普通 `create_file` 的
+/// 字符串 MIME 不可信，不在这里升级。所有写入放在嵌套安全 SAVEPOINT 内并用
+/// CAS 限定旧状态，失败不产生部分修改。
+fn upgrade_deduped_file_metadata_from_verified_mime(
+    conn: &Connection,
+    existing: VfsFile,
+    caller_mime: Option<&str>,
+    detected: Option<&DetectedFileIdentity>,
+) -> VfsResult<VfsFile> {
+    let Some(detected) = detected else {
+        return Ok(existing);
+    };
+
+    // Canonical Ink 文档的 MIME/类别由 ink 命令维护，内容检测不得覆盖。
+    if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, &existing.id)? {
+        return Err(VfsError::InvalidOperation {
+            operation: "upgrade_verified_ink_file".to_string(),
+            reason: "Ink documents must be changed through ink commands".to_string(),
+        });
+    }
+
+    // 共享纠正规则：强内容优先；弱文本不覆盖具体 MIME；generic 可按名称映射。
+    let resolved = resolve_file_identity(
+        existing.mime_type.as_deref().or(caller_mime),
+        &existing.file_type,
+        &existing.file_name,
+        Some(detected),
+    );
+    let existing_generic = mime_is_generic(existing.mime_type.as_deref());
+    let target_mime = if resolved.strong || existing_generic {
+        resolved.mime_type.clone()
+    } else {
+        existing
+            .mime_type
+            .clone()
+            .unwrap_or_else(|| resolved.mime_type.clone())
+    };
+    let mime_upgraded = existing_generic && !mime_is_generic(Some(&target_mime));
+    let target_file_type = if resolved.strong || mime_upgraded {
+        resolved.file_type.clone()
+    } else {
+        existing.file_type.clone()
+    };
+
+    let plan = plan_metadata_sync_with_conn(conn, &existing, &target_mime, &target_file_type)?;
+    if metadata_sync_is_consistent(&existing, &plan) {
+        return Ok(existing);
+    }
+
+    conn.execute("SAVEPOINT upgrade_deduped_file_metadata", [])
+        .map_err(|e| {
+            error!(
+                "[VFS::FileRepo] Failed to create savepoint for dedup upgrade: {}",
+                e
+            );
+            VfsError::Database(format!("Failed to create savepoint: {}", e))
+        })?;
+
+    let result = (|| -> VfsResult<VfsFile> {
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let updated = conn.execute(
+            r#"UPDATE files SET mime_type = ?1, "type" = ?2, updated_at = ?3
+               WHERE id = ?4 AND mime_type IS ?5 AND "type" = ?6"#,
+            params![
+                plan.target_mime,
+                plan.target_file_type,
+                &now,
+                existing.id,
+                existing.mime_type.as_deref(),
+                existing.file_type.as_str(),
+            ],
+        )?;
+        if updated == 0 {
+            return Ok(existing);
+        }
+        apply_metadata_sync_plan(conn, &plan, now_ms)?;
+        info!(
+            "[VFS::FileRepo] Upgraded deduped file metadata from verified content: {} (mime: {:?} -> {}, type: {} -> {})",
+            existing.id, existing.mime_type, plan.target_mime, existing.file_type, plan.target_file_type
+        );
+        VfsFileRepo::get_file_with_conn(conn, &existing.id)?.ok_or_else(|| {
+            VfsError::Database(format!("File {} not found after reclassify", existing.id))
+        })
+    })();
+
+    match result {
+        Ok(file) => {
+            conn.execute("RELEASE upgrade_deduped_file_metadata", [])
+                .map_err(|e| {
+                    error!(
+                        "[VFS::FileRepo] Failed to release dedup upgrade savepoint: {}",
+                        e
+                    );
+                    VfsError::Database(format!("Failed to release savepoint: {}", e))
+                })?;
+            Ok(file)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO upgrade_deduped_file_metadata", []);
+            let _ = conn.execute("RELEASE upgrade_deduped_file_metadata", []);
+            Err(e)
+        }
+    }
+}
 
 pub struct VfsFileRepo;
 
@@ -207,6 +515,180 @@ impl VfsFileRepo {
         }
     }
 
+    /// A3: 校验 data ↔ sha/size/blob 元组；失败在任何写之前返回。
+    fn validate_verified_bytes_tuple(
+        conn: &Connection,
+        sha256: &str,
+        size: i64,
+        blob_hash: Option<&str>,
+        data: &[u8],
+    ) -> VfsResult<()> {
+        let actual_hash = VfsBlobRepo::compute_hash(data);
+        if !actual_hash.eq_ignore_ascii_case(sha256) {
+            return Err(VfsError::InvalidArgument {
+                param: "data".to_string(),
+                reason: "verified content bytes do not match sha256".to_string(),
+            });
+        }
+        if size < 0 || size as usize != data.len() {
+            return Err(VfsError::InvalidArgument {
+                param: "size".to_string(),
+                reason: "size does not match verified content bytes".to_string(),
+            });
+        }
+        if let Some(blob_hash) = blob_hash {
+            if !blob_hash.eq_ignore_ascii_case(sha256) {
+                return Err(VfsError::InvalidArgument {
+                    param: "blob_hash".to_string(),
+                    reason: "blob hash does not match verified content hash".to_string(),
+                });
+            }
+            let blob_size: Option<i64> = conn
+                .query_row(
+                    "SELECT size FROM blobs WHERE hash = ?1",
+                    params![blob_hash],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match blob_size {
+                Some(blob_size) if blob_size == size => {}
+                Some(_) => {
+                    return Err(VfsError::InvalidArgument {
+                        param: "blob_hash".to_string(),
+                        reason: "blob size does not match verified content size".to_string(),
+                    })
+                }
+                None => {
+                    return Err(VfsError::NotFound {
+                        resource_type: "Blob".to_string(),
+                        id: blob_hash.to_string(),
+                    })
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// A3: 已验证 bytes 创建/复用文件；返回 created 以便调用方补偿 blob ref。
+    fn create_file_from_verified_bytes_outcome(
+        conn: &Connection,
+        sha256: &str,
+        file_name: &str,
+        size: i64,
+        file_type: &str,
+        mime_type: Option<&str>,
+        blob_hash: Option<&str>,
+        original_path: Option<&str>,
+        data: &[u8],
+    ) -> VfsResult<(VfsFile, bool)> {
+        Self::validate_verified_bytes_tuple(conn, sha256, size, blob_hash, data)?;
+        conn.execute("SAVEPOINT create_verified_bytes", [])?;
+        let result = (|| -> VfsResult<(VfsFile, bool)> {
+            let created = Self::get_by_sha256_with_conn(conn, sha256)?.is_none();
+            let detected = detect_file_identity(&data[..data.len().min(64 * 1024)]);
+            // 共享纠正规则：强内容优先；弱文本不覆盖具体声明；generic 可按名称映射。
+            let resolved =
+                resolve_file_identity(mime_type, file_type, file_name, detected.as_ref());
+            let file = Self::create_file_with_conn(
+                conn,
+                sha256,
+                file_name,
+                size,
+                &resolved.file_type,
+                Some(&resolved.mime_type),
+                blob_hash,
+                original_path,
+            )?;
+            let file = if detected.is_some() {
+                upgrade_deduped_file_metadata_from_verified_mime(
+                    conn,
+                    file,
+                    mime_type,
+                    detected.as_ref(),
+                )?
+            } else {
+                file
+            };
+            Ok((file, created))
+        })();
+
+        match result {
+            Ok(outcome) => {
+                conn.execute("RELEASE create_verified_bytes", [])?;
+                Ok(outcome)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO create_verified_bytes", []);
+                let _ = conn.execute("RELEASE create_verified_bytes", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// A3: 使用已验证的原始字节创建/复用文件记录。
+    ///
+    /// 与普通 `create_file` 的区别：调用方必须提供真实字节，且 data/sha/size/
+    /// blob 元组必须一致。去重命中旧通用 MIME 条目时，用共享纠正规则回填。
+    pub fn create_file_from_verified_bytes_with_conn(
+        conn: &Connection,
+        sha256: &str,
+        file_name: &str,
+        size: i64,
+        file_type: &str,
+        mime_type: Option<&str>,
+        blob_hash: Option<&str>,
+        original_path: Option<&str>,
+        data: &[u8],
+    ) -> VfsResult<VfsFile> {
+        Self::create_file_from_verified_bytes_outcome(
+            conn,
+            sha256,
+            file_name,
+            size,
+            file_type,
+            mime_type,
+            blob_hash,
+            original_path,
+            data,
+        )
+        .map(|(file, _created)| file)
+    }
+
+    /// A3: 用已验证的原始字节升级既有文件条目；bytes/hash/size/Ink 全部先校验。
+    pub(crate) fn upgrade_existing_file_from_verified_bytes_with_conn(
+        conn: &Connection,
+        file_id: &str,
+        data: &[u8],
+    ) -> VfsResult<VfsFile> {
+        let Some(existing) = Self::get_file_with_conn(conn, file_id)? else {
+            return Err(VfsError::NotFound {
+                resource_type: "File".to_string(),
+                id: file_id.to_string(),
+            });
+        };
+        let actual_hash = VfsBlobRepo::compute_hash(data);
+        if !actual_hash.eq_ignore_ascii_case(&existing.sha256) {
+            return Err(VfsError::InvalidArgument {
+                param: "data".to_string(),
+                reason: "verified content bytes do not match file sha256".to_string(),
+            });
+        }
+        if existing.size < 0 || existing.size as usize != data.len() {
+            return Err(VfsError::InvalidArgument {
+                param: "size".to_string(),
+                reason: "verified content size does not match file size".to_string(),
+            });
+        }
+        if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, file_id)? {
+            return Err(VfsError::InvalidOperation {
+                operation: "upgrade_verified_ink_file".to_string(),
+                reason: "Ink documents must be changed through ink commands".to_string(),
+            });
+        }
+        let detected = detect_file_identity(&data[..data.len().min(64 * 1024)]);
+        upgrade_deduped_file_metadata_from_verified_mime(conn, existing, None, detected.as_ref())
+    }
+
     pub fn create_file_in_folder(
         db: &VfsDatabase,
         sha256: &str,
@@ -299,6 +781,596 @@ impl VfsFileRepo {
         }
     }
 
+    /// A3: 用已验证 bytes 在文件夹内创建/复用文件，category 按最终内容类别落库。
+    ///
+    /// 只做纯内容检测与 SQL，不读取 blob、不获取 blob mutation guard；调用方
+    /// 必须在进入本方法前用同一 effective MIME 写入 blob。SAVEPOINT 可安全
+    /// 嵌套在已有事务内，失败时连同 files/resources/folder_items 一起回滚。
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_file_in_folder_from_verified_bytes_with_conn(
+        conn: &Connection,
+        sha256: &str,
+        file_name: &str,
+        size: i64,
+        file_type: &str,
+        mime_type: Option<&str>,
+        blob_hash: Option<&str>,
+        original_path: Option<&str>,
+        folder_id: Option<&str>,
+        data: &[u8],
+    ) -> VfsResult<VerifiedFileFolderOutcome> {
+        conn.execute("SAVEPOINT create_verified_file_in_folder", [])?;
+        let result = (|| -> VfsResult<VerifiedFileFolderOutcome> {
+            if let Some(fid) = folder_id {
+                if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
+                    return Err(VfsError::NotFound {
+                        resource_type: "Folder".to_string(),
+                        id: fid.to_string(),
+                    });
+                }
+            }
+
+            let (file, created) = Self::create_file_from_verified_bytes_outcome(
+                conn,
+                sha256,
+                file_name,
+                size,
+                file_type,
+                mime_type,
+                blob_hash,
+                original_path,
+                data,
+            )?;
+
+            // 新 ID 若命中 Ink authority（.dsink / INK_MIME / preview ink），
+            // 不得作为普通文件落库；整个 SAVEPOINT 回滚。
+            if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, &file.id)? {
+                return Err(VfsError::InvalidOperation {
+                    operation: "create_verified_ink_file".to_string(),
+                    reason: "Ink documents must be created through ink commands".to_string(),
+                });
+            }
+
+            let item_type = if file.file_type == "image" {
+                "image"
+            } else {
+                "file"
+            };
+            let folder_item = VfsFolderItem::new(
+                folder_id.map(|s| s.to_string()),
+                item_type.to_string(),
+                file.id.clone(),
+            );
+            VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)?;
+
+            debug!(
+                "[VFS::FileRepo] Created verified file {} in folder {:?} (type: {}, created: {})",
+                file.id, folder_id, file.file_type, created
+            );
+            Ok(VerifiedFileFolderOutcome { file, created })
+        })();
+
+        match result {
+            Ok(outcome) => {
+                conn.execute("RELEASE create_verified_file_in_folder", [])?;
+                Ok(outcome)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO create_verified_file_in_folder", []);
+                let _ = conn.execute("RELEASE create_verified_file_in_folder", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// A3: `create_file_in_folder_from_verified_bytes_with_conn` 的自取连接入口。
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_file_in_folder_from_verified_bytes(
+        db: &VfsDatabase,
+        sha256: &str,
+        file_name: &str,
+        size: i64,
+        file_type: &str,
+        mime_type: Option<&str>,
+        blob_hash: Option<&str>,
+        original_path: Option<&str>,
+        folder_id: Option<&str>,
+        data: &[u8],
+    ) -> VfsResult<VerifiedFileFolderOutcome> {
+        let conn = db.get_conn_safe()?;
+        Self::create_file_in_folder_from_verified_bytes_with_conn(
+            &conn,
+            sha256,
+            file_name,
+            size,
+            file_type,
+            mime_type,
+            blob_hash,
+            original_path,
+            folder_id,
+            data,
+        )
+    }
+
+    /// A3: 从既有 blob 受控重识别文件类型。
+    ///
+    /// 先取得 blob mutation guard，再在嵌套安全的 SAVEPOINT 内重读文件状态。
+    /// blob 路径只读取有界头部做格式检测、流式校验整个 blob 的 SHA-256；
+    /// inline 路径只从受控 `resources.data`（base64，<= 1 MiB）取内容并校验
+    /// 内容/资源 hash。`unknown` / `missing` / `corrupt` 均不写库；canonical
+    /// Ink 文档显式拒绝；已识别且类型未变化时不产生 updated_at 抖动。
+    pub fn reclassify_existing_file_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        file_id: &str,
+    ) -> VfsResult<FileReclassifyOutcome> {
+        if !conn.is_autocommit() {
+            return Err(VfsError::InvalidState {
+                message: "reclassify_existing_file_with_conn requires an autocommit connection; \
+                          call reclassify_existing_file_with_conn_guarded from an existing writer"
+                    .to_string(),
+            });
+        }
+        let guard = acquire_blob_mutation_guard()?;
+        Self::reclassify_existing_file_with_conn_guarded(conn, blobs_dir, file_id, &guard)
+    }
+
+    /// 供已持有 blob mutation guard 的调用方复用，避免重复加锁导致死锁。
+    pub(crate) fn reclassify_existing_file_with_conn_guarded(
+        conn: &Connection,
+        blobs_dir: &Path,
+        file_id: &str,
+        _guard: &BlobMutationGuard,
+    ) -> VfsResult<FileReclassifyOutcome> {
+        conn.execute("SAVEPOINT reclassify_file", []).map_err(|e| {
+            error!(
+                "[VFS::FileRepo] Failed to create savepoint for reclassify_file: {}",
+                e
+            );
+            VfsError::Database(format!("Failed to create savepoint: {}", e))
+        })?;
+
+        let result = (|| -> VfsResult<FileReclassifyOutcome> {
+            // 在事务内重读，锁定本次 CAS 期望状态。
+            let existing = match Self::get_file_with_conn(conn, file_id)? {
+                Some(file) => file,
+                None => {
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: None,
+                    })
+                }
+            };
+
+            // 用户显式重识别只针对活跃资源；软删/trash 行必须原样保留，
+            // 否则改 category 会让 restore 只按 file 类别恢复时丢失目录归属。
+            if existing.status != "active" || existing.deleted_at.is_some() {
+                return Ok(FileReclassifyOutcome {
+                    status: FileReclassifyStatus::Missing,
+                    file: Some(existing),
+                });
+            }
+
+            // Ink canonical 文档不能用通用重识别改写 MIME/类别。
+            if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, file_id)? {
+                return Err(VfsError::InvalidArgument {
+                    param: "id".to_string(),
+                    reason: "Ink documents must be changed through ink commands; reclassify is unsupported"
+                        .to_string(),
+                });
+            }
+
+            enum ReclassifySource {
+                Blob {
+                    path: PathBuf,
+                    blob_hash: String,
+                },
+                Inline {
+                    bytes: Vec<u8>,
+                    resource_id: String,
+                    resource_hash: String,
+                    base64_data: String,
+                },
+            }
+
+            let source = if let Some(blob_hash) = existing.blob_hash.clone() {
+                if !sha256_matches_blob_pointer(&existing.sha256, &blob_hash) {
+                    warn!(
+                        "[VFS::FileRepo] Reclassify pointer mismatch for {} (sha256={}, blob={})",
+                        file_id, existing.sha256, blob_hash
+                    );
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Corrupt,
+                        file: Some(existing),
+                    });
+                }
+
+                let Some(blob_path) =
+                    VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, &blob_hash)?
+                else {
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                };
+
+                ReclassifySource::Blob {
+                    path: blob_path,
+                    blob_hash,
+                }
+            } else {
+                // inline：只接受受控 storage_mode=inline 且 data 为 base64 的资源。
+                // 先用 SQL 读长度做上限判断，避免把超大 data 取进内存。
+                let Some(resource_id) = existing.resource_id.clone() else {
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                };
+                let resource_meta: Option<(String, String, Option<i64>)> = conn
+                    .query_row(
+                        "SELECT storage_mode, hash, length(data) FROM resources WHERE id = ?1",
+                        params![&resource_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .optional()?;
+                let Some((storage_mode, resource_hash, Some(base64_len))) = resource_meta else {
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                };
+                if storage_mode != "inline" {
+                    warn!(
+                        "[VFS::FileRepo] Inline reclassify rejected for {} (mode={})",
+                        file_id, storage_mode
+                    );
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                }
+                if base64_len > MAX_INLINE_BASE64_LEN {
+                    warn!(
+                        "[VFS::FileRepo] Inline data exceeds reclassify budget for {} (base64_len={})",
+                        file_id, base64_len
+                    );
+                    return Err(VfsError::InvalidArgument {
+                        param: "inline_data".to_string(),
+                        reason: format!(
+                            "inline data length {} exceeds reclassify limit {}",
+                            base64_len, MAX_INLINE_BASE64_LEN
+                        ),
+                    });
+                }
+                // 空 data 只有与 0 字节文件记录一致时才可继续；其余是内容缺失，
+                // 不能误报成 corrupt。
+                if base64_len == 0 && existing.size != 0 {
+                    warn!(
+                        "[VFS::FileRepo] Inline content missing for {} (size={})",
+                        file_id, existing.size
+                    );
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                }
+
+                // 二次查询把 identity/hash/长度快照一起锁定，后续 CAS 再守一次。
+                let base64_data: Option<String> = conn
+                    .query_row(
+                        "SELECT data FROM resources WHERE id = ?1 AND storage_mode = 'inline' AND hash = ?2 AND length(data) = ?3",
+                        params![&resource_id, &resource_hash, base64_len],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let Some(base64_data) = base64_data else {
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Missing,
+                        file: Some(existing),
+                    });
+                };
+
+                let computed_resource_hash =
+                    crate::vfs::repos::resource_repo::VfsResourceRepo::compute_hash(&base64_data);
+                if !computed_resource_hash.eq_ignore_ascii_case(&resource_hash) {
+                    warn!(
+                        "[VFS::FileRepo] Inline resource hash mismatch for {} (stored={}, computed={})",
+                        file_id, resource_hash, computed_resource_hash
+                    );
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Corrupt,
+                        file: Some(existing),
+                    });
+                }
+
+                let bytes = match base64::engine::general_purpose::STANDARD.decode(&base64_data) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        warn!(
+                            "[VFS::FileRepo] Inline base64 decode failed for {}: {}",
+                            file_id, error
+                        );
+                        return Ok(FileReclassifyOutcome {
+                            status: FileReclassifyStatus::Corrupt,
+                            file: Some(existing),
+                        });
+                    }
+                };
+                if bytes.len() > MAX_INLINE_FILE_BYTES {
+                    warn!(
+                        "[VFS::FileRepo] Inline decoded size exceeds limit for {} ({} bytes)",
+                        file_id,
+                        bytes.len()
+                    );
+                    return Err(VfsError::InvalidArgument {
+                        param: "inline_data".to_string(),
+                        reason: format!(
+                            "decoded inline data length {} exceeds limit {}",
+                            bytes.len(),
+                            MAX_INLINE_FILE_BYTES
+                        ),
+                    });
+                }
+                if !VfsBlobRepo::compute_hash(&bytes).eq_ignore_ascii_case(&existing.sha256) {
+                    warn!(
+                        "[VFS::FileRepo] Inline content hash mismatch for {} (record sha256={})",
+                        file_id, existing.sha256
+                    );
+                    return Ok(FileReclassifyOutcome {
+                        status: FileReclassifyStatus::Corrupt,
+                        file: Some(existing),
+                    });
+                }
+
+                ReclassifySource::Inline {
+                    bytes,
+                    resource_id,
+                    resource_hash,
+                    base64_data,
+                }
+            };
+
+            let header = match &source {
+                ReclassifySource::Blob { path, .. } => match read_bounded_header(path) {
+                    Ok(Some(header)) => header,
+                    Ok(None) => {
+                        return Ok(FileReclassifyOutcome {
+                            status: FileReclassifyStatus::Missing,
+                            file: Some(existing),
+                        })
+                    }
+                    Err(error) => {
+                        warn!(
+                            "[VFS::FileRepo] Reclassify read failed for {}: {}",
+                            file_id, error
+                        );
+                        return Ok(FileReclassifyOutcome {
+                            status: FileReclassifyStatus::Corrupt,
+                            file: Some(existing),
+                        });
+                    }
+                },
+                ReclassifySource::Inline { bytes, .. } => {
+                    bytes[..bytes.len().min(64 * 1024)].to_vec()
+                }
+            };
+
+            // blob 路径保留原有的“先确认可读、再流式校验内容 hash”顺序，
+            // 让物理缺失保持 Missing、内容损坏才是 Corrupt。
+            if let ReclassifySource::Blob { path, blob_hash } = &source {
+                match verify_file_sha256(path, blob_hash) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        warn!(
+                            "[VFS::FileRepo] Reclassify hash mismatch for {} (expected {})",
+                            file_id, blob_hash
+                        );
+                        return Ok(FileReclassifyOutcome {
+                            status: FileReclassifyStatus::Corrupt,
+                            file: Some(existing),
+                        });
+                    }
+                    Err(error) => {
+                        warn!(
+                            "[VFS::FileRepo] Reclassify hash verification failed for {}: {}",
+                            file_id, error
+                        );
+                        return Ok(FileReclassifyOutcome {
+                            status: FileReclassifyStatus::Corrupt,
+                            file: Some(existing),
+                        });
+                    }
+                }
+            }
+
+            let Some(detected) = detect_file_identity(&header) else {
+                return Ok(FileReclassifyOutcome {
+                    status: FileReclassifyStatus::Unknown,
+                    file: Some(existing),
+                });
+            };
+
+            // 头部命中不代表完整可用：对有明确收尾结构的格式做有界校验。
+            let structure_ok = match &source {
+                ReclassifySource::Blob { path, .. } => {
+                    match validate_detected_structure(path, &detected.extension, &header) {
+                        Ok(ok) => ok,
+                        Err(error) => {
+                            warn!(
+                                "[VFS::FileRepo] Reclassify structure read failed for {}: {}",
+                                file_id, error
+                            );
+                            return Ok(FileReclassifyOutcome {
+                                status: FileReclassifyStatus::Corrupt,
+                                file: Some(existing),
+                            });
+                        }
+                    }
+                }
+                ReclassifySource::Inline { bytes, .. } => {
+                    if detected.extension.eq_ignore_ascii_case("png") {
+                        match validate_png_structure_bytes(bytes) {
+                            Ok(ok) => ok,
+                            Err(error) => {
+                                warn!(
+                                    "[VFS::FileRepo] Reclassify PNG structure failed for {}: {}",
+                                    file_id, error
+                                );
+                                return Ok(FileReclassifyOutcome {
+                                    status: FileReclassifyStatus::Corrupt,
+                                    file: Some(existing),
+                                });
+                            }
+                        }
+                    } else {
+                        let tail_len = structure_tail_bytes(&detected.extension);
+                        let tail_start = bytes.len().saturating_sub(tail_len);
+                        validate_detected_structure_bytes(
+                            &detected.extension,
+                            &header,
+                            &bytes[tail_start..],
+                        )
+                    }
+                }
+            };
+            if !structure_ok {
+                warn!(
+                    "[VFS::FileRepo] Reclassify structure check failed for {} (ext={})",
+                    file_id, detected.extension
+                );
+                return Ok(FileReclassifyOutcome {
+                    status: FileReclassifyStatus::Corrupt,
+                    file: Some(existing),
+                });
+            }
+
+            let resolved = resolve_file_identity(
+                existing.mime_type.as_deref(),
+                &existing.file_type,
+                &existing.file_name,
+                Some(&detected),
+            );
+            let existing_generic = mime_is_generic(existing.mime_type.as_deref());
+            let target_mime = if resolved.strong || existing_generic {
+                resolved.mime_type.clone()
+            } else {
+                existing
+                    .mime_type
+                    .clone()
+                    .unwrap_or_else(|| resolved.mime_type.clone())
+            };
+            let mime_upgraded = existing_generic && !mime_is_generic(Some(&target_mime));
+            let target_file_type = if resolved.strong || mime_upgraded {
+                resolved.file_type.clone()
+            } else {
+                existing.file_type.clone()
+            };
+            let plan =
+                plan_metadata_sync_with_conn(conn, &existing, &target_mime, &target_file_type)?;
+            if metadata_sync_is_consistent(&existing, &plan) {
+                return Ok(FileReclassifyOutcome {
+                    status: FileReclassifyStatus::Recognized,
+                    file: Some(existing),
+                });
+            }
+
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            let updated = match &source {
+                ReclassifySource::Blob { .. } => conn.execute(
+                    r#"UPDATE files SET mime_type = ?1, "type" = ?2, updated_at = ?3
+                       WHERE id = ?4 AND blob_hash IS ?5 AND sha256 = ?6
+                         AND mime_type IS ?7 AND "type" = ?8"#,
+                    params![
+                        plan.target_mime,
+                        plan.target_file_type,
+                        &now,
+                        file_id,
+                        existing.blob_hash.as_deref(),
+                        existing.sha256.as_str(),
+                        existing.mime_type.as_deref(),
+                        existing.file_type.as_str(),
+                    ],
+                )?,
+                ReclassifySource::Inline {
+                    resource_id,
+                    resource_hash,
+                    base64_data,
+                    ..
+                } => conn.execute(
+                    // 资源 identity/data/hash 快照必须与读取时一致，避免并发改写后
+                    // 用旧内容识别结果覆盖新状态。
+                    r#"UPDATE files SET mime_type = ?1, "type" = ?2, updated_at = ?3
+                       WHERE id = ?4 AND blob_hash IS NULL AND sha256 = ?5
+                         AND mime_type IS ?6 AND "type" = ?7
+                         AND resource_id = ?8
+                         AND EXISTS (
+                             SELECT 1 FROM resources r
+                             WHERE r.id = ?8 AND r.storage_mode = 'inline'
+                               AND r.hash = ?9 AND r.data = ?10
+                         )"#,
+                    params![
+                        plan.target_mime,
+                        plan.target_file_type,
+                        &now,
+                        file_id,
+                        existing.sha256.as_str(),
+                        existing.mime_type.as_deref(),
+                        existing.file_type.as_str(),
+                        resource_id.as_str(),
+                        resource_hash.as_str(),
+                        base64_data.as_str(),
+                    ],
+                )?,
+            };
+            if updated == 0 {
+                warn!(
+                    "[VFS::FileRepo] Reclassify CAS lost for {}; state changed concurrently",
+                    file_id
+                );
+                return Ok(FileReclassifyOutcome {
+                    status: FileReclassifyStatus::Unknown,
+                    file: Self::get_file_with_conn(conn, file_id)?,
+                });
+            }
+
+            apply_metadata_sync_plan(conn, &plan, now_ms)?;
+
+            let file = Self::get_file_with_conn(conn, file_id)?.ok_or_else(|| {
+                VfsError::Database(format!("File {} not found after reclassify", file_id))
+            })?;
+            info!(
+                "[VFS::FileRepo] Reclassified file {}: mime={}, type={}, ext={}",
+                file_id, detected.mime_type, detected.file_type, detected.extension
+            );
+            Ok(FileReclassifyOutcome {
+                status: FileReclassifyStatus::Recognized,
+                file: Some(file),
+            })
+        })();
+
+        match result {
+            Ok(outcome) => {
+                conn.execute("RELEASE reclassify_file", []).map_err(|e| {
+                    error!(
+                        "[VFS::FileRepo] Failed to release savepoint reclassify_file: {}",
+                        e
+                    );
+                    VfsError::Database(format!("Failed to release savepoint: {}", e))
+                })?;
+                Ok(outcome)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO reclassify_file", []);
+                let _ = conn.execute("RELEASE reclassify_file", []);
+                Err(e)
+            }
+        }
+    }
+
     /// 复制文件/图片附件（共享 blob 并正确维护引用计数）
     ///
     /// ★ 2026-06-12（第二轮审阅）：取代 DSTU 层"伪 sha256 + 直接复用 blob_hash"
@@ -312,6 +1384,13 @@ impl VfsFileRepo {
         src_file_id: &str,
         new_file_name: &str,
     ) -> VfsResult<VfsFile> {
+        if super::ink_repo::VfsInkRepo::is_ink_file_candidate_with_conn(conn, src_file_id)? {
+            return Err(VfsError::InvalidOperation {
+                operation: "copy_ink_file".to_owned(),
+                reason: "Ink documents must be copied through VfsInkRepo with a blob directory"
+                    .to_owned(),
+            });
+        }
         // 1. 读取源文件完整数据
         let src =
             Self::get_file_with_conn(conn, src_file_id)?.ok_or_else(|| VfsError::NotFound {
@@ -909,6 +1988,18 @@ impl VfsFileRepo {
         file_id: &str,
         new_name: &str,
     ) -> VfsResult<VfsFile> {
+        let file = Self::get_file_with_conn(conn, file_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "File".to_string(),
+            id: file_id.to_string(),
+        })?;
+        if file.mime_type.as_deref() == Some(crate::vfs::ink::INK_MIME) {
+            return Err(VfsError::InvalidOperation {
+                operation: "rename Ink document with generic file updater".to_owned(),
+                reason: "Ink title and canonical filename must be renamed through VfsInkRepo"
+                    .to_owned(),
+            });
+        }
+
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -1156,100 +2247,107 @@ impl VfsFileRepo {
 
         // ★ P0修复：减少 blob 引用计数（文件的 blob_hash + PDF 预渲染页面的 blob_hash）
         // 必须在删除文件记录之前处理，因为需要读取 file 信息
+        let ink_purged = rollback_on_error!(
+            super::ink_repo::VfsInkRepo::purge_file_refs_with_conn(conn, blobs_dir, file_id),
+            "Failed to release Ink blob references"
+        );
 
         // 1. 处理文件自身的 blob_hash（大文件外部存储）
-        if let Some(ref blob_hash) = file.blob_hash {
-            match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, blob_hash) {
-                Ok(new_count) => {
-                    info!(
-                        "[VFS::FileRepo] Decremented blob ref for file: {} -> {}",
-                        blob_hash, new_count
-                    );
-                }
-                Err(e) => {
-                    // blob 不存在时仅警告，不阻止删除
-                    warn!(
-                        "[VFS::FileRepo] Failed to decrement blob ref {}: {}",
-                        blob_hash, e
-                    );
-                }
-            }
-        }
-
-        // 1.5 处理文件自身的压缩 blob（仅当与原始 blob 不同）
-        if let Some(ref compressed_hash) = file.compressed_blob_hash {
-            let is_same_as_original = file
-                .blob_hash
-                .as_ref()
-                .map(|h| h == compressed_hash)
-                .unwrap_or(false);
-            if !is_same_as_original {
-                match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
+        if !ink_purged {
+            if let Some(ref blob_hash) = file.blob_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, blob_hash) {
                     Ok(new_count) => {
                         info!(
-                            "[VFS::FileRepo] Decremented compressed blob ref for file: {} -> {}",
-                            compressed_hash, new_count
+                            "[VFS::FileRepo] Decremented blob ref for file: {} -> {}",
+                            blob_hash, new_count
                         );
                     }
                     Err(e) => {
+                        // blob 不存在时仅警告，不阻止删除
                         warn!(
-                            "[VFS::FileRepo] Failed to decrement compressed blob ref {}: {}",
-                            compressed_hash, e
+                            "[VFS::FileRepo] Failed to decrement blob ref {}: {}",
+                            blob_hash, e
                         );
                     }
                 }
             }
-        }
 
-        // 2. 处理 PDF 预渲染页面的 blob_hash
-        if let Some(ref preview_json_str) = file.preview_json {
-            if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(preview_json_str) {
-                for page in &preview.pages {
-                    match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, &page.blob_hash) {
+            // 1.5 处理文件自身的压缩 blob（仅当与原始 blob 不同）
+            if let Some(ref compressed_hash) = file.compressed_blob_hash {
+                let is_same_as_original = file
+                    .blob_hash
+                    .as_ref()
+                    .map(|h| h == compressed_hash)
+                    .unwrap_or(false);
+                if !is_same_as_original {
+                    match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
                         Ok(new_count) => {
-                            debug!(
-                                "[VFS::FileRepo] Decremented PDF page blob ref: page={}, hash={} -> {}",
-                                page.page_index, page.blob_hash, new_count
-                            );
+                            info!(
+                            "[VFS::FileRepo] Decremented compressed blob ref for file: {} -> {}",
+                            compressed_hash, new_count
+                        );
                         }
                         Err(e) => {
-                            // 页面 blob 不存在时仅警告
                             warn!(
-                                "[VFS::FileRepo] Failed to decrement PDF page blob {}: {}",
-                                page.blob_hash, e
+                                "[VFS::FileRepo] Failed to decrement compressed blob ref {}: {}",
+                                compressed_hash, e
                             );
                         }
                     }
+                }
+            }
 
-                    // 同时处理压缩后的页面 blob（仅当与原始 blob 不同）
-                    if let Some(ref compressed_hash) = page.compressed_blob_hash {
-                        if compressed_hash != &page.blob_hash {
-                            match VfsBlobRepo::decrement_ref_with_conn(
-                                conn,
-                                blobs_dir,
-                                compressed_hash,
-                            ) {
-                                Ok(new_count) => {
-                                    debug!(
+            // 2. 处理 PDF 预渲染页面的 blob_hash
+            if let Some(ref preview_json_str) = file.preview_json {
+                if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(preview_json_str) {
+                    for page in &preview.pages {
+                        match VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, &page.blob_hash)
+                        {
+                            Ok(new_count) => {
+                                debug!(
+                                "[VFS::FileRepo] Decremented PDF page blob ref: page={}, hash={} -> {}",
+                                page.page_index, page.blob_hash, new_count
+                            );
+                            }
+                            Err(e) => {
+                                // 页面 blob 不存在时仅警告
+                                warn!(
+                                    "[VFS::FileRepo] Failed to decrement PDF page blob {}: {}",
+                                    page.blob_hash, e
+                                );
+                            }
+                        }
+
+                        // 同时处理压缩后的页面 blob（仅当与原始 blob 不同）
+                        if let Some(ref compressed_hash) = page.compressed_blob_hash {
+                            if compressed_hash != &page.blob_hash {
+                                match VfsBlobRepo::decrement_ref_with_conn(
+                                    conn,
+                                    blobs_dir,
+                                    compressed_hash,
+                                ) {
+                                    Ok(new_count) => {
+                                        debug!(
                                         "[VFS::FileRepo] Decremented PDF compressed page blob ref: page={}, hash={} -> {}",
                                         page.page_index, compressed_hash, new_count
                                     );
-                                }
-                                Err(e) => {
-                                    warn!(
+                                    }
+                                    Err(e) => {
+                                        warn!(
                                         "[VFS::FileRepo] Failed to decrement PDF compressed page blob {}: {}",
                                         compressed_hash, e
                                     );
+                                    }
                                 }
                             }
                         }
                     }
+                    info!(
+                        "[VFS::FileRepo] Processed {} PDF preview page blobs for file: {}",
+                        preview.pages.len(),
+                        file_id
+                    );
                 }
-                info!(
-                    "[VFS::FileRepo] Processed {} PDF preview page blobs for file: {}",
-                    preview.pages.len(),
-                    file_id
-                );
             }
         }
 
@@ -1797,10 +2895,110 @@ impl VfsFileRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::repos::folder_repo::VfsFolderRepo;
     use tempfile::TempDir;
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
         crate::vfs::database::setup_migrated_test_db()
+    }
+
+    #[test]
+    fn generic_copy_rejects_ink_without_creating_shared_manifest_copy() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let ink = super::super::ink_repo::VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Ink copy guard",
+            crate::vfs::ink::InkRuling::Blank,
+            100.0,
+            100.0,
+            "copy-guard-create",
+            None,
+        )
+        .unwrap();
+        let before: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM files), (SELECT COALESCE(SUM(ref_count), 0) FROM blobs)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert!(
+            VfsFileRepo::copy_file_with_conn(&conn, &ink.document_id, "Generic copy.dsink")
+                .is_err()
+        );
+        let after: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM files), (SELECT COALESCE(SUM(ref_count), 0) FROM blobs)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn generic_rename_rejects_ink_documents_without_changing_manifest_or_filename() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let manifest = super::super::ink_repo::VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Canonical Ink title",
+            crate::vfs::ink::InkRuling::Blank,
+            100.0,
+            100.0,
+            "rename-guard-create",
+            None,
+        )
+        .unwrap();
+
+        let result = VfsFileRepo::update_file_name_with_conn(
+            &conn,
+            &manifest.document_id,
+            "different-title.txt",
+        );
+
+        assert!(
+            result.is_err(),
+            "generic file rename must reject Ink documents"
+        );
+        let stored = VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.file_name, "Canonical Ink title.dsink");
+        let reopened = super::super::ink_repo::VfsInkRepo::get_manifest_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+        )
+        .unwrap();
+        assert_eq!(reopened.title, "Canonical Ink title");
+        assert_eq!(reopened.revision, manifest.revision);
+    }
+
+    #[test]
+    fn generic_rename_still_renames_ordinary_files() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let file = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "rename-ordinary-file-sha",
+            "ordinary.txt",
+            12,
+            "document",
+            Some("text/plain"),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let renamed = VfsFileRepo::update_file_name_with_conn(&conn, &file.id, "renamed.txt")
+            .expect("ordinary file rename remains supported");
+
+        assert_eq!(renamed.file_name, "renamed.txt");
     }
 
     #[test]
@@ -2091,5 +3289,1731 @@ mod tests {
                 rc
             );
         }
+    }
+
+    // ★ A3: 去重命中旧 octet-stream 条目时，新的可靠类型必须回填 MIME，
+    // 同时不得改动用户可见名称、ID、hash、收藏、目录归属或引用计数。
+    #[test]
+    fn reclassify_dedup_octet_stream_to_pdf_updates_mime_only() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+
+        let folder = VfsFolder::new("导入文档".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let pdf_bytes = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n";
+        let pdf_sha = VfsBlobRepo::compute_hash(pdf_bytes);
+        let initial = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &pdf_sha,
+            "Thesis Draft",
+            pdf_bytes.len() as i64,
+            "document",
+            Some("application/octet-stream"),
+            None,
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, &initial.id, true).unwrap();
+        let resource_id = initial.resource_id.as_deref().unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(&conn, resource_id).unwrap(),
+            1
+        );
+
+        let reimported = VfsFileRepo::create_file_from_verified_bytes_with_conn(
+            &conn,
+            &pdf_sha,
+            "Thesis Draft",
+            pdf_bytes.len() as i64,
+            "document",
+            Some("application/pdf"),
+            None,
+            None,
+            pdf_bytes,
+        )
+        .unwrap();
+
+        assert_eq!(
+            reimported.mime_type.as_deref(),
+            Some("application/pdf"),
+            "去重命中旧 octet-stream 条目时必须回填可靠 MIME，而不是返回旧 metadata"
+        );
+        assert_eq!(reimported.id, initial.id, "A3 必须保留原文件 ID");
+        assert_eq!(reimported.sha256, initial.sha256, "A3 必须保留内容 hash");
+        assert_eq!(
+            reimported.file_name, "Thesis Draft",
+            "A3 不得默认改用户名称"
+        );
+        assert!(reimported.is_favorite, "A3 必须保留收藏状态");
+        let membership =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &initial.id)
+                .unwrap()
+                .expect("A3 必须保留目录归属");
+        assert_eq!(membership.folder_id.as_deref(), Some(folder.id.as_str()));
+        let ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1, "A3 必须保留引用计数");
+    }
+
+    #[test]
+    fn reclassify_dedup_octet_stream_to_png_updates_mime_only() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+
+        let folder = VfsFolder::new("导入图片".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let png_bytes = real_png_fixture();
+        let png_sha = VfsBlobRepo::compute_hash(&png_bytes);
+        let initial = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &png_sha,
+            "Whiteboard Capture",
+            png_bytes.len() as i64,
+            "document",
+            Some("application/octet-stream"),
+            None,
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, &initial.id, true).unwrap();
+        let resource_id = initial.resource_id.as_deref().unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(&conn, resource_id).unwrap(),
+            1
+        );
+
+        let reimported = VfsFileRepo::create_file_from_verified_bytes_with_conn(
+            &conn,
+            &png_sha,
+            "Whiteboard Capture",
+            png_bytes.len() as i64,
+            "image",
+            Some("image/png"),
+            None,
+            None,
+            &png_bytes,
+        )
+        .unwrap();
+
+        assert_eq!(
+            reimported.mime_type.as_deref(),
+            Some("image/png"),
+            "去重命中旧 octet-stream 条目时必须回填可靠 MIME，而不是返回旧 metadata"
+        );
+        assert_eq!(reimported.id, initial.id, "A3 必须保留原文件 ID");
+        assert_eq!(reimported.sha256, initial.sha256, "A3 必须保留内容 hash");
+        assert_eq!(
+            reimported.file_name, "Whiteboard Capture",
+            "A3 不得默认改用户名称"
+        );
+        assert!(reimported.is_favorite, "A3 必须保留收藏状态");
+        // 类别从 document 修正为 image 时 folder_items.item_type 同步为 image；
+        // 目录归属本身（folder_id）必须保持不变。
+        let membership =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &initial.id)
+                .unwrap()
+                .expect("A3 必须保留目录归属");
+        assert_eq!(membership.folder_id.as_deref(), Some(folder.id.as_str()));
+        let ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1, "A3 必须保留引用计数");
+    }
+
+    // ★ A3: 真实迁移库上的显式重识别：保留全部身份字段、幂等、未知/损坏零写入。
+    #[test]
+    fn reclassify_existing_file_preserves_identity_and_zero_writes_for_unknown_or_corrupt() {
+        use crate::vfs::file_reclassify::FileReclassifyStatus;
+        use crate::vfs::repos::blob_repo::VfsBlobRepo;
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("重识别".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        // 真实可解码的极简 PNG：签名 + IHDR/IDAT/IEND。
+        let png = real_png_fixture();
+        let png_blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("application/octet-stream"), Some("bin"))
+                .unwrap();
+
+        let file = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &png_blob.hash,
+            "Whiteboard Capture",
+            png.len() as i64,
+            "document",
+            Some("application/octet-stream"),
+            Some(&png_blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, &file.id, true).unwrap();
+        let resource_id = file.resource_id.as_deref().unwrap();
+        VfsResourceRepo::increment_ref_with_conn(&conn, resource_id).unwrap();
+        let before = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+
+        let first =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+                .unwrap();
+        assert_eq!(first.status, FileReclassifyStatus::Recognized);
+        let reclassified = first.file.unwrap();
+        assert_eq!(reclassified.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(reclassified.file_type, "image");
+        assert_eq!(reclassified.id, before.id);
+        assert_eq!(reclassified.sha256, before.sha256);
+        assert_eq!(reclassified.blob_hash, before.blob_hash);
+        assert_eq!(reclassified.file_name, "Whiteboard Capture");
+        assert!(reclassified.is_favorite);
+        let membership =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &file.id)
+                .unwrap()
+                .expect("类别同步后目录项仍必须存在");
+        assert_eq!(membership.folder_id.as_deref(), Some(folder.id.as_str()));
+        let ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1);
+        assert_eq!(membership.item_type, "image");
+
+        // 幂等：第二次识别不产生 updated_at 抖动。
+        let second =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+                .unwrap();
+        assert_eq!(second.status, FileReclassifyStatus::Recognized);
+        assert_eq!(second.file.unwrap().updated_at, reclassified.updated_at);
+
+        // 未知内容：状态 Unknown 且零写入。
+        let unknown_blob =
+            VfsBlobRepo::store_blob(&db, b"hello\0world\x01", None, Some("bin")).unwrap();
+        let unknown = VfsFileRepo::create_file_with_conn(
+            &conn,
+            &unknown_blob.hash,
+            "Unknown Payload",
+            12,
+            "document",
+            None,
+            Some(&unknown_blob.hash),
+            None,
+        )
+        .unwrap();
+        let unknown_before = VfsFileRepo::get_file_with_conn(&conn, &unknown.id)
+            .unwrap()
+            .unwrap();
+        let unknown_result =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &unknown.id)
+                .unwrap();
+        assert_eq!(unknown_result.status, FileReclassifyStatus::Unknown);
+        let unknown_after = VfsFileRepo::get_file_with_conn(&conn, &unknown.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(unknown_after.mime_type, unknown_before.mime_type);
+        assert_eq!(unknown_after.file_type, unknown_before.file_type);
+        assert_eq!(unknown_after.updated_at, unknown_before.updated_at);
+
+        // 内容损坏（hash 不一致）：状态 Corrupt 且零写入。
+        let corrupt_blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("image/png"), Some("png")).unwrap();
+        let corrupt = VfsFileRepo::create_file_with_conn(
+            &conn,
+            "sha_a3_corrupt_pointer",
+            "Corrupt Payload",
+            png.len() as i64,
+            "document",
+            Some("application/octet-stream"),
+            Some(&corrupt_blob.hash),
+            None,
+        )
+        .unwrap();
+        let corrupt_before = VfsFileRepo::get_file_with_conn(&conn, &corrupt.id)
+            .unwrap()
+            .unwrap();
+        let corrupt_path = VfsBlobRepo::get_blob_path(&db, &corrupt_blob.hash)
+            .unwrap()
+            .expect("blob path must exist");
+        std::fs::write(&corrupt_path, b"tampered bytes").unwrap();
+        let corrupt_result =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &corrupt.id)
+                .unwrap();
+        assert_eq!(corrupt_result.status, FileReclassifyStatus::Corrupt);
+        let corrupt_after = VfsFileRepo::get_file_with_conn(&conn, &corrupt.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(corrupt_after.mime_type, corrupt_before.mime_type);
+        assert_eq!(corrupt_after.file_type, corrupt_before.file_type);
+        assert_eq!(corrupt_after.updated_at, corrupt_before.updated_at);
+    }
+
+    /// 生成真实可解码的 PNG（带 IHDR/IDAT/IEND），避免签名+IEND 假样本。
+    fn real_png_fixture_with_color(pixel: [u8; 4]) -> Vec<u8> {
+        use image::{ColorType, ImageEncoder};
+
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(&pixel, 1, 1, ColorType::Rgba8)
+            .expect("encode real PNG fixture");
+        bytes
+    }
+
+    fn real_png_fixture() -> Vec<u8> {
+        real_png_fixture_with_color([12, 34, 56, 255])
+    }
+
+    /// 真实可解析的 SVG（XML 头部 + svg 根）；内容检测只能得到弱 xml/txt，
+    /// 不得覆盖名称/声明给出的 SVG 身份。
+    fn real_svg_fixture() -> Vec<u8> {
+        br#"<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1"/></svg>"#.to_vec()
+    }
+
+    // ★ A3: 现有 inline 资源（file.blob_hash=None）必须从 resources.data 的
+    // 内嵌字节重识别；不得要求 blob，也不得改 ID/sha/名称/目录/收藏/引用。
+    #[test]
+    fn reclassify_inline_attachment_uses_embedded_bytes_and_preserves_identity() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::{StorageMode, VfsFolder, VfsResourceMetadata, VfsResourceType};
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+
+        let png = real_png_fixture();
+        let raw_hash = VfsBlobRepo::compute_hash(&png);
+        let inline_base64 = STANDARD.encode(&png);
+        // 真实 inline 资源 hash 基于 base64 data，而不是原始内容 hash。
+        let resource_hash = VfsResourceRepo::compute_hash(&inline_base64);
+        assert_ne!(
+            resource_hash, raw_hash,
+            "inline resources.hash 必须按真实资源实现计算，不能等于 raw hash"
+        );
+
+        let metadata = VfsResourceMetadata {
+            name: Some("Legacy Inline Scan".to_string()),
+            mime_type: Some("application/octet-stream".to_string()),
+            size: Some(png.len() as u64),
+            ..Default::default()
+        };
+        let created_resource = VfsResourceRepo::create_or_reuse_with_conn(
+            &conn,
+            VfsResourceType::File,
+            &inline_base64,
+            None,
+            None,
+            Some(&metadata),
+        )
+        .unwrap();
+        let resource_id = created_resource.resource_id.clone();
+        assert_eq!(created_resource.hash, resource_hash);
+
+        let file_id = "file_a3_inline_reclassify";
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        conn.execute(
+            r#"INSERT INTO files (
+                id, resource_id, blob_hash, type, name, mime_type, size,
+                content_hash, sha256, file_name, created_at, updated_at
+            ) VALUES (?1, ?2, NULL, 'file', ?3, 'application/octet-stream', ?4, ?5, ?5, ?3, ?6, ?6)"#,
+            params![
+                file_id,
+                &resource_id,
+                "Legacy Inline Scan",
+                png.len() as i64,
+                &raw_hash,
+                &now,
+            ],
+        )
+        .unwrap();
+
+        let folder = VfsFolder::new("A3 Inline Folder".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+        let item = VfsFolderItem::new(
+            Some(folder.id.clone()),
+            "file".to_string(),
+            file_id.to_string(),
+        );
+        VfsFolderRepo::add_item_to_folder_with_conn(&conn, &item).unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, file_id, true).unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(&conn, &resource_id).unwrap(),
+            1
+        );
+
+        let before_file = VfsFileRepo::get_file_with_conn(&conn, file_id)
+            .unwrap()
+            .expect("inline file row must exist");
+        let before_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .expect("inline resource must exist");
+        assert!(before_file.blob_hash.is_none());
+        assert_eq!(before_resource.storage_mode, StorageMode::Inline);
+        assert_eq!(
+            before_resource.data.as_deref(),
+            Some(inline_base64.as_str()),
+            "inline bytes 必须保存在 resources.data"
+        );
+        let before_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", file_id)
+                .unwrap()
+                .expect("file folder membership must exist");
+        let blobs_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(blobs_before, 0);
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), file_id)
+                .expect("inline attachment reclassify must succeed");
+        assert_eq!(
+            outcome.status,
+            FileReclassifyStatus::Recognized,
+            "inline attachment must be recognized from resources.data, not reported missing"
+        );
+        let after_file = outcome
+            .file
+            .expect("recognized inline file must return the current record");
+        assert_eq!(after_file.id, before_file.id);
+        assert_eq!(after_file.sha256, before_file.sha256);
+        assert_eq!(after_file.file_name, before_file.file_name);
+        assert_eq!(after_file.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(after_file.file_type, "image");
+        assert!(after_file.is_favorite);
+        assert!(
+            after_file.blob_hash.is_none(),
+            "inline reclassify must not create a blob pointer"
+        );
+
+        let after_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .expect("inline resource must remain");
+        assert_eq!(after_resource.id, before_resource.id);
+        assert_eq!(after_resource.hash, before_resource.hash);
+        assert_eq!(after_resource.data, before_resource.data);
+        assert_eq!(after_resource.storage_mode, before_resource.storage_mode);
+        assert_eq!(after_resource.ref_count, before_resource.ref_count);
+        assert!(
+            VfsResourceRepo::get_by_hash_with_conn(&conn, &raw_hash)
+                .unwrap()
+                .is_none(),
+            "canonical inline resource hash must not be replaced by raw content hash"
+        );
+
+        let after_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", file_id)
+                .unwrap()
+                .expect("category mirror must move the folder item to image");
+        assert_eq!(
+            after_item.folder_id.as_deref(),
+            before_item.folder_id.as_deref()
+        );
+        let active_items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
+                params![file_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            active_items, 1,
+            "inline reclassify must not duplicate membership"
+        );
+
+        let blobs_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            blobs_after, blobs_before,
+            "inline reclassify must not create a blob"
+        );
+    }
+
+    // ★ A3: canonical Ink 文档必须显式拒绝重识别，且拒绝后 manifest 仍可读。
+    #[test]
+    fn reclassify_rejects_ink_canonical_document_without_mutation() {
+        use crate::vfs::ink::InkRuling;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let manifest = super::super::ink_repo::VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "A3 Ink guard",
+            InkRuling::Blank,
+            100.0,
+            100.0,
+            "a3-reclassify-ink-create",
+            None,
+        )
+        .unwrap();
+
+        let before_file = VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+            .unwrap()
+            .expect("Ink file row must exist");
+        let resource_id = before_file
+            .resource_id
+            .as_deref()
+            .expect("Ink file must have a resource");
+        let before_resource =
+            crate::vfs::repos::resource_repo::VfsResourceRepo::get_resource_with_conn(
+                &conn,
+                resource_id,
+            )
+            .unwrap()
+            .expect("Ink resource must exist");
+
+        let err = VfsFileRepo::reclassify_existing_file_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+        )
+        .expect_err("reclassify must reject canonical Ink documents");
+        assert!(
+            matches!(
+                &err,
+                VfsError::InvalidArgument { .. } | VfsError::InvalidState { .. }
+            ),
+            "Ink rejection must be an explicit InvalidArgument/InvalidState, got {err:?}"
+        );
+
+        let after_file = VfsFileRepo::get_file_with_conn(&conn, &manifest.document_id)
+            .unwrap()
+            .expect("Ink file row must remain");
+        assert_eq!(after_file.mime_type, before_file.mime_type);
+        assert_eq!(after_file.sha256, before_file.sha256);
+        assert_eq!(after_file.blob_hash, before_file.blob_hash);
+        assert_eq!(after_file.updated_at, before_file.updated_at);
+
+        let after_resource =
+            crate::vfs::repos::resource_repo::VfsResourceRepo::get_resource_with_conn(
+                &conn,
+                resource_id,
+            )
+            .unwrap()
+            .expect("Ink resource must remain");
+        assert_eq!(after_resource.hash, before_resource.hash);
+
+        let reopened = super::super::ink_repo::VfsInkRepo::get_manifest_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+        )
+        .expect("Ink manifest must remain readable after rejected reclassify");
+        assert_eq!(reopened.revision, manifest.revision);
+        assert_eq!(reopened.title, manifest.title);
+    }
+
+    /// 构造真实 inline PNG 文件与资源；返回 resource_id。资源 hash 是
+    /// base64 data 的 hash，files.sha256 是 raw bytes hash。
+    fn seed_inline_png_file(conn: &rusqlite::Connection, file_id: &str) -> String {
+        seed_inline_png_bytes(conn, file_id, real_png_fixture())
+    }
+
+    fn seed_inline_png_bytes(conn: &rusqlite::Connection, file_id: &str, png: Vec<u8>) -> String {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::{VfsResourceMetadata, VfsResourceType};
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+        let raw_hash = VfsBlobRepo::compute_hash(&png);
+        let inline_base64 = STANDARD.encode(&png);
+        let metadata = VfsResourceMetadata {
+            name: Some("Inline Mirror".to_string()),
+            mime_type: Some("application/octet-stream".to_string()),
+            size: Some(png.len() as u64),
+            extra: Some(serde_json::json!({ "customKey": "customValue" })),
+            ..Default::default()
+        };
+        let created = VfsResourceRepo::create_or_reuse_with_conn(
+            conn,
+            VfsResourceType::File,
+            &inline_base64,
+            None,
+            None,
+            Some(&metadata),
+        )
+        .unwrap();
+        let resource_id = created.resource_id;
+        assert_eq!(
+            created.hash,
+            VfsResourceRepo::compute_hash(&inline_base64),
+            "inline resource hash must be the base64 data hash"
+        );
+
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        conn.execute(
+            r#"INSERT INTO files (
+                id, resource_id, blob_hash, type, name, mime_type, size,
+                content_hash, sha256, file_name, created_at, updated_at
+            ) VALUES (?1, ?2, NULL, 'file', ?3, 'application/octet-stream', ?4, ?5, ?5, ?3, ?6, ?6)"#,
+            params![
+                file_id,
+                &resource_id,
+                "Inline Mirror",
+                png.len() as i64,
+                &raw_hash,
+                &now,
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(conn, &resource_id).unwrap(),
+            1
+        );
+        resource_id
+    }
+
+    // ★ A3: 公开重识别入口必须拒绝调用方已持有的写事务，避免“先开事务再取
+    // blob guard”的死锁；拒绝必须发生在任何写之前。
+    #[test]
+    fn reclassify_public_fails_fast_inside_caller_write_transaction() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let png = real_png_fixture();
+        let blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("application/octet-stream"), Some("bin"))
+                .unwrap();
+        let file = VfsFileRepo::create_file_with_conn(
+            &conn,
+            &blob.hash,
+            "Transaction Guard",
+            png.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&blob.hash),
+            None,
+        )
+        .unwrap();
+        let resource_id = file.resource_id.clone().expect("file resource");
+        let before_file = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+        let before_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .unwrap();
+        let before_blobs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+
+        conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+        assert!(!conn.is_autocommit());
+        let err = VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+            .expect_err("public reclassify must fail fast when caller owns a write transaction");
+        assert!(
+            matches!(&err, VfsError::InvalidState { .. }),
+            "expected InvalidState for caller-owned transaction, got {err:?}"
+        );
+
+        conn.execute_batch("ROLLBACK").unwrap();
+        assert!(conn.is_autocommit());
+
+        let after_file = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_file.mime_type, before_file.mime_type);
+        assert_eq!(after_file.file_type, before_file.file_type);
+        assert_eq!(after_file.updated_at, before_file.updated_at);
+        let after_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_resource.hash, before_resource.hash);
+        assert_eq!(after_resource.data, before_resource.data);
+        assert_eq!(after_resource.ref_count, before_resource.ref_count);
+        let after_blobs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(after_blobs, before_blobs);
+    }
+
+    // ★ A3: inline 重识别正确后，resources 镜像的 type/mime 也必须同步；
+    // 其他 metadata、identity、data 与 ref 保持不变。
+    #[test]
+    fn reclassify_inline_updates_resource_type_and_metadata_mirror() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsResourceType;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let file_id = "file_a3_inline_mirror";
+        let resource_id = seed_inline_png_file(&conn, file_id);
+
+        let before_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .unwrap();
+        let before_meta = before_resource
+            .metadata
+            .clone()
+            .expect("inline resource must keep metadata");
+        assert_eq!(before_resource.resource_type, VfsResourceType::File);
+        assert_eq!(
+            before_meta.mime_type.as_deref(),
+            Some("application/octet-stream")
+        );
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), file_id)
+                .expect("inline reclassify must succeed");
+        assert_eq!(outcome.status, FileReclassifyStatus::Recognized);
+        let after_file = outcome.file.expect("recognized inline file");
+        assert_eq!(after_file.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(after_file.file_type, "image");
+
+        let after_resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after_resource.resource_type,
+            VfsResourceType::Image,
+            "resource type mirror must follow the corrected file category"
+        );
+        let after_meta = after_resource
+            .metadata
+            .clone()
+            .expect("inline resource metadata must remain");
+        assert_eq!(
+            after_meta.mime_type.as_deref(),
+            Some("image/png"),
+            "resource metadata mimeType mirror must follow the corrected file mime"
+        );
+        assert_eq!(after_meta.name, before_meta.name);
+        assert_eq!(after_meta.size, before_meta.size);
+        assert_eq!(after_meta.extra, before_meta.extra);
+        assert_eq!(after_resource.hash, before_resource.hash);
+        assert_eq!(after_resource.data, before_resource.data);
+        assert_eq!(after_resource.ref_count, before_resource.ref_count);
+    }
+
+    // ★ A3: 自洽 hash 的“签名 + 零长 IEND”垃圾 PNG 不是有效 PNG；显式
+    // 重识别必须 Corrupt，且 files/resources/folder/updated_at 全部不变。
+    #[test]
+    fn reclassify_signature_only_png_is_corrupt_and_leaves_state_untouched() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+
+        let mut garbage = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        garbage.extend_from_slice(b"\x00\x00\x00\x00IEND\xaeB`\x82");
+        assert!(!garbage.windows(4).any(|w| w == &b"IHDR"[..]));
+        assert!(!garbage.windows(4).any(|w| w == &b"IDAT"[..]));
+
+        let blob =
+            VfsBlobRepo::store_blob(&db, &garbage, Some("application/octet-stream"), Some("png"))
+                .unwrap();
+        let folder = VfsFolder::new("A3 Garbage PNG".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+        let file = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &blob.hash,
+            "Signature Only",
+            garbage.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        let resource_id = file.resource_id.clone().expect("file resource");
+
+        let before_file = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+        let before_resource: (String, Option<String>, i64, String) = conn
+            .query_row(
+                "SELECT type, metadata_json, updated_at, hash FROM resources WHERE id = ?1",
+                params![&resource_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        let before_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &file.id)
+                .unwrap()
+                .expect("file folder membership must exist");
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+                .expect("reclassify must return an outcome");
+        assert_eq!(
+            outcome.status,
+            FileReclassifyStatus::Corrupt,
+            "signature + IEND without IHDR/IDAT must not be recognized as a PNG"
+        );
+
+        let after_file = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_file.mime_type, before_file.mime_type);
+        assert_eq!(after_file.file_type, before_file.file_type);
+        assert_eq!(after_file.updated_at, before_file.updated_at);
+        let after_resource: (String, Option<String>, i64, String) = conn
+            .query_row(
+                "SELECT type, metadata_json, updated_at, hash FROM resources WHERE id = ?1",
+                params![&resource_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(after_resource, before_resource);
+        let after_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &file.id)
+                .unwrap()
+                .expect("folder membership must remain a file");
+        assert_eq!(after_item.folder_id, before_item.folder_id);
+        assert!(
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &file.id)
+                .unwrap()
+                .is_none(),
+            "corrupt PNG must not move folder membership to image"
+        );
+    }
+
+    // ★ A3: inline 坏 base64 与 raw hash 不匹配都必须 Corrupt，且零写。
+    #[test]
+    fn reclassify_inline_corrupt_payloads_return_corrupt_without_mutation() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 Corrupt Inline".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let bad_base64_file = "file_a3_inline_bad_base64";
+        let bad_base64_resource = seed_inline_png_file(&conn, bad_base64_file);
+        let mismatch_file = "file_a3_inline_raw_mismatch";
+        let mismatch_resource = seed_inline_png_bytes(
+            &conn,
+            mismatch_file,
+            real_png_fixture_with_color([99, 88, 77, 255]),
+        );
+        for file_id in [bad_base64_file, mismatch_file] {
+            let item = VfsFolderItem::new(
+                Some(folder.id.clone()),
+                "file".to_string(),
+                file_id.to_string(),
+            );
+            VfsFolderRepo::add_item_to_folder_with_conn(&conn, &item).unwrap();
+        }
+
+        let file_state = |file_id: &str| -> (Option<String>, String, String) {
+            let file = VfsFileRepo::get_file_with_conn(&conn, file_id)
+                .unwrap()
+                .expect("file must exist");
+            (file.mime_type, file.file_type, file.updated_at)
+        };
+        let resource_state =
+            |resource_id: &str| -> (String, Option<String>, i64, String, Option<String>) {
+                conn.query_row(
+                "SELECT type, metadata_json, updated_at, hash, data FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap()
+            };
+
+        // 1) 资源 hash 正确但 data 不是合法 base64。
+        let invalid_base64 = "@@@not-base64@@@";
+        conn.execute(
+            "UPDATE resources SET data = ?1, hash = ?2 WHERE id = ?3",
+            params![
+                invalid_base64,
+                VfsResourceRepo::compute_hash(invalid_base64),
+                &bad_base64_resource,
+            ],
+        )
+        .unwrap();
+        let before_file = file_state(bad_base64_file);
+        let before_resource = resource_state(&bad_base64_resource);
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), bad_base64_file)
+                .expect("reclassify must return an outcome");
+        assert_eq!(outcome.status, FileReclassifyStatus::Corrupt);
+        assert_eq!(file_state(bad_base64_file), before_file);
+        assert_eq!(resource_state(&bad_base64_resource), before_resource);
+        let item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", bad_base64_file)
+                .unwrap()
+                .expect("folder membership must remain a file");
+        assert_eq!(item.folder_id.as_deref(), Some(folder.id.as_str()));
+        assert!(VfsFolderRepo::get_folder_item_by_item_id_with_conn(
+            &conn,
+            "image",
+            bad_base64_file
+        )
+        .unwrap()
+        .is_none());
+
+        // 2) 内容/base64 正常，但 files.sha256 与 raw bytes 不一致。
+        let wrong_hash = VfsBlobRepo::compute_hash(b"a3 inline raw mismatch sentinel");
+        conn.execute(
+            "UPDATE files SET sha256 = ?1 WHERE id = ?2",
+            params![wrong_hash, mismatch_file],
+        )
+        .unwrap();
+        let before_file = file_state(mismatch_file);
+        let before_resource = resource_state(&mismatch_resource);
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), mismatch_file)
+                .expect("reclassify must return an outcome");
+        assert_eq!(outcome.status, FileReclassifyStatus::Corrupt);
+        assert_eq!(file_state(mismatch_file), before_file);
+        assert_eq!(resource_state(&mismatch_resource), before_resource);
+        let item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", mismatch_file)
+                .unwrap()
+                .expect("folder membership must remain a file");
+        assert_eq!(item.folder_id.as_deref(), Some(folder.id.as_str()));
+        assert!(
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", mismatch_file)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    // ★ A3: 无内容来源（无 blob 且无 resource）必须 Missing 且零写。
+    #[test]
+    fn reclassify_missing_inline_resource_returns_missing_without_mutation() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let file_id = "file_a3_missing_resource";
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        conn.execute(
+            r#"INSERT INTO files (
+                id, resource_id, blob_hash, type, name, mime_type, size,
+                content_hash, sha256, file_name, created_at, updated_at
+            ) VALUES (?1, NULL, NULL, 'file', ?2, 'application/octet-stream', 1, NULL, ?3, ?2, ?4, ?4)"#,
+            params![file_id, "Missing Inline", "sha_a3_missing_resource", &now],
+        )
+        .unwrap();
+
+        let before = VfsFileRepo::get_file_with_conn(&conn, file_id)
+            .unwrap()
+            .expect("file row must exist");
+        let resources_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        let blobs_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), file_id)
+                .expect("reclassify must return an outcome");
+        assert_eq!(outcome.status, FileReclassifyStatus::Missing);
+        let returned = outcome
+            .file
+            .expect("missing status keeps the current record");
+        assert_eq!(returned.id, before.id);
+        assert_eq!(returned.mime_type, before.mime_type);
+        assert_eq!(returned.file_type, before.file_type);
+        assert_eq!(returned.updated_at, before.updated_at);
+
+        let after = VfsFileRepo::get_file_with_conn(&conn, file_id)
+            .unwrap()
+            .expect("file row must remain");
+        assert_eq!(after.mime_type, before.mime_type);
+        assert_eq!(after.file_type, before.file_type);
+        assert_eq!(after.updated_at, before.updated_at);
+        let resources_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        let blobs_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(resources_after, resources_before);
+        assert_eq!(blobs_after, blobs_before);
+    }
+
+    /// Test seam for the A3 import sequence (blob write + file/folder record).
+    ///
+    /// Blob is stored from verified content with `verified_*`; the record path
+    /// is now the verified-folder API, which re-detects from `data` and must
+    /// override the deliberately wrong `declared_*` fallback. The prior RED
+    /// used `create_file_in_folder_with_conn` here; only this body was replaced
+    /// (interface substitution), never the tests' assertions.
+    fn import_verified_file_into_folder(
+        db: &VfsDatabase,
+        folder_id: &str,
+        file_name: &str,
+        data: &[u8],
+        verified_mime: &str,
+        verified_extension: &str,
+        declared_mime: &str,
+        declared_file_type: &str,
+    ) -> VfsResult<VfsFile> {
+        let blob =
+            VfsBlobRepo::store_blob(db, data, Some(verified_mime), Some(verified_extension))?;
+        let result = VfsFileRepo::create_file_in_folder_from_verified_bytes(
+            db,
+            &blob.hash,
+            file_name,
+            data.len() as i64,
+            declared_file_type,
+            Some(declared_mime),
+            Some(&blob.hash),
+            None,
+            Some(folder_id),
+            data,
+        );
+        match &result {
+            Ok(outcome) if outcome.created => {}
+            // 与生产 handler 一致：命中去重条目或失败时归还本次 store_blob 引用。
+            _ => {
+                let _ = VfsBlobRepo::decrement_ref(db, &blob.hash);
+            }
+        }
+        result.map(|outcome| outcome.file)
+    }
+
+    #[test]
+    fn import_verified_png_into_folder_corrects_files_resources_and_folder_category() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 新导入图片".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let png = real_png_fixture();
+        let expected_sha = VfsBlobRepo::compute_hash(&png);
+        let imported = import_verified_file_into_folder(
+            &db,
+            &folder.id,
+            "Opaque Capture",
+            &png,
+            "image/png",
+            "png",
+            "application/octet-stream",
+            "file",
+        )
+        .expect("verified import must create the file row");
+
+        assert_eq!(
+            imported.sha256, expected_sha,
+            "内容 hash 必须来自真实 bytes"
+        );
+        assert_eq!(imported.file_name, "Opaque Capture");
+        assert_eq!(imported.size, png.len() as i64);
+        assert_eq!(
+            imported.mime_type.as_deref(),
+            Some("image/png"),
+            "识别出的 MIME 必须写回 files.mime_type，不能沿用调用方 octet-stream"
+        );
+        assert_eq!(
+            imported.file_type, "image",
+            "识别出的类别必须写回 files.type，不能沿用调用方 file"
+        );
+
+        let resource_id = imported
+            .resource_id
+            .as_deref()
+            .expect("new file must have a resources mirror");
+        let (resource_type, metadata_json): (String, Option<String>) = conn
+            .query_row(
+                "SELECT type, metadata_json FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            resource_type, "image",
+            "resources 镜像类别必须与 files.type 一致"
+        );
+        let metadata: serde_json::Value =
+            serde_json::from_str(metadata_json.as_deref().unwrap_or("{}")).unwrap();
+        assert_eq!(
+            metadata.get("mimeType").and_then(|value| value.as_str()),
+            Some("image/png"),
+            "resources.metadata_json 必须镜像识别出的 MIME"
+        );
+
+        let image_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &imported.id)
+                .unwrap()
+                .expect("新导入图片必须落在 image 目录项");
+        assert_eq!(image_item.folder_id.as_deref(), Some(folder.id.as_str()));
+        assert!(
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &imported.id)
+                .unwrap()
+                .is_none(),
+            "不得同时留下 file 目录项"
+        );
+        let folder_item_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folder_items WHERE item_id = ?1",
+                params![imported.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_item_count, 1, "同一文件只能有一个目录项");
+    }
+
+    #[test]
+    fn generic_mime_svg_name_never_falls_back_to_weak_text_or_xml() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 SVG 弱文本".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let svg = real_svg_fixture();
+        let imported = import_verified_file_into_folder(
+            &db,
+            &folder.id,
+            "x.svg",
+            &svg,
+            "application/octet-stream",
+            "bin",
+            "application/octet-stream",
+            "file",
+        )
+        .expect("generic-MIME SVG import must create the file row");
+
+        // 允许保持 generic file，或按名称映射为 svg/image；绝不能被弱文本
+        // 启发式改成 text/plain 或 application/xml。
+        assert_ne!(
+            imported.mime_type.as_deref(),
+            Some("text/plain"),
+            "弱文本检测不得覆盖 .svg 名称"
+        );
+        assert_ne!(
+            imported.mime_type.as_deref(),
+            Some("application/xml"),
+            "弱 XML 检测不得覆盖 .svg 名称"
+        );
+        assert!(
+            matches!(
+                imported.mime_type.as_deref(),
+                Some("image/svg+xml") | Some("application/octet-stream") | None
+            ),
+            "SVG 只能保持 generic file 或映射为 svg/image，got {:?}",
+            imported.mime_type
+        );
+        assert!(
+            imported.file_type == "file" || imported.file_type == "image",
+            "弱文本不得把 SVG 落成 document，got {}",
+            imported.file_type
+        );
+        assert_eq!(imported.file_name, "x.svg", "不得改用户名称");
+    }
+
+    #[test]
+    fn reclassify_image_svg_is_not_downgraded_by_weak_text_detection() {
+        use crate::vfs::file_reclassify::FileReclassifyStatus;
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 SVG 重识别".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let svg = real_svg_fixture();
+        let svg_sha = VfsBlobRepo::compute_hash(&svg);
+        let blob = VfsBlobRepo::store_blob(&db, &svg, Some("image/svg+xml"), Some("svg")).unwrap();
+        let file = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &svg_sha,
+            "vector.svg",
+            svg.len() as i64,
+            "image",
+            Some("image/svg+xml"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        // create_file_in_folder 的目录项固定为 file；先校准成已有的正确 image 状态。
+        conn.execute(
+            "UPDATE folder_items SET item_type = 'image' WHERE item_id = ?1",
+            params![file.id.as_str()],
+        )
+        .unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, &file.id, true).unwrap();
+        let resource_id = file.resource_id.clone().unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(&conn, &resource_id).unwrap(),
+            1
+        );
+        let before = VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .unwrap();
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+                .expect("reclassify must return an outcome");
+        assert_eq!(outcome.status, FileReclassifyStatus::Recognized);
+        let reclassified = outcome.file.expect("recognized keeps the file");
+
+        assert_eq!(
+            reclassified.mime_type.as_deref(),
+            Some("image/svg+xml"),
+            "既有 image/svg+xml 不得被弱 xml/txt 检测降级"
+        );
+        assert_eq!(reclassified.file_type, "image", "SVG 类别必须保持 image");
+        assert_eq!(reclassified.id, before.id);
+        assert_eq!(reclassified.sha256, before.sha256);
+        assert_eq!(reclassified.blob_hash, before.blob_hash);
+        assert_eq!(reclassified.size, before.size);
+        assert_eq!(reclassified.file_name, "vector.svg");
+        assert!(reclassified.is_favorite);
+        let membership =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &file.id)
+                .unwrap()
+                .expect("原目录项必须保持 image");
+        assert_eq!(membership.folder_id.as_deref(), Some(folder.id.as_str()));
+        assert!(
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &file.id)
+                .unwrap()
+                .is_none(),
+            "不得新增 file 目录项"
+        );
+        let ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM resources WHERE id = ?1",
+                params![resource_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1, "重识别必须保留资源引用计数");
+    }
+
+    #[test]
+    fn low_level_verified_bytes_rejects_size_and_blob_mismatch_without_writes() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let png = real_png_fixture();
+        let blob = VfsBlobRepo::store_blob(&db, &png, Some("image/png"), Some("png")).unwrap();
+        let row_counts = |conn: &rusqlite::Connection| -> (i64, i64) {
+            (
+                conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                    .unwrap(),
+                conn.query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+                    .unwrap(),
+            )
+        };
+        let before = row_counts(&conn);
+
+        let size_mismatch = VfsFileRepo::create_file_from_verified_bytes_with_conn(
+            &conn,
+            &blob.hash,
+            "x.png",
+            png.len() as i64 + 1,
+            "image",
+            Some("image/png"),
+            Some(&blob.hash),
+            None,
+            &png,
+        );
+        assert!(size_mismatch.is_err(), "size 与 data 不一致必须拒绝");
+        assert_eq!(row_counts(&conn), before, "size 校验失败必须零写");
+
+        let blob_mismatch = VfsFileRepo::create_file_from_verified_bytes_with_conn(
+            &conn,
+            &blob.hash,
+            "x.png",
+            png.len() as i64,
+            "image",
+            Some("image/png"),
+            Some("deadbeef"),
+            None,
+            &png,
+        );
+        assert!(
+            blob_mismatch.is_err(),
+            "blob_hash 与 data/sha 不一致必须拒绝"
+        );
+        assert_eq!(row_counts(&conn), before, "blob 元组校验失败必须零写");
+    }
+
+    #[test]
+    fn import_verified_png_dedups_legacy_generic_file_and_preserves_identity() {
+        use crate::vfs::repos::resource_repo::VfsResourceRepo;
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 旧 generic 条目".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+
+        let png = real_png_fixture();
+        let png_sha = VfsBlobRepo::compute_hash(&png);
+        let legacy_blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("application/octet-stream"), Some("bin"))
+                .unwrap();
+        let legacy = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &png_sha,
+            "Whiteboard Capture",
+            png.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&legacy_blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        VfsFileRepo::set_favorite_with_conn(&conn, &legacy.id, true).unwrap();
+        let resource_id = legacy.resource_id.clone().unwrap();
+        assert_eq!(
+            VfsResourceRepo::increment_ref_with_conn(&conn, &resource_id).unwrap(),
+            1
+        );
+        let before = VfsFileRepo::get_file_with_conn(&conn, &legacy.id)
+            .unwrap()
+            .unwrap();
+
+        let reimported = import_verified_file_into_folder(
+            &db,
+            &folder.id,
+            "Whiteboard Capture",
+            &png,
+            "image/png",
+            "png",
+            "application/octet-stream",
+            "file",
+        )
+        .expect("verified dedup must return the existing file");
+
+        assert_eq!(reimported.id, before.id, "A3 必须保留原文件 ID");
+        assert_eq!(reimported.sha256, before.sha256, "A3 必须保留内容 hash");
+        assert_eq!(reimported.blob_hash, before.blob_hash);
+        let blob_ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                params![png_sha.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(blob_ref_count, 1, "重复导入同一内容不得让 blob ref 每次 +1");
+        assert_eq!(
+            reimported.file_name, before.file_name,
+            "A3 不得默认改用户名称"
+        );
+        assert!(reimported.is_favorite, "A3 必须保留收藏状态");
+        assert_eq!(
+            reimported.resource_id.as_deref(),
+            Some(resource_id.as_str()),
+            "A3 必须保留 resources 身份"
+        );
+        assert_eq!(
+            reimported.mime_type.as_deref(),
+            Some("image/png"),
+            "去重命中旧 generic 条目时必须用已验证 bytes 回填 MIME"
+        );
+        assert_eq!(
+            reimported.file_type, "image",
+            "去重命中旧 generic 条目时必须同步文件类别"
+        );
+
+        let (resource_type, metadata_json): (String, Option<String>) = conn
+            .query_row(
+                "SELECT type, metadata_json FROM resources WHERE id = ?1",
+                params![resource_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(resource_type, "image", "resources 镜像类别必须同步");
+        let metadata: serde_json::Value =
+            serde_json::from_str(metadata_json.as_deref().unwrap_or("{}")).unwrap();
+        assert_eq!(
+            metadata.get("mimeType").and_then(|value| value.as_str()),
+            Some("image/png"),
+            "resources.metadata_json 必须镜像识别出的 MIME"
+        );
+        let ref_count: i32 = conn
+            .query_row(
+                "SELECT ref_count FROM resources WHERE id = ?1",
+                params![resource_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1, "A3 必须保留引用计数");
+
+        let image_item =
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "image", &before.id)
+                .unwrap()
+                .expect("类别同步后目录项必须为 image");
+        assert_eq!(
+            image_item.folder_id.as_deref(),
+            Some(folder.id.as_str()),
+            "A3 必须保留目录归属"
+        );
+        assert!(
+            VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &before.id)
+                .unwrap()
+                .is_none(),
+            "类别同步后不得残留 file 目录项"
+        );
+        let folder_item_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folder_items WHERE item_id = ?1",
+                params![before.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_item_count, 1, "去重重导入不得复制目录项");
+    }
+
+    #[test]
+    fn verified_folder_api_rejects_unverified_tuple_and_ink_without_writes() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let folder = VfsFolder::new("A3 验证失败".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+        let row_counts = |conn: &rusqlite::Connection| -> (i64, i64, i64) {
+            (
+                conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+                    .unwrap(),
+                conn.query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+                    .unwrap(),
+                conn.query_row("SELECT COUNT(*) FROM folder_items", [], |row| row.get(0))
+                    .unwrap(),
+            )
+        };
+
+        let png = real_png_fixture();
+        let blob = VfsBlobRepo::store_blob(&db, &png, Some("image/png"), Some("png")).unwrap();
+        let before = row_counts(&conn);
+
+        let bad_sha = VfsFileRepo::create_file_in_folder_from_verified_bytes_with_conn(
+            &conn,
+            "deadbeef",
+            "Opaque Capture",
+            png.len() as i64,
+            "image",
+            Some("image/png"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+            &png,
+        );
+        assert!(bad_sha.is_err(), "sha 与 data 不一致必须拒绝");
+        assert_eq!(
+            row_counts(&conn),
+            before,
+            "校验失败不得写入 files/resources/folder_items"
+        );
+
+        let bad_size = VfsFileRepo::create_file_in_folder_from_verified_bytes_with_conn(
+            &conn,
+            &blob.hash,
+            "Opaque Capture",
+            png.len() as i64 + 1,
+            "image",
+            Some("image/png"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+            &png,
+        );
+        assert!(bad_size.is_err(), "size 与 data 不一致必须拒绝");
+
+        let unstored = b"no blob row for these verified bytes";
+        let unstored_hash = VfsBlobRepo::compute_hash(unstored);
+        let missing_blob = VfsFileRepo::create_file_in_folder_from_verified_bytes_with_conn(
+            &conn,
+            &unstored_hash,
+            "Missing Blob",
+            unstored.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&unstored_hash),
+            None,
+            Some(&folder.id),
+            unstored,
+        );
+        assert!(missing_blob.is_err(), "blob tuple 缺失必须拒绝");
+        assert_eq!(row_counts(&conn), before, "blob 校验失败不得写入三张表");
+
+        let ink_bytes = br#"{"ink":{"pages":[]}}"#;
+        let ink_blob = VfsBlobRepo::store_blob(
+            &db,
+            ink_bytes,
+            Some("application/octet-stream"),
+            Some("bin"),
+        )
+        .unwrap();
+        let ink = VfsFileRepo::create_file_in_folder_from_verified_bytes_with_conn(
+            &conn,
+            &ink_blob.hash,
+            "note.dsink",
+            ink_bytes.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&ink_blob.hash),
+            None,
+            Some(&folder.id),
+            ink_bytes,
+        );
+        assert!(ink.is_err(), "新 ID Ink candidate 必须拒绝");
+        assert_eq!(
+            row_counts(&conn),
+            before,
+            "Ink 拒绝必须回滚 files/resources/folder_items"
+        );
+    }
+
+    fn png_crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &byte in bytes {
+            crc ^= byte as u32;
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    /// 在真实 PNG 的 IHDR 后插入一个 >64KiB 的合法 tEXt chunk（CRC 正确）。
+    fn real_png_with_large_ancillary_chunk() -> Vec<u8> {
+        let base = real_png_fixture();
+        assert_eq!(
+            &base[..8],
+            &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A][..]
+        );
+        assert_eq!(&base[12..16], &b"IHDR"[..]);
+        let ihdr_len = u32::from_be_bytes([base[8], base[9], base[10], base[11]]) as usize;
+        assert_eq!(ihdr_len, 13);
+        let ihdr_end = 8 + 12 + ihdr_len;
+
+        let mut payload = b"Comment\0".to_vec();
+        payload.extend(std::iter::repeat(b'A').take(70 * 1024));
+        let chunk_type = [b't', b'E', b'X', b't'];
+        let mut crc_input = Vec::with_capacity(4 + payload.len());
+        crc_input.extend_from_slice(&chunk_type[..]);
+        crc_input.extend_from_slice(&payload);
+
+        let mut out = base[..ihdr_end].to_vec();
+        out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        out.extend_from_slice(&chunk_type[..]);
+        out.extend_from_slice(&payload);
+        out.extend_from_slice(&png_crc32(&crc_input).to_be_bytes());
+        out.extend_from_slice(&base[ihdr_end..]);
+        assert!(out.len() > 64 * 1024);
+        out
+    }
+
+    // ★ A3: 真实 PNG 带 >64KiB 合法 chunk 时，头部 64KiB 会被截断；
+    // 流式 chunk 遍历仍必须识别为有效，不得误拒。
+    #[test]
+    fn reclassify_accepts_valid_png_with_chunk_larger_than_header_window() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let png = real_png_with_large_ancillary_chunk();
+        assert!(
+            crate::vfs::file_reclassify::validate_png_structure_bytes(&png).unwrap(),
+            "large-chunk fixture must be structurally valid"
+        );
+        let blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("application/octet-stream"), Some("png"))
+                .unwrap();
+        let folder = VfsFolder::new("A3 Large Chunk".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+        let file = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &blob.hash,
+            "Large Chunk",
+            png.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+
+        let outcome =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id)
+                .expect("valid large-chunk PNG must be recognized");
+        assert_eq!(outcome.status, FileReclassifyStatus::Recognized);
+        let file = outcome.file.expect("recognized file");
+        assert_eq!(file.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(file.file_type, "image");
+    }
+
+    // ★ A3: 软删除文件不得被通用重识别改写类别；否则 folder_items 从
+    // file 变 image 后，restore 只恢复 file 类别会丢失目录归属。
+    #[test]
+    fn reclassify_rejects_soft_deleted_file_without_touching_membership() {
+        use crate::vfs::types::VfsFolder;
+
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let png = real_png_fixture();
+        let blob =
+            VfsBlobRepo::store_blob(&db, &png, Some("application/octet-stream"), Some("png"))
+                .unwrap();
+        let folder = VfsFolder::new("A3 Trash Guard".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).unwrap();
+        let file = VfsFileRepo::create_file_in_folder_with_conn(
+            &conn,
+            &blob.hash,
+            "Trashed Image",
+            png.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .unwrap();
+        let resource_id = file.resource_id.clone().expect("file resource");
+        VfsFileRepo::delete_file_with_conn(&conn, &file.id).unwrap();
+
+        let file_before: (Option<String>, String, String, Option<String>, String) = conn
+            .query_row(
+                "SELECT mime_type, type, status, deleted_at, updated_at FROM files WHERE id = ?1",
+                params![&file.id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        let item_before: (String, Option<String>, Option<String>, Option<i64>, i32, Option<String>) =
+            conn.query_row(
+                "SELECT item_type, folder_id, deleted_at, updated_at, sort_order, cached_path FROM folder_items WHERE item_id = ?1",
+                params![&file.id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        let resource_before: (String, Option<String>, i64, String, Option<String>) = conn
+            .query_row(
+                "SELECT type, metadata_json, updated_at, hash, data FROM resources WHERE id = ?1",
+                params![&resource_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(file_before.2, "deleted");
+
+        let result =
+            VfsFileRepo::reclassify_existing_file_with_conn(&conn, db.blobs_dir(), &file.id);
+        match result {
+            Ok(outcome) => assert_eq!(
+                outcome.status,
+                FileReclassifyStatus::Missing,
+                "soft-deleted file must be Missing, not reclassified"
+            ),
+            Err(err) => assert!(
+                matches!(&err, VfsError::InvalidState { .. }),
+                "soft-deleted file must be Missing or explicitly refused with InvalidState, got {err:?}"
+            ),
+        }
+
+        let file_after: (Option<String>, String, String, Option<String>, String) = conn
+            .query_row(
+                "SELECT mime_type, type, status, deleted_at, updated_at FROM files WHERE id = ?1",
+                params![&file.id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        let item_after: (String, Option<String>, Option<String>, Option<i64>, i32, Option<String>) =
+            conn.query_row(
+                "SELECT item_type, folder_id, deleted_at, updated_at, sort_order, cached_path FROM folder_items WHERE item_id = ?1",
+                params![&file.id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        let resource_after: (String, Option<String>, i64, String, Option<String>) = conn
+            .query_row(
+                "SELECT type, metadata_json, updated_at, hash, data FROM resources WHERE id = ?1",
+                params![&resource_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(file_after, file_before);
+        assert_eq!(item_after, item_before);
+        assert_eq!(resource_after, resource_before);
+
+        VfsFileRepo::restore_file_with_conn(&conn, &file.id).unwrap();
+        let restored = VfsFolderRepo::get_folder_item_by_item_id_with_conn(&conn, "file", &file.id)
+            .unwrap()
+            .expect("restore must keep the file membership");
+        assert_eq!(restored.folder_id.as_deref(), Some(folder.id.as_str()));
     }
 }

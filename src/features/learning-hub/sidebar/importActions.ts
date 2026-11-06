@@ -2,7 +2,13 @@ import type React from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
-import { extractFileName, extractDisplayFileName } from '@/utils/fileManager';
+import {
+  extractFileName,
+  extractDisplayFileName,
+  extractFileExtension,
+  resolveImportFileInfo,
+  type ResolvedImportInfo,
+} from '@/utils/fileManager';
 import type { DstuNode } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -28,6 +34,43 @@ import {
 import type { MarkdownNoteImport } from './useMarkdownNoteImport';
 
 type AttachImportProgress = { done: number; total: number } | null;
+
+/**
+ * 旧 URI 名称回退：仅在 native 描述解析失败、且路径本身带明确扩展名时使用，
+ * 保持“普通有后缀路径”的既有分流行为。
+ */
+function legacyImportInfo(path: string): ResolvedImportInfo | null {
+  const displayName = extractFileName(path);
+  // 必须使用真正的“最后一个点号后的非空后缀”语义：
+  // opaque ID（msf:1000000099）没有点号，不能被 split('.') 误当成扩展名。
+  const extension = extractFileExtension(path);
+  if (!extension) return null;
+  const kind = IMAGE_EXTENSIONS.has(extension)
+    ? 'image'
+    : MEDIA_EXTENSIONS.has(extension)
+      ? 'media'
+      : DOCUMENT_EXTENSIONS.has(extension)
+        ? 'document'
+        : 'file';
+  return { displayName, extension, mimeType: '', kind };
+}
+
+/** native 描述可能缺少扩展名；归一化后再用于分流和落库命名。 */
+function normalizeResolvedImportInfo(path: string, info: ResolvedImportInfo): ResolvedImportInfo {
+  const fallbackName = extractFileName(path);
+  const rawName = info.displayName.trim() || fallbackName;
+  const extension = (info.extension ?? extractFileExtension(rawName)).trim().toLowerCase() || null;
+  const displayName = extension && !extractFileExtension(rawName)
+    ? `${rawName}.${extension}`
+    : rawName;
+  return {
+    displayName,
+    extension,
+    mimeType: info.mimeType || 'application/octet-stream',
+    kind: info.kind,
+  };
+}
+
 
 export interface ImportPathsContext {
   importProgress: Pick<ImportProgressState, 'isImporting'>;
@@ -74,29 +117,63 @@ export async function importPathsIntoLibrary(
   const docPaths: string[] = [];
   const imagePaths: string[] = [];
   const otherPaths: string[] = [];
+  const resolvedInfoByPath = new Map<string, ResolvedImportInfo>();
 
   const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
     flashcards: [],
     mindmap: [],
   };
 
+  // ★ Android 修复：SAF opaque document ID 的末段不含真实文件名/扩展名。
+  // 分流前先向 native 请求有界内容检测后的描述；只有带明确后缀的普通路径
+  // 才允许在 IPC 失败时回退到旧行为。opaque 且无描述的文件必须显式失败，
+  // 不能以 octet-stream 静默落库。
+  // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
+  const failedDetails: { name: string; reason?: string }[] = [];
+  let totalFailed = 0;
+
   for (const p of paths) {
-    const name = extractFileName(p);
-    const ext = getFileExtension(name);
+    let info: ResolvedImportInfo;
+    try {
+      info = await resolveImportFileInfo(p);
+    } catch (resolveError) {
+      const fallback = legacyImportInfo(p);
+      if (!fallback) {
+        debugLog.error('[LearningHub] 无法解析导入文件描述:', extractDisplayFileName(p), resolveError);
+        failedDetails.push({ name: extractDisplayFileName(p), reason: t('finder.dragDrop.readFileFailed') });
+        totalFailed += 1;
+        continue;
+      }
+      info = fallback;
+    }
+
+    const resolved = normalizeResolvedImportInfo(p, info);
+    resolvedInfoByPath.set(p, resolved);
+    const name = resolved.displayName;
+    const ext = (resolved.extension ?? extractFileExtension(name)).toLowerCase();
     const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
     if (guidance) {
       // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
       guidanceNames[guidance].push(name);
       continue;
     }
-    if (DOCUMENT_EXTENSIONS.has(ext)) {
-      docPaths.push(p);
-    } else if (IMAGE_EXTENSIONS.has(ext)) {
+    if (resolved.kind === 'image') {
       imagePaths.push(p);
+    } else if (resolved.kind === 'document') {
+      docPaths.push(p);
     } else {
       otherPaths.push(p);
     }
   }
+
+  const buildFailedSummary = () => failedDetails.length > 0
+    ? t('finder.dragDrop.importFailedFiles', {
+        names: failedDetails
+          .slice(0, 3)
+          .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+          .join('；'),
+      })
+    : undefined;
 
   if (guidanceNames.flashcards.length > 0) {
     showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
@@ -109,6 +186,9 @@ export async function importPathsIntoLibrary(
     }));
   }
   if (docPaths.length === 0 && imagePaths.length === 0 && otherPaths.length === 0) {
+    if (failedDetails.length > 0) {
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'), buildFailedSummary());
+    }
     return;
   }
 
@@ -121,16 +201,13 @@ export async function importPathsIntoLibrary(
 
   const { markdownItems: markdownNotePaths, otherItems: textbookPaths } = partitionMarkdownNoteImports(
     docPaths,
-    (path) => extractFileName(path),
+    (path) => resolvedInfoByPath.get(path)?.displayName ?? extractFileName(path),
     shouldImportMarkdownAsNotes,
   );
 
   let totalSuccess = 0;
-  let totalFailed = 0;
   let unlisten: UnlistenFn | null = null;
   let firstImportedNode: DstuNode | null = null;
-  // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
-  const failedDetails: { name: string; reason?: string }[] = [];
   // 后端按内容哈希去重：拖入已有的同一份文件会返回旧条目，不能报「已导入」
   const duplicateNames: string[] = [];
   const importStartedAt = Date.now();
@@ -154,7 +231,9 @@ export async function importPathsIntoLibrary(
 
     // 1. 文档类：通过 textbookDstuAdapter 导入（支持 PDF 渲染、哈希去重等）
     if (textbookPaths.length > 0) {
-      const firstFileName = textbookPaths[0] ? extractDisplayFileName(textbookPaths[0]) : '';
+      const firstFileName = textbookPaths[0]
+        ? resolvedInfoByPath.get(textbookPaths[0])?.displayName ?? extractDisplayFileName(textbookPaths[0])
+        : '';
       setImportProgress({
         isImporting: true,
         fileName: firstFileName,
@@ -217,9 +296,11 @@ export async function importPathsIntoLibrary(
       const attachResults = await Promise.all(
         attachmentPaths.map((filePath) =>
           limit(async () => {
-            const name = extractFileName(filePath);
-            const ext = getFileExtension(name);
-            const isImage = IMAGE_EXTENSIONS.has(ext);
+            const resolved = resolvedInfoByPath.get(filePath);
+            const name = resolved?.displayName ?? extractFileName(filePath);
+            const ext = (resolved?.extension ?? extractFileExtension(name)).toLowerCase();
+            const isImage = resolved ? resolved.kind === 'image' : IMAGE_EXTENSIONS.has(ext);
+            const isMedia = resolved ? resolved.kind === 'media' : MEDIA_EXTENSIONS.has(ext);
 
             try {
               let staged: { uploadId: string; size: number };
@@ -230,7 +311,12 @@ export async function importPathsIntoLibrary(
                 return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
               }
 
-              const mimeType = mimeTypeFromFileName(name)
+              // 可靠描述优先；provider 只给 octet-stream 时再用名称兜底。
+              const resolvedMime = resolved?.mimeType && resolved.mimeType !== 'application/octet-stream'
+                ? resolved.mimeType
+                : undefined;
+              const mimeType = resolvedMime
+                || mimeTypeFromFileName(name)
                 || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream');
 
               let result;
@@ -250,7 +336,7 @@ export async function importPathsIntoLibrary(
                 // ★ 携带后端结构化拒绝原因（如"不支持的文件类型 .xyz"）
                 return { ok: false as const, name, reason: result.error.toUserMessage() };
               }
-              return { ok: true as const, name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
+              return { ok: true as const, name, node: result.value, isMedia };
             } catch (e) {
               debugLog.error('[LearningHub] 附件导入失败:', name, e);
               return {
@@ -284,14 +370,7 @@ export async function importPathsIntoLibrary(
     }
 
     // 3. 显示结果通知（失败时附具体文件与原因，最多 3 条）
-    const failedSummary = failedDetails.length > 0
-      ? t('finder.dragDrop.importFailedFiles', {
-          names: failedDetails
-            .slice(0, 3)
-            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
-            .join('；'),
-        })
-      : undefined;
+    const failedSummary = buildFailedSummary();
     const duplicateSummary = duplicateNames.length > 0
       ? t('finder.dragDrop.alreadyInLibrary', { names: duplicateNames.slice(0, 3).join('、') })
       : undefined;

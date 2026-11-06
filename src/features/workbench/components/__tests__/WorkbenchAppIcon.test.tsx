@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { hasWorkbenchAppIcon, WorkbenchAppIcon } from '../WorkbenchAppIcon';
 
 const TYPE_IDS = [
-  'notes', 'todo', 'chat', 'pomodoro', 'translation', 'skills',
+  'notes', 'notebook', 'todo', 'chat', 'pomodoro', 'translation', 'skills',
   'textbook', 'browser', 'templates', 'sandbox', 'flashcards', 'settings',
   'exam', 'image', 'file', 'file-preview', 'taskDashboard', 'files', 'essay',
 ];

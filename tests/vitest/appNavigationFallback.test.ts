@@ -9,8 +9,9 @@ describe('App navigation fallback contract', () => {
     expect(appSource.includes("setCurrentView('analysis');")).toBe(false);
   });
 
-  it('removes legacy analysis/notes tab mappings', () => {
+  it('keeps the canonical notes tab while removing legacy analysis and notes-to-library mappings', () => {
     expect(appSource.includes("'analysis': 'chat-v2'")).toBe(false);
     expect(appSource.includes("'notes': 'learning-hub'")).toBe(false);
+    expect(appSource.includes("'notes': 'notes'")).toBe(true);
   });
 });

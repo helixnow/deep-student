@@ -691,6 +691,20 @@
       "statsSimple_one": "{{count}} paper",
       "statsSimple_other": "{{count}} papers"
     },
+    "ink": {
+      "title": "Handwriting render",
+      "document": "Document",
+      "revision": "Revision",
+      "page": "Page",
+      "artifact": "Artifact",
+      "resource": "Local resource",
+      "openArtifact": "Open artifact",
+      "openDocument": "Open document",
+      "undo": "Undo",
+      "undoing": "Undoing…",
+      "invalidOutput": "The handwriting result could not be displayed.",
+      "undoFailed": "Undo failed"
+    },
     "mcpTool": {
       "title": "Tool Call",
       "unknownTool": "Unknown Tool",

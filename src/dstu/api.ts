@@ -715,6 +715,37 @@ export async function setFavorite(path: string, isFavorite: boolean): Promise<Re
 }
 
 /**
+ * A3: 既有文件的受控重识别结果。
+ */
+export interface DstuReclassifyFileResult {
+  status: 'recognized' | 'unknown' | 'missing' | 'corrupt';
+  node: DstuNode | null;
+}
+
+/**
+ * A3: 从既有 blob 受控重识别文件类型（用户显式触发，不扫描全库）。
+ */
+export async function reclassifyFile(
+  id: string,
+): Promise<Result<DstuReclassifyFileResult>> {
+  try {
+    const result = await invoke<DstuReclassifyFileResult>('dstu_reclassify_file', { id });
+    if (result.node?.id) {
+      await invalidateCacheWithLogging(result.node.id, 'reclassifyFile');
+    }
+    return ok(result);
+  } catch (error: unknown) {
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.reclassify_failed', { defaultValue: '重新识别文件类型失败' }),
+      { id },
+    );
+    console.error(LOG_PREFIX, 'reclassifyFile() failed:', vfsError.toDetailedMessage());
+    return err(vfsError);
+  }
+}
+
+/**
  * 监听资源变化
  *
  * [FIX-H009] 处理 restored 和 purged 事件，触发缓存失效
@@ -1125,6 +1156,7 @@ export const dstu = {
   getContent,
   setMetadata,
   setFavorite,
+  reclassifyFile,
   watch,
   deleteMany,
   restoreMany,

@@ -425,6 +425,8 @@ pub async fn chat_v2_import_session(
             ended_at: source_block.ended_at,
             first_chunk_at: source_block.first_chunk_at,
             block_index: source_block.block_index,
+
+            ink_artifacts: Vec::new(),
         });
     }
 

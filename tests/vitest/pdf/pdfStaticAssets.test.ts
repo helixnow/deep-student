@@ -16,6 +16,7 @@ const require = createRequire(import.meta.url);
 const pdfjsDistDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
 
 const viteConfigSource = fs.readFileSync(path.join(repoRoot, 'vite.config.ts'), 'utf8');
+const playwrightCtConfigSource = fs.readFileSync(path.join(repoRoot, 'playwright-ct.config.ts'), 'utf8');
 const { keptCMapGlobs } = JSON.parse(
   fs.readFileSync(path.join(repoRoot, 'config', 'pdfjs-local-assets.json'), 'utf8'),
 ) as { keptCMapGlobs: string[] };
@@ -37,14 +38,27 @@ describe('pdf worker 单一权威来源', () => {
     expect(fs.existsSync(path.join(pdfjsDistDir, 'build', 'pdf.worker.min.mjs'))).toBe(true);
   });
 
-  it('workerSrc 只在 EnhancedPdfViewer 设置一次，指向 wrapper', () => {
+  it('Playwright CT keeps its default component root while serving the production wrapper and worker chunk', () => {
+    expect(playwrightCtConfigSource).not.toMatch(/ctViteConfig:\s*\{[\s\S]*?\broot\s*:/);
+    expect(playwrightCtConfigSource).toContain("publicDir: path.resolve(__dirname, 'public')");
+    expect(playwrightCtConfigSource).toMatch(/pdfjsDistPath,\s*'build',\s*'pdf\.worker\.min\.mjs'/);
+    expect(playwrightCtConfigSource).toContain('viteStaticCopy');
+  });
+
+  it('shared PDF worker initializer is the sole authority and viewer/source conversion use it', () => {
+    const srcDir = path.join(repoRoot, 'src');
+    const initializerPath = path.join(srcDir, 'utils', 'pdfjsWorker.ts');
+    const initializer = fs.readFileSync(initializerPath, 'utf8');
     const viewer = fs.readFileSync(
-      path.join(repoRoot, 'src', 'features', 'pdf', 'components', 'EnhancedPdfViewer.tsx'),
+      path.join(srcDir, 'features', 'pdf', 'components', 'EnhancedPdfViewer.tsx'),
       'utf8',
     );
-    expect(viewer).toContain('pdf.worker.wrapper.mjs');
-    // src 下不允许出现第二处 workerSrc 赋值（测试 mock 除外）
-    const srcDir = path.join(repoRoot, 'src');
+    const source = fs.readFileSync(path.join(srcDir, 'features', 'ink', 'prepare', 'source.ts'), 'utf8');
+    expect(initializer).toContain('pdf.worker.wrapper.mjs');
+    expect(viewer).toContain('initializePdfWorker');
+    expect(source).toContain('initializePdfWorker');
+
+    // Worker configuration stays centralized; do not point either consumer at the raw worker.
     const offenders: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -58,9 +72,7 @@ describe('pdf worker 单一权威来源', () => {
       }
     };
     walk(srcDir);
-    expect(offenders).toEqual([
-      path.join(srcDir, 'features', 'pdf', 'components', 'EnhancedPdfViewer.tsx'),
-    ]);
+    expect(offenders).toEqual([initializerPath]);
   });
 });
 

@@ -207,6 +207,8 @@ pub fn build_user_message(params: UserMessageParams) -> UserMessageResult {
         // 🔧 用户消息块：使用 now_ms 作为 first_chunk_at
         first_chunk_at: Some(now_ms),
         block_index: 0,
+
+        ink_artifacts: Vec::new(),
     };
 
     UserMessageResult { message, block }

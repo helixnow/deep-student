@@ -431,6 +431,7 @@
     "get_content_failed": "Failed to get resource content",
     "set_metadata_failed": "Failed to set metadata",
     "set_favorite_failed": "Failed to set favorite status",
+    "reclassify_failed": "Failed to re-identify the file type",
     "watch_failed": "Failed to watch resource changes",
     "unwatch_failed": "Failed to stop watching resource",
     "delete_many_failed": "Failed to delete resources in bulk",

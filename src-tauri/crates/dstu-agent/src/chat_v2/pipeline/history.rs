@@ -77,6 +77,8 @@ impl ChatV2Pipeline {
             .iter()
             .map(|message| message.id.clone())
             .collect();
+        super::ink_visual_rounds::validate_persisted_ink_refs(&conn, &message_ids)
+            .map_err(|error| ChatV2Error::Llm(error.to_string()))?;
         let (mut blocks_by_message, replay_map) =
             ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &message_ids)?;
         let active_variant_artifacts = active_variant_artifacts_by_user(&messages_to_load);
@@ -93,6 +95,7 @@ impl ChatV2Pipeline {
 
         // 转换为 LegacyChatMessage 格式
         let mut chat_history = Vec::new();
+        let mut ink_visual_rounds = Vec::new();
         // V20260806：最近一条 user 消息在 chat_history 中的下标。
         // workspace_injection 还原的 user 消息要插到这条消息**之前**
         // （live 时注入消息 push 在 chat_history 末尾，位于本轮 user 消息前）
@@ -271,6 +274,7 @@ impl ChatV2Pipeline {
             // 如果是 assistant 消息且有工具调用，先添加工具调用消息
             // 🔧 B1+B2+C1 修复：使用 tool_entries（含关联 thinking）替代 tool_blocks
             if role == "assistant" && !tool_entries.is_empty() {
+                let mut round_tool_entries = Vec::with_capacity(tool_entries.len());
                 for (idx, (entry_thinking, tool_block)) in tool_entries.iter().enumerate() {
                     let replay = replay_map.get(tool_block.id.as_str());
                     // V20260806：tool_call_id / round_text / meta 回填（thought_signature、
@@ -288,6 +292,7 @@ impl ChatV2Pipeline {
                         .as_ref()
                         .map(|tr| tr.call_id.clone())
                         .unwrap_or_default();
+                    round_tool_entries.push((*tool_block, anchor_call_id.clone()));
                     chat_history.push(assistant_tool_msg);
                     chat_history.push(tool_msg);
 
@@ -326,6 +331,52 @@ impl ChatV2Pipeline {
                         idx,
                         entry_thinking.is_some()
                     );
+                }
+
+                let mut round_ends = std::collections::BTreeSet::new();
+                for (entry_index, (block, call_id)) in round_tool_entries.iter().enumerate() {
+                    if block.status != block_status::SUCCESS {
+                        continue;
+                    }
+                    for reference in &block.ink_artifacts {
+                        if reference.session_id != ctx.session_id
+                            || reference.tool_call_id != *call_id
+                        {
+                            return Err(ChatV2Error::Llm(
+                                "IMAGE_DELIVERY_FAILED: renderer parent identity mismatch".into(),
+                            ));
+                        }
+                        let Some(round_end) =
+                            round_tool_entries.iter().position(|(_, candidate_id)| {
+                                candidate_id == &reference.round_last_tool_call_id
+                            })
+                        else {
+                            return Err(ChatV2Error::Llm(
+                                "IMAGE_DELIVERY_FAILED: renderer round anchor missing".into(),
+                            ));
+                        };
+                        if round_end < entry_index {
+                            return Err(ChatV2Error::Llm(
+                                "IMAGE_DELIVERY_FAILED: renderer round anchor precedes call".into(),
+                            ));
+                        }
+                        round_ends.insert(round_end);
+                    }
+                }
+                let mut round_start = 0;
+                for round_end in round_ends {
+                    if let Some((round_last_tool_call_id, calls)) =
+                        super::ink_visual_rounds::validate_ink_artifact_round(
+                            &ctx.session_id,
+                            &message.session_id,
+                            &message.id,
+                            &round_tool_entries[round_start..=round_end],
+                        )
+                        .map_err(|error| ChatV2Error::Llm(error.to_string()))?
+                    {
+                        ink_visual_rounds.push((round_last_tool_call_id, calls));
+                    }
+                    round_start = round_end + 1;
                 }
 
                 // 兜底：tool_call_id 未匹配（老数据 tc_{block_id} 派生等）时，
@@ -550,6 +601,86 @@ impl ChatV2Pipeline {
                 &ctx.session_id,
                 &digest_mismatch_skill_ids,
             );
+        }
+
+        if !ink_visual_rounds.is_empty() {
+            let Some(vfs_db) = self.vfs_db.as_deref() else {
+                return Err(ChatV2Error::Llm(
+                    "IMAGE_DELIVERY_FAILED: VFS unavailable for persisted ink artifacts".into(),
+                ));
+            };
+            let mut existing_blobs = std::collections::HashSet::new();
+            for message in &chat_history {
+                if let Some(canonical) = message
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("canonicalContent"))
+                    .and_then(|value| {
+                        serde_json::from_value::<Vec<crate::chat_v2::types::CanonicalContentPart>>(
+                            value.clone(),
+                        )
+                        .ok()
+                    })
+                {
+                    existing_blobs.extend(super::context_compiler::canonical_image_blob_hashes(
+                        &canonical,
+                    ));
+                }
+            }
+            let images_in_history = super::context_compiler::count_request_images(&chat_history);
+            let image_bytes_in_history =
+                super::context_compiler::count_request_image_bytes(&chat_history);
+            let mut image_budget =
+                super::context_compiler::RetrievalPageImageBudget::new_with_bytes(
+                    super::context_compiler::DEFAULT_IMAGE_BUDGET,
+                    images_in_history,
+                    image_bytes_in_history,
+                    existing_blobs.clone(),
+                );
+            let (selected_rounds, omitted_rounds) =
+                super::ink_visual_rounds::select_recent_ink_visual_rounds(
+                    vfs_db,
+                    &ctx.session_id,
+                    &ink_visual_rounds,
+                    image_budget.remaining(),
+                    image_budget.remaining_bytes(),
+                    &existing_blobs,
+                )
+                .map_err(|error| ChatV2Error::Llm(error.to_string()))?;
+            for (round_last_tool_call_id, calls) in selected_rounds {
+                let image_message = super::ink_visual_rounds::compile_ink_visual_round(
+                    vfs_db,
+                    &ctx.session_id,
+                    &round_last_tool_call_id,
+                    &calls,
+                    &mut image_budget,
+                    true,
+                )
+                .map_err(|error| ChatV2Error::Llm(error.to_string()))?;
+                if let Some(image_message) = image_message {
+                    if !super::ink_visual_rounds::insert_ink_visual_message_after_tool_result(
+                        &mut chat_history,
+                        &round_last_tool_call_id,
+                        image_message,
+                    ) {
+                        return Err(ChatV2Error::Llm(
+                            "IMAGE_DELIVERY_FAILED: round anchor missing from history".to_string(),
+                        ));
+                    }
+                }
+            }
+            for round_last_tool_call_id in omitted_rounds {
+                let omitted = super::ink_visual_rounds::ink_visual_not_included_message();
+                if !super::ink_visual_rounds::insert_ink_visual_message_after_tool_result(
+                    &mut chat_history,
+                    &round_last_tool_call_id,
+                    omitted,
+                ) {
+                    return Err(ChatV2Error::Llm(
+                        "IMAGE_DELIVERY_FAILED: round anchor missing from history".to_string(),
+                    ));
+                }
+            }
         }
 
         // Keep the anchored summary alongside the verbatim unsummarized tail.
@@ -1356,6 +1487,38 @@ pub(super) mod replay_test_support {
         block.status = block_status::SUCCESS.to_string();
         block
     }
+
+    pub(in crate::chat_v2::pipeline) fn png_with_text_chunk(label: &str) -> Vec<u8> {
+        let png = [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+        let mut payload = b"Comment\0".to_vec();
+        payload.extend_from_slice(label.as_bytes());
+        let mut crc_input = b"tEXt".to_vec();
+        crc_input.extend_from_slice(&payload);
+        let mut crc = !0_u32;
+        for byte in crc_input {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xedb8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        let mut result = png[..png.len() - 12].to_vec();
+        result.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        result.extend_from_slice(b"tEXt");
+        result.extend_from_slice(&payload);
+        result.extend_from_slice(&(!crc).to_be_bytes());
+        result.extend_from_slice(&png[png.len() - 12..]);
+        result
+    }
 }
 
 // ============================================================
@@ -1369,6 +1532,604 @@ mod replay_consistency_tests {
     use crate::chat_v2::repo::BlockReplayData;
     use crate::chat_v2::types::{ChatSession, MessageMeta, SendMessageRequest, Variant};
     use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn history_replays_trusted_ink_artifact_after_complete_parallel_tool_round() {
+        use crate::chat_v2::pipeline::context_compiler::RetrievalPageImageBudget;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::vfs::{
+            ink::InkRect,
+            repos::{InkArtifactDraft, VfsInkArtifactRepo},
+        };
+        use base64::Engine;
+        use std::collections::HashSet;
+
+        const PNG: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+
+        let (_dir, mut pipeline) = replay_test_pipeline();
+        let vfs_dir = tempfile::TempDir::new().unwrap();
+        let mut coordinator =
+            MigrationCoordinator::new(vfs_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator.migrate_single(DatabaseId::Vfs).unwrap();
+        let vfs_db = crate::vfs::database::VfsDatabase::new(vfs_dir.path()).unwrap();
+        let session_id = "sess_ink_history";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        insert_user_turn(&conn, session_id, "msg_ink_u1", "blk_ink_u1", "看图", 1_000);
+
+        let artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &vfs_db.get_conn_safe().unwrap(),
+            vfs_db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "render-history-ink".into(),
+                render_id: "render-history-ink".into(),
+                document_id: "doc-history-ink".into(),
+                page_id: "page-1".into(),
+                revision: "revision-1".into(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: Some(InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                }),
+                width_px: 1,
+                height_px: 1,
+            },
+            PNG,
+        )
+        .unwrap();
+        let artifact_ref = dstu_core::agent::InkVisualArtifactRef {
+            artifact_id: artifact.artifact_id,
+            render_id: artifact.render_id,
+            session_id: session_id.to_string(),
+            tool_call_id: "call_ink".to_string(),
+            round_last_tool_call_id: "call_last".to_string(),
+            document_id: artifact.document_id,
+            page_id: artifact.page_id,
+            revision: artifact.revision,
+            blob_hash: artifact.blob_hash,
+            resource_id: artifact.resource_id,
+            content_hash: artifact.content_hash,
+            mime_type: artifact.mime_type,
+            width_px: artifact.width_px,
+            height_px: artifact.height_px,
+        };
+        let second_png = png_with_text_chunk("second-round-unique-image");
+        let second_artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &vfs_db.get_conn_safe().unwrap(),
+            vfs_db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "render-history-ink-second".into(),
+                render_id: "render-history-ink-second".into(),
+                document_id: "doc-history-ink".into(),
+                page_id: "page-2".into(),
+                revision: "revision-2".into(),
+                source_hash: None,
+                source_annotation_revision: None,
+                conversion_revision: None,
+                crop: Some(InkRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                }),
+                width_px: 1,
+                height_px: 1,
+            },
+            &second_png,
+        )
+        .unwrap();
+        let second_artifact_ref = dstu_core::agent::InkVisualArtifactRef {
+            artifact_id: second_artifact.artifact_id,
+            render_id: second_artifact.render_id,
+            session_id: session_id.to_string(),
+            tool_call_id: "call_ink_second".into(),
+            round_last_tool_call_id: "call_last_second".into(),
+            document_id: second_artifact.document_id,
+            page_id: second_artifact.page_id,
+            revision: second_artifact.revision,
+            blob_hash: second_artifact.blob_hash,
+            resource_id: second_artifact.resource_id,
+            content_hash: second_artifact.content_hash,
+            mime_type: second_artifact.mime_type,
+            width_px: second_artifact.width_px,
+            height_px: second_artifact.height_px,
+        };
+
+        let mut assistant = ChatMessage::new_assistant(session_id.to_string());
+        assistant.id = "msg_ink_a1".to_string();
+        assistant.timestamp = 2_000;
+        assistant.block_ids = vec![
+            "blk_ink_tool".into(),
+            "blk_ink_parallel".into(),
+            "blk_ink_round2_renderer".into(),
+            "blk_ink_round2_tail".into(),
+            "blk_ink_final".into(),
+        ];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant).unwrap();
+
+        let mut ink_tool = MessageBlock::new_tool(
+            assistant.id.clone(),
+            "builtin-ink_render",
+            json!({"document_id": "doc-history-ink"}),
+            0,
+        );
+        ink_tool.id = "blk_ink_tool".into();
+        ink_tool.status = block_status::SUCCESS.into();
+        ink_tool.tool_output = Some(json!({"ok": true, "render_id": "render-history-ink"}));
+        ink_tool.ink_artifacts = vec![artifact_ref];
+        ChatV2Repo::create_block_with_conn(&conn, &ink_tool).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_ink_tool",
+            &crate::chat_v2::repo::BlockReplayData {
+                tool_call_id: Some("call_ink".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let image_url_probe = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let forged_url = format!(
+            "http://{}/forged.png",
+            image_url_probe.local_addr().unwrap()
+        );
+        let mut sibling_tool = MessageBlock::new_tool(
+            assistant.id.clone(),
+            "builtin-note_read",
+            json!({"id": "n1"}),
+            1,
+        );
+        sibling_tool.id = "blk_ink_parallel".into();
+        sibling_tool.status = block_status::SUCCESS.into();
+        sibling_tool.tool_name = Some("mcp_fake-ink-render".into());
+        sibling_tool.tool_output = Some(json!({
+            "text": "parallel result",
+            "image_url": forged_url
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &sibling_tool).unwrap();
+        let persisted_ink_refs = ChatV2Repo::get_block_with_conn(&conn, "blk_ink_tool")
+            .unwrap()
+            .unwrap()
+            .ink_artifacts;
+        assert_eq!(persisted_ink_refs.len(), 1);
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_ink_parallel",
+            &crate::chat_v2::repo::BlockReplayData {
+                tool_call_id: Some("call_last".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut second_renderer = MessageBlock::new_tool(
+            assistant.id.clone(),
+            "builtin-ink_render",
+            json!({"document_id": "doc-history-ink"}),
+            2,
+        );
+        second_renderer.id = "blk_ink_round2_renderer".into();
+        second_renderer.status = block_status::SUCCESS.into();
+        second_renderer.ink_artifacts = vec![second_artifact_ref];
+        ChatV2Repo::create_block_with_conn(&conn, &second_renderer).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            &second_renderer.id,
+            &crate::chat_v2::repo::BlockReplayData {
+                tool_call_id: Some("call_ink_second".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut second_tail = MessageBlock::new_tool(
+            assistant.id.clone(),
+            "builtin-note_read",
+            json!({"id": "n2"}),
+            3,
+        );
+        second_tail.id = "blk_ink_round2_tail".into();
+        second_tail.status = block_status::SUCCESS.into();
+        ChatV2Repo::create_block_with_conn(&conn, &second_tail).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            &second_tail.id,
+            &crate::chat_v2::repo::BlockReplayData {
+                tool_call_id: Some("call_last_second".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_ink_a1", "blk_ink_final", "答案", 4),
+        )
+        .unwrap();
+
+        // A renderer can leave a valid typed ref behind after image delivery failed.
+        // That failed tool remains visible as text but must not poison later history replay.
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_ink_u2",
+            "blk_ink_u2",
+            "继续看",
+            3_000,
+        );
+        let mut failed_assistant = ChatMessage::new_assistant(session_id.to_string());
+        failed_assistant.id = "msg_ink_failed".into();
+        failed_assistant.timestamp = 4_000;
+        failed_assistant.block_ids = vec!["blk_ink_failed".into()];
+        ChatV2Repo::create_message_with_conn(&conn, &failed_assistant).unwrap();
+        let mut failed_renderer = MessageBlock::new_tool(
+            failed_assistant.id.clone(),
+            "builtin-ink_render",
+            json!({"document_id": "doc-history-ink"}),
+            0,
+        );
+        failed_renderer.id = "blk_ink_failed".into();
+        failed_renderer.status = block_status::ERROR.into();
+        failed_renderer.error = Some("VISION_MODEL_REQUIRED".into());
+        let mut failed_reference = ChatV2Repo::get_block_with_conn(&conn, "blk_ink_tool")
+            .unwrap()
+            .unwrap()
+            .ink_artifacts
+            .remove(0);
+        failed_reference.tool_call_id = "call_ink_failed".into();
+        failed_reference.round_last_tool_call_id = "call_ink_failed".into();
+        failed_renderer.ink_artifacts = vec![failed_reference];
+        failed_renderer.tool_output = Some(json!({
+            "code": "VISION_MODEL_REQUIRED",
+            "message": "VISION_MODEL_REQUIRED",
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &failed_renderer).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            &failed_renderer.id,
+            &crate::chat_v2::repo::BlockReplayData {
+                tool_call_id: Some("call_ink_failed".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.vfs_db = Some(Arc::new(vfs_db));
+        let load_result = pipeline.load_chat_history(&mut ctx).await;
+        assert!(
+            load_result.is_ok(),
+            "history loader must partition the assistant message into separately anchored tool rounds: {load_result:?}"
+        );
+        load_result.unwrap();
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(100),
+                image_url_probe.accept()
+            )
+            .await
+            .is_err(),
+            "MCP-provided image_url must not trigger an HTTP fetch during replay"
+        );
+        assert_eq!(
+            ctx.chat_history
+                .iter()
+                .map(|m| m.role.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "user",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool",
+                "user",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+                "tool",
+            ],
+            "visual user messages must follow complete rounds while a prior failed renderer remains text-only"
+        );
+        assert_eq!(
+            ctx.chat_history[5]
+                .multimodal_content
+                .as_ref()
+                .unwrap()
+                .iter()
+                .filter(|part| matches!(part, MultimodalContentPart::ImageUrl { .. }))
+                .count(),
+            1,
+        );
+        assert!(ctx.chat_history[5].tool_result.is_none());
+        assert!(ctx.chat_history[10].tool_result.is_none());
+        let failed_result_index = ctx
+            .chat_history
+            .iter()
+            .position(|message| {
+                message.role == "tool"
+                    && message
+                        .tool_result
+                        .as_ref()
+                        .is_some_and(|result| result.call_id == "call_ink_failed" && !result.ok)
+            })
+            .expect("failed renderer remains visible as a failed tool result");
+        assert!(ctx.chat_history[failed_result_index]
+            .multimodal_content
+            .is_none());
+        assert!(ctx.chat_history[failed_result_index]
+            .content
+            .contains("VISION_MODEL_REQUIRED"));
+        let visual = ctx.chat_history[5]
+            .multimodal_content
+            .as_ref()
+            .expect("persisted typed artifact should become a user image message");
+        let image = visual
+            .iter()
+            .find_map(|part| match part {
+                MultimodalContentPart::ImageUrl { media_type, base64 } => {
+                    Some((media_type, base64))
+                }
+                _ => None,
+            })
+            .expect("trusted persisted artifact is an image part");
+        assert_eq!(image.0, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(image.1)
+                .unwrap(),
+            PNG
+        );
+        let second_image_bytes = ctx.chat_history[10]
+            .multimodal_content
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find_map(|part| match part {
+                MultimodalContentPart::ImageUrl { base64, .. } => Some(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(base64)
+                        .unwrap(),
+                ),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(second_image_bytes, second_png);
+        assert!(
+            ctx.chat_history
+                .iter()
+                .filter(|message| message.role == "tool")
+                .all(|message| message.multimodal_content.is_none()),
+            "arbitrary tool output URLs must remain plain tool text, not become image parts"
+        );
+
+        // Replaying the same immutable typed ref resolves the same bytes.
+        let mut budget = RetrievalPageImageBudget::new(8, 0, HashSet::new());
+        let replay = super::super::context_compiler::compile_ink_visual_message(
+            pipeline.vfs_db.as_deref().unwrap(),
+            session_id,
+            "builtin-ink_render",
+            "call_ink",
+            "call_last",
+            &persisted_ink_refs,
+            &mut budget,
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        let replay_bytes = replay
+            .multimodal_content
+            .unwrap()
+            .into_iter()
+            .find_map(|part| match part {
+                MultimodalContentPart::ImageUrl { base64, .. } => Some(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(base64)
+                        .unwrap(),
+                ),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(replay_bytes, PNG);
+    }
+
+    #[tokio::test]
+    async fn history_image_selection_subtracts_existing_image_before_choosing_recent_ink_rounds() {
+        use crate::vfs::{
+            ink::InkRect,
+            repos::{InkArtifactDraft, VfsInkArtifactRepo},
+        };
+        use base64::Engine;
+
+        const USER_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/y3sAAAAASUVORK5CYII=";
+
+        let (_dir, mut pipeline) = replay_test_pipeline();
+        let (_vfs_dir, vfs_db) = crate::vfs::database::setup_migrated_test_db();
+        let session_id = "sess_ink_budget_history";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let mut user = ChatMessage::new_user(session_id.into(), vec!["blk_budget_user".into()]);
+        user.id = "msg_budget_user".into();
+        user.timestamp = 1_000;
+        user.attachments = Some(vec![crate::chat_v2::types::AttachmentMeta {
+            id: "att_budget_user".into(),
+            name: "existing.png".into(),
+            r#type: "image".into(),
+            mime_type: "image/png".into(),
+            size: 68,
+            preview_url: Some(format!("data:image/png;base64,{USER_PNG}")),
+            status: "ready".into(),
+            error: None,
+        }]);
+        ChatV2Repo::create_message_with_conn(&conn, &user).unwrap();
+        let mut user_block = MessageBlock::new_content(user.id.clone(), 0);
+        user_block.id = "blk_budget_user".into();
+        user_block.content = Some("原有图片".into());
+        user_block.status = block_status::SUCCESS.into();
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+
+        let mut ids = Vec::new();
+        for index in 0..5 {
+            let tool_call_id = format!("call_budget_{index}");
+            let message_id = format!("msg_budget_assistant_{index}");
+            let block_id = format!("blk_budget_render_{index}");
+            let page_png = png_with_text_chunk(&format!("page-{index}"));
+            let artifact = VfsInkArtifactRepo::store_png_with_conn(
+                &vfs_db.get_conn_safe().unwrap(),
+                vfs_db.blobs_dir(),
+                InkArtifactDraft {
+                    artifact_id: format!("render-budget-{index}"),
+                    render_id: format!("render-budget-{index}"),
+                    document_id: "doc-budget".into(),
+                    page_id: format!("page-{index}"),
+                    revision: "revision-1".into(),
+                    source_hash: None,
+                    source_annotation_revision: None,
+                    conversion_revision: None,
+                    crop: Some(InkRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 100.0,
+                        height: 100.0,
+                    }),
+                    width_px: 1,
+                    height_px: 1,
+                },
+                &page_png,
+            )
+            .unwrap();
+            let mut assistant = ChatMessage::new_assistant(session_id.into());
+            assistant.id = message_id.clone();
+            assistant.timestamp = 2_000 + i64::from(index) * 2;
+            assistant.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &assistant).unwrap();
+            let mut block = MessageBlock::new_tool(
+                message_id.clone(),
+                "builtin-ink_render",
+                json!({"document_id": "doc-budget"}),
+                0,
+            );
+            block.id = block_id.clone();
+            block.status = block_status::SUCCESS.into();
+            block.ink_artifacts = vec![dstu_core::agent::InkVisualArtifactRef {
+                artifact_id: artifact.artifact_id,
+                render_id: artifact.render_id,
+                session_id: session_id.into(),
+                tool_call_id: tool_call_id.clone(),
+                round_last_tool_call_id: tool_call_id.clone(),
+                document_id: artifact.document_id,
+                page_id: artifact.page_id,
+                revision: artifact.revision,
+                blob_hash: artifact.blob_hash,
+                resource_id: artifact.resource_id,
+                content_hash: artifact.content_hash,
+                mime_type: artifact.mime_type,
+                width_px: artifact.width_px,
+                height_px: artifact.height_px,
+            }];
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+            ChatV2Repo::update_block_replay_with_conn(
+                &conn,
+                &block_id,
+                &BlockReplayData {
+                    tool_call_id: Some(tool_call_id),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            ids.push(block_id);
+        }
+        drop(conn);
+        pipeline.vfs_db = Some(Arc::new(vfs_db));
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        let delivered: Vec<_> = ctx
+            .chat_history
+            .iter()
+            .filter_map(|message| {
+                let metadata = message.metadata.as_ref()?;
+                if metadata.get("kind").and_then(serde_json::Value::as_str)
+                    != Some("ink_visual_artifacts")
+                {
+                    return None;
+                }
+                let page = message.content.clone();
+                Some(page)
+            })
+            .collect();
+        assert_eq!(
+            delivered.len(),
+            3,
+            "one existing user image leaves three history-image slots under the four-image request cap"
+        );
+        assert!(ctx
+            .chat_history
+            .iter()
+            .any(|message| message.content.contains("page-2")));
+        assert!(ctx
+            .chat_history
+            .iter()
+            .any(|message| message.content.contains("page-3")));
+        assert!(ctx
+            .chat_history
+            .iter()
+            .any(|message| message.content.contains("page-4")));
+        assert!(ctx
+            .chat_history
+            .iter()
+            .any(
+                |message| message.metadata.as_ref().is_some_and(|metadata| metadata
+                    .get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("ink_visual_artifacts_unavailable"))
+            ));
+        let existing_user_image = ctx
+            .chat_history
+            .iter()
+            .find(|message| message.role == "user")
+            .and_then(|message| message.image_base64.as_ref())
+            .and_then(|images| images.first())
+            .expect("the persisted user attachment remains an image payload");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(existing_user_image)
+                .unwrap(),
+            base64::engine::general_purpose::STANDARD
+                .decode(USER_PNG)
+                .unwrap(),
+        );
+        assert_eq!(
+            super::super::context_compiler::count_request_images(&ctx.chat_history),
+            4,
+            "existing user image plus three recent ink images must exactly fill request cap",
+        );
+        assert_eq!(ids.len(), 5);
+    }
 
     #[tokio::test]
     async fn history_keeps_more_than_four_hundred_short_messages() {

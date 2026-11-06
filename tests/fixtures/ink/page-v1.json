@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "page_id": "page-0001",
+  "objects": [
+    {
+      "id": "obj-0001",
+      "author": "user",
+      "created_at": 0,
+      "content": {
+        "kind": "stroke",
+        "samples": [
+          { "x": 12.5, "y": 20.0, "pressure": 0.4, "elapsed_ms": 0.0 },
+          { "x": 18.0, "y": 26.25, "pressure": 1.0, "elapsed_ms": 16.0 }
+        ],
+        "style": { "tool": "pen", "color": "#1f2937", "width": 2.0, "pressure_enabled": true }
+      }
+    },
+    {
+      "id": "obj-0002",
+      "author": "ai",
+      "created_at": 1000,
+      "content": {
+        "kind": "stroke",
+        "samples": [
+          { "x": 100.0, "y": 120.0, "pressure": 0.65 }
+        ],
+        "style": { "tool": "highlighter", "color": "#f59e0b80", "width": 12.0, "pressure_enabled": false }
+      }
+    },
+    {
+      "id": "obj-0003",
+      "author": "user",
+      "created_at": 2000,
+      "content": {
+        "kind": "text",
+        "rect": { "x": 60.0, "y": 40.0, "width": 300.0, "height": 48.0 },
+        "text": "<b>plain text, not markup</b> 手写字",
+        "font_size": 18.0,
+        "color": "#1f2937"
+      }
+    },
+    {
+      "id": "obj-0004",
+      "author": "ai",
+      "created_at": 3000,
+      "content": {
+        "kind": "rect",
+        "rect": { "x": 200.0, "y": 300.0, "width": 100.0, "height": 50.0 },
+        "color": "#7c3aed",
+        "width": 1.5
+      }
+    },
+    {
+      "id": "obj-0005",
+      "author": "ai",
+      "created_at": 4000,
+      "content": {
+        "kind": "ellipse",
+        "rect": { "x": 320.0, "y": 300.0, "width": 80.0, "height": 60.0 },
+        "color": "#7c3aed",
+        "width": 2.0
+      }
+    },
+    {
+      "id": "obj-0006",
+      "author": "user",
+      "created_at": 5000,
+      "content": {
+        "kind": "region_highlight",
+        "rect": { "x": 0.0, "y": 600.0, "width": 799.5, "height": 399.5 },
+        "color": "#f59e0b80",
+        "width": 4.0
+      }
+    },
+    {
+      "id": "obj-0007",
+      "author": "user",
+      "created_at": 6000,
+      "content": {
+        "kind": "arrow",
+        "from": { "x": 50.0, "y": 800.0 },
+        "to": { "x": 150.0, "y": 880.5 },
+        "color": "#ef4444",
+        "width": 3.0
+      }
+    }
+  ]
+}

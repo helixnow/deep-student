@@ -42,7 +42,7 @@ pub mod restore_plan;
 pub mod zip_export;
 
 use rusqlite::backup::Backup;
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -101,6 +101,11 @@ const MANIFEST_MAX_SUPPORTED_MAJOR: u64 = 3;
 
 /// 清单文件名
 const MANIFEST_FILENAME: &str = "manifest.json";
+
+/// Minimum VFS schema that can prove the board writer/closure contract.
+/// V20261103 Ink rows are a supported migration source, but a full backup that
+/// claims Ink closure must come from V20261104 or newer.
+const MIN_VFS_INK_CLOSURE_SCHEMA: u32 = 20261104;
 
 /// 预恢复备份目录名
 const PRE_RESTORE_DIR: &str = ".pre_restore";
@@ -2321,6 +2326,16 @@ impl BackupManager {
             return Ok(());
         }
         let conn = Connection::open(&db_path)?;
+        // 恢复目标若已含 board writer guard，本连接会在后续 UPDATE files
+        // 时被 fail-closed；restore 路径必须注册 writer capability。
+        dstu_storage::sqlite_capability::register_vfs_writer_capability(&conn).map_err(
+            |error| {
+                BackupError::RestoreFailed(format!(
+                    "为恢复目标 VFS 注册 writer capability 失败: {}",
+                    error
+                ))
+            },
+        )?;
         let segment_columns = Self::sqlite_table_columns(&conn, "vfs_index_segments")?;
         let unit_columns = Self::sqlite_table_columns(&conn, "vfs_index_units")?;
         let dim_columns = Self::sqlite_table_columns(&conn, "vfs_embedding_dims")?;
@@ -2558,6 +2573,15 @@ impl BackupManager {
         target_dir: &Path,
         restore_assets: bool,
     ) -> Result<(), BackupError> {
+        // Full slot restores must prove the restored board candidate before any
+        // success path, including the complete-Lance early return.
+        if restore_assets {
+            Self::validate_vfs_ink_closure_at(
+                &target_dir.join("databases").join("vfs.db"),
+                &target_dir.join(AssetType::VfsBlobs.relative_path()),
+            )?;
+        }
+
         if Self::has_complete_vfs_lance_component(manifest, restore_assets) {
             return Ok(());
         }
@@ -3147,8 +3171,15 @@ impl BackupManager {
             )?;
         }
 
-        if manifest.mark_full().is_err() {
+        let is_full = manifest.mark_full().is_ok();
+        if !is_full {
             manifest.mark_partial();
+        }
+        if is_full {
+            // A Full label is a promise that the package can restore the
+            // canonical Ink closure. Validate the sealed DB against the sealed
+            // asset archive before the manifest becomes visible.
+            self.validate_backup_vfs_ink_closure(&backup_subdir)?;
         }
 
         // 5. 仅在清单及全部文件自检通过后发布。
@@ -3226,7 +3257,7 @@ impl BackupManager {
             )?;
 
             // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
+            let version = Self::get_schema_version(&db_path)?;
             manifest.set_schema_version(db_id.as_str(), version);
         }
 
@@ -4198,6 +4229,11 @@ impl BackupManager {
         // 2. 验证备份完整性
         self.verify_internal(manifest, &backup_subdir)?;
 
+        // A sealed Full package must prove its Ink closure before the active
+        // slot is touched; restore never overwrites existing databases to
+        // discover a missing manifest/chunk dependency afterwards.
+        self.validate_backup_vfs_ink_closure(&backup_subdir)?;
+
         // 3. 创建预恢复备份
         let pre_restore_dir = self.backup_dir.join(PRE_RESTORE_DIR);
         self.create_pre_restore_backup(&pre_restore_dir)?;
@@ -4440,6 +4476,10 @@ impl BackupManager {
         // 2. 验证备份完整性
         self.verify_internal(manifest, &backup_subdir)?;
 
+        // Validate the sealed archive before writing anything into the
+        // candidate slot; the restored candidate is re-validated below.
+        self.validate_backup_vfs_ink_closure(&backup_subdir)?;
+
         // 3. 确保目标目录存在
         fs::create_dir_all(target_dir)?;
 
@@ -4533,6 +4573,15 @@ impl BackupManager {
                         restore_errors.push(format!("资产恢复: {}", e));
                     }
                 }
+            }
+        }
+
+        // The candidate slot must prove the same Ink closure before it becomes
+        // visible; a failure here keeps the candidate unpublished.
+        if restore_assets {
+            if let Err(error) = self.validate_restored_vfs_ink_closure(target_dir) {
+                error!("恢复后检查 VFS Ink 闭包失败: {}", error);
+                restore_errors.push(format!("VFS Ink 闭包: {}", error));
             }
         }
 
@@ -4772,8 +4821,8 @@ impl BackupManager {
     }
 
     /// 获取数据库的 schema 版本
-    fn get_schema_version(&self, db_path: &Path) -> Result<u32, BackupError> {
-        let conn = Connection::open(db_path)?;
+    fn get_schema_version(db_path: &Path) -> Result<u32, BackupError> {
+        let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
         // 检查 refinery_schema_history 表是否存在
         let table_exists: bool = conn.query_row(
@@ -4794,6 +4843,84 @@ impl BackupManager {
         )?;
 
         Ok(version.unwrap_or(0) as u32)
+    }
+
+    /// Validate every canonical Ink pointer in one VFS database against an
+    /// explicit blob directory.
+    ///
+    /// Reuses the sync validator so manifest/page/background/chunk pointers,
+    /// per-blob hashes and the declared byte budgets are checked by the same
+    /// contract. A database that predates Ink, or has no Ink rows, is a no-op.
+    /// Only a verified schema-v2 board requires the writer-guard schema and
+    /// installed guard evidence.
+    fn validate_vfs_ink_closure_at(db_path: &Path, blobs_dir: &Path) -> Result<(), BackupError> {
+        if !db_path.is_file() {
+            return Ok(());
+        }
+        let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(
+            |error| {
+                BackupError::Database(format!(
+                    "无法打开 VFS 数据库校验 Ink 闭包 {}: {}",
+                    db_path.display(),
+                    error
+                ))
+            },
+        )?;
+        let schema_version = Self::get_schema_version(db_path)?;
+        let closure =
+            crate::data_governance::sync::ink::verify_ink_database_closure(&conn, blobs_dir)
+                .map_err(|error| {
+                    BackupError::Manifest(format!(
+                        "VFS Ink 闭包校验失败 {}: {}",
+                        db_path.display(),
+                        error
+                    ))
+                })?;
+        if closure.verified_rows == 0 || closure.board_rows == 0 {
+            return Ok(());
+        }
+        if schema_version < MIN_VFS_INK_CLOSURE_SCHEMA {
+            return Err(BackupError::VersionIncompatible(format!(
+                "VFS Ink board requires schema v{} after verified board evidence, found v{}",
+                MIN_VFS_INK_CLOSURE_SCHEMA, schema_version
+            )));
+        }
+
+        match dstu_storage::sqlite_capability::vfs_board_writer_guard_installed(&conn) {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err(BackupError::Manifest(format!(
+                    "VFS Ink board closure requires the installed writer guard {}",
+                    db_path.display()
+                )))
+            }
+            Err(error) => {
+                return Err(BackupError::Manifest(format!(
+                    "VFS Ink board closure could not verify the writer guard {}: {}",
+                    db_path.display(),
+                    error
+                )))
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate the sealed package before publishing a Full backup.
+    fn validate_backup_vfs_ink_closure(&self, backup_subdir: &Path) -> Result<(), BackupError> {
+        Self::validate_vfs_ink_closure_at(
+            &backup_subdir.join("vfs.db"),
+            &backup_subdir
+                .join("assets")
+                .join(AssetType::VfsBlobs.relative_path()),
+        )
+    }
+
+    /// Validate a candidate slot before it becomes visible.
+    fn validate_restored_vfs_ink_closure(&self, target_dir: &Path) -> Result<(), BackupError> {
+        Self::validate_vfs_ink_closure_at(
+            &target_dir.join("databases").join("vfs.db"),
+            &target_dir.join(AssetType::VfsBlobs.relative_path()),
+        )
     }
 
     /// 增量备份创建入口（已下线）
@@ -5883,7 +6010,7 @@ impl BackupManager {
             )?;
 
             // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
+            let version = Self::get_schema_version(&db_path)?;
             manifest.set_schema_version(db_id.as_str(), version);
         }
 
@@ -6128,8 +6255,12 @@ impl BackupManager {
             }
         }
 
-        if manifest.mark_full().is_err() {
+        let is_full = manifest.mark_full().is_ok();
+        if !is_full {
             manifest.mark_partial();
+        }
+        if is_full {
+            self.validate_backup_vfs_ink_closure(&backup_subdir)?;
         }
 
         // 7. 仅在清单及已选域自检通过后发布。
@@ -7066,6 +7197,1178 @@ mod tests {
             .push("rebuildable-root:databases/lance/vfs".to_string());
         BackupManager::finalize_vfs_index_restore(&manifest, complete.path(), true).unwrap();
         assert!(complete_lance.join("data.bin").exists());
+    }
+
+    #[test]
+    fn vfs_backup_restore_preserves_ink_manifest_artifact_blob_pin_and_immutable_triggers() {
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::vfs::{
+            database::VfsDatabase,
+            ink::{
+                InkAuthor, InkBackground, InkObject, InkObjectContent, InkPage, InkRect, InkRuling,
+            },
+            repos::{InkArtifactDraft, VfsBlobRepo, VfsInkArtifactRepo, VfsInkRepo},
+        };
+
+        const PNG_1X1: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let mut coordinator =
+            crate::data_governance::migration::MigrationCoordinator::new(active_dir.clone());
+        coordinator.migrate_single(DatabaseId::Vfs).unwrap();
+
+        let db = VfsDatabase::new(&active_dir).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let mut manifest = VfsInkRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Backup Ink artifact",
+            InkRuling::Blank,
+            100.0,
+            100.0,
+            "backup-ink-create",
+            None,
+        )
+        .unwrap();
+        let page_id = manifest.pages[0].page_id.clone();
+        let manifest = VfsInkRepo::save_page_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &manifest.document_id,
+            &manifest.revision,
+            "backup-ink-page",
+            &InkPage {
+                schema_version: 1,
+                page_id: page_id.clone(),
+                objects: vec![InkObject {
+                    id: "backup-text".to_owned(),
+                    author: InkAuthor::User,
+                    created_at: 1,
+                    content: InkObjectContent::Text {
+                        rect: InkRect {
+                            x: 10.0,
+                            y: 10.0,
+                            width: 50.0,
+                            height: 20.0,
+                        },
+                        text: "saved page text".to_owned(),
+                        font_size: 12.0,
+                        color: "#000000".to_owned(),
+                    },
+                }],
+            },
+        )
+        .unwrap();
+
+        let image = VfsBlobRepo::store_blob_with_conn(
+            &conn,
+            db.blobs_dir(),
+            PNG_1X1,
+            Some("image/png"),
+            Some("png"),
+        )
+        .unwrap();
+        let old_manifest_hash: String = conn
+            .query_row(
+                "SELECT blob_hash FROM files WHERE id = ?1",
+                [&manifest.document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let mut image_manifest = manifest.clone();
+        image_manifest.pages[0].background = InkBackground::Image {
+            blob_hash: image.hash.clone(),
+        };
+        let image_manifest_bytes = serde_json::to_vec(&image_manifest).unwrap();
+        let image_manifest_blob = VfsBlobRepo::store_blob_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &image_manifest_bytes,
+            Some(crate::vfs::ink::INK_MIME),
+            Some("dsink"),
+        )
+        .unwrap();
+        let mut blob_refs = vec![
+            image_manifest.pages[0].page_blob_hash.clone(),
+            image.hash.clone(),
+        ];
+        blob_refs.sort();
+        blob_refs.dedup();
+        let preview = serde_json::json!({
+            "ink": {
+                "schema_version": 1,
+                "document_id": image_manifest.document_id,
+                "revision": image_manifest.revision,
+                "manifest_blob_hash": image_manifest_blob.hash,
+                "blob_refs": blob_refs,
+            }
+        })
+        .to_string();
+        conn.execute(
+            "UPDATE files SET blob_hash = ?1, sha256 = ?1, size = ?2, preview_json = ?3 WHERE id = ?4",
+            rusqlite::params![
+                image_manifest_blob.hash,
+                image_manifest_bytes.len() as i64,
+                preview,
+                image_manifest.document_id,
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE resources SET hash = ?1 WHERE source_id = ?2 AND source_table = 'files'",
+            rusqlite::params![image_manifest_blob.hash, image_manifest.document_id],
+        )
+        .unwrap();
+        VfsBlobRepo::decrement_ref_with_conn(&conn, db.blobs_dir(), &old_manifest_hash).unwrap();
+
+        let artifact = VfsInkArtifactRepo::store_png_with_conn(
+            &conn,
+            db.blobs_dir(),
+            InkArtifactDraft {
+                artifact_id: "backup-render-immutable".to_owned(),
+                render_id: "backup-render-immutable".to_owned(),
+                document_id: image_manifest.document_id.clone(),
+                page_id: page_id.clone(),
+                revision: image_manifest.revision.clone(),
+                source_hash: Some(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned(),
+                ),
+                source_annotation_revision: Some("annotations-backup".to_owned()),
+                conversion_revision: Some("conversion-backup".to_owned()),
+                crop: None,
+                width_px: 1,
+                height_px: 1,
+            },
+            PNG_1X1,
+        )
+        .unwrap();
+        let source_pin_count: i64 = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                [&artifact.blob_hash],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            source_pin_count, 3,
+            "manifest background + visible image + artifact pin"
+        );
+        assert_eq!(
+            db.get_schema_version().unwrap(),
+            dstu_storage::migration::vfs::VFS_SCHEMA_VERSION
+        );
+        drop(conn);
+        drop(db);
+
+        let backup_root = backup_dir.path().join("ink-artifact-full-backup");
+        fs::create_dir(&backup_root).unwrap();
+        let source_vfs_path = active_dir.join("databases").join("vfs.db");
+        manager
+            .backup_single_database(&DatabaseId::Vfs, &source_vfs_path, &backup_root, 0, 1)
+            .unwrap();
+        let asset_result = assets::backup_assets(
+            &active_dir,
+            &backup_root,
+            &AssetBackupConfig {
+                asset_types: vec![AssetType::VfsBlobs],
+                ..AssetBackupConfig::default()
+            },
+        )
+        .unwrap();
+        assert!(asset_result.files.iter().any(|asset| {
+            asset.asset_type == AssetType::VfsBlobs
+                && asset
+                    .relative_path
+                    .ends_with(&format!("{}.png", artifact.blob_hash))
+        }));
+
+        let restored_dir = app_data_dir.path().join("restored-slot");
+        manager
+            .restore_single_database_to_dir(&DatabaseId::Vfs, &backup_root, &restored_dir)
+            .unwrap();
+        let restored_vfs = VfsDatabase::new(&restored_dir).unwrap();
+        {
+            let restored_conn = restored_vfs.get_conn_safe().unwrap();
+            let database_pin_count: i64 = restored_conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&artifact.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(database_pin_count, 3);
+            let missing_png = VfsBlobRepo::get_blob_path_with_conn(
+                &restored_conn,
+                restored_vfs.blobs_dir(),
+                &artifact.blob_hash,
+            )
+            .unwrap()
+            .unwrap();
+            assert!(
+                !missing_png.exists(),
+                "the database snapshot does not contain VFS blob files"
+            );
+        }
+        drop(restored_vfs);
+        assets::restore_assets(&backup_root, &restored_dir, &asset_result.files).unwrap();
+
+        let restored_db = VfsDatabase::new(&restored_dir).unwrap();
+        assert_eq!(
+            restored_db.get_schema_version().unwrap(),
+            dstu_storage::migration::vfs::VFS_SCHEMA_VERSION
+        );
+        {
+            let restored_conn = restored_db.get_conn_safe().unwrap();
+            let restored_manifest = VfsInkRepo::get_manifest_with_conn(
+                &restored_conn,
+                restored_db.blobs_dir(),
+                &image_manifest.document_id,
+            )
+            .unwrap();
+            assert_eq!(restored_manifest, image_manifest);
+            let restored_page = VfsInkRepo::get_page_with_conn(
+                &restored_conn,
+                restored_db.blobs_dir(),
+                &image_manifest.document_id,
+                &page_id,
+            )
+            .unwrap();
+            assert!(matches!(
+                restored_page.objects[0].content,
+                InkObjectContent::Text { ref text, .. } if text == "saved page text"
+            ));
+            assert_eq!(
+                VfsInkArtifactRepo::load_for_document_with_conn(
+                    &restored_conn,
+                    restored_db.blobs_dir(),
+                    &artifact.render_id,
+                    &image_manifest.document_id,
+                    &image_manifest.revision,
+                )
+                .unwrap(),
+                (artifact.clone(), PNG_1X1.to_vec())
+            );
+            let restored_pin_count: i64 = restored_conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&artifact.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(restored_pin_count, 3);
+            for trigger in [
+                "trg__change_log_ink_render_artifacts_insert",
+                "trg_ink_render_artifacts_immutable_update",
+                "trg_ink_render_artifacts_immutable_delete",
+            ] {
+                let exists: i64 = restored_conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                        [trigger],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(exists, 1, "missing restored artifact trigger {trigger}");
+            }
+            assert!(restored_conn
+                .execute(
+                    "UPDATE ink_render_artifacts SET metadata_json = '{}' WHERE render_id = ?1",
+                    [&artifact.render_id],
+                )
+                .is_err());
+            assert!(restored_conn
+                .execute(
+                    "DELETE FROM ink_render_artifacts WHERE render_id = ?1",
+                    [&artifact.render_id],
+                )
+                .is_err());
+        }
+        drop(restored_db);
+
+        let reopened_db = VfsDatabase::new(&restored_dir).unwrap();
+        let reopened_conn = reopened_db.get_conn_safe().unwrap();
+        let (reopened_artifact, reopened_png) = VfsInkArtifactRepo::load_with_conn(
+            &reopened_conn,
+            reopened_db.blobs_dir(),
+            &artifact.render_id,
+        )
+        .unwrap();
+        assert_eq!(reopened_artifact, artifact);
+        assert_eq!(reopened_png, PNG_1X1);
+        let backed_up_image = VfsBlobRepo::get_blob_path_with_conn(
+            &reopened_conn,
+            reopened_db.blobs_dir(),
+            &image.hash,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(fs::read(backed_up_image).unwrap(), PNG_1X1);
+    }
+
+    /// Create a real schema-v2 Ink board with two independently stored chunks.
+    ///
+    /// Returns the document id, the committed manifest, the parsed chunks and
+    /// the exact on-disk bytes of every chunk blob (hash, bytes).
+    fn create_schema2_board_fixture(
+        active_dir: &Path,
+    ) -> (
+        String,
+        crate::vfs::ink::InkManifest,
+        Vec<crate::vfs::ink::InkBoardChunk>,
+        Vec<(String, Vec<u8>)>,
+    ) {
+        use crate::data_governance::migration::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::vfs::{
+            database::VfsDatabase,
+            ink::{
+                InkAuthor, InkBoardChunk, InkBoardObject, InkObjectContent, InkRect, InkRuling,
+                INK_BOARD_SCHEMA_VERSION,
+            },
+            repos::{ink_board_repo::VfsInkBoardRepo, VfsBlobRepo},
+        };
+
+        let mut coordinator = MigrationCoordinator::new(active_dir.to_path_buf());
+        coordinator.migrate_single(DatabaseId::Vfs).unwrap();
+
+        let db = VfsDatabase::new(active_dir).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let created = VfsInkBoardRepo::create_blank_with_conn(
+            &conn,
+            db.blobs_dir(),
+            "Backup board",
+            InkRuling::Blank,
+            "backup-board-create",
+            None,
+        )
+        .unwrap();
+
+        let chunk = |chunk_id: &str, object_id: &str, x: f64, y: f64, z_index: i64| InkBoardChunk {
+            schema_version: INK_BOARD_SCHEMA_VERSION,
+            chunk_id: chunk_id.to_owned(),
+            objects: vec![InkBoardObject {
+                id: object_id.to_owned(),
+                author: InkAuthor::User,
+                created_at: 0,
+                z_index,
+                content: InkObjectContent::Rect {
+                    rect: InkRect {
+                        x,
+                        y,
+                        width: 40.0,
+                        height: 30.0,
+                    },
+                    color: "#000000".to_owned(),
+                    width: 2.0,
+                },
+            }],
+        };
+        let saved = VfsInkBoardRepo::save_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &created.revision,
+            "backup-board-save",
+            &[
+                chunk("chunk-a", "board-object-a", 10.0, 20.0, 0),
+                chunk("chunk-b", "board-object-b", 300.0, 400.0, 1),
+            ],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(saved.schema_version, INK_BOARD_SCHEMA_VERSION);
+        assert!(saved.pages.is_empty());
+        assert_eq!(saved.chunks.len(), 2);
+
+        let chunk_ids = saved
+            .chunks
+            .iter()
+            .map(|chunk_ref| chunk_ref.chunk_id.clone())
+            .collect::<Vec<_>>();
+        let chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &conn,
+            db.blobs_dir(),
+            &created.document_id,
+            &chunk_ids,
+        )
+        .unwrap();
+        let chunk_bytes = saved
+            .chunks
+            .iter()
+            .map(|chunk_ref| {
+                let path = VfsBlobRepo::get_blob_path_with_conn(
+                    &conn,
+                    db.blobs_dir(),
+                    &chunk_ref.blob_hash,
+                )
+                .unwrap()
+                .expect("board chunk blob row");
+                (chunk_ref.blob_hash.clone(), fs::read(path).unwrap())
+            })
+            .collect::<Vec<_>>();
+
+        drop(conn);
+        drop(db);
+        (created.document_id, saved, chunks, chunk_bytes)
+    }
+
+    #[test]
+    fn vfs_board_v2_full_backup_restore_preserves_schema2_chunks_after_source_purge() {
+        use crate::vfs::{
+            database::VfsDatabase,
+            repos::{ink_board_repo::VfsInkBoardRepo, VfsBlobRepo, VfsFileRepo, VfsInkRepo},
+        };
+
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let (document_id, expected_manifest, expected_chunks, chunk_bytes) =
+            create_schema2_board_fixture(&active_dir);
+
+        let manifest = manager.backup_with_assets(None).unwrap();
+        assert_eq!(manifest.snapshot_kind, SnapshotKind::Full);
+        assert_eq!(
+            manifest.schema_versions.get("vfs"),
+            Some(&dstu_storage::migration::vfs::VFS_SCHEMA_VERSION)
+        );
+
+        // The package is sealed first; purging the source afterwards must not
+        // make the backed-up board disappear.
+        {
+            let source_db = VfsDatabase::new(&active_dir).unwrap();
+            let source_conn = source_db.get_conn_safe().unwrap();
+            VfsFileRepo::purge_file_with_conn(&source_conn, source_db.blobs_dir(), &document_id)
+                .unwrap();
+            assert!(VfsFileRepo::get_file_with_conn(&source_conn, &document_id)
+                .unwrap()
+                .is_none());
+            VfsBlobRepo::cleanup_unreferenced_with_conn(&source_conn, source_db.blobs_dir())
+                .unwrap();
+            for (hash, _) in &chunk_bytes {
+                assert!(
+                    VfsBlobRepo::get_blob_path_with_conn(
+                        &source_conn,
+                        source_db.blobs_dir(),
+                        hash,
+                    )
+                    .unwrap()
+                    .is_none(),
+                    "source chunk blob row must be purged before restore"
+                );
+            }
+        }
+
+        let restored_dir = TempDir::new().unwrap();
+        manager
+            .restore_with_assets_to_dir(&manifest, true, restored_dir.path())
+            .unwrap();
+
+        let restored_db = VfsDatabase::new(restored_dir.path()).unwrap();
+        assert_eq!(
+            restored_db.get_schema_version().unwrap(),
+            dstu_storage::migration::vfs::VFS_SCHEMA_VERSION
+        );
+        let restored_conn = restored_db.get_conn_safe().unwrap();
+        let restored_manifest = VfsInkRepo::get_manifest_with_conn(
+            &restored_conn,
+            restored_db.blobs_dir(),
+            &document_id,
+        )
+        .unwrap();
+        assert_eq!(restored_manifest, expected_manifest);
+        assert_eq!(restored_manifest.chunks, expected_manifest.chunks);
+        assert!(restored_manifest.pages.is_empty());
+
+        let chunk_ids = expected_manifest
+            .chunks
+            .iter()
+            .map(|chunk_ref| chunk_ref.chunk_id.clone())
+            .collect::<Vec<_>>();
+        let restored_chunks = VfsInkBoardRepo::get_chunks_with_conn(
+            &restored_conn,
+            restored_db.blobs_dir(),
+            &document_id,
+            &chunk_ids,
+        )
+        .unwrap();
+        assert_eq!(restored_chunks, expected_chunks);
+
+        for (chunk_ref, (_, source_bytes)) in
+            expected_manifest.chunks.iter().zip(chunk_bytes.iter())
+        {
+            let restored_path = VfsBlobRepo::get_blob_path_with_conn(
+                &restored_conn,
+                restored_db.blobs_dir(),
+                &chunk_ref.blob_hash,
+            )
+            .unwrap()
+            .expect("restored board chunk blob row");
+            let restored_bytes = fs::read(&restored_path).unwrap();
+            assert_eq!(
+                &restored_bytes, source_bytes,
+                "restored chunk bytes must equal the bytes captured before backup"
+            );
+            assert_eq!(
+                VfsBlobRepo::compute_hash(&restored_bytes),
+                chunk_ref.blob_hash
+            );
+            assert_eq!(restored_bytes.len() as u64, chunk_ref.byte_length);
+            let ref_count: i64 = restored_conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    [&chunk_ref.blob_hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(ref_count, 1, "restored board chunk reference count");
+        }
+    }
+
+    #[test]
+    fn vfs_board_v2_backup_rejects_missing_chunk_instead_of_fake_success() {
+        use crate::vfs::{database::VfsDatabase, repos::VfsBlobRepo};
+
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let (_document_id, _manifest, _chunks, chunk_bytes) =
+            create_schema2_board_fixture(&active_dir);
+        let missing_hash = chunk_bytes[0].0.clone();
+
+        {
+            let source_db = VfsDatabase::new(&active_dir).unwrap();
+            let source_conn = source_db.get_conn_safe().unwrap();
+            let missing_path = VfsBlobRepo::get_blob_path_with_conn(
+                &source_conn,
+                source_db.blobs_dir(),
+                &missing_hash,
+            )
+            .unwrap()
+            .expect("missing chunk blob row");
+            fs::remove_file(&missing_path).unwrap();
+            assert!(!missing_path.exists());
+        }
+
+        let backup_result = manager.backup_with_assets(None);
+        match &backup_result {
+            Ok(manifest) => {
+                assert_eq!(manifest.snapshot_kind, SnapshotKind::Full);
+                let restored_dir = TempDir::new().unwrap();
+                let restore_result =
+                    manager.restore_with_assets_to_dir(manifest, true, restored_dir.path());
+                assert!(
+                    restore_result.is_err(),
+                    "a v2 board missing chunk {} produced a successful backup+restore instead of an explicit rejection",
+                    missing_hash
+                );
+            }
+            Err(_) => {
+                // Backup already rejected the package; restore was never allowed
+                // to publish a board whose chunk closure is incomplete.
+            }
+        }
+    }
+
+    /// Migrate the real VFS database at `active_dir` through the current
+    /// migration set. The returned handle owns a normal writer pool.
+    fn ink_compat_migrated_vfs_database(active_dir: &Path) -> crate::vfs::database::VfsDatabase {
+        use crate::data_governance::migration::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let mut coordinator = MigrationCoordinator::new(active_dir.to_path_buf());
+        coordinator.migrate_single(DatabaseId::Vfs).unwrap();
+        crate::vfs::database::VfsDatabase::new(active_dir).unwrap()
+    }
+
+    /// Delete every real `refinery_schema_history` row at or above
+    /// `first_removed` and return the remaining maximum version.
+    ///
+    /// This is how a real current-schema database is presented as the older
+    /// schema it actually predates, without hand-faking a version while the
+    /// underlying tables stay current.
+    fn ink_compat_trim_schema_history(db_path: &Path, first_removed: i64) -> i64 {
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute(
+            "DELETE FROM refinery_schema_history WHERE version >= ?1",
+            [first_removed],
+        )
+        .unwrap();
+        conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM refinery_schema_history",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    fn ink_compat_clear_schema_history(db_path: &Path) -> i64 {
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute("DELETE FROM refinery_schema_history", [])
+            .unwrap();
+        conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM refinery_schema_history",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// A failed backup may leave its private staging directory behind, but it
+    /// must never publish `manifest.json` in any of them: the manifest is the
+    /// only signal that makes a directory discoverable as a backup.
+    fn ink_compat_assert_no_published_manifest(backup_dir: &Path) {
+        for entry in fs::read_dir(backup_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_dir() {
+                assert!(
+                    !entry.path().join(MANIFEST_FILENAME).exists(),
+                    "failed backup published a manifest in {}",
+                    entry.path().display()
+                );
+            }
+        }
+    }
+
+    /// Content fingerprint of every regular file under `root`, keyed by
+    /// relative path, for before/after no-mutation assertions.
+    fn ink_compat_tree_fingerprint(root: &Path) -> BTreeMap<String, (u64, String)> {
+        let mut fingerprint = BTreeMap::new();
+        if !root.exists() {
+            return fingerprint;
+        }
+        for entry in WalkDir::new(root).follow_links(false) {
+            let entry = entry.unwrap();
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let relative = entry
+                .path()
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let size = fs::metadata(entry.path()).unwrap().len();
+            fingerprint.insert(
+                relative,
+                (size, calculate_file_sha256(entry.path()).unwrap()),
+            );
+        }
+        fingerprint
+    }
+
+    /// Expected: a real v1 Ink database must be verified, not rejected by a
+    /// blanket schema floor below `MIN_VFS_INK_CLOSURE_SCHEMA`.
+    #[test]
+    fn ink_backup_compat_v1_ink_backup_restore_preserves_v1_after_writer_guard_history_trim() {
+        use crate::vfs::{
+            database::VfsDatabase,
+            ink::{InkRuling, INK_SCHEMA_VERSION},
+            repos::{VfsBlobRepo, VfsInkRepo},
+        };
+
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let db = ink_compat_migrated_vfs_database(&active_dir);
+        let expected_v1 = {
+            let conn = db.get_conn_safe().unwrap();
+            let created = VfsInkRepo::create_blank_with_conn(
+                &conn,
+                db.blobs_dir(),
+                "Legacy v1 ink",
+                InkRuling::Blank,
+                800.0,
+                600.0,
+                "ink-compat-v1-create",
+                None,
+            )
+            .unwrap();
+            assert_eq!(
+                created.schema_version, INK_SCHEMA_VERSION,
+                "the legacy fixture must be a real v1 Ink manifest"
+            );
+            assert_eq!(created.pages.len(), 1);
+            assert!(created.chunks.is_empty());
+            let manifest =
+                VfsInkRepo::get_manifest_with_conn(&conn, db.blobs_dir(), &created.document_id)
+                    .unwrap();
+            for page_ref in &manifest.pages {
+                assert!(
+                    VfsBlobRepo::get_blob_path_with_conn(
+                        &conn,
+                        db.blobs_dir(),
+                        &page_ref.page_blob_hash,
+                    )
+                    .unwrap()
+                    .is_some(),
+                    "the v1 page blob must exist before backup"
+                );
+            }
+            manifest
+        };
+        drop(db);
+
+        let db_path = active_dir.join("databases").join("vfs.db");
+        let remaining = ink_compat_trim_schema_history(&db_path, MIN_VFS_INK_CLOSURE_SCHEMA as i64);
+        assert_eq!(
+            remaining, 20261103,
+            "the real v1 database must report the pre-writer-guard schema after trimming history"
+        );
+
+        let backup = manager
+            .backup_with_assets(None)
+            .expect("a real v1 Ink database must remain backup-compatible");
+        assert_eq!(backup.snapshot_kind, SnapshotKind::Full);
+        assert_eq!(
+            backup.schema_versions.get("vfs"),
+            Some(&20261103),
+            "the manifest must carry the database's actual v1-era schema, not a fabricated one"
+        );
+
+        let restored_dir = TempDir::new().unwrap();
+        manager
+            .restore_with_assets_to_dir(&backup, true, restored_dir.path())
+            .unwrap();
+
+        let restored_db = VfsDatabase::new(restored_dir.path()).unwrap();
+        assert_eq!(
+            restored_db.get_schema_version().unwrap(),
+            20261103,
+            "restore must not silently upgrade the v1 database"
+        );
+        let restored_conn = restored_db.get_conn_safe().unwrap();
+        let restored = VfsInkRepo::get_manifest_with_conn(
+            &restored_conn,
+            restored_db.blobs_dir(),
+            &expected_v1.document_id,
+        )
+        .unwrap();
+        assert_eq!(
+            restored, expected_v1,
+            "the restored v1 Ink manifest must stay readable and identical"
+        );
+    }
+
+    /// Expected: a real old-schema database without Ink rows has no board
+    /// guard obligation and must backup/restore normally.
+    #[test]
+    fn ink_backup_compat_no_ink_old_schema_backup_restore_without_board_guard() {
+        use crate::vfs::database::VfsDatabase;
+        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
+
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let db = ink_compat_migrated_vfs_database(&active_dir);
+        let file_id = {
+            let conn = db.get_conn_safe().unwrap();
+            let data = b"ordinary non-ink notes";
+            let blob = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                db.blobs_dir(),
+                data,
+                Some("text/plain"),
+                Some("txt"),
+            )
+            .unwrap();
+            let file = VfsFileRepo::create_file_with_conn(
+                &conn,
+                &blob.hash,
+                "notes.txt",
+                data.len() as i64,
+                "document",
+                Some("text/plain"),
+                Some(&blob.hash),
+                None,
+            )
+            .unwrap();
+            file.id
+        };
+        {
+            let conn = db.get_conn_safe().unwrap();
+            let ink_rows: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM files WHERE blob_hash IS NOT NULL AND (mime_type = ?1 OR lower(file_name) LIKE ?2 OR preview_json IS NOT NULL)",
+                    rusqlite::params!["application/vnd.deepstudent.ink+json", "%.dsink"],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(ink_rows, 0, "the fixture must contain no Ink rows");
+        }
+        drop(db);
+
+        let db_path = active_dir.join("databases").join("vfs.db");
+        let remaining = ink_compat_trim_schema_history(&db_path, MIN_VFS_INK_CLOSURE_SCHEMA as i64);
+        assert_eq!(remaining, 20261103);
+
+        let backup = manager
+            .backup_with_assets(None)
+            .expect("a non-Ink old-schema VFS database must remain backup-compatible");
+        assert_eq!(backup.snapshot_kind, SnapshotKind::Full);
+        assert_eq!(backup.schema_versions.get("vfs"), Some(&20261103));
+
+        let restored_dir = TempDir::new().unwrap();
+        manager
+            .restore_with_assets_to_dir(&backup, true, restored_dir.path())
+            .unwrap();
+
+        let restored_db = VfsDatabase::new(restored_dir.path()).unwrap();
+        assert_eq!(restored_db.get_schema_version().unwrap(), 20261103);
+        let restored_conn = restored_db.get_conn_safe().unwrap();
+        let guard_installed: i64 = restored_conn
+            .query_row(
+                "SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            guard_installed, 0,
+            "backup/restore must not require or enable the board writer guard for a non-Ink database"
+        );
+        assert!(
+            VfsFileRepo::get_file_with_conn(&restored_conn, &file_id)
+                .unwrap()
+                .is_some(),
+            "the ordinary file row must survive restore"
+        );
+    }
+
+    /// Expected: verified board evidence still requires the guard schema even
+    /// when history is forged to a pre-guard value or erased to schema 0.
+    #[test]
+    fn ink_backup_compat_board_v2_fake_old_history_remains_fail_closed() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        create_schema2_board_fixture(&active_dir);
+        let db_path = active_dir.join("databases").join("vfs.db");
+
+        let remaining = ink_compat_trim_schema_history(&db_path, MIN_VFS_INK_CLOSURE_SCHEMA as i64);
+        assert_eq!(remaining, 20261103);
+        manager
+            .backup_with_assets(None)
+            .expect_err("a v2 board behind a forged pre-guard history must be rejected");
+        ink_compat_assert_no_published_manifest(backup_dir.path());
+
+        assert_eq!(ink_compat_clear_schema_history(&db_path), 0);
+        manager
+            .backup_with_assets(None)
+            .expect_err("schema 0 must not bypass board evidence and skip the Ink closure");
+        ink_compat_assert_no_published_manifest(backup_dir.path());
+    }
+
+    /// Expected: an existing `files` table missing `preview_json` is broken,
+    /// not an empty Ink database, and must be named in the failure.
+    #[test]
+    fn ink_backup_compat_current_schema_missing_preview_json_fails_closed() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let db_path = active_dir.join("databases").join("vfs.db");
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE refinery_schema_history (
+                     version INTEGER PRIMARY KEY,
+                     name TEXT NOT NULL
+                 );
+                 INSERT INTO refinery_schema_history (version, name)
+                 VALUES (20261104, 'vfs_writer_guard');
+                 CREATE TABLE files (
+                     id TEXT PRIMARY KEY,
+                     file_name TEXT NOT NULL,
+                     mime_type TEXT,
+                     \"type\" TEXT NOT NULL DEFAULT 'document',
+                     blob_hash TEXT,
+                     sha256 TEXT NOT NULL
+                 );
+                 INSERT INTO files (id, file_name, mime_type, \"type\", blob_hash, sha256)
+                 VALUES (
+                     'file_ink_missing_preview',
+                     'board.dsink',
+                     'application/vnd.deepstudent.ink+json',
+                     'document',
+                     'incomplete-column-fixture',
+                     'incomplete-column-fixture'
+                 );",
+            )
+            .unwrap();
+            assert_eq!(
+                crate::data_governance::backup::BackupManager::get_schema_version(&db_path)
+                    .unwrap(),
+                MIN_VFS_INK_CLOSURE_SCHEMA,
+                "the fixture must present the current schema while its files table is incomplete"
+            );
+        }
+
+        let error = manager
+            .backup_with_assets(None)
+            .expect_err("an incomplete current-schema Ink database must not backup successfully");
+        assert!(
+            error.to_string().contains("preview_json"),
+            "the failure must name the missing required column, got: {error}"
+        );
+        ink_compat_assert_no_published_manifest(backup_dir.path());
+    }
+
+    /// Expected: Ink evidence with a NULL canonical pointer must be rejected,
+    /// not pre-filtered out by `blob_hash IS NOT NULL`.
+    #[test]
+    fn ink_backup_compat_board_v2_null_blob_hash_ink_evidence_fails_closed() {
+        use crate::vfs::{database::VfsDatabase, ink::INK_MIME};
+
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let (document_id, _manifest, _chunks, _chunk_bytes) =
+            create_schema2_board_fixture(&active_dir);
+
+        {
+            let db = VfsDatabase::new(&active_dir).unwrap();
+            let conn = db.get_conn_safe().unwrap();
+            let changed = conn
+                .execute(
+                    "UPDATE files SET blob_hash = NULL WHERE id = ?1",
+                    [&document_id],
+                )
+                .unwrap();
+            assert_eq!(changed, 1);
+            let (file_name, mime_type, preview_json, blob_hash): (
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ) = conn
+                .query_row(
+                    "SELECT file_name, mime_type, preview_json, blob_hash FROM files WHERE id = ?1",
+                    [&document_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .unwrap();
+            assert!(blob_hash.is_none(), "the canonical pointer must be gone");
+            assert!(
+                file_name.ends_with(".dsink"),
+                "the Ink extension evidence must remain"
+            );
+            assert_eq!(mime_type.as_deref(), Some(INK_MIME));
+            let preview: serde_json::Value =
+                serde_json::from_str(preview_json.as_deref().expect("preview_json evidence"))
+                    .unwrap();
+            assert_eq!(
+                preview["ink"]["schema_version"].as_u64(),
+                Some(2),
+                "the v2 board preview evidence must remain"
+            );
+        }
+
+        manager
+            .backup_with_assets(None)
+            .expect_err("Ink evidence without a canonical blob_hash pointer must fail closed");
+        ink_compat_assert_no_published_manifest(backup_dir.path());
+    }
+
+    /// Expected: the production slot finalize entry must validate the restored
+    /// board candidate; a missing chunk must fail without mutating backup files
+    /// or the active slot.
+    #[test]
+    fn ink_backup_compat_slot_finalize_validates_board_candidate_and_rejects_missing_chunk() {
+        use crate::vfs::{database::VfsDatabase, repos::VfsBlobRepo};
+
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let (_document_id, _manifest, _chunks, chunk_bytes) =
+            create_schema2_board_fixture(&active_dir);
+
+        let backup = manager.backup_with_assets(None).unwrap();
+        assert!(
+            !backup
+                .included_components
+                .iter()
+                .any(|component| component == "rebuildable-root:databases/lance/vfs"),
+            "the fixture must exercise the legacy-index branch of finalize"
+        );
+        let sealed_dir = manager.backup_dir().join(&backup.backup_id);
+
+        // Reproduce the production slot chain: database copy, then assets,
+        // then the public finalize entry (not restore_with_assets_to_dir,
+        // which already validates the Ink closure privately).
+        let candidate = TempDir::new().unwrap();
+        manager
+            .restore_single_database_to_dir(&DatabaseId::Vfs, &sealed_dir, candidate.path())
+            .unwrap();
+        assets::restore_assets(
+            &sealed_dir,
+            candidate.path(),
+            &backup.assets.as_ref().expect("full asset manifest").files,
+        )
+        .unwrap();
+
+        let active_before = ink_compat_tree_fingerprint(&active_dir);
+        BackupManager::finalize_vfs_index_restore(&backup, candidate.path(), true)
+            .expect("a valid board candidate must pass the production finalize entry");
+        let sealed_before = ink_compat_tree_fingerprint(&sealed_dir);
+        let manifest_before = fs::read(sealed_dir.join(MANIFEST_FILENAME)).unwrap();
+
+        let missing_chunk = chunk_bytes[0].0.clone();
+        {
+            let db = VfsDatabase::new(candidate.path()).unwrap();
+            let conn = db.get_conn_safe().unwrap();
+            let path = VfsBlobRepo::get_blob_path_with_conn(&conn, db.blobs_dir(), &missing_chunk)
+                .unwrap()
+                .expect("candidate board chunk blob");
+            assert!(
+                path.starts_with(candidate.path()),
+                "the deleted chunk must belong to the inactive candidate"
+            );
+            drop(conn);
+            drop(db);
+            fs::remove_file(&path).unwrap();
+        }
+
+        let candidate_blobs_dir = candidate.path().join(AssetType::VfsBlobs.relative_path());
+        let candidate_blobs_before = ink_compat_tree_fingerprint(&candidate_blobs_dir);
+        BackupManager::finalize_vfs_index_restore(&backup, candidate.path(), true)
+            .expect_err("finalize must reject a board candidate with a missing chunk");
+
+        assert_eq!(
+            fs::read(sealed_dir.join(MANIFEST_FILENAME)).unwrap(),
+            manifest_before,
+            "a failed finalize must not rewrite the sealed backup manifest"
+        );
+        assert_eq!(
+            ink_compat_tree_fingerprint(&sealed_dir),
+            sealed_before,
+            "a failed finalize must not change sealed backup files"
+        );
+        assert_eq!(
+            ink_compat_tree_fingerprint(&candidate_blobs_dir),
+            candidate_blobs_before,
+            "a failed finalize must not delete or rewrite candidate files"
+        );
+        assert_eq!(
+            ink_compat_tree_fingerprint(&active_dir),
+            active_before,
+            "finalizing an inactive candidate must not touch the active slot"
+        );
+    }
+
+    /// Expected: a database that still carries a guard marker and a real VFS
+    /// history but lost its `files` table is damage, not an empty library.
+    #[test]
+    fn ink_backup_compat_board_v2_without_files_but_guard_history_is_not_an_empty_library() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        create_schema2_board_fixture(&active_dir);
+        let db_path = active_dir.join("databases").join("vfs.db");
+
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            let board_preview: String = conn
+                .query_row(
+                    "SELECT preview_json FROM files WHERE file_name LIKE '%.dsink'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let preview: serde_json::Value = serde_json::from_str(&board_preview).unwrap();
+            assert_eq!(
+                preview["ink"]["schema_version"].as_u64(),
+                Some(2),
+                "the fixture must start as a real v2 board"
+            );
+            let guard_installed: i64 = conn
+                .query_row(
+                    "SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(guard_installed, 1);
+            // The view depends on files; drop it first. Triggers on files are
+            // removed by DROP TABLE itself.
+            conn.execute_batch("DROP VIEW IF EXISTS trash_view; DROP TABLE files;")
+                .unwrap();
+        }
+
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            let files_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'files')",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(
+                !files_exists,
+                "the damaged fixture must have no files table"
+            );
+            let guard_installed: i64 = conn
+                .query_row(
+                    "SELECT guard_installed FROM __vfs_writer_guard WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(guard_installed, 1, "the guard marker must be preserved");
+            let history_max: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(version), 0) FROM refinery_schema_history",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(
+                history_max >= MIN_VFS_INK_CLOSURE_SCHEMA as i64,
+                "the known VFS history must be preserved"
+            );
+        }
+
+        manager
+            .backup_with_assets(None)
+            .expect_err("a guarded, migrated VFS database without files must fail closed");
+        ink_compat_assert_no_published_manifest(backup_dir.path());
+    }
+
+    /// Paired negative: the default empty schema-0 database has no files table
+    /// and is a legitimate empty library, so it must still backup.
+    #[test]
+    fn ink_backup_compat_empty_schema0_without_files_still_backs_up() {
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let db_path = active_dir.join("databases").join("vfs.db");
+
+        {
+            let conn =
+                Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+            let files_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'files')",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(!files_exists);
+            let history_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'refinery_schema_history')",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(!history_exists, "the default fixture is schema 0");
+        }
+
+        let backup = manager
+            .backup_with_assets(None)
+            .expect("an empty schema-0 database without files must remain backup-compatible");
+        assert_eq!(backup.snapshot_kind, SnapshotKind::Full);
+        assert_eq!(
+            backup.schema_versions.get("vfs"),
+            Some(&0),
+            "the empty fixture must keep its real schema-0 history"
+        );
     }
 
     #[test]

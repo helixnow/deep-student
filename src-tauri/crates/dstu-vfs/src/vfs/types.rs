@@ -2168,6 +2168,52 @@ impl PreviewType {
             .map(Self::from_extension)
             .unwrap_or(PreviewType::None)
     }
+
+    /// 从可靠 MIME 推断预览类型（A3：无扩展名条目回退用）。
+    ///
+    /// 只处理可安全映射的已知 MIME；其余一律 `None`，避免把任意二进制猜成
+    /// PDF/图片。
+    pub fn from_mime_type(mime_type: &str) -> Self {
+        let normalized = mime_type
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        match normalized.as_str() {
+            "application/pdf" | "application/x-pdf" => PreviewType::Pdf,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+                PreviewType::Docx
+            }
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+                PreviewType::Xlsx
+            }
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+                PreviewType::Pptx
+            }
+            "application/vnd.ms-excel"
+            | "application/vnd.oasis.opendocument.spreadsheet"
+            | "application/vnd.ms-excel.sheet.binary.macroenabled.12" => PreviewType::Text,
+            "application/epub+zip" => PreviewType::Epub,
+            "application/json" | "application/xml" | "application/rtf" => PreviewType::Text,
+            other if other.starts_with("image/") => PreviewType::Image,
+            other if other.starts_with("audio/") => PreviewType::Audio,
+            other if other.starts_with("video/") => PreviewType::Video,
+            other if other.starts_with("text/") => PreviewType::Text,
+            _ => PreviewType::None,
+        }
+    }
+
+    /// 文件名扩展名优先；缺失/未知时回退到可靠 MIME。
+    pub fn from_filename_with_mime(filename: &str, mime_type: Option<&str>) -> Self {
+        let by_name = Self::from_filename(filename);
+        if by_name != PreviewType::None {
+            return by_name;
+        }
+        mime_type
+            .map(Self::from_mime_type)
+            .unwrap_or(PreviewType::None)
+    }
 }
 
 // ============================================================================

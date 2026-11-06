@@ -165,32 +165,39 @@ pub async fn textbooks_add(
     let mut skipped_reasons: Vec<String> = Vec::new();
 
     for src in &sources {
-        // ★ Android 修复：使用三层降级策略解析文件名和扩展名
-        // Layer 1: URI 路径提取（适用于 ExternalStorage / raw: 路径）
-        // Layer 2: Magic bytes 检测（适用于 Media Provider / Downloads 等不透明 ID）
-        // Layer 3: 无法识别 → 跳过并记录原因
-        let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, src);
-        // ★ 移动端修复：当 URI 提取的文件名是不透明 document ID（如 446、document:123）时，
-        // 生成用户友好的显示名称，避免在 UI 上显示无意义的数字 ID
-        let uri_raw_name = unified_file_manager::extract_file_name(src);
-        let display_name_owned = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
-            let ext_suffix = resolved_ext
-                .as_ref()
-                .map(|e| format!(".{}", e))
-                .unwrap_or_default();
-            format!(
-                "导入文档_{}{}",
-                chrono::Utc::now().format("%Y%m%d_%H%M%S"),
-                ext_suffix
-            )
-        } else {
-            resolved_name.clone()
-        };
+        // 共享导入描述边界：Android provider 元数据 + 有界内容检测。
+        let descriptor =
+            match crate::staged_upload::resolve_import_file_info(window.clone(), src.to_string())
+                .await
+            {
+                Ok(descriptor) => descriptor,
+                Err(_) => {
+                    let reason = "无法识别文件类型，请确认文件类型后重试".to_string();
+                    emit_progress(
+                        &window,
+                        "导入文档",
+                        "error",
+                        None,
+                        None,
+                        0,
+                        Some(reason.clone()),
+                    );
+                    skipped_reasons.push(reason);
+                    continue;
+                }
+            };
+        let crate::unified_file_manager::ResolvedImportInfo {
+            display_name,
+            extension: resolved_ext,
+            kind,
+            ..
+        } = descriptor;
+        let display_name_owned = display_name;
         let display_name = display_name_owned.as_str();
 
         info!(
-            "[Textbooks] Resolved file info: uri={}, name={}, ext={:?}",
-            src, display_name, resolved_ext
+            "[Textbooks] Resolved import descriptor: kind={}, ext={:?}",
+            kind, resolved_ext
         );
 
         // ★ 校验提前：在哈希和复制之前验证扩展名
@@ -834,4 +841,179 @@ pub async fn textbooks_update_bookmarks(
     };
     TextbooksDb::update_vfs(vfs_db, &id, params)?;
     Ok(true)
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use crate::unified_file_manager::{
+        resolve_import_info, AndroidSafDisplayInfo, ResolvedImportInfo,
+    };
+    use std::io::Write;
+    use std::path::Path;
+    use zip::write::FileOptions;
+    use zip::CompressionMethod;
+
+    const MAGIC_SAMPLE_BYTES: u64 = 64 * 1024;
+
+    fn stored_options() -> FileOptions {
+        FileOptions::default().compression_method(CompressionMethod::Stored)
+    }
+
+    /// 只写导入分流需要的 OOXML 条目：内容刻意保持最小，不承诺能作为
+    /// 完整 Office 文档解析。
+    fn write_ooxml_zip(path: &Path, main_part: &str, large_first_entry: bool) {
+        let file = std::fs::File::create(path).expect("create OOXML zip fixture");
+        let mut zip = zip::ZipWriter::new(file);
+
+        if large_first_entry {
+            // 首个 stored entry 的 payload 就超过 64KiB 有界样本，后面的
+            // word/xl/ppt 条目名完全落在样本之外。
+            zip.start_file("padding.bin", stored_options())
+                .expect("start padding entry");
+            let padding = vec![b'A'; (MAGIC_SAMPLE_BYTES as usize) + 4096];
+            zip.write_all(&padding).expect("write padding payload");
+        }
+
+        zip.start_file("[Content_Types].xml", stored_options())
+            .expect("start content types entry");
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>"#,
+        )
+        .expect("write content types");
+
+        zip.start_file("_rels/.rels", stored_options())
+            .expect("start package rels entry");
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"#,
+        )
+        .expect("write package rels");
+
+        zip.start_file(main_part, stored_options())
+            .expect("start main part entry");
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><routing-marker/>"#)
+            .expect("write main part");
+
+        zip.finish().expect("finish OOXML zip fixture");
+    }
+
+    fn provider(display_name: Option<&str>, mime_type: Option<&str>) -> AndroidSafDisplayInfo {
+        AndroidSafDisplayInfo {
+            display_name: display_name.map(str::to_string),
+            mime_type: mime_type.map(str::to_string),
+        }
+    }
+
+    fn assert_display_name_extension(
+        resolved: &ResolvedImportInfo,
+        expected_extension: &str,
+        context: &str,
+    ) {
+        let actual = Path::new(&resolved.display_name)
+            .extension()
+            .and_then(|ext| ext.to_str());
+        assert_eq!(
+            actual,
+            Some(expected_extension),
+            "{context}: display_name 的真实后缀必须与描述扩展名一致，got {:?}",
+            resolved.display_name
+        );
+    }
+
+    #[test]
+    fn provider_descriptor_keeps_display_name_suffix_consistent() {
+        let app = tauri::Builder::default()
+            .any_thread()
+            .build(tauri::generate_context!())
+            .expect("build Tauri provider descriptor test app");
+        let webview = tauri::WebviewWindowBuilder::new(
+            &app,
+            "provider-descriptor-test",
+            tauri::WebviewUrl::default(),
+        )
+        .build()
+        .expect("build Tauri provider descriptor test window");
+        let window: tauri::Window = webview.as_ref().window();
+
+        let dir = tempfile::tempdir().expect("create provider descriptor temp dir");
+
+        // Case 1：64KiB 有界样本看不到 OOXML 主条目前缀，provider MIME
+        // 必须能补出 docx/xlsx/pptx。
+        let bounded_cases = [
+            (
+                "docx",
+                "word/document.xml",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            (
+                "xlsx",
+                "xl/workbook.xml",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                "pptx",
+                "ppt/presentation.xml",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ),
+        ];
+        for (expected_extension, main_part, mime) in bounded_cases {
+            let path = dir
+                .path()
+                .join(format!("provider-export-{expected_extension}"));
+            write_ooxml_zip(&path, main_part, true);
+
+            let bytes = std::fs::read(&path).expect("read bounded OOXML fixture");
+            assert!(
+                bytes.len() as u64 > MAGIC_SAMPLE_BYTES,
+                "{expected_extension} fixture 必须把主条目推出 64KiB 样本"
+            );
+            assert!(
+                bytes.starts_with(b"PK\x03\x04"),
+                "{expected_extension} fixture 必须是真实 ZIP 容器，而不是空文件"
+            );
+
+            let resolved = resolve_import_info(
+                &window,
+                path.to_str().expect("fixture path is utf-8"),
+                Some(provider(Some("provider-export"), Some(mime))),
+            )
+            .expect("provider MIME should describe the bounded OOXML container");
+
+            assert_eq!(
+                resolved.extension.as_deref(),
+                Some(expected_extension),
+                "provider MIME `{mime}` 应识别为 {expected_extension}"
+            );
+            assert_eq!(
+                resolved.mime_type, mime,
+                "provider MIME 应成为 {expected_extension} 的描述 MIME"
+            );
+            assert_display_name_extension(&resolved, expected_extension, "provider MIME fallback");
+        }
+
+        // Case 2：强 magic 已识别 xlsx，但 provider DISPLAY_NAME 声称 .docx；
+        // 描述的后缀必须跟随真实强格式，不能留下自相矛盾的 sheet.docx。
+        let xlsx_path = dir.path().join("strong-magic-xlsx");
+        write_ooxml_zip(&xlsx_path, "xl/workbook.xml", false);
+        let resolved = resolve_import_info(
+            &window,
+            xlsx_path.to_str().expect("fixture path is utf-8"),
+            Some(provider(Some("sheet.docx"), None)),
+        )
+        .expect("strong xlsx magic should describe the import");
+
+        assert_eq!(
+            resolved.extension.as_deref(),
+            Some("xlsx"),
+            "强 xlsx magic 应压过 provider 的 .docx 后缀"
+        );
+        assert_eq!(
+            resolved.mime_type,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_display_name_extension(
+            &resolved,
+            "xlsx",
+            "强 magic 与 provider DISPLAY_NAME 后缀冲突",
+        );
+    }
 }

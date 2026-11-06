@@ -478,6 +478,13 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("textbook_bookmarks", Medium, false, WriteLocal),
     d("textbook_highlights", Medium, false, WriteLocal),
     d("pdf_page_image", Low, true, Read),
+    // —— InkToolExecutor（6）——
+    d("ink_prepare", Medium, false, WriteLocal),
+    d("ink_create", Medium, false, WriteLocal),
+    d("ink_get", Low, true, Read),
+    d("ink_render", Low, false, WriteLocal).with_timeout(120),
+    d("ink_apply_ops", Medium, false, WriteLocal),
+    d("ink_export", Medium, false, WriteLocal),
     // —— IndexWebpageToolExecutor（3）——
     d("index_status", Low, true, Read).headless_ptc(),
     d("index_rebuild", High, false, WriteLocal).with_timeout(600),

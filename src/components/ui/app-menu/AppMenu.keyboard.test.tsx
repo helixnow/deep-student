@@ -125,6 +125,9 @@ describe('AppMenu submenu keyboard contract', () => {
     );
     const view = render(renderMenu(1));
     const trigger = screen.getByRole('menuitem', { name: 'More' });
+    // 根菜单打开聚焦是延迟交接（等 presence.shown）。先等它落定，避免本用例
+    // 在子菜单已聚焦后才被根菜单 timer 抢焦点；该调度竞态由下方固定用例覆盖。
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
     fireEvent.keyDown(trigger, { key: 'ArrowRight' });
     const alpha = await screen.findByRole('menuitem', { name: 'Alpha' });
     const beta = screen.getByRole('menuitem', { name: 'Beta' });
@@ -137,6 +140,58 @@ describe('AppMenu submenu keyboard contract', () => {
     });
 
     expect(beta).toHaveFocus();
+  });
+
+  it('keeps submenu focus when the parent open-focus handoff fires afterwards', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'],
+    });
+    try {
+      render(
+        <AppMenu open>
+          <AppMenuTrigger asChild>
+            <button type="button">Root trigger</button>
+          </AppMenuTrigger>
+          <AppMenuContent>
+            <AppMenuSub>
+              <AppMenuSubTrigger>More</AppMenuSubTrigger>
+              <AppMenuSubContent>
+                <AppMenuItem>Alpha</AppMenuItem>
+                <AppMenuItem>Beta</AppMenuItem>
+              </AppMenuSubContent>
+            </AppMenuSub>
+          </AppMenuContent>
+        </AppMenu>,
+      );
+      const trigger = screen.getByRole('menuitem', { name: 'More' });
+      fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+
+      // 子菜单的键盘聚焦先落定
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      const alpha = screen.getByRole('menuitem', { name: 'Alpha' });
+      const beta = screen.getByRole('menuitem', { name: 'Beta' });
+      expect(alpha).toHaveFocus();
+
+      beta.focus();
+
+      // 根菜单打开聚焦要等 presence.shown：逐个 rAF 推进并 flush，
+      // 让 shown 状态和随后挂上的 0ms 聚焦 timer 依次真正执行。
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+
+      expect(beta).toHaveFocus();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('supports roving focus and returns to the trigger with ArrowLeft or Escape', async () => {

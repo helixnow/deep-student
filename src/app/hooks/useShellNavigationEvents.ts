@@ -26,7 +26,11 @@ export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
   }, [setCurrentView]);
 
   useAppEvent(APP_EVENTS.OPEN_NOTES, () => {
-    setCurrentView('learning-hub');
+    if (workbenchBus.isEnabled()) {
+      workbenchBus.launch({ typeId: 'notebook', reason: 'api' });
+      return;
+    }
+    setCurrentView('notes');
   }, [setCurrentView]);
 
   const handleCreateChatSessionBridge = useCallback((detail: { action?: string } | undefined) => {

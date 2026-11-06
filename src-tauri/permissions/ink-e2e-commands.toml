@@ -1,0 +1,17 @@
+[[permission]]
+identifier = "allow-ink-e2e-commands"
+description = "Isolated native Ink prepare/page/render E2E commands: production prepare/job handshake, page get/save, frozen PNG background read, render/flush handshake, and staged upload only."
+commands.allow = [
+  "vfs_ink_prepare",
+  "vfs_ink_job_result",
+  "vfs_ink_get",
+  "vfs_ink_get_page",
+  "vfs_ink_save_page",
+  "vfs_get_blob_base64",
+  "vfs_ink_render",
+  "vfs_ink_render_result",
+  "vfs_ink_flush_result",
+  "staged_upload_begin",
+  "staged_upload_append",
+  "staged_upload_abort"
+]

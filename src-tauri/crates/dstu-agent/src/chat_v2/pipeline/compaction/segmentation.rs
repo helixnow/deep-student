@@ -561,6 +561,8 @@ mod tests {
                 ended_at: None,
                 first_chunk_at: None,
                 block_index: 0,
+
+                ink_artifacts: Vec::new(),
             }],
         );
         assert!(

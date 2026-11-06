@@ -16,6 +16,7 @@
  * - navigateToNote / navigateToTranslation / navigateToEssay → launch 内容窗
  * - navigateToExamSheet      → launch 题目集窗
  * - NAVIGATE_TO_VIEW{openResource} → launch 对应资源窗（聊天「在学习中心打开」、导图嵌入、快捷助手资源）
+ * - NAVIGATE_TO_VIEW{view: notes} → launch 手写笔记库（无资源上下文时）
  * - DSTU_NAVIGATE_TO_KNOWLEDGE_BASE → 知识库来源：打开该文档；记忆来源：文件应用 › 记忆视图
  *   （这三类在经典壳由 App 视图切换消费；工作台下无人处理，点击毫无反应）
  *
@@ -287,10 +288,16 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
 
     const onNavigateToView = (e: Event) => {
-      const openResource = (e as CustomEvent<{ openResource?: string }>).detail?.openResource;
-      if (typeof openResource !== 'string' || !openResource.trim()) return;
-      const resourceId = openResource.trim().replace(/^\/+/, '');
-      if (resourceId) launchResourceWindow(resourceId);
+      const detail = (e as CustomEvent<{ view?: string; openResource?: string }>).detail;
+      const openResource = detail?.openResource;
+      if (typeof openResource === 'string' && openResource.trim()) {
+        const resourceId = openResource.trim().replace(/^\/+/, '');
+        if (resourceId) launchResourceWindow(resourceId);
+        return;
+      }
+      if (detail?.view === 'notes') {
+        workbenchBus.launch({ typeId: 'notebook', reason: 'api' });
+      }
     };
 
     const onNavigateToKnowledgeBase = (e: Event) => {

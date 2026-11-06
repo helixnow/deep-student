@@ -115,6 +115,9 @@ pub(super) fn open_sync_connection<P: AsRef<Path>>(
 ) -> rusqlite::Result<rusqlite::Connection> {
     let conn = rusqlite::Connection::open(path)?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    // Board-bearing VFS databases fail closed for writers that do not register
+    // the capability. Sync/restore paths are allowed writers.
+    dstu_storage::sqlite_capability::register_vfs_writer_capability(&conn)?;
     Ok(conn)
 }
 

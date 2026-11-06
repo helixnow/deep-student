@@ -31,6 +31,8 @@ export interface JsonSchemaProperty {
   /** JSON Schema 数值约束 */
   minimum?: number;
   maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
   /** JSON Schema 数组约束 */
   minItems?: number;
   maxItems?: number;

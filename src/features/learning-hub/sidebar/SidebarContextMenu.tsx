@@ -2,6 +2,7 @@ import type React from 'react';
 import { LearningHubContextMenu, type ContextMenuTarget } from '../components/LearningHubContextMenu';
 import type { LearningHubSidebarProps, ResourceListItem } from '../types';
 import type { EffectiveFinderPath } from './sidebarConstants';
+import { INK_BOARD_CREATE_ENABLED, prepareSourceInk } from '@/features/ink';
 
 export interface SidebarContextMenuProps {
   mode: LearningHubSidebarProps['mode'];
@@ -22,6 +23,7 @@ export interface SidebarContextMenuProps {
   handleNewTranslation: () => Promise<void>;
   handleNewEssay: () => Promise<void>;
   handleNewMindMap: () => Promise<void>;
+  handleNewInk: (folderId?: string | null, mode?: 'paged' | 'board') => Promise<void>;
   handleImportMarkdownNote: (folderId?: string | null) => Promise<void>;
   handleRefresh: () => Promise<void>;
   handleOpenFolder: (folderId: string) => void;
@@ -68,6 +70,7 @@ export function SidebarContextMenu({
   handleNewTranslation,
   handleNewEssay,
   handleNewMindMap,
+  handleNewInk,
   handleImportMarkdownNote,
   handleRefresh,
   handleOpenFolder,
@@ -107,6 +110,8 @@ export function SidebarContextMenu({
       canMove={canMoveInCurrentView}
       canAddToChat={canAddToChatInCurrentView}
       onCreateFolder={canCreateInCurrentView ? () => handleNewFolder() : undefined}
+      onCreateInk={canCreateInCurrentView ? (folderId, mode) => { void handleNewInk(folderId, mode); } : undefined}
+      boardInkEnabled={INK_BOARD_CREATE_ENABLED}
       onCreateItem={canCreateInCurrentView ? (type, _folderId) => {
         switch (type) {
           case 'note':
@@ -147,6 +152,7 @@ export function SidebarContextMenu({
           onOpenApp(resource as ResourceListItem);
         }
       }}
+      onAnnotateSource={onOpenApp ? (resource) => { void prepareSourceInk(resource, onOpenApp); } : undefined}
       onRenameResource={handleOpenRenameResourceDialog}
       onDeleteResource={canDeleteInCurrentView ? (resource) => {
         if (selectedIds.size > 1 && selectedIds.has(resource.id)) {

@@ -114,6 +114,10 @@ pub fn resolve_effective_sensitivity<F>(
 where
     F: FnMut(&str) -> Option<String>,
 {
+    if super::approval_scope::requires_destructive_ink_confirmation(tool_name, arguments) {
+        return Some(ToolSensitivity::High);
+    }
+
     let candidate_keys = [
         scoped_tool_override_key(tool_name, arguments),
         legacy_tool_override_key(tool_name),
@@ -284,6 +288,32 @@ mod tests {
             ),
             Some(ToolSensitivity::High)
         );
+    }
+
+    #[test]
+    fn destructive_ink_confirmation_survives_tool_group_and_global_low_overrides() {
+        let args = json!({
+            "document_id":"doc-a",
+            "expected_revision":"rev-7",
+            "ops":[{"op":"remove_object","object_id":"obj-a"}]
+        });
+        let tool = "builtin-ink_apply_ops";
+        for settings in [
+            vec![(GLOBAL_BYPASS_KEY, "true")],
+            vec![("tool_approval.domain.ink", "low")],
+            vec![("tool_approval.source.builtin", "low")],
+            vec![("tool_approval.override.builtin-ink_apply_ops", "low")],
+            vec![(
+                "tool_approval.override.builtin::builtin-ink_apply_ops",
+                "low",
+            )],
+        ] {
+            assert_eq!(
+                resolve(&settings, Some(ToolSensitivity::High), tool, &args),
+                Some(ToolSensitivity::High),
+                "destructive ink confirmation cannot be lowered by {settings:?}"
+            );
+        }
     }
 
     #[test]

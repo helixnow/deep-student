@@ -4436,6 +4436,59 @@ mod tests {
         assert_eq!(slots.available_permits(), MAX_OCR_CONCURRENCY);
     }
 
+    #[tokio::test]
+    async fn detect_media_type_refuses_managed_ink_before_ocr() {
+        use crate::vfs::{
+            database::setup_migrated_test_db, error::VfsError, ink::InkRuling,
+            repos::ink_repo::VfsInkRepo,
+        };
+
+        let (temp_dir, db) = setup_migrated_test_db();
+        let db = Arc::new(db);
+        let settings_db = Arc::new(
+            crate::database::Database::new(&temp_dir.path().join("settings.db"))
+                .expect("settings db"),
+        );
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(temp_dir.path().to_path_buf())
+                .expect("file manager"),
+        );
+        let llm_manager = Arc::new(
+            crate::llm_manager::LLMManager::new(settings_db.clone(), file_manager.clone())
+                .expect("LLM manager"),
+        );
+        let ink = {
+            let conn = db.get_conn_safe().expect("VFS connection");
+            VfsInkRepo::create_blank_with_conn(
+                &conn,
+                db.blobs_dir(),
+                "Managed drawing",
+                InkRuling::Blank,
+                800.0,
+                1000.0,
+                "ocr-fixture-ink",
+                None,
+            )
+            .expect("create canonical managed ink document")
+        };
+
+        let service = Arc::new(PdfProcessingService::new(
+            db,
+            settings_db,
+            llm_manager,
+            file_manager,
+        ));
+        let error = service
+            .detect_media_type(&ink.document_id)
+            .expect_err("managed .dsink is not a supported OCR media type");
+
+        assert!(matches!(
+            error,
+            VfsError::InvalidArgument { ref param, .. } if param == "mime_type"
+        ));
+        assert_eq!(service.running_count(), 0);
+    }
+
     #[test]
     fn test_processing_stage_as_str() {
         assert_eq!(ProcessingStage::Pending.as_str(), "pending");

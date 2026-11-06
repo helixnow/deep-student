@@ -1136,6 +1136,49 @@ pub const V20261027_PRACTICE_SESSIONS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+pub const V20261103_INK_RENDER_ARTIFACTS: MigrationDef = MigrationDef::new(
+    20261103,
+    "ink_render_artifacts",
+    include_str!("../../../../migrations/vfs/V20261103__ink_render_artifacts.sql"),
+)
+.with_expected_tables(&["ink_render_artifacts"])
+.with_expected_indexes(&["idx_ink_render_artifacts_blob"])
+.with_expected_columns(&[
+    ("ink_render_artifacts", "render_id"),
+    ("ink_render_artifacts", "artifact_id"),
+    ("ink_render_artifacts", "metadata_json"),
+    ("ink_render_artifacts", "image_blob_hash"),
+    ("ink_render_artifacts", "image_file_id"),
+    ("ink_render_artifacts", "image_resource_id"),
+    ("ink_render_artifacts", "created_at"),
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_ink_render_artifacts_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_ink_render_artifacts_immutable_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_ink_render_artifacts_immutable_delete'",
+]);
+
+/// V20261104: VFS writer capability guard metadata.
+///
+/// Creates only the marker table. The write-blocking triggers are installed
+/// later, inside the savepoint that publishes the first ink board, so a v1
+/// database that never uses boards keeps its normal read/write behaviour.
+pub const V20261104_VFS_WRITER_GUARD: MigrationDef = MigrationDef::new(
+    20261104,
+    "vfs_writer_guard",
+    include_str!("../../../../migrations/vfs/V20261104__vfs_writer_guard.sql"),
+)
+.with_expected_tables(&["__vfs_writer_guard"])
+.with_expected_columns(&[
+    ("__vfs_writer_guard", "id"),
+    ("__vfs_writer_guard", "min_writer_capability"),
+    ("__vfs_writer_guard", "guard_installed"),
+])
+.with_expected_queries(&[
+    "SELECT min_writer_capability, guard_installed FROM __vfs_writer_guard WHERE id = 1",
+])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1208,6 +1251,8 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20261006_STUDY_TIME,
     V20261023_QUESTION_AUTHORING_V2,
     V20261027_PRACTICE_SESSIONS,
+    V20261103_INK_RENDER_ARTIFACTS,
+    V20261104_VFS_WRITER_GUARD,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1288,6 +1333,8 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 音视频字幕段与播放进度（V20261005）
     "media_transcript_segments",
     "media_progress",
+    // 不可变手写渲染来源记录（V20261103）
+    "ink_render_artifacts",
     // 学习时长（V20261006，设备本地计数）
     "study_time_daily",
     // 题目导入 v2：来源 / 材料 / 题组 / 组成员 / 本地导入任务（V20261023）
@@ -1305,6 +1352,8 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "__asset_deletion_queue",
     "__file_deletion_journal",
     "__lance_orphan_queue",
+    // VFS writer capability guard metadata（V20261104）
+    "__vfs_writer_guard",
     // FTS5 虚拟表
     "questions_fts",
     "notes_fts",
@@ -1314,7 +1363,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 67;
+pub const VFS_TABLE_COUNT: usize = 69;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1387,15 +1436,23 @@ mod tests {
     }
 
     #[test]
-    fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20261027);
+    fn test_vfs_writer_guard_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20261104);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("practice_sessions")
+            Some("vfs_writer_guard")
+        );
+        assert_eq!(
+            V20261104_VFS_WRITER_GUARD.expected_tables,
+            &["__vfs_writer_guard"]
+        );
+        assert_eq!(
+            V20261103_INK_RENDER_ARTIFACTS.expected_tables,
+            &["ink_render_artifacts"]
         );
         assert_eq!(V20261006_STUDY_TIME.expected_tables, &["study_time_daily"]);
         assert_eq!(
@@ -1414,6 +1471,61 @@ mod tests {
         assert!(V20260908_INSIGHT_FTS
             .expected_tables
             .contains(&"insight_fts"));
+    }
+
+    #[test]
+    fn ink_render_artifact_migration_pins_blobs_and_rejects_mutation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE blobs (hash TEXT PRIMARY KEY, ref_count INTEGER NOT NULL);
+             CREATE TABLE __change_log (
+                 table_name TEXT NOT NULL,
+                 record_id TEXT NOT NULL,
+                 operation TEXT NOT NULL CHECK(operation IN ('INSERT','UPDATE','DELETE'))
+             );",
+        )
+        .unwrap();
+        conn.execute_batch(V20261103_INK_RENDER_ARTIFACTS.sql)
+            .unwrap();
+        let hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        conn.execute("INSERT INTO blobs(hash, ref_count) VALUES (?1, 0)", [hash])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO ink_render_artifacts(render_id, artifact_id, metadata_json, image_blob_hash, image_file_id, image_resource_id, created_at) VALUES ('render-a','render-a','{}',?1,'file-a','resource-a','now')",
+            [hash],
+        )
+        .unwrap();
+        let ref_count: i64 = conn
+            .query_row("SELECT ref_count FROM blobs WHERE hash=?1", [hash], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(ref_count, 1);
+        let change: (String, String, String) = conn
+            .query_row(
+                "SELECT table_name, record_id, operation FROM __change_log",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            change,
+            (
+                "ink_render_artifacts".into(),
+                "render-a".into(),
+                "INSERT".into()
+            )
+        );
+        assert!(conn
+            .execute("UPDATE ink_render_artifacts SET metadata_json='{}'", [])
+            .is_err());
+        assert!(conn
+            .execute("DELETE FROM ink_render_artifacts", [])
+            .is_err());
+        assert!(conn
+            .execute("DELETE FROM blobs WHERE hash=?1", [hash])
+            .is_err());
     }
 
     #[test]

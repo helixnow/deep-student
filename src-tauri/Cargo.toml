@@ -100,7 +100,7 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
 tokio = { version = "1.35.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-rusqlite = { version = "0.40.1", default-features = false, features = ["bundled", "backup", "hooks", "cache", "fallible_uint"] }  # bundled SQLite >= 3.51.3 includes the WAL-reset corruption fix
+rusqlite = { version = "0.40.1", default-features = false, features = ["bundled", "backup", "hooks", "cache", "functions", "fallible_uint"] }  # bundled SQLite >= 3.51.3 includes the WAL-reset corruption fix
 base64 = "0.21.7"
 tempfile = "3.10.1"
 cap-std = "3.4.5"
@@ -518,6 +518,13 @@ harness = false
 [[test]]
 name = "phase8_9_executor_e2e"
 path = "tests/phase8_9_executor_e2e.rs"
+harness = false
+
+# Native Wry E2E: real `vfs_ink_render` emit -> built shared renderBridge ->
+# staged PNG -> checked immutable artifact. Requires Xvfb/WebKitGTK and dist/.
+[[test]]
+name = "ink_board_render_e2e"
+path = "tests/ink_board_render_e2e.rs"
 harness = false
 
 [[bench]]

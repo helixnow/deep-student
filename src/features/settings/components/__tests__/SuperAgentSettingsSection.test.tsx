@@ -43,7 +43,7 @@ describe('Super-agent session switch (Settings → Automation)', () => {
   it('never adds a separate super-agent navigation entry', () => {
     const views = createNavItems(t).map((i) => i.view);
     expect(views).not.toContain('super-agent');
-    expect(views).toEqual(['chat-v2', 'learning-hub', 'media', 'todo', 'skills-management', 'flashcards', 'settings']);
+    expect(views).toEqual(['chat-v2', 'learning-hub', 'notes', 'media', 'todo', 'skills-management', 'flashcards', 'settings']);
     expect(createNavItems(t, true).map((i) => i.view)).not.toContain('super-agent');
   });
 

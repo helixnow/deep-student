@@ -1,4 +1,5 @@
 import { TFunction } from 'i18next';
+import { Notebook } from '@phosphor-icons/react';
 import type { CurrentView } from '@/types/navigation';
 import {
   StudyBlocksIcon,
@@ -15,7 +16,7 @@ import {
  * 统一的导航视图类型定义
  * 
  * 清理说明（2026-01）：
- * - 移除废弃视图：library、math-workflow、notes
+ * - 移除废弃视图：library、math-workflow
  * - 移除：irec-graph（知识图谱）
  */
 // ★ 2026-01：知识库入口已整合到 Learning Hub
@@ -25,6 +26,7 @@ export type NavViewType =
   | 'template-management'
   | 'chat-v2'
   | 'learning-hub'
+  | 'notes'
   | 'media'
   | 'skills-management'
   | 'ui-lab'
@@ -64,6 +66,11 @@ export const createNavItems = (
       name: t('sidebar:navigation.learning_hub', '资源库'),
       view: 'learning-hub',
       icon: StudyBooksIcon,
+    },
+    {
+      name: t('sidebar:navigation.notes', '笔记'),
+      view: 'notes',
+      icon: Notebook,
     },
     // ★ 音视频（2026-10）：资源库音视频的专用视角，串起「看课」闭环
     // （导入 → 转写 → 边看边查 → 提问 → 讲义 → 制卡/出题），见 docs/dev/media-learning §0.5
@@ -112,13 +119,14 @@ export const createNavItems = (
 };
 
 /**
- * 移动端所有侧栏在 head 之下的三列应用入口（7 个：会话 资源 音视频 / 待办 技能 闪卡 / 数据）。
+ * 移动端所有侧栏在 head 之下的三列应用入口（8 个：会话 资源 笔记 / 音视频 待办 技能 / 闪卡 数据）。
  * 不含设置（抽屉顶栏齿轮）、命令面板；制卡任务与模板并入「闪卡」入口
  * （闪卡中心页内分区切换，见 app/navigation/cardsHub.ts）。
  */
 export const MOBILE_APP_LAUNCHER_VIEWS = [
   'chat-v2',
   'learning-hub',
+  'notes',
   'media',
   'todo',
   'skills-management',

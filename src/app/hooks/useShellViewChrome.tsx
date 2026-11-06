@@ -24,6 +24,7 @@ export function useShellViewChrome(
     const labels: Partial<Record<CurrentView, string>> = {
       'chat-v2': t('sidebar:navigation.chat_v2'),
       'learning-hub': t('sidebar:navigation.learning_hub'),
+      'notes': t('sidebar:navigation.notes'),
       'media': t('sidebar:navigation.media'),
       'settings': t('sidebar:navigation.settings'),
       'dashboard': t('common:navigation.dashboard'),

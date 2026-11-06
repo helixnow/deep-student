@@ -19,6 +19,7 @@ export type PreviewShellMode =
   | 'audio'
   | 'video'
   | 'image'
+  | 'ink'
   | 'none';
 
 const IMAGE_EXTENSIONS = new Set([

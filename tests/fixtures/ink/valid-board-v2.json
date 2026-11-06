@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "document_id": "doc-board-demo-0001",
+  "revision": "r-000001",
+  "title": "空白无限画布",
+  "source": { "kind": "blank" },
+  "pages": [],
+  "surface": {
+    "kind": "board",
+    "page_id": "page-board-0001",
+    "ruling": "blank",
+    "bounds": { "x": -100.0, "y": -80.0, "width": 200.0, "height": 160.0 }
+  },
+  "chunks": []
+}

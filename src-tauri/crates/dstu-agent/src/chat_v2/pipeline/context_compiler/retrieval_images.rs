@@ -18,6 +18,7 @@ use super::images::{sniff_image_mime, ResolvedCanonicalImage};
 use crate::chat_v2::tools::types::BUILTIN_NAMESPACE;
 use crate::chat_v2::types::{CanonicalContentPart, ToolResultInfo};
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart};
+use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 
@@ -27,6 +28,7 @@ pub(crate) const MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN: usize = 4;
 /// 单张页图字节上限。PDF/教材页图在预处理阶段已按 `low` 压缩（≤768px JPEG），
 /// 超过该上限的通常是未经压缩的原图，直接跳过以免撑爆请求。
 pub(crate) const MAX_RETRIEVAL_PAGE_IMAGE_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_TOOL_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 
 /// 瞬态页图消息的 metadata kind，同时作为请求预算裁剪的固定（pinned）标记。
 pub(crate) const RETRIEVAL_PAGE_IMAGES_METADATA_KIND: &str = "retrieval_page_images";
@@ -122,6 +124,36 @@ pub(crate) fn count_request_images(messages: &[LegacyChatMessage]) -> usize {
         .sum()
 }
 
+/// Decoded image bytes already present in a request, for seeding the shared byte budget.
+pub(crate) fn count_request_image_bytes(messages: &[LegacyChatMessage]) -> usize {
+    use base64::Engine;
+
+    messages
+        .iter()
+        .flat_map(|message| {
+            let parts = message.multimodal_content.as_deref().into_iter().flatten();
+            let multimodal = parts.filter_map(|part| match part {
+                MultimodalContentPart::ImageUrl { base64, .. } => Some(base64.as_str()),
+                MultimodalContentPart::Text { .. } => None,
+            });
+            let legacy = message
+                .multimodal_content
+                .is_none()
+                .then(|| message.image_base64.as_deref())
+                .flatten()
+                .into_iter()
+                .flatten()
+                .map(String::as_str);
+            multimodal.chain(legacy)
+        })
+        .map(|encoded| {
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_or(usize::MAX, |bytes| bytes.len())
+        })
+        .fold(0usize, usize::saturating_add)
+}
+
 /// 当前提问 canonical 内容里已引用的页图 blob（用户 @ 引用过的同一页不重复发送）。
 pub(crate) fn canonical_image_blob_hashes(canonical: &[CanonicalContentPart]) -> HashSet<String> {
     canonical
@@ -141,6 +173,7 @@ pub(crate) fn canonical_image_blob_hashes(canonical: &[CanonicalContentPart]) ->
 pub(crate) struct RetrievalPageImageBudget {
     seen_blob_hashes: HashSet<String>,
     remaining: usize,
+    remaining_bytes: usize,
 }
 
 impl RetrievalPageImageBudget {
@@ -150,11 +183,21 @@ impl RetrievalPageImageBudget {
         images_in_request: usize,
         already_referenced_blobs: HashSet<String>,
     ) -> Self {
+        Self::new_with_bytes(image_budget, images_in_request, 0, already_referenced_blobs)
+    }
+
+    pub(crate) fn new_with_bytes(
+        image_budget: usize,
+        images_in_request: usize,
+        image_bytes_in_request: usize,
+        already_referenced_blobs: HashSet<String>,
+    ) -> Self {
         Self {
             seen_blob_hashes: already_referenced_blobs,
             remaining: image_budget
-                .saturating_sub(images_in_request)
-                .min(MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN),
+                .min(MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN)
+                .saturating_sub(images_in_request),
+            remaining_bytes: MAX_TOOL_IMAGE_BYTES.saturating_sub(image_bytes_in_request),
         }
     }
 
@@ -162,8 +205,16 @@ impl RetrievalPageImageBudget {
         self.remaining
     }
 
+    pub(crate) fn remaining_bytes(&self) -> usize {
+        self.remaining_bytes
+    }
+
+    pub(crate) fn contains_blob(&self, blob_hash: &str) -> bool {
+        self.seen_blob_hashes.contains(blob_hash)
+    }
+
     /// 按检索顺序挑出本轮可注入的候选（跳过已注入/已引用的 blob）。只做规划，
-    /// 真正消耗额度在 [`Self::commit`]：解析失败的页图不占预算。
+    /// 真正消耗额度在 [`Self::commit_with_bytes`]：解析失败的页图不占预算。
     pub(crate) fn plan(
         &self,
         candidates: Vec<RetrievalPageImageCandidate>,
@@ -174,11 +225,41 @@ impl RetrievalPageImageBudget {
             .collect()
     }
 
+    /// Retained for existing count-only budget tests and callers.
     pub(crate) fn commit(&mut self, blob_hash: &str) -> bool {
-        if self.remaining == 0 || !self.seen_blob_hashes.insert(blob_hash.to_string()) {
+        self.commit_with_bytes(blob_hash, 0)
+    }
+
+    pub(crate) fn commit_with_bytes(&mut self, blob_hash: &str, byte_len: usize) -> bool {
+        self.commit_batch_with_bytes(&[(blob_hash, byte_len)])
+    }
+
+    pub(crate) fn commit_batch_with_bytes(&mut self, images: &[(&str, usize)]) -> bool {
+        if images.is_empty() || images.len() > self.remaining {
             return false;
         }
-        self.remaining -= 1;
+        let mut batch_hashes = HashSet::with_capacity(images.len());
+        let mut total_bytes = 0usize;
+        for (hash, byte_len) in images {
+            if self.seen_blob_hashes.contains(*hash)
+                || !batch_hashes.insert(*hash)
+                || *byte_len > MAX_RETRIEVAL_PAGE_IMAGE_BYTES
+            {
+                return false;
+            }
+            let Some(sum) = total_bytes.checked_add(*byte_len) else {
+                return false;
+            };
+            total_bytes = sum;
+        }
+        if total_bytes > self.remaining_bytes {
+            return false;
+        }
+        for (hash, _) in images {
+            self.seen_blob_hashes.insert((*hash).to_string());
+        }
+        self.remaining -= images.len();
+        self.remaining_bytes -= total_bytes;
         true
     }
 }
@@ -351,7 +432,11 @@ impl crate::chat_v2::pipeline::ChatV2Pipeline {
             let Some(payload) = payload else {
                 continue;
             };
-            if budget.commit(&candidate.blob_hash) {
+            let byte_len = base64::engine::general_purpose::STANDARD
+                .decode(&payload.base64)
+                .map(|bytes| bytes.len())
+                .unwrap_or(usize::MAX);
+            if budget.commit_with_bytes(&candidate.blob_hash, byte_len) {
                 accepted.push((candidate, payload));
             }
         }
@@ -463,15 +548,22 @@ mod tests {
 
     #[test]
     fn budget_respects_total_image_budget_turn_cap_and_dedupe() {
-        // 总预算 8，请求里已有 6 张 → 只剩 2
-        let mut budget = RetrievalPageImageBudget::new(8, 6, HashSet::new());
+        // Total request image cap is four, including images already in the request.
+        let mut budget = RetrievalPageImageBudget::new(8, 2, HashSet::new());
         assert_eq!(budget.remaining(), 2);
         assert!(budget.commit("a"));
         assert!(!budget.commit("a"), "same blob must not be injected twice");
         assert!(budget.commit("b"));
         assert!(!budget.commit("c"), "budget exhausted");
+        assert_eq!(budget.remaining(), 0);
 
-        // 空请求也受每轮上限约束
+        // Existing request images consume the four-image cap before any injection.
+        let with_three_existing = RetrievalPageImageBudget::new(8, 3, HashSet::new());
+        assert_eq!(with_three_existing.remaining(), 1);
+        let with_four_existing = RetrievalPageImageBudget::new(8, 4, HashSet::new());
+        assert_eq!(with_four_existing.remaining(), 0);
+
+        // Empty request also respects the per-turn cap.
         let budget = RetrievalPageImageBudget::new(8, 0, HashSet::new());
         assert_eq!(budget.remaining(), MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN);
 
@@ -489,6 +581,86 @@ mod tests {
         ]));
         assert_eq!(planned.len(), 1);
         assert_eq!(planned[0].blob_hash, "blob_b");
+    }
+
+    #[test]
+    fn shared_budget_caps_four_images_and_sixteen_mebibytes_for_all_injectors() {
+        let mut budget = RetrievalPageImageBudget::new(8, 0, HashSet::new());
+        let image_bytes = MAX_RETRIEVAL_PAGE_IMAGE_BYTES;
+        for index in 0..4 {
+            assert!(budget.commit_with_bytes(&format!("blob-{index}"), image_bytes));
+        }
+        assert_eq!(budget.remaining(), 0);
+        assert_eq!(budget.remaining_bytes(), 0);
+        assert!(!budget.commit_with_bytes("fifth-blob", 1));
+        assert!(!budget.commit_with_bytes("too-large", image_bytes + 1));
+
+        let candidates = vec![RetrievalPageImageCandidate {
+            tool_call_id: "call-1".to_string(),
+            blob_hash: "blob-0".to_string(),
+            citation_tag: None,
+            title: None,
+            page_index: None,
+            resource_id: None,
+            source_id: None,
+        }];
+        assert!(
+            budget.plan(candidates).is_empty(),
+            "ink-delivered blobs are also hidden from retrieval"
+        );
+
+        let mut shared = RetrievalPageImageBudget::new_with_bytes(
+            8,
+            2,
+            MAX_TOOL_IMAGE_BYTES - 1024,
+            HashSet::new(),
+        );
+        assert_eq!(shared.remaining(), 2);
+        assert!(shared.commit_with_bytes("ink-delivered", 800));
+        assert_eq!(shared.remaining(), 1);
+        assert_eq!(shared.remaining_bytes(), 224);
+        let retrieval = shared.plan(vec![
+            RetrievalPageImageCandidate {
+                tool_call_id: "call-1".to_string(),
+                blob_hash: "ink-delivered".to_string(),
+                citation_tag: None,
+                title: None,
+                page_index: None,
+                resource_id: None,
+                source_id: None,
+            },
+            RetrievalPageImageCandidate {
+                tool_call_id: "call-1".to_string(),
+                blob_hash: "retrieval-delivered".to_string(),
+                citation_tag: None,
+                title: None,
+                page_index: None,
+                resource_id: None,
+                source_id: None,
+            },
+        ]);
+        assert_eq!(retrieval.len(), 1);
+        assert_eq!(retrieval[0].blob_hash, "retrieval-delivered");
+        assert!(!shared.commit_with_bytes("retrieval-too-large", 225));
+        assert_eq!(shared.remaining(), 1);
+        assert_eq!(shared.remaining_bytes(), 224);
+        assert!(shared.commit_with_bytes(&retrieval[0].blob_hash, 224));
+        assert_eq!(shared.remaining(), 0);
+        assert_eq!(shared.remaining_bytes(), 0);
+    }
+
+    #[test]
+    fn failed_batch_budget_commit_is_atomic() {
+        let mut budget = RetrievalPageImageBudget::new(8, 0, HashSet::new());
+        let failed = budget.commit_batch_with_bytes(&[
+            ("would-fit-alone", 1024),
+            ("over-limit", MAX_RETRIEVAL_PAGE_IMAGE_BYTES + 1),
+        ]);
+        assert!(!failed);
+        assert_eq!(budget.remaining(), MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN);
+        assert_eq!(budget.remaining_bytes(), MAX_TOOL_IMAGE_BYTES);
+        assert!(!budget.contains_blob("would-fit-alone"));
+        assert!(budget.commit_with_bytes("would-fit-alone", 1024));
     }
 
     #[test]

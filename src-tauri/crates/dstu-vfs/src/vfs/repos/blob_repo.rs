@@ -51,6 +51,17 @@ enum BlobSource<'a> {
     Staged(&'a mut StagedBlob),
 }
 
+pub(crate) struct BlobMutationGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+
+pub(crate) fn acquire_blob_mutation_guard() -> VfsResult<BlobMutationGuard> {
+    BLOB_FILE_MUTATION_LOCK
+        .lock()
+        .map(|lock| BlobMutationGuard { _lock: lock })
+        .map_err(|_| VfsError::Internal("blob file mutation lock poisoned".to_string()))
+}
+
 fn lock_blob_file_mutation() -> VfsResult<MutexGuard<'static, ()>> {
     BLOB_FILE_MUTATION_LOCK
         .lock()
@@ -109,12 +120,25 @@ impl VfsBlobRepo {
         mime_type: Option<&str>,
         extension: Option<&str>,
     ) -> VfsResult<VfsBlob> {
+        let guard = acquire_blob_mutation_guard()?;
+        Self::store_blob_with_conn_guarded(conn, blobs_dir, data, mime_type, extension, &guard)
+    }
+
+    pub(crate) fn store_blob_with_conn_guarded(
+        conn: &Connection,
+        blobs_dir: &Path,
+        data: &[u8],
+        mime_type: Option<&str>,
+        extension: Option<&str>,
+        guard: &BlobMutationGuard,
+    ) -> VfsResult<VfsBlob> {
         Self::store_blob_source_with_conn(
             conn,
             blobs_dir,
             BlobSource::Bytes(data),
             mime_type,
             extension,
+            guard,
         )
     }
 
@@ -176,12 +200,27 @@ impl VfsBlobRepo {
         mime_type: Option<&str>,
         extension: Option<&str>,
     ) -> VfsResult<VfsBlob> {
+        let guard = acquire_blob_mutation_guard()?;
+        Self::store_staged_blob_with_conn_guarded(
+            conn, blobs_dir, staged, mime_type, extension, &guard,
+        )
+    }
+
+    pub(crate) fn store_staged_blob_with_conn_guarded(
+        conn: &Connection,
+        blobs_dir: &Path,
+        staged: &mut StagedBlob,
+        mime_type: Option<&str>,
+        extension: Option<&str>,
+        guard: &BlobMutationGuard,
+    ) -> VfsResult<VfsBlob> {
         Self::store_blob_source_with_conn(
             conn,
             blobs_dir,
             BlobSource::Staged(staged),
             mime_type,
             extension,
+            guard,
         )
     }
 
@@ -191,11 +230,8 @@ impl VfsBlobRepo {
         mut source: BlobSource<'_>,
         mime_type: Option<&str>,
         extension: Option<&str>,
+        _guard: &BlobMutationGuard,
     ) -> VfsResult<VfsBlob> {
-        // 与物理删除的 quarantine 阶段串行，避免 ref_count 复活与文件 claim
-        // 交错后产生有 metadata、无文件的悬挂 blob。
-        let _file_guard = lock_blob_file_mutation()?;
-
         // 1. 计算哈希
         let (hash, data_len) = match &source {
             BlobSource::Bytes(data) => (Self::compute_hash(data), data.len() as u64),

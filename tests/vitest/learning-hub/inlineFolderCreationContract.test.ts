@@ -7,7 +7,10 @@ describe('learning hub inline folder creation', () => {
   const sidebarDir = resolve(process.cwd(), 'src/features/learning-hub/sidebar');
   const source = [
     resolve(process.cwd(), 'src/features/learning-hub/LearningHubSidebar.tsx'),
-    ...readdirSync(sidebarDir).sort().map((name) => resolve(sidebarDir, name)),
+    ...readdirSync(sidebarDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((entry) => resolve(sidebarDir, entry.name)),
   ].map((file) => readFileSync(file, 'utf-8')).join('\n');
 
   it('renders an unpersisted folder draft and only creates after a non-empty inline edit', () => {

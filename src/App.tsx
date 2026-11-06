@@ -49,6 +49,7 @@ import {
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
 import { LearningHubNavigationProvider } from './features/learning-hub';
+import { registerDstuFileViewer, registerInkRenderBridge, registerInkJobBridge } from './features/ink';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import 'overlayscrollbars/overlayscrollbars.css';
@@ -168,6 +169,9 @@ import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useClassicToWorkbenchHandoff } from './app/hooks/useClassicToWorkbenchHandoff';
 import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
+
+registerDstuFileViewer();
+
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
@@ -354,6 +358,28 @@ const BRIDGE_COMPLETION_REASONS = new Set([
 
 
 function App() {
+  useEffect(() => {
+    let active = true;
+    let unregister: (() => void) | undefined;
+    void (async () => {
+      const stops: Array<() => void> = [];
+      try {
+        stops.push(await registerInkRenderBridge());
+        stops.push(await registerInkJobBridge());
+        const stop = () => stops.splice(0).reverse().forEach((unregisterBridge) => unregisterBridge());
+        if (active) unregister = stop;
+        else stop();
+      } catch (error) {
+        stops.reverse().forEach((unregisterBridge) => unregisterBridge());
+        console.error('[InkBridge] Failed to mount app-level listeners:', error);
+      }
+    })();
+    return () => {
+      active = false;
+      unregister?.();
+    };
+  }, []);
+
   // 全面接入新引擎统一管理（在 App 级别避免再手绑流事件）
   const USE_STABLE_STREAM_ENGINE = true;
   // 🚀 应用初始化
@@ -1033,6 +1059,7 @@ function App() {
       'settings': 'settings',
       'chat-v2': 'chat-v2',
       'learning-hub': 'learning-hub',
+      'notes': 'notes',
     };
 
     const targetView = tabName ? tabToViewMap[tabName] : undefined;
@@ -1369,6 +1396,7 @@ function App() {
     mediaStudioContent,
     styleDebugContent,
     learningHubContent,
+    notebookContent,
     pdfReaderContent,
     chatV2Content,
     templateManagementContent,
@@ -1779,7 +1807,7 @@ function App() {
 
               {/* ★ 废弃视图已移除（2026-01 清理）：irec, irec-management, irec-service-switcher, math-workflow */}
 
-              {/* 笔记模块已整合到 Learning Hub，通过 DSTU 协议访问；历史 NotesHome 视图已下线删除 */}
+              {renderViewLayer('notes', notebookContent, 'overflow-hidden')}
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}

@@ -814,6 +814,8 @@ impl PipelineContext {
                 ended_at: Some(ended_at),
                 first_chunk_at: Some(segment.started_at),
                 block_index: 0,
+
+                ink_artifacts: Vec::new(),
             };
             self.add_interleaved_block(block);
             self.last_block_ended_at = Some(ended_at);
@@ -871,6 +873,8 @@ impl PipelineContext {
             // 🔧 工具块使用 started_at 作为排序依据
             first_chunk_at: Some(started_at),
             block_index: 0,
+
+            ink_artifacts: Vec::new(),
         };
         self.add_interleaved_block(block);
         // 🔧 P3修复：更新上一个块的结束时间，让后续 thinking 块能正确计算时间

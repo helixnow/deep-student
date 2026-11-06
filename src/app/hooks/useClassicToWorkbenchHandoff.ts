@@ -25,6 +25,7 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
  */
 export const WORKBENCH_APP_BY_CLASSIC_VIEW: Partial<Record<CurrentView, string>> = {
   'learning-hub': 'files',
+  'notes': 'notebook',
   'settings': 'settings',
   'todo': 'todo',
   'skills-management': 'skills',

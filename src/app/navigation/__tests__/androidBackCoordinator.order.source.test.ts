@@ -4,7 +4,7 @@
  * 场景：Chat 组合面板打开后再打开 AppMenu，按系统返回键应「先关菜单、
  * 面板仍开；再按一次才关面板」。两者都以 BACK_PRIORITY.overlay 注册，
  * 先后顺序完全由协调器的栈语义（同优先级后注册者先执行）保证——这是
- * 跨三个文件的隐式约定，任何一环缺失都会静默破坏层级关闭顺序，且
+ * 横跨平台注册、app 分发与组件注册的约定，缺失一环就会破坏层级关闭顺序，且
  * jsdom 下渲染 InputBarUI/AppMenu 成本过高，故用源码契约锁住。
  *
  * 红/绿说明：
@@ -22,26 +22,33 @@ const read = (relativePath: string) =>
   readFileSync(resolve(process.cwd(), relativePath), 'utf8');
 
 const coordinatorSource = read('src/app/navigation/androidBackCoordinator.ts');
+const registrySource = read('src/services/androidBackRegistry.ts');
 const appMenuSource = read('src/components/ui/app-menu/AppMenu.tsx');
 const inputBarSource = read('src/features/chat/components/input-bar/InputBarUI.tsx');
 
 describe('coordinator dispatch order: same priority, LIFO', () => {
-  it('assigns a monotonic seq on registration and pushes onto the stack', () => {
-    expect(coordinatorSource).toMatch(/seq:\s*seqCounter\+\+/);
-    expect(coordinatorSource).toMatch(/handlers\.push\(entry\)/);
+  it('assigns a monotonic seq on registration and pushes onto the platform stack', () => {
+    expect(registrySource).toMatch(/seq:\s*seqCounter\+\+/);
+    expect(registrySource).toMatch(/handlers\.push\(entry\)/);
   });
 
   it('sorts by priority desc, then seq desc (later-registered first)', () => {
     // 锁住排序表达式本身：b - a 两段都是降序。改成 a.seq - b.seq
     //（先注册先执行）会破坏「后开的菜单先关」，此用例应红。
-    expect(coordinatorSource).toMatch(
+    expect(registrySource).toMatch(
       /\(b\.priority\s*-\s*a\.priority\)\s*\|\|\s*\(b\.seq\s*-\s*a\.seq\)/,
     );
+    expect(coordinatorSource).toContain('const sorted = getBackHandlersSnapshot();');
+  });
+
+  it('keeps the registry independent from app, debug, and feature modules', () => {
+    expect(registrySource).not.toMatch(/(?:from\s*|import\s*\()['"]@\/(?:app|debug-panel|features)\//);
+    expect(coordinatorSource).not.toMatch(/(?:const handlers\s*=|let seqCounter\s*=)/);
   });
 
   it('documents the AppMenu / Composer-panel same-tier contract next to BACK_PRIORITY', () => {
-    expect(coordinatorSource).toContain('同档共存登记');
-    expect(coordinatorSource).toMatch(/AppMenu[\s\S]{0,200}InputBarUI/);
+    expect(registrySource).toContain('同档共存登记');
+    expect(registrySource).toMatch(/AppMenu[\s\S]{0,200}InputBarUI/);
   });
 });
 

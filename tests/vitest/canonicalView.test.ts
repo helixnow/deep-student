@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalizeView, isSupportedView } from '@/app/navigation/canonicalView';
+import { CANONICAL_VIEWS, canonicalizeView, isSupportedView } from '@/app/navigation/canonicalView';
 
 describe('canonicalView', () => {
   it('maps deprecated views to supported destinations', () => {
     expect(canonicalizeView('analysis')).toBe('chat-v2');
     expect(canonicalizeView('chat')).toBe('chat-v2');
-    expect(canonicalizeView('notes')).toBe('learning-hub');
+    expect(canonicalizeView('markdown-editor')).toBe('learning-hub');
     expect(canonicalizeView('review')).toBe('chat-v2');
     expect(canonicalizeView('exam-sheet')).toBe('learning-hub');
     expect(canonicalizeView('textbook-library')).toBe('learning-hub');
@@ -16,6 +16,8 @@ describe('canonicalView', () => {
     expect(canonicalizeView('chat-v2')).toBe('chat-v2');
     expect(canonicalizeView('settings')).toBe('settings');
     expect(canonicalizeView('learning-hub')).toBe('learning-hub');
+    expect(CANONICAL_VIEWS.has('notes')).toBe(true);
+    expect(canonicalizeView('notes')).toBe('notes');
   });
 
   it('reports supported status after canonicalization', () => {

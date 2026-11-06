@@ -28,6 +28,7 @@
 // ── 核心 API ──
 
 export { dstu, updatedAtToVersionToken } from './api';
+export { INK_MIME, INK_EXTENSION, isInkFile } from './inkFormat';
 
 // ── 资源创建工厂 ──
 
