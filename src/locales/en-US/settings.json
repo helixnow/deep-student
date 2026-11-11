@@ -1597,6 +1597,8 @@
     "google_api_key_desc": "Google Custom Search API key",
     "google_cse_cx_label": "Google CSE CX",
     "google_cse_cx_desc": "Google Custom Search Engine ID",
+    "google_cse_endpoint_label": "Google CSE Endpoint",
+    "google_cse_endpoint_desc": "Custom Search JSON API request URL (optional). Leave empty to use https://www.googleapis.com/customsearch/v1",
     "serpapi_key_label": "SerpAPI Key",
     "serpapi_key_desc": "SerpAPI (Google Search) API key",
     "tavily_key_label": "Tavily Key",

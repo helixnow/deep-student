@@ -832,6 +832,8 @@ pub struct ProviderKeys {
     pub google_cse: Option<String>,
     #[serde(rename = "web_search.google_cse.cx")]
     pub google_cse_cx: Option<String>,
+    #[serde(rename = "web_search.google_cse.endpoint")]
+    pub google_cse_endpoint: Option<String>,
     #[serde(rename = "web_search.api_key.serpapi")]
     pub serpapi: Option<String>,
     #[serde(rename = "web_search.api_key.tavily")]
@@ -1056,6 +1058,11 @@ impl ToolConfig {
         if let Some(v) = get_secret("web_search.google_cse.cx") {
             if !v.is_empty() {
                 self.keys.google_cse_cx = Some(v);
+            }
+        }
+        if let Some(v) = get_secret("web_search.google_cse.endpoint") {
+            if !v.is_empty() {
+                self.keys.google_cse_endpoint = Some(v);
             }
         }
         if let Some(v) = get_secret("web_search.api_key.serpapi") {
@@ -1303,6 +1310,9 @@ impl ToolConfig {
         }
         if tool.keys.google_cse_cx.is_none() {
             tool.keys.google_cse_cx = std::env::var("GOOGLE_CSE_CX").ok();
+        }
+        if tool.keys.google_cse_endpoint.is_none() {
+            tool.keys.google_cse_endpoint = std::env::var("GOOGLE_CSE_ENDPOINT").ok();
         }
         if tool.keys.serpapi.is_none() {
             tool.keys.serpapi = std::env::var("SERPAPI_KEY").ok();
@@ -1892,6 +1902,17 @@ impl Provider for BingRssProvider {
 
 #[derive(Default)]
 pub struct GoogleCSEProvider;
+const GOOGLE_CSE_DEFAULT_ENDPOINT: &str = "https://www.googleapis.com/customsearch/v1";
+
+/// Google CSE 请求地址：未配置 `web_search.google_cse.endpoint` 时使用 Google 官方地址。
+fn google_cse_endpoint(keys: &ProviderKeys) -> &str {
+    keys.google_cse_endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(GOOGLE_CSE_DEFAULT_ENDPOINT)
+}
+
 #[async_trait]
 impl Provider for GoogleCSEProvider {
     fn name(&self) -> &'static str {
@@ -1939,15 +1960,13 @@ impl Provider for GoogleCSEProvider {
         }
         let start = input.start.unwrap_or(1).max(1);
         let t0 = Instant::now();
-        let mut req = client
-            .get("https://www.googleapis.com/customsearch/v1")
-            .query(&[
-                ("key", key.as_str()),
-                ("cx", cx.as_str()),
-                ("q", q.as_str()),
-                ("num", &capped_top_k.to_string()),
-                ("start", &start.to_string()),
-            ]);
+        let mut req = client.get(google_cse_endpoint(&cfg.keys)).query(&[
+            ("key", key.as_str()),
+            ("cx", cx.as_str()),
+            ("q", q.as_str()),
+            ("num", &capped_top_k.to_string()),
+            ("start", &start.to_string()),
+        ]);
         // 时间范围映射：1d/7d/30d/365d -> dateRestrict=d1/d7/d30/y1
         if let Some(range) = &input.time_range {
             let dr = match range.as_str() {
@@ -3491,6 +3510,41 @@ mod tests {
         // 无敏感参数原样
         let plain = "config error: missing GOOGLE_API_KEY";
         assert_eq!(redact_url_secrets(plain), plain);
+    }
+    #[test]
+    fn t_google_cse_endpoint() {
+        let mut keys = ProviderKeys::default();
+        assert_eq!(
+            google_cse_endpoint(&keys),
+            "https://www.googleapis.com/customsearch/v1"
+        );
+        keys.google_cse_endpoint = Some("  ".into());
+        assert_eq!(
+            google_cse_endpoint(&keys),
+            "https://www.googleapis.com/customsearch/v1"
+        );
+        keys.google_cse_endpoint = Some("https://cse.example.com/customsearch/v1".into());
+        assert_eq!(
+            google_cse_endpoint(&keys),
+            "https://cse.example.com/customsearch/v1"
+        );
+    }
+    #[test]
+    fn t_google_cse_endpoint_db_override() {
+        let mut cfg = ToolConfig::default();
+        cfg.apply_db_overrides(|_| None, |_| None);
+        assert!(cfg.keys.google_cse_endpoint.is_none());
+        cfg.apply_db_overrides(
+            |_| None,
+            |k| {
+                (k == "web_search.google_cse.endpoint")
+                    .then(|| "https://cse.example.com/customsearch/v1".to_string())
+            },
+        );
+        assert_eq!(
+            google_cse_endpoint(&cfg.keys),
+            "https://cse.example.com/customsearch/v1"
+        );
     }
     #[test]
     fn t_strip_html() {

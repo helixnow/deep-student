@@ -57,6 +57,7 @@ export interface SystemConfig {
   webSearchTimeoutMs: number;
   webSearchGoogleKey: string;
   webSearchGoogleCx: string;
+  webSearchGoogleEndpoint: string;
   webSearchSerpApiKey: string;
   webSearchTavilyKey: string;
   webSearchBraveKey: string;
