@@ -1597,6 +1597,8 @@
     "google_api_key_desc": "Google 自定义搜索 API 密钥",
     "google_cse_cx_label": "Google CSE CX",
     "google_cse_cx_desc": "Google 自定义搜索引擎 ID",
+    "google_cse_endpoint_label": "Google CSE Endpoint",
+    "google_cse_endpoint_desc": "Custom Search JSON API 请求地址（可选），留空则使用 https://www.googleapis.com/customsearch/v1",
     "serpapi_key_label": "SerpAPI Key",
     "serpapi_key_desc": "SerpAPI（Google 搜索）API 密钥",
     "tavily_key_label": "Tavily Key",

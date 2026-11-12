@@ -273,6 +273,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     webSearchTimeoutMs: 15000,
     webSearchGoogleKey: '',
     webSearchGoogleCx: '',
+    webSearchGoogleEndpoint: '',
     webSearchSerpApiKey: '',
     webSearchTavilyKey: '',
     webSearchBraveKey: '',
@@ -1167,6 +1168,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     config.webSearchGoogleKey, config.webSearchSerpApiKey, config.webSearchTavilyKey,
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
     config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
+    config.webSearchGoogleEndpoint,
     config.webSearchDeepseekNeedContent, config.webSearchDeepseekFetchEnabled,
   ]);
 

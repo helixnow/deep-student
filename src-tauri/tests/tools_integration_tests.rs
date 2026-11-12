@@ -146,6 +146,67 @@ async fn test_web_search_tool_with_mock_server() {
 }
 
 #[tokio::test]
+async fn test_google_cse_custom_endpoint_with_mock_server() {
+    let mut server = Server::new_async().await;
+    let (db, _temp_dir) = create_test_database().await;
+
+    // 配置 web_search.google_cse.endpoint 后，Google CSE 请求应发往该地址。
+    let mock_response = json!({
+        "items": [
+            {
+                "title": "Test Result 1",
+                "link": "https://example.com/1",
+                "snippet": "This is a test search result"
+            }
+        ]
+    });
+
+    let mock = server
+        .mock("GET", "/customsearch/v1")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("key".into(), "test-key".into()),
+            mockito::Matcher::UrlEncoded("cx".into(), "test-cx".into()),
+            mockito::Matcher::UrlEncoded("q".into(), "test search query".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(mock_response.to_string())
+        .create_async()
+        .await;
+
+    db.save_setting("session.selected_search_engines", "google_cse")
+        .unwrap();
+    db.save_secret("web_search.api_key.google_cse", "test-key")
+        .unwrap();
+    db.save_secret("web_search.google_cse.cx", "test-cx")
+        .unwrap();
+    db.save_secret(
+        "web_search.google_cse.endpoint",
+        &format!("{}/customsearch/v1", server.url()),
+    )
+    .unwrap();
+
+    let ctx = create_test_tool_context(&db);
+    let web_search_tool = WebSearchTool;
+
+    let args = json!({
+        "query": "test search query",
+        "top_k": 5
+    });
+
+    let (ok, data, error, _usage, citations, _inject_text) =
+        web_search_tool.invoke(&args, &ctx).await;
+
+    mock.assert_async().await;
+    assert!(ok, "search failed: {error:?}");
+    let result_data = data.unwrap();
+    assert_eq!(result_data["provider"], "google_cse");
+    let citations = citations.unwrap();
+    assert_eq!(citations.len(), 1);
+    assert_eq!(citations[0].document_id, "https://example.com/1");
+}
+
+#[tokio::test]
 async fn test_provider_strategies_functionality() {
     let strategies = ProviderStrategies::default();
 

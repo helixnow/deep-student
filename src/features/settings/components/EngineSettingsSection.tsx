@@ -32,6 +32,7 @@ export interface WebSearchConfig {
   webSearchEngine?: string;
   webSearchGoogleKey?: string;
   webSearchGoogleCx?: string;
+  webSearchGoogleEndpoint?: string;
   webSearchSerpApiKey?: string;
   webSearchTavilyKey?: string;
   webSearchBraveKey?: string;
@@ -412,6 +413,18 @@ export const EngineSettingsSection: React.FC<{
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors [@media(pointer:coarse)]:!min-h-11"
                   />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
+                </div>
+                <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_endpoint_label')}</div>
+                          <Input
+                    type="text"
+                    {...TECHNICAL_INPUT_PROPS}
+                    value={config.webSearchGoogleEndpoint}
+                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleEndpoint: e.target.value }))}
+                    placeholder="https://www.googleapis.com/customsearch/v1"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                  />
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_endpoint_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
