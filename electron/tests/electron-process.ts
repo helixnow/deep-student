@@ -7,6 +7,7 @@ type Options = Omit<SpawnOptionsWithoutStdio, 'stdio'> & { stdio?: 'pipe' | ['ig
  * Electron remains the returned child, so existing kill/exit cleanup still targets the real process. */
 export async function spawnElectron(executable: string, args: string[], options: Options): Promise<ChildProcessWithoutNullStreams> {
   const env = { ...(options.env ?? process.env) };
+  if (env.ELECTRON_RUN_AS_NODE === '') delete env.ELECTRON_RUN_AS_NODE;
   let stopDisplay = () => undefined as void;
   if (process.platform === 'linux' && !env.DISPLAY) {
     const server = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', '1280x1024x24', '-nolisten', 'tcp', '-ac'], {

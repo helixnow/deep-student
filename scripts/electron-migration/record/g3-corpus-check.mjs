@@ -28,7 +28,7 @@
 //   date-literal          arguments carry a calendar date; with the clock not frozen, the scenario's
 //                         meaning depends on the recording day (due dates, ranges, expiry). An MCP
 //                         `protocolVersion` (a protocol revision named by date) is not one
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -166,10 +166,23 @@ export async function loadRegistries(root) {
     rustCommands: rustCommands(root), mcpBindings: await mcpBindingKinds(), seedBindings };
 }
 
-/** Command names in every `generate_handler![…]` of src-tauri/src/lib.rs (what the A binary dispatches). */
+/** Command names in `generate_handler![…]` of src-tauri/src/lib.rs, or extracted IPC contracts after Tauri removal. */
 export function rustCommands(root, file = 'src-tauri/src/lib.rs') {
-  const text = readFileSync(join(root, file), 'utf8');
+  const target = join(root, file);
   const names = new Set();
+  if (!existsSync(target)) {
+    const contractsDir = join(root, 'contracts/ipc');
+    if (file !== 'src-tauri/src/lib.rs' || !existsSync(contractsDir)) return names;
+    for (const entry of readdirSync(contractsDir)) {
+      if (!entry.endsWith('.json') || entry.startsWith('_')) continue;
+      const doc = JSON.parse(readFileSync(join(contractsDir, entry), 'utf8'));
+      for (const cmd of doc.commands ?? []) {
+        if (cmd.rust && typeof cmd.name === 'string') names.add(cmd.name);
+      }
+    }
+    return names;
+  }
+  const text = readFileSync(target, 'utf8');
   for (let start = text.indexOf('generate_handler!['); start >= 0; start = text.indexOf('generate_handler![', start + 1)) {
     let depth = 0, end = start + 'generate_handler!'.length;
     for (; end < text.length; end++) {
