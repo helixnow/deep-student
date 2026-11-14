@@ -92,7 +92,7 @@ export async function observeBoot(input: BootCase, onKernel?: (kernel: UiKernel)
     './dstu': { setDstuLogger() {}, createLoggerFromDebugPlugin() {} },
     './debug-panel/debugMasterSwitch': { debugMasterSwitch: { isEnabled: () => false, addListener: () => () => {} }, debugLog: { warn() {} } },
     './mcp/mcpService': { McpService: { dispose() {} }, bootstrapMcpFromSettings: async () => { trace.push(['runtime.mcp']); } },
-    './hooks/useAppInitialization': { initializeFontSetting: async () => { trace.push(['font']); } },
+    './hooks/useAppInitialization': { initializeFontSetting: async () => { trace.push(['font']); }, installCrossTabSettingsSync: () => () => {} },
     './features/data-recovery/dataRecoveryApi': {
       getStartupRecoveryStatus: async () => { trace.push(['preflight']); return status; },
     },
@@ -126,11 +126,18 @@ export async function observeBoot(input: BootCase, onKernel?: (kernel: UiKernel)
         '../ui-plugins/official/install': { installOfficialUiPlugins },
         '../i18n': { default: i18n },
         '../command-palette/registry/commandRegistry': { commandRegistry: { register: () => () => {}, getById: () => undefined } },
-        '../features/chat/registry/blockRegistry': { blockRegistry: { has: () => false } },
+        '../features/chat/registry/blockRegistry': {
+          blockRegistry: { has: () => false },
+          eventRegistry: { register: () => () => {} },
+          modeRegistry: { register: () => () => {} },
+        },
         '../features/workbench/core/appRegistry': { appRegistry: { get: () => undefined } },
         '@tauri-apps/api/core': modules['@tauri-apps/api/core'],
+        '@/events/registry': { dispatchTypedEvent() {} },
+        '../app/pluginWorkshop': {},
+        '../features/plugin-manager/production': {},
       };
-      vm.runInNewContext(bootstrap, { exports, require: (key: string) => dependencies[key] });
+      vm.runInNewContext(bootstrap, { exports, require: (key: string) => dependencies[key] ?? {} });
       return { createAppUiKernel: async () => { const kernel = await exports.createAppUiKernel(); onKernel?.(kernel); return kernel; } };
     }
     if (/\/ui-kernel\/react$/.test(id)) return { UiKernelProvider: named('UiKernelProvider') };

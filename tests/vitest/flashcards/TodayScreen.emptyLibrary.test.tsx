@@ -31,6 +31,7 @@ vi.mock('react-i18next', () => ({
       'today.upNext': 'Up next',
     }[key] ?? key),
   }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
 
 vi.mock('@/components/mobile', () => ({

@@ -17,7 +17,9 @@ describe('ChatV2 desktop secondary panel motion contract', () => {
     expect(source).toContain('const desktopSecondaryPanelShellClassName = cn(');
     expect(source).toContain("desktopSecondaryPanelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'");
     expect(source).not.toContain('absolute inset-y-0 right-0 z-10');
-    expect(source).toContain('width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0');
+    expect(source).toContain('const desktopSecondaryPanelWidth = allowReadingLayout && desktopSecondaryPanelSnapshotMode === \'attachment\'');
+    expect(source).toContain('width: desktopSecondaryPanelOpen ? desktopSecondaryPanelWidth : 0');
+    expect(source).toContain('width: desktopSecondaryPanelWidth');
     expect(source).toContain('transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING');
     expect(source).toContain('pointer-events-none translate-x-full opacity-0');
   });

@@ -46,6 +46,7 @@ const FTP_TRANSPORT = `${PLUGIN_DIR}/src/ftp.ts`;
 const DESKTOP_PLATFORM_MODULE = `${PLUGIN_DIR}/src/desktop-platform.ts`;
 /** 桌面本地文件端口实现（`node:fs/promises` + `platform/zip/node`）。 */
 const LOCAL_FS_IMPL = `${PLUGIN_DIR}/src/local-fs.node.ts`;
+const AES_GCM_IMPL = `${PLUGIN_DIR}/src/aes-gcm.node.ts`;
 const ZIP_FILE_ADAPTER = 'host/platform/zip/node/file.ts';
 
 /** A platform entry that links no desktop-only transport (what a mobile entry declares). */
@@ -126,8 +127,8 @@ describe('FTP is desktop-only: mobile readiness classification', () => {
     const desktop = nodeFindings(DESKTOP_ENTRY);
     const shared = nodeFindings(SHARED_BODY);
     const desktopOnly = [...desktop.keys()].filter(file => !shared.has(file)).sort();
-    // 移动端入口换成 `mobile.ts`（不链接 FTP、不注入 `local-fs.node.ts`）后，这三处 Node 依赖只属于桌面。
-    expect(desktopOnly).toEqual([ZIP_FILE_ADAPTER, FTP_TRANSPORT, LOCAL_FS_IMPL].sort());
+    // 移动端入口换成 `mobile.ts`（不链接 FTP、不注入 `local-fs.node.ts` / `aes-gcm.node.ts`）后，这四处 Node 依赖只属于桌面。
+    expect(desktopOnly).toEqual([ZIP_FILE_ADAPTER, AES_GCM_IMPL, FTP_TRANSPORT, LOCAL_FS_IMPL].sort());
     expect([...desktop.get(FTP_TRANSPORT)!]).toEqual(expect.arrayContaining(['node-builtin:net', 'node-builtin:tls']));
     expect([...desktop.get(LOCAL_FS_IMPL)!]).toEqual(expect.arrayContaining(['node-builtin:fs', 'node-builtin:os']));
   });

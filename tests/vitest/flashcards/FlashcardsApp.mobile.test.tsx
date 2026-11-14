@@ -28,9 +28,15 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mocks.t }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
-vi.mock('@/hooks/useBreakpoint', () => ({
-  useBreakpoint: () => ({ isSmallScreen: mocks.isSmallScreen }),
-}));
+vi.mock('@/hooks/useBreakpoint', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useBreakpoint')>();
+  return {
+    ...actual,
+    useBreakpoint: () => ({ isSmallScreen: mocks.isSmallScreen }),
+    useIsMobile: () => mocks.isSmallScreen,
+    usePhoneLandscape: () => false,
+  };
+});
 vi.mock('@/features/flashcards/screens/TodayScreen', () => ({
   TodayScreen: () => <div>Today content</div>,
 }));
@@ -104,9 +110,10 @@ describe('Flashcards mobile navigation', () => {
     const header = container.querySelector('[data-mobile-shell="header"]') as HTMLElement;
     expect(within(header).getByRole('button', { name: 'library.create.new' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'library.create.new' })).toHaveLength(1);
+    expect(mocks.refreshLibrary).toHaveBeenCalledTimes(1);
     fireEvent.click(within(header).getByRole('button', { name: 'common:more' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'library.refresh' }));
-    expect(mocks.refreshLibrary).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole('menuitem', { name: 'library.import.apkg' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'library.export.apkg' })).toBeInTheDocument();
   });
 
   it('publishes composer save/back and restores the library after saving or system back', async () => {

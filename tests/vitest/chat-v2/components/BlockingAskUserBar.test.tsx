@@ -4,21 +4,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BlockingAskUserBar } from '@/features/chat/components/input-bar/BlockingAskUserBar';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      const translations: Record<string, string> = {
-        'askUser.recommended': 'Recommended',
-        'askUser.responded': 'Responded',
-        'askUser.customPlaceholder': 'Or enter a custom answer...',
-        'askUser.ignore': 'Ignore',
-        'askUser.submit': 'Submit',
-        'askUser.optionReasonLabel': 'Why this option',
-      };
-      return translations[key] || (params?.defaultValue as string) || key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string, params?: Record<string, unknown>) => {
+        const translations: Record<string, string> = {
+          'askUser.recommended': 'Recommended',
+          'askUser.responded': 'Responded',
+          'askUser.customPlaceholder': 'Or enter a custom answer...',
+          'askUser.ignore': 'Ignore',
+          'askUser.submit': 'Submit',
+          'askUser.optionReasonLabel': 'Why this option',
+        };
+        return translations[key] || (params?.defaultValue as string) || key;
+      },
+    }),
+  };
+});
 
 describe('BlockingAskUserBar', () => {
   afterEach(() => {

@@ -272,11 +272,12 @@ describe('multi-agent debug panel (evidence before the split)', () => {
 
   it('refreshes agents and messages from the workspace API, logs failures, and clears the log', async () => {
     seedWorkspace();
-    const { container } = render(<Panel {...props(true)} />);
+    const { container, rerender } = render(<Panel {...props(true)} />);
     await flush();
-    const refreshButton = () => container.querySelector<HTMLButtonElement>('.flex.items-center.gap-2 > button')!;
 
-    await act(async () => fireEvent.click(refreshButton()));
+    // No current session -> automatic refresh returns early without calling the API.
+    rerender(<Panel {...props(false)} />);
+    rerender(<Panel {...props(true)} />);
     await flush();
     h.currentSession = 'sess_coordinator_0001';
     h.refresh.agents = [
@@ -286,15 +287,17 @@ describe('multi-agent debug panel (evidence before the split)', () => {
     h.refresh.messages = [
       { id: 'msg_r1', sender_session_id: 'sess_worker_review_0005', target_session_id: null, message_type: 'result', content: '审阅完成', status: 'read', created_at: '2026-11-07T09:59:30' },
     ];
-    await act(async () => fireEvent.click(refreshButton()));
+    rerender(<Panel {...props(false)} />);
+    rerender(<Panel {...props(true)} />);
     await flush();
     const refreshed = panelText(container);
     h.refresh.fail = true;
-    await act(async () => fireEvent.click(refreshButton()));
+    rerender(<Panel {...props(false)} />);
+    rerender(<Panel {...props(true)} />);
     await flush();
     await act(async () => fireEvent.click(tab(/日志 \(/)));
     const logs = panelText(container);
-    await act(async () => fireEvent.click(container.querySelectorAll<HTMLButtonElement>('.flex.items-center.gap-2 > button')[2]!));
+    await act(async () => fireEvent.click(container.querySelectorAll<HTMLButtonElement>('.flex.items-center.gap-2 > button')[1]!));
     const cleared = panelText(container);
 
     const current = `${refreshed}----\n${logs}----\n${cleared}`;

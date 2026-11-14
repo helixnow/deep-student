@@ -6,7 +6,7 @@
  * 2. 多类目：五类未同步条目分组展示，每组带人话原因 + 可执行建议，
  *    冲突类条目展示冲突对方 key，截断时给出诚实提示；
  * 3. 只读动作：downloadPending 不提供同步写入口；查询失败的行内重试与
- *    「重新检查」都只重新执行清单查询；
+ *    窗口聚焦自动复查都只重新执行清单查询；
  * 4. SyncTab 挂载行锁定：面板常驻挂载且只拿到 refreshSignal；
  * 5. locale 契约：zh/en `unsynced.*` 键齐全对齐，建议文案写明可执行动作。
  */
@@ -14,7 +14,7 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -261,16 +261,14 @@ describe('UnsyncedItemsPanel 只读刷新动作', () => {
     ]);
   });
 
-  it('「重新检查」按钮重新发起查询', async () => {
+  it('窗口重新获得焦点时自动重新发起只读查询', async () => {
     mockInvoke.mockResolvedValue(makeReport([]));
     render(<UnsyncedItemsPanel />);
     await screen.findByText('sync:unsynced.empty');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /sync:unsynced\.checkNow/ }),
-    );
+    fireEvent.focus(window);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('sync:unsynced.empty')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
     expect(mockInvoke.mock.calls.map(([command]) => command)).toEqual([
       'data_governance_list_unsynced_items',
       'data_governance_list_unsynced_items',

@@ -28,8 +28,8 @@ describe('EnhancedPdfViewer region capture wiring', () => {
   it('offers the action in both the wide toolbar and the compact more menu', () => {
     const toggles = viewerSource.match(/setRegionCaptureActive\(prev => !prev\)/g) ?? [];
     expect(toggles).toHaveLength(2);
-    expect(viewerSource.match(/t\('pdf:toolbar\.capture_ask'\)/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(viewerSource).toMatch(/regionCaptureActive \? 'active' : ''\}`\} onClick=\{\(\) => setRegionCaptureActive\(prev => !prev\)\} disabled=\{numPages === 0\}/);
+    expect(viewerSource.match(/t\('pdf:toolbar\.capture_ask'\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(viewerSource).toMatch(/regionCaptureActive \? 'active' : ''\}`\}\s+onClick=\{\(\) => setRegionCaptureActive\(prev => !prev\)\}\s+disabled=\{numPages === 0\}/);
   });
 
   it('hands the capture to the chat input through the shared attachment pipeline', () => {

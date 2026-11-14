@@ -97,7 +97,7 @@ it('returns cancellation at the Rust retrieval await point without emitting end 
     expect(providerCancelled).toBe(true);
     expect(JSON.parse(result.error!).detail).toBe('Unified retrieval cancelled during execution');
     const events = h.host.eventsNamed('chat_v2_event_sess_retrieval') as BackendEvent[];
-    expect(events.map(event => [event.type, event.phase])).toEqual([['rag', 'start']]);
+    expect(events.map(event => [event.type, event.phase])).toEqual([['rag', 'start'], ['rag', 'error']]);
     finish(response());
   } finally { await h.dispose(); }
 });

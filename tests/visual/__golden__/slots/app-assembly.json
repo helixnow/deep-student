@@ -14068,9 +14068,33 @@
       "cardinality": "keyed",
       "entries": [
         {
+          "id": "todo_list",
+          "key": "todo_list",
+          "order": 0,
+          "owner": "dstu.ui.chat",
+          "origin": "builtin",
+          "value": {
+            "component": "<anonymous>",
+            "onAbort": "keep-content",
+            "type": "todo_list"
+          }
+        },
+        {
+          "id": "anki_cards",
+          "key": "anki_cards",
+          "order": 1,
+          "owner": "dstu.ui.chat",
+          "origin": "builtin",
+          "value": {
+            "component": "<anonymous>",
+            "onAbort": "keep-content",
+            "type": "anki_cards"
+          }
+        },
+        {
           "id": "thinking",
           "key": "thinking",
-          "order": 0,
+          "order": 2,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14082,7 +14106,7 @@
         {
           "id": "content",
           "key": "content",
-          "order": 1,
+          "order": 3,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14094,7 +14118,7 @@
         {
           "id": "generic",
           "key": "generic",
-          "order": 2,
+          "order": 4,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14104,21 +14128,9 @@
           }
         },
         {
-          "id": "todo_list",
-          "key": "todo_list",
-          "order": 3,
-          "owner": "dstu.ui.chat",
-          "origin": "builtin",
-          "value": {
-            "component": "<anonymous>",
-            "onAbort": "keep-content",
-            "type": "todo_list"
-          }
-        },
-        {
           "id": "paper_save",
           "key": "paper_save",
-          "order": 4,
+          "order": 5,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14130,7 +14142,7 @@
         {
           "id": "mcp_tool",
           "key": "mcp_tool",
-          "order": 5,
+          "order": 6,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14142,7 +14154,7 @@
         {
           "id": "image_gen",
           "key": "image_gen",
-          "order": 6,
+          "order": 7,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14154,25 +14166,13 @@
         {
           "id": "tool_limit",
           "key": "tool_limit",
-          "order": 7,
+          "order": 8,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
             "component": "<anonymous>",
             "onAbort": "keep-content",
             "type": "tool_limit"
-          }
-        },
-        {
-          "id": "workspace_status",
-          "key": "workspace_status",
-          "order": 8,
-          "owner": "dstu.ui.chat",
-          "origin": "builtin",
-          "value": {
-            "component": "<anonymous>",
-            "onAbort": "mark-error",
-            "type": "workspace_status"
           }
         },
         {
@@ -14188,9 +14188,21 @@
           }
         },
         {
+          "id": "workspace_status",
+          "key": "workspace_status",
+          "order": 10,
+          "owner": "dstu.ui.chat",
+          "origin": "builtin",
+          "value": {
+            "component": "<anonymous>",
+            "onAbort": "mark-error",
+            "type": "workspace_status"
+          }
+        },
+        {
           "id": "qbank_questions",
           "key": "qbank_questions",
-          "order": 10,
+          "order": 11,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14202,25 +14214,13 @@
         {
           "id": "workspace_send",
           "key": "workspace_send",
-          "order": 11,
+          "order": 12,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
             "component": "<anonymous>",
             "onAbort": "mark-error",
             "type": "workspace_send"
-          }
-        },
-        {
-          "id": "anki_cards",
-          "key": "anki_cards",
-          "order": 12,
-          "owner": "dstu.ui.chat",
-          "origin": "builtin",
-          "value": {
-            "component": "<anonymous>",
-            "onAbort": "keep-content",
-            "type": "anki_cards"
           }
         },
         {
@@ -14481,6 +14481,8 @@
           "origin": "builtin",
           "value": {
             "onChunk": "ƒ",
+            "onEnd": "ƒ",
+            "onError": "ƒ",
             "onStart": "ƒ"
           }
         },

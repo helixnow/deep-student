@@ -43,7 +43,10 @@ describe('X5-03/04 production sink binding', () => {
       expect(events.at(-1)).toMatchObject({ type: 'tool_call_preparing', phase: 'chunk', chunk: '{"id":"n"}' });
       adapter.onContentChunk('partial');
       adapter.onError('provider failed');
-      expect(events.at(-1)).toMatchObject({ type: 'content', phase: 'error', error: 'provider failed', roundId: 'round_1' });
+      expect(events.slice(-2)).toEqual([
+        expect.objectContaining({ type: 'content', phase: 'error', error: 'provider failed', roundId: 'round_1' }),
+        expect.objectContaining({ type: 'tool_call_preparing', phase: 'error', error: 'provider failed', roundId: 'round_1' }),
+      ]);
       emitter.dispose();
     } finally { await host.dispose(); }
   });

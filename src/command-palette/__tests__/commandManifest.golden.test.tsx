@@ -214,6 +214,10 @@ async function bootCommands(): Promise<() => Promise<void>> {
 }
 
 async function waitForNamespaces() {
+  await act(async () => {
+    await i18n.changeLanguage('en-US');
+    await i18n.changeLanguage('zh-CN');
+  });
   for (let i = 0; i < 200; i++) {
     if (i18n.hasResourceBundle('zh-CN', 'command_palette') && i18n.hasResourceBundle('en-US', 'command_palette')) return;
     await new Promise((resolve) => setTimeout(resolve, 10));

@@ -393,9 +393,12 @@ describe('dstu_update', { timeout: 30_000 }, () => {
       metadata: { isFavorite: false, defaultView: 'outline', theme: 'default' },
     });
     const stored = JSON.parse(conn.pluck<string>(
-      'SELECT data FROM resources WHERE id = ?1', [mindmap.resourceId!])!);
+      'SELECT data FROM resources WHERE id = ?1', [updated.resourceId!])!);
     expect(stored.root).toMatchObject({ id: 'root', text: '新根' });
     expect(stored.root.children[0]).toMatchObject({ text: '子', children: [] });
+    const preserved = JSON.parse(conn.pluck<string>(
+      'SELECT data FROM resources WHERE id = ?1', [mindmap.resourceId!])!);
+    expect(preserved.root).toMatchObject({ id: 'root', text: '旧根' });
     const after = conn.get<{ content_updated_at: string; updated_at: string }>(
       'SELECT content_updated_at, updated_at FROM mindmaps WHERE id = ?1', [mindmap.id]);
     expect(Date.parse(after!.content_updated_at)).toBeGreaterThan(beforeMs);

@@ -90,7 +90,7 @@ describe('WAVE0 runner (side B, production recorder)', () => {
     expect(llm.requests.map(r => [r.round, r.outcome, r.status, r.end])).toEqual([[0, 'served', 200, 'done']]);
     const body = llm.requests[0]!.body as { tools: Array<{ function: { name: string } }>; tool_choice: unknown };
     expect([body.tools.map(tool => tool.function.name), body.tool_choice]).toEqual([['builtin-template_list'], 'auto']);
-    expect(kinds(record).slice(-3)).toEqual(['tool_call_preparing:start', '<scoped>_usage', 'stream_error']);
+    expect(kinds(record).slice(-3)).toEqual(['<scoped>_usage', 'tool_call_preparing:error', 'stream_error']);
     expect(error).toBe('Tool error: tool round execution requires the chatToolRuntime owner service, which is not installed');
     console.log(JSON.stringify({ x5wave0: 'tool.second-round', terminal: record.terminal, kinds: kinds(record),
       llm: llm.requests.map(r => [r.round, r.outcome, r.status, r.end]), error }));

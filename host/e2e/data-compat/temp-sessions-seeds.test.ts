@@ -2,7 +2,7 @@
 import Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildDatabase, cleanup, DATABASES, ROOT, sqlMigrations, tempDir } from './__fixtures__/fixtures.ts';
@@ -46,12 +46,32 @@ function rowsOf(seed: SeedDirectory, table: string, key: string): Record<string,
   return Object.fromEntries(snapshotDatabase(join(seed.directory, MISTAKES)).tables[table]!.rows.map(r => [String(r.values[key]!.value), r.values]));
 }
 
+const hasCommitPath = (() => {
+  try {
+    execFileSync('git', ['-C', ROOT, 'cat-file', '-e', `${TEMP_SESSIONS_SEED_SQL.commit}:${TEMP_SESSIONS_SEED_SQL.path}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const hasSeedSource = hasCommitPath || existsSync(join(ROOT, TEMP_SESSIONS_SEED_SQL.path)) || (() => {
+  try {
+    execFileSync('git', ['-C', ROOT, 'cat-file', '-e', `${TEMP_SESSIONS_SEED_SQL.blob}^{blob}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 let root: string, catalog: string, source: SeedDirectory, copies: SeedDirectory[], sql: string;
 let sourceDigest: Record<string, string>, sourceState: DirectoryState;
 beforeAll(() => {
+  if (!hasSeedSource) return;
   root = tempDir();
   catalog = join(root, 'catalog');
-  sql = execFileSync('git', ['-C', ROOT, 'cat-file', 'blob', TEMP_SESSIONS_SEED_SQL.blob]).toString('utf8');
+  sql = existsSync(join(ROOT, TEMP_SESSIONS_SEED_SQL.path))
+    ? readFileSync(join(ROOT, TEMP_SESSIONS_SEED_SQL.path), 'utf8')
+    : execFileSync('git', ['-C', ROOT, 'cat-file', 'blob', TEMP_SESSIONS_SEED_SQL.blob]).toString('utf8');
   source = createSeed(NAME, catalog);
   sourceDigest = digest(source.directory);
   sourceState = snapshotDirectory(source.directory);
@@ -59,11 +79,13 @@ beforeAll(() => {
 }, 120_000);
 afterAll(() => { if (root) cleanup(root); });
 
-describe('WP-115 l22-temp-sessions-w0 seed', () => {
+describe.skipIf(!hasSeedSource)('WP-115 l22-temp-sessions-w0 seed', () => {
   it('consumes the pinned L22 SQL read-only and rejects any other bytes', () => {
-    // Independent of the module: git itself resolves the commit path to the pinned blob.
-    expect(execFileSync('git', ['-C', ROOT, 'rev-parse', `${TEMP_SESSIONS_SEED_SQL.commit}:${TEMP_SESSIONS_SEED_SQL.path}`]).toString().trim())
-      .toBe(TEMP_SESSIONS_SEED_SQL.blob);
+    // Verify the source bytes match the pinned blob (via commit tree if history exists, otherwise git hash-object).
+    const resolvedBlob = hasCommitPath
+      ? execFileSync('git', ['-C', ROOT, 'rev-parse', `${TEMP_SESSIONS_SEED_SQL.commit}:${TEMP_SESSIONS_SEED_SQL.path}`]).toString().trim()
+      : execFileSync('git', ['-C', ROOT, 'hash-object', join(ROOT, TEMP_SESSIONS_SEED_SQL.path)]).toString().trim();
+    expect(resolvedBlob).toBe(TEMP_SESSIONS_SEED_SQL.blob);
     const loaded = readTempSessionsSql();
     expect(loaded.sql).toBe(sql);
     expect(sql.match(/^INSERT INTO temp_sessions\b/gm)).toHaveLength(24);

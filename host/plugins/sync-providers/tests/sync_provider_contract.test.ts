@@ -20,6 +20,7 @@ import type { CloudStorage, RuntimeCloudStorageConfig } from '../api.ts';
 import { createStorageWithCapabilities } from '../index.ts';
 import { CloudSyncManager } from '../src/sync_manager.ts';
 import { DESKTOP_CAPABILITIES } from '../src/config.ts';
+import './local-fs-fixture.ts';
 
 const ENABLED = process.env.DS_SYNC_TEST_DOCKER === '1';
 const tempDirs: string[] = [];

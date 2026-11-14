@@ -16,6 +16,6 @@ describe('OverviewTab icon source contract', () => {
     expect(overviewSource).toContain('<CheckCircle className="h-5 w-5 text-success" />');
     expect(overviewSource).toContain('<HardDrive className="h-4 w-4" />');
     expect(overviewSource).toContain('<ArrowsLeftRight className="h-4 w-4" />');
-    expect(overviewSource).toContain('<ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? \'animate-spin\' : \'\'}`} />');
+    expect(overviewSource).toContain('<Shield className="h-3.5 w-3.5 mr-1.5" />');
   });
 });

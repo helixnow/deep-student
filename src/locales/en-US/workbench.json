@@ -65,6 +65,8 @@
         "listSeparator": "; ",
         "noSuggestionPanel": "No suggestion panel is available here",
         "noSuggestionClaimer": "No open note editor picked up the suggestion",
+        "missingSetContent": "Missing replacement content; original note unchanged",
+        "invalidReplacement": "Search and replacement values must be text",
         "fullReadUnsupported": "The long-note editor cannot safely read the full text",
         "saveConfirmUnsupported": "The editor cannot confirm saves",
         "contentChanged": "The note changed in the meantime; concurrency check failed",

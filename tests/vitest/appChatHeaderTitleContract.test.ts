@@ -165,7 +165,9 @@ describe('app chat header title contract', () => {
 
     expect(appSource).toContain("import { StudyComposeIcon } from './components/icons/StudySidebarIcons';");
     expect(navControlsSource).toContain('handleDesktopToolbarButtonClick(event, onNewSession)');
-    expect(navControlsSource).toContain('<CommonTooltip content={newSessionLabel} position="bottom">');
+    expect(navControlsSource).toContain('<Tooltip>');
+    expect(navControlsSource).toContain('<TooltipTrigger asChild>');
+    expect(navControlsSource).toContain('<TooltipContent side="bottom">{newSessionLabel}</TooltipContent>');
     expect(navControlsSource).not.toContain('title={newSessionLabel}');
     expect(navControlsSource).toContain('aria-label={newSessionLabel}');
     expect(navControlsSource).toContain('<StudyComposeIcon className="h-4 w-4" />');
@@ -173,7 +175,7 @@ describe('app chat header title contract', () => {
     expect(newSessionButtonIndex).toBeGreaterThan(forwardButtonIndex);
   });
 
-  it('uses CommonTooltip for desktop shell sidebar and history controls instead of native title', () => {
+  it('uses Tooltip for desktop shell sidebar and history controls instead of native title', () => {
     const accessoryStart = appSource.indexOf('function DesktopSidebarAccessory');
     const accessoryEnd = appSource.indexOf('function DesktopHeaderNavControls');
     expect(accessoryStart).toBeGreaterThanOrEqual(0);
@@ -181,7 +183,9 @@ describe('app chat header title contract', () => {
     const accessorySource = appSource.slice(accessoryStart, accessoryEnd);
 
     expect(appSource).toContain("const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar');");
-    expect(accessorySource).toContain('<CommonTooltip content={label} position="bottom">');
+    expect(accessorySource).toContain('<Tooltip>');
+    expect(accessorySource).toContain('<TooltipTrigger asChild>');
+    expect(accessorySource).toContain('<TooltipContent side="bottom">{label}</TooltipContent>');
     expect(accessorySource).not.toContain('title={label}');
 
     const navControlsStart = chromeSource.indexOf('function DesktopHeaderNavControls');
@@ -190,8 +194,8 @@ describe('app chat header title contract', () => {
     expect(navControlsEnd).toBeGreaterThan(navControlsStart);
     const navControlsSource = chromeSource.slice(navControlsStart, navControlsEnd);
 
-    expect(navControlsSource).toContain('<CommonTooltip content={backTitle} position="bottom">');
-    expect(navControlsSource).toContain('<CommonTooltip content={forwardTitle} position="bottom">');
+    expect(navControlsSource).toContain('<TooltipContent side="bottom">{backTitle}</TooltipContent>');
+    expect(navControlsSource).toContain('<TooltipContent side="bottom">{forwardTitle}</TooltipContent>');
     expect(navControlsSource).not.toContain('title={backTitle}');
     expect(navControlsSource).not.toContain('title={forwardTitle}');
   });

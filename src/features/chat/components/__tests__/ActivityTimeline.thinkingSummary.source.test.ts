@@ -164,7 +164,7 @@ describe('activity timeline thinking summary source', () => {
   });
 
   it('keeps list markers inside the visible thinking-chain viewport', () => {
-    expect(activityTimelineSource).toContain('className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400"');
+    expect(activityTimelineSource).toContain('className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-muted-foreground"');
     expect(thinkingChainCssSource).toContain('padding-left: 1.5rem !important;');
     expect(thinkingChainCssSource).toContain('font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));');
     expect(thinkingChainCssSource).toContain('font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));');

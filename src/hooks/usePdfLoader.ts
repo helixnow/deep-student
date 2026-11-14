@@ -120,23 +120,30 @@ const EMPTY_PDF_STATE: Omit<PdfLoaderState, 'retry'> = {
  * 
  * 优先使用 filePath 加载本地文件，否则从数据库加载
  */
-async function resolveStreamableBlobPath(nodeId: string): Promise<string | undefined> {
+interface BlobPathResolution {
+  streamPath?: string;
+  /** `undefined` means blob path has not been queried yet; `null` means none/unavailable. */
+  blobPath: string | null | undefined;
+}
+
+async function resolveStreamableBlobPath(nodeId: string): Promise<BlobPathResolution> {
   try {
     const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: nodeId });
-    if (!blobPath) return undefined;
+    if (!blobPath) return { blobPath: null };
 
     const access = await invoke<{ available: boolean; reason?: string }>(
       'pdfstream_check_access',
       { path: blobPath }
     );
     if (access?.available) {
-      return blobPath;
+      return { streamPath: blobPath, blobPath };
     }
     debugLog.warn('[usePdfLoader] blob path not streamable:', blobPath, access?.reason);
+    return { blobPath };
   } catch (err: unknown) {
     debugLog.warn('[usePdfLoader] blob path resolution failed:', err);
+    return { blobPath: null };
   }
-  return undefined;
 }
 
 /**
@@ -144,9 +151,16 @@ async function resolveStreamableBlobPath(nodeId: string): Promise<string | undef
  * `pdfstream.localhost` fetch can only fail (often after a long timeout).
  * Read the blob through IPC and hand PDF.js an in-memory File instead.
  */
-async function readBlobAsPdfFile(nodeId: string, fileName: string): Promise<File | null> {
+async function readBlobAsPdfFile(
+  nodeId: string,
+  fileName: string,
+  knownBlobPath?: string | null,
+): Promise<File | null> {
   try {
-    const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: nodeId });
+    const blobPath =
+      knownBlobPath !== undefined
+        ? knownBlobPath
+        : await invoke<string | null>('vfs_get_file_blob_path', { id: nodeId });
     if (!blobPath) return null;
     // Same memory ceiling as the base64 fallback: never pull an oversized PDF
     // into the renderer just because streaming is unavailable.
@@ -191,9 +205,13 @@ export function usePdfLoader({
       try {
         // 移动端原生外壳没有 pdfstream://，跳过注定失败的协议探测；
         // WebUI 里同一协议是 HTTP 206 端点，移动浏览器照常流式。
-        const filePath = supportsStreamProtocol()
-          ? (explicitFilePath || await resolveStreamableBlobPath(nodeId))
-          : undefined;
+        let filePath = supportsStreamProtocol() ? explicitFilePath : undefined;
+        let knownBlobPath: string | null | undefined = undefined;
+        if (supportsStreamProtocol() && !filePath) {
+          const resolved = await resolveStreamableBlobPath(nodeId);
+          filePath = resolved.streamPath;
+          knownBlobPath = resolved.blobPath;
+        }
         if (cancelled) return;
         if (filePath) {
           publish({ filePath, loadSource: 'stream' });
@@ -227,7 +245,7 @@ export function usePdfLoader({
 
         // IPC byte path: mobile (no pdfstream) and desktop blobs that are not
         // streamable both load through read_file_bytes instead of base64.
-        const blobFile = await readBlobAsPdfFile(nodeId, fileName);
+        const blobFile = await readBlobAsPdfFile(nodeId, fileName, knownBlobPath);
         if (cancelled) return;
         if (blobFile) {
           cachePut(cacheStorageKey, blobFile);
