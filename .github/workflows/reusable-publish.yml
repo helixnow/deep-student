@@ -88,7 +88,7 @@ jobs:
           echo "is_draft=${IS_DRAFT}" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           path: artifacts
           pattern: '{macos-*,windows-x86_64,linux-x86_64,android-arm64,release-provenance-*}'
