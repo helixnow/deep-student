@@ -1,0 +1,280 @@
+{
+  "$comment": "音效素材清单：fetch-sfx.mjs 按此下载到 .cache/sfx/<file>（不入库），sha256 校验。全部为 CC0；署名非强制，但片尾 / 仓库致谢里仍按 attribution 列出。",
+  "packs": {
+    "kenney-rpg-audio": {
+      "type": "kenney",
+      "slug": "rpg-audio",
+      "title": "RPG Audio",
+      "page": "https://kenney.nl/assets/rpg-audio",
+      "author": "Kenney (www.kenney.nl)",
+      "license": "CC0-1.0",
+      "attribution": "RPG Audio by Kenney (kenney.nl), CC0 1.0"
+    },
+    "kenney-casino-audio": {
+      "type": "kenney",
+      "slug": "casino-audio",
+      "title": "Casino Audio",
+      "page": "https://kenney.nl/assets/casino-audio",
+      "author": "Kenney (www.kenney.nl)",
+      "license": "CC0-1.0",
+      "attribution": "Casino Audio by Kenney (kenney.nl), CC0 1.0"
+    },
+    "kenney-interface-sounds": {
+      "type": "kenney",
+      "slug": "interface-sounds",
+      "title": "Interface Sounds",
+      "page": "https://kenney.nl/assets/interface-sounds",
+      "author": "Kenney (www.kenney.nl)",
+      "license": "CC0-1.0",
+      "attribution": "Interface Sounds by Kenney (kenney.nl), CC0 1.0"
+    },
+    "vcsl": {
+      "type": "url",
+      "title": "Versilian Community Sample Library (VCSL)",
+      "page": "https://github.com/sgossner/VCSL",
+      "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+      "author": "Versilian Studios LLC",
+      "license": "CC0-1.0",
+      "attribution": "VCSL by Versilian Studios LLC (github.com/sgossner/VCSL), CC0 1.0"
+    },
+    "freesound": {
+      "type": "url",
+      "title": "Freesound",
+      "page": "https://freesound.org",
+      "license": "CC0-1.0",
+      "attribution": "见各条目 author / page（Freesound 公开预览文件，CC0 1.0）"
+    }
+  },
+  "assets": [
+    {
+      "id": "typing-mbp",
+      "pack": "freesound",
+      "file": "freesound/541763_typing-macbook-pro.mp3",
+      "url": "https://cdn.freesound.org/previews/541/541763_8871827-hq.mp3",
+      "page": "https://freesound.org/people/PhillipArthurSimmons/sounds/541763/",
+      "title": "Typing - MacBook Pro - 192 kHz.wav",
+      "author": "PhillipArthurSimmons",
+      "license": "CC0-1.0",
+      "sha256": "c41b91d8c8b75f027fd4b4699f39ae7e4c010efe11515371ad0e9daf9332a68a"
+    },
+    {
+      "id": "book-flip-1",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookFlip1.ogg",
+      "file": "kenney/rpg-audio/bookFlip1.ogg",
+      "sha256": "fa81ac2fedc8c641661b87e349630a36c9800e795e0c800e029214efdbe26a7d"
+    },
+    {
+      "id": "book-flip-2",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookFlip2.ogg",
+      "file": "kenney/rpg-audio/bookFlip2.ogg",
+      "sha256": "3409042acbfaebc24c1a6327dc073e36f9250841712e96c5040da566a97df73c"
+    },
+    {
+      "id": "book-flip-3",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookFlip3.ogg",
+      "file": "kenney/rpg-audio/bookFlip3.ogg",
+      "sha256": "c85db5dceb3f1df073e960630277eaa88a5afda0477c1ddd68dad707621767be"
+    },
+    {
+      "id": "book-place-1",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookPlace1.ogg",
+      "file": "kenney/rpg-audio/bookPlace1.ogg",
+      "sha256": "26f3ce60fbde85b678b0ad7f6624d80535fe540d88232ad1e38e47a96662d977"
+    },
+    {
+      "id": "book-place-2",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookPlace2.ogg",
+      "file": "kenney/rpg-audio/bookPlace2.ogg",
+      "sha256": "831874e8fd142d4d0a03ff009f1f83966338a7878c0f6f38c613ae5b80dd731e"
+    },
+    {
+      "id": "book-place-3",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/bookPlace3.ogg",
+      "file": "kenney/rpg-audio/bookPlace3.ogg",
+      "sha256": "b1afa711e1cabfe5b2c56e20e20e0f9d82142d067727447fa992ddc43dbdb06e"
+    },
+    {
+      "id": "cloth-1",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/cloth1.ogg",
+      "file": "kenney/rpg-audio/cloth1.ogg",
+      "sha256": "ddb93a3671233f95da0e0b10367f082f7eb42fa6caaddcf776410aa8833c747d"
+    },
+    {
+      "id": "cloth-2",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/cloth2.ogg",
+      "file": "kenney/rpg-audio/cloth2.ogg",
+      "sha256": "8a7451193c38bc05483aec25dd193e163a15d44cf7fff04ac7912573231b0201"
+    },
+    {
+      "id": "cloth-4",
+      "pack": "kenney-rpg-audio",
+      "member": "Audio/cloth4.ogg",
+      "file": "kenney/rpg-audio/cloth4.ogg",
+      "sha256": "e7ab9a6c4466dea874196c61f59bf1da05cfe58748f42fadd695d441a154a99b"
+    },
+    {
+      "id": "card-fan-1",
+      "pack": "kenney-casino-audio",
+      "member": "Audio/card-fan-1.ogg",
+      "file": "kenney/casino-audio/card-fan-1.ogg",
+      "sha256": "7a9758ccad8899baef1b9f60b4064e4baa724a548293832fdaea07e6e07e638d"
+    },
+    {
+      "id": "card-fan-2",
+      "pack": "kenney-casino-audio",
+      "member": "Audio/card-fan-2.ogg",
+      "file": "kenney/casino-audio/card-fan-2.ogg",
+      "sha256": "5743373c9dde00c6eee949a2c8e65d75946522768999167e1f5632451630e848"
+    },
+    {
+      "id": "ui-tick-1",
+      "pack": "kenney-interface-sounds",
+      "member": "Audio/tick_001.ogg",
+      "file": "kenney/interface-sounds/tick_001.ogg",
+      "sha256": "9d057b918024c787bbe6c00beed13a7ef72a3fa0c259add3cef36582792f4230"
+    },
+    {
+      "id": "ui-tick-2",
+      "pack": "kenney-interface-sounds",
+      "member": "Audio/tick_002.ogg",
+      "file": "kenney/interface-sounds/tick_002.ogg",
+      "sha256": "869442f54214be902ec7437f79e400dc91c1bfd90d18a6dd2d5b7e41ffbf457b"
+    },
+    {
+      "id": "vibes-D5",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_soft_D4_v1_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Soft%20Mallets/Vibes_soft_D4_v1_rr1_Main.wav",
+      "note": "软槌颤音琴，实测发音 D5 587.3 Hz",
+      "sha256": "daedf613863d4de0a383d66b2db6ab9ffd8dc492d16ff7d735cf3b3107046a26"
+    },
+    {
+      "id": "vibes-F5",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_soft_F4_v1_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Soft%20Mallets/Vibes_soft_F4_v1_rr1_Main.wav",
+      "note": "实测 F5 698.5 Hz",
+      "sha256": "95b7d6eeb71d77cce607c0c52b0a6dfd23d0eeedc2eb393fb9a6c5a5768f4aa5"
+    },
+    {
+      "id": "vibes-A5",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_soft_A4_v1_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Soft%20Mallets/Vibes_soft_A4_v1_rr1_Main.wav",
+      "note": "实测 A5 880.0 Hz",
+      "sha256": "48e942290a982768d7a0038e28a76a99cb666673518b29ebdc55de5e1491025f"
+    },
+    {
+      "id": "vibes-C6",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_soft_C5_v1_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Soft%20Mallets/Vibes_soft_C5_v1_rr1_Main.wav",
+      "note": "实测 C6 1046.5 Hz",
+      "sha256": "be995c1164dcbbcf83688d095864a4abd0feaa68b71d1d2e78c35f62461fc03b"
+    },
+    {
+      "id": "glock-C6",
+      "pack": "vcsl",
+      "file": "vcsl/glock_soft_C5_02.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Glockenspiel/glock_soft_C5_02.wav",
+      "note": "软击钟琴，实测 C6 +12 音分",
+      "sha256": "4fa149e6f224557df5fab98ad660a8f192bc6fbf2556077dd1089509bf4424e2"
+    },
+    {
+      "id": "glock-G6",
+      "pack": "vcsl",
+      "file": "vcsl/glock_soft_G5_01.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Glockenspiel/glock_soft_G5_01.wav",
+      "note": "实测 G6 +12 音分",
+      "sha256": "73f6a6de89291d0292b303d641444de5e6e1561881f09f6cf20d77f245f7bec3"
+    },
+    {
+      "id": "glock-C7",
+      "pack": "vcsl",
+      "file": "vcsl/glock_soft_C6_01.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Glockenspiel/glock_soft_C6_01.wav",
+      "note": "实测 C7 +16 音分",
+      "sha256": "e0fdb3a134ee828530c654db7f94b04f94272984938875b0d5535ec40c658324"
+    },
+    {
+      "id": "chime-D5",
+      "pack": "vcsl",
+      "file": "vcsl/sus_D4_r01_main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Hand%20Chimes/sus_D4_r01_main.wav",
+      "note": "手摇钟（hand chime），实测 D5",
+      "sha256": "ab6598ca5d49f8d19f14b9e5fdfbdb35353ca7cc83e7d4f78946b6faa9371c67"
+    },
+    {
+      "id": "chime-Fs5",
+      "pack": "vcsl",
+      "file": "vcsl/sus_F#4_r01_main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Hand%20Chimes/sus_F%234_r01_main.wav",
+      "note": "实测 F#5",
+      "sha256": "858c506fc9c6c35bcb9e0c08850892cab77c1496a83ccff493377df6e6fb1bd4"
+    },
+    {
+      "id": "chime-A5",
+      "pack": "vcsl",
+      "file": "vcsl/sus_A4_r01_main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Hand%20Chimes/sus_A4_r01_main.wav",
+      "note": "实测 A5",
+      "sha256": "43604b3b049f3d7c60c6e5c8601d7027045ded1f124debcd65c2ccef723daaa1"
+    },
+    {
+      "id": "chime-D6",
+      "pack": "vcsl",
+      "file": "vcsl/sus_D5_r01_main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Hand%20Chimes/sus_D5_r01_main.wav",
+      "note": "实测 D6",
+      "sha256": "d3c2f3b6bd954993f6a45db8860c4a37d0c3468770d775c743bd10842191e486"
+    },
+    {
+      "id": "bowed-D5",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_bowed_D4_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Bowed/Vibes_bowed_D4_rr1_Main.wav",
+      "note": "弓拉颤音琴，实测 D5",
+      "sha256": "b5a6ab0a6c51b446832bc3686e27a62489f3169182ad4c872698912536d1ece6"
+    },
+    {
+      "id": "bowed-A5",
+      "pack": "vcsl",
+      "file": "vcsl/Vibes_bowed_A4_rr1_Main.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Vibraphone/Bowed/Vibes_bowed_A4_rr1_Main.wav",
+      "note": "实测 A5",
+      "sha256": "78be0c9d01f464cb76a46a398b3ae7ed412e9ae3d573f76c99a6821a1a04279f"
+    },
+    {
+      "id": "cymbal-cresc",
+      "pack": "vcsl",
+      "file": "vcsl/susCymb1_cresc_2s.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Suspended%20Cymbal%201/susCymb1_cresc_2s.wav",
+      "note": "软槌吊镲滚奏渐强，最强点约 1.2 秒",
+      "sha256": "a5507bf116b33ee220f4eff54506be56fd455e908c8d53903f217590341e5008"
+    },
+    {
+      "id": "cymbal-pp",
+      "pack": "vcsl",
+      "file": "vcsl/susCymb1_hit_pp1.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Idiophones/Struck%20Idiophones/Suspended%20Cymbal%201/susCymb1_hit_pp1.wav",
+      "note": "吊镲极弱单击",
+      "sha256": "d3221ae2c34233b1fa8ceb011ac91d9d3064a57bacff158e41fdef780ad575f8"
+    },
+    {
+      "id": "bass-drum",
+      "pack": "vcsl",
+      "file": "vcsl/bassdrum_hit_mf1.wav",
+      "url": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Membranophones/Struck%20Membranophones/Bass%20Drum%202/bassdrum_hit_mf1.wav",
+      "note": "音乐会大鼓（gran cassa）中强单击",
+      "sha256": "9cfa91a11fad6c843e001ad6365949200e2d5b4237cf1193a1493310f0f6c3c1"
+    }
+  ]
+}

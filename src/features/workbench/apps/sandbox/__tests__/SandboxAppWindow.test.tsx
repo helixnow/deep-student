@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   latestSurfaceProps: null as Record<string, unknown> | null,
 }));
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: (_key: string, defaultValue?: string) => defaultValue ?? _key,
   }),

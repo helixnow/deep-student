@@ -1,0 +1,12 @@
+/*
+ * 主应用组件的 CSS 动画与过渡按真实时间播放，截帧会落在入场动画中途（同一帧两次渲染可能不同）。
+ * 片中的动效由镜头和 Staged 驱动：挂载面里的动画、过渡一律直接落到终态。
+ */
+.ds-app *,
+.ds-app *::before,
+.ds-app *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}

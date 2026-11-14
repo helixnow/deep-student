@@ -46,7 +46,9 @@ jobs:
         run: npm run typecheck:host
 
       - name: Host tests (Node ABI; better-sqlite3 tests run in the electron job)
-        run: npm run test:host
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap
+          npm run test:host
 
       - name: Contracts drift check
         if: ${{ !cancelled() }}
@@ -71,6 +73,6 @@ jobs:
       - name: Rebuild native modules for Electron ABI
         run: npx @electron/rebuild -f -w better-sqlite3
       - name: Electron runtime libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2 libgtk-3-0
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2 libgtk-3-0 bubblewrap
       - name: Host tests (ELECTRON_RUN_AS_NODE)
         run: xvfb-run -a npm run test:host:electron

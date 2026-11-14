@@ -73,9 +73,9 @@ describe('full document host service', () => {
   });
 
   it('localizes helper errors in English while keeping rejected content and the baseline intact', async () => {
-    await vi.waitFor(() => expect(i18n.hasResourceBundle('en-US', 'notes')).toBe(true));
     const language = i18n.language;
     await i18n.changeLanguage('en-US');
+    expect(i18n.hasResourceBundle('en-US', 'notes')).toBe(true);
     try {
       const { api, state, replace, retainFailure } = fixture();
       const baseline = api.getFullDocument();

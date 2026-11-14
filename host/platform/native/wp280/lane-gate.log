@@ -1,0 +1,6 @@
+Already up to date.
+[ds-mig/F7-native c677785f5] docs(F7-native): WP-280 diagnose Linux sandbox NPROC environment block
+ 2 files changed, 135 insertions(+), 1 deletion(-)
+F7-native：自检 5 项（typecheck、boundaries、boundaries-strict(changed)、importable、tests），经作业队列执行……
+❌ 自检未通过 1/5 项：
+  tests（退出码 2）：未找到作业 20261106155051-0fc0d3

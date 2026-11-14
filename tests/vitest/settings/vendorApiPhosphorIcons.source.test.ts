@@ -11,7 +11,7 @@ describe('vendor API settings icon source contract', () => {
     expect(source).toContain("} from '@phosphor-icons/react';");
     expect(source).not.toContain("from 'lucide-react'");
     expect(source).toContain('<LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />');
-    expect(source).toContain('<Key className="h-3.5 w-3.5" aria-hidden="true" />');
+    expect(source).toContain('<Key className="h-3.5 w-3.5 mt-px shrink-0" aria-hidden="true" />');
     expect(source).toContain('<NotePencil className="h-3.5 w-3.5" aria-hidden="true" />');
   });
 

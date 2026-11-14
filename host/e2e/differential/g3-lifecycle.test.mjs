@@ -230,6 +230,7 @@ test('namespace wrapper: a hung payload that ignores SIGTERM is torn down with i
   const { logFile } = await workspace(t);
   const result = await within(runWorker(NAMESPACE[0], [...NAMESPACE.slice(1), NODE, FIXTURE, 'ignore-term-orphan'], { logFile, ...LIMITS, timeoutMs: 2_000 }), BOUND, 'runWorker');
   assert.equal(result.outcome, 'timeout');
+  for (let i = 0; i < 20 && groupAlive(result.pid); i++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(groupAlive(result.pid), false, 'outer unshare process group must be empty');
 });
 

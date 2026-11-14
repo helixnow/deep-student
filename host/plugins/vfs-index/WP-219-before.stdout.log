@@ -1,0 +1,14 @@
+
+ RUN  v3.2.7 /home/dsdev/dev/ds-mig/L12-vfs-index
+
+ ❯ host/plugins/vfs-index/tests/embedding-owner-errors.test.ts (3 tests | 3 skipped) 6075ms
+   ↓ R12-02 get_embedding_model_info preserves real L02 AppError Display through indexResource
+   ↓ R12-02 get_embedding_model_id preserves real L02 AppError Display through query embedding
+   ↓ R12-02 ensure_model_assignment_unchanged preserves the re-read prefix with real L02 errors
+
+ Test Files  1 failed (1)
+      Tests  3 skipped (3)
+   Start at  07:20:22
+   Duration  29.89s (transform 14.49s, setup 0ms, collect 21.50s, tests 6.07s, environment 0ms, prepare 331ms)
+
+JSON report written to /home/dsdev/dev/ds-mig/L12-vfs-index/host/plugins/vfs-index/WP-219-before.vitest.json

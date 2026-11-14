@@ -2,3 +2,4 @@
 import { clearProxyEnv } from './host-test-env.mjs';
 
 clearProxyEnv(process.env);
+if (typeof process.versions.electron === 'string') process.noAsar = true;

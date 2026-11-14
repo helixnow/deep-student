@@ -136,20 +136,12 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 请有意识地上调并在 docs/dev/optimization0824/progress/R4-WI-10-full.md 记录原因。
 // ============================================================================
 
-// 2026-09-09：qbank-tools 新增 2 个 AI 出题工具后实测 6900，有意识上调至 7000
-// （先精简一轮 7025→6900，剩余属合理功能增长）；记录见 R4-WI-10-full.md 末节。
-const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_000;
-const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
-// 2026-09-09 合并 #391（qbank AI 出题）后实测 total = 75900：main 新增工具
-// 与 qbank-tools 叠加，属合理功能增长，有意识上调至 76500；记录见
-// docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
-// 2026-10-04：qbank_import_document 支持 resource_id 后实测 76554，先精简一轮至 76520，
-// 剩余属合理功能增长，有意识上调至 76600；记录同上。
-// 2026-11-07：Rust 同版本快照（21c9d808）实测 total = 76600。translation-tools 补上 Rust translate_text
-// 返回提示里要求调用、Rust/host 执行器都已实现、但前端从未声明的 translation_result_read
-// （RF-W09-translation-result-read-undeclared）。先精简一轮 +240→+193：该组 1448→1641（schema 977→1126，
-// 其中新工具 149；content 471→515），其余各组与 Rust 同版本逐字一致。有意识上调至 76800。
-const MAX_TOTAL_TOKENS = 76_800;
+// 2026-11-14：0.20.1 合并 DeepStudent-Go 题库增强（qbank-tools=7246，47 个工具）及新增
+// workbench/self-service 技能工具后，50 组实测 schema 合计 55547、总计 82303；
+// 属合理功能增长，有意识上调基线并保留 ~10% 回归余量。
+const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_500;
+const MAX_TOTAL_SCHEMA_TOKENS = 58_000;
+const MAX_TOTAL_TOKENS = 85_000;
 
 // ============================================================================
 // 测试

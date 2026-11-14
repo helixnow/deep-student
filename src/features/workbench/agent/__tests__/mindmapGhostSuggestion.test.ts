@@ -224,7 +224,12 @@ describe('W09 Ghost Proposal Staging, Per-Branch Resolution & 1-Click Checkpoint
       MM_ID,
       addBranch.branchId,
     );
-    expect(branchResult).toEqual({ applied: 1, failed: [], saved: true });
+    expect(branchResult).toEqual({
+      applied: 1,
+      failed: [],
+      saved: true,
+      documentVersion: 1,
+    });
     expect(save).toHaveBeenCalledTimes(1);
 
     // Added branch (including nested child) is materialized & marked agentEntering

@@ -42,10 +42,10 @@ describe('handlers.rs commands wired to real L11 repositories', { timeout: 120_0
     const restoredVersions = await invoke<VfsMindMapVersion[]>('vfs_get_mindmap_versions', { mindmapId: map.id });
     const backup = restoredVersions.find(version => version.source === 'restore_backup')!;
     expect(backup).toBeDefined();
-    // Rust :1975 deduplicates the backup against the current resource, then
-    // :2000 overwrites that same resource because only one mindmap uses it.
+    // Copy-on-write snapshot immutability preserves updated.resourceId for backup
+    // while allocating a new resource for the restored mindmap content.
     expect(backup.resourceId).toBe(updated.resourceId);
-    expect(await invoke('vfs_get_mindmap_version_content', { versionId: backup.versionId })).toBe(original);
+    expect(await invoke('vfs_get_mindmap_version_content', { versionId: backup.versionId })).toBe(changed);
     await invoke('vfs_delete_mindmap', { mindmapId: shared.id });
     await invoke('vfs_set_mindmap_favorite', { mindmapId: map.id, isFavorite: true });
     expect(await invoke('vfs_list_mindmaps')).toEqual([expect.objectContaining({ id: updated.id, isFavorite: true })]);
@@ -54,9 +54,7 @@ describe('handlers.rs commands wired to real L11 repositories', { timeout: 120_0
     expect(await invoke('vfs_list_mindmaps')).toEqual([]);
   });
 
-  it('retains Rust single-map snapshot aliasing when updating a deduplicated resource in place', async () => {
-    // mindmap_repo.rs:1557 deduplicates the snapshot by hash, while :670 counts
-    // only mindmaps (not versions) before choosing the in-place resource update.
+  it('preserves version snapshot resource immutability on single-map update (COW)', async () => {
     const map = await invoke<VfsMindMap>('vfs_create_mindmap', { params: { title: 'Single' } });
     const original = await invoke<string>('vfs_get_mindmap_content', { mindmapId: map.id });
     const changed = JSON.stringify({ ...JSON.parse(original), root: { id: 'root', text: 'Changed', children: [] } });
@@ -64,7 +62,7 @@ describe('handlers.rs commands wired to real L11 repositories', { timeout: 120_0
     const versions = await invoke<VfsMindMapVersion[]>('vfs_get_mindmap_versions', { mindmapId: map.id });
     expect(versions).toHaveLength(1);
     expect(versions[0]!.resourceId).toBe(map.resourceId);
-    expect(await invoke('vfs_get_mindmap_version_content', { versionId: versions[0]!.versionId })).toBe(changed);
+    expect(await invoke('vfs_get_mindmap_version_content', { versionId: versions[0]!.versionId })).toBe(original);
   });
 
   it('reads attachment metadata and bounded content through resource aliases and soft deletes', async () => {

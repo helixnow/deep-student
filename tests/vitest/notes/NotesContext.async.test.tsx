@@ -125,9 +125,10 @@ describe('NotesContext asynchronous ownership', () => {
       ]);
     });
     await waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(1));
-    expect(mocks.update).toHaveBeenNthCalledWith(1, '/a', 'first', 'note');
+    const expectedOcc = { expectedUpdatedAtMs: new Date('1').getTime() };
+    expect(mocks.update).toHaveBeenNthCalledWith(1, '/a', 'first', 'note', expectedOcc);
     await act(async () => { first.resolve(ok(node('a'))); await saves; });
-    expect(mocks.update).toHaveBeenNthCalledWith(2, '/a', 'latest', 'note');
+    expect(mocks.update).toHaveBeenNthCalledWith(2, '/a', 'latest', 'note', expectedOcc);
     expect(result.current.active?.content_md).toBe('latest');
   });
 

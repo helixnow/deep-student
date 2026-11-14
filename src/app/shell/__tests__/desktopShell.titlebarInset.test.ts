@@ -54,13 +54,12 @@ describe('Android system bar wiring (#472)', () => {
     expect(app).toContain('syncAndroidImmersiveModeFromSettings()');
   });
 
-  it('ships SystemBarsPlugin.kt in every Android build path', () => {
+  it('ships Android system bar & Capacitor APK build wiring across workflows and host', () => {
     expect(read('.github/workflows/reusable-build-android.yml')).toContain(
-      'SRC="src-tauri/mobile/android/SystemBarsPlugin.kt"',
+      'node mobile/scripts/build-apk.mjs',
     );
-    expect(read('scripts/build_android.sh')).toMatch(/for FILE in [^\n]*SystemBarsPlugin\.kt/);
-    expect(read('src-tauri/mobile/android/SystemBarsPlugin.kt')).toContain('mainActivity.setImmersiveMode(args.enabled)');
-    expect(read('src-tauri/mobile/android/MainActivity.kt')).toContain('internal fun setImmersiveMode(enabled: Boolean)');
+    expect(read('mobile/scripts/build-apk.mjs')).toContain('assembleRelease');
+    expect(read('host/platform/settings/mobile.ts')).toContain("'set_android_immersive_mode'");
   });
 
   it('allowlists the immersive command', () => {

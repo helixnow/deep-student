@@ -59,7 +59,7 @@ import {
 const invokeMock = vi.mocked(invoke);
 
 function resetStore() {
-  useBrowserSessionStore.setState({ ...INITIAL_BROWSER_SESSION_STATE });
+  useBrowserSessionStore.getState().reset();
 }
 
 describe('browser types', () => {
@@ -407,6 +407,7 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
 
   beforeEach(() => {
     invokeMock.mockReset();
+    useBrowserSessionStore.getState().reset();
     useBrowserSessionStore.setState({ ...seededState });
   });
 
@@ -432,14 +433,13 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
     // runNav 在首个 await 前同步置忙
     expect(useBrowserSessionStore.getState().loading).toBe(true);
 
-    useBrowserSessionStore.getState().stopLoading();
-    expect(useBrowserSessionStore.getState().loading).toBe(false);
-
-    // stopLoading 先于 browser_navigate 上桩发出（还停在 take_over 微任务），
-    // 等 invoke 真正发生后再放行迟到回执
+    // 等 browser_navigate 进入在途后再停止加载
     await vi.waitFor(() => {
       if (typeof resolveNavigate !== 'function') throw new Error('navigate not invoked yet');
     });
+    useBrowserSessionStore.getState().stopLoading();
+    expect(useBrowserSessionStore.getState().loading).toBe(false);
+
     // 迟到回执：generation 已失配，必须被丢弃而不是覆盖镜像
     resolveNavigate!(snapshotFor('https://slow.test', 'Slow'));
     await navPromise;
@@ -450,7 +450,7 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
   });
 
   it('releases the navigation lock so redirecting mid-load works (no BROWSER_BUSY)', async () => {
-    let resolveFirst!: (value: unknown) => void;
+    let resolveFirst: ((value: unknown) => void) | undefined;
     let navigateCalls = 0;
     invokeMock.mockImplementation((cmd: unknown) => {
       if (cmd === 'browser_take_over') return Promise.resolve(snapshotFor('https://a.test', 'A'));
@@ -469,6 +469,10 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
     const firstNav = useBrowserSessionStore.getState().navigate('https://slow.test');
     expect(useBrowserSessionStore.getState().loading).toBe(true);
 
+    await vi.waitFor(() => {
+      if (typeof resolveFirst !== 'function') throw new Error('first navigate not invoked yet');
+    });
+
     // UI 语义：loading 期改道 = 先 stopLoading 再 navigate（BrowserAppWindow.handleNavigate）
     useBrowserSessionStore.getState().stopLoading();
     await useBrowserSessionStore.getState().navigate('https://b.test');
@@ -476,14 +480,14 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://b.test');
 
     // 第一段导航的迟到回执依旧被丢弃，不回跳
-    resolveFirst(snapshotFor('https://slow.test', 'Slow'));
+    resolveFirst!(snapshotFor('https://slow.test', 'Slow'));
     await firstNav;
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://b.test');
     expect(useBrowserSessionStore.getState().loading).toBe(false);
   });
 
   it('lets back() run right after stopping a load (loading 期不再锁后退)', async () => {
-    let resolveNavigate!: (value: unknown) => void;
+    let resolveNavigate: ((value: unknown) => void) | undefined;
     invokeMock.mockImplementation((cmd: unknown) => {
       if (cmd === 'browser_take_over') return Promise.resolve(snapshotFor('https://a.test', 'A'));
       if (cmd === 'browser_navigate') {
@@ -510,6 +514,10 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
     const navPromise = useBrowserSessionStore.getState().navigate('https://slow.test');
     expect(useBrowserSessionStore.getState().loading).toBe(true);
 
+    await vi.waitFor(() => {
+      if (typeof resolveNavigate !== 'function') throw new Error('navigate not invoked yet');
+    });
+
     // UI 语义：loading 期点后退 = 先 stopLoading 再 back（BrowserAppWindow.handleBack）
     useBrowserSessionStore.getState().stopLoading();
     await useBrowserSessionStore.getState().back();
@@ -517,7 +525,7 @@ describe('useBrowserSessionStore stopLoading (loading 期停止/改道)', () => 
     expect(invokeMock).toHaveBeenCalledWith('browser_back', { sessionId: 's1' });
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://prev.test');
 
-    resolveNavigate(snapshotFor('https://slow.test', 'Slow'));
+    resolveNavigate!(snapshotFor('https://slow.test', 'Slow'));
     await navPromise;
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://prev.test');
   });

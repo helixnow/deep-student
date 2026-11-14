@@ -46,11 +46,15 @@ vi.mock('../useInputBarV2', () => ({
   }),
 }));
 
-vi.mock('../../../registry', () => ({
-  modeRegistry: {
-    getResolved: () => mockModeRegistryState.plugin,
-  },
-}));
+vi.mock('../../../registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../registry')>();
+  return {
+    ...actual,
+    modeRegistry: {
+      getResolved: () => mockModeRegistryState.plugin,
+    },
+  };
+});
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),

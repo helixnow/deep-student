@@ -25,7 +25,8 @@ test('MCP OAuth scenarios (and only they) start the app with the stand-in browse
   const logDir = mkdtempSync('/tmp/opencode/w13-browser-');
   t.after(() => rmSync(logDir, { recursive: true, force: true }));
   const { startMcpService } = await import('../../plugins/mcp/equivalence/mcp-service.ts');
-  const service = await startMcpService({ host: '127.0.0.1', port: 0, logDir, nodeCommand: process.execPath, selfContained: true });
+  const nodeCommand = typeof process.versions.electron === 'string' ? undefined : process.execPath;
+  const service = await startMcpService({ host: '127.0.0.1', port: 0, logDir, nodeCommand, selfContained: true });
   try {
     const { pathDir, command } = service.browserLaunch();
     const env = browserPath({ PATH: process.env.PATH }, pathDir);

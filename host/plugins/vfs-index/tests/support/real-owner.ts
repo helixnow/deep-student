@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
 import { createTestHost, type TestHost } from '../../../../kernel/testing.ts';
@@ -15,7 +16,9 @@ let storage: ReturnType<typeof createStorageService>;
 let host: TestHost;
 
 beforeAll(async () => {
-  root = fs.mkdtempSync('/tmp/opencode/vfs-owner-');
+  const tmpBase = path.join(os.tmpdir(), 'opencode');
+  fs.mkdirSync(tmpBase, { recursive: true });
+  root = fs.mkdtempSync(path.join(tmpBase, 'vfs-owner-'));
   storage = createStorageService({ baseDir: root, dataLocalDir: path.join(root, 'local') });
   host = await createTestHost({ plugins: [reposPlugin], provide: { storage, paths: pathsServiceDouble() } });
 });

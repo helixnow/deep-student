@@ -209,6 +209,18 @@ i18n.on('languageChanged', (newLang) => {
   }
 });
 
+// Ensure await i18n.changeLanguage(...) waits for deferred namespaces of the target language
+// so synchronous/non-React callers (e.g. error/gate message helpers) don't fall back to defaultValue.
+if (typeof i18n.changeLanguage === 'function') {
+  const originalChangeLanguage = i18n.changeLanguage.bind(i18n);
+  i18n.changeLanguage = async (lng, callback) => {
+    if (lng && !IS_DEMO_BUILD) {
+      await loadDeferredNamespaces(normalizeSupportedLanguage(lng)).catch(() => {});
+    }
+    return originalChangeLanguage(lng, callback);
+  };
+}
+
 // 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
 if (!IS_DEMO_BUILD) void (async () => {
   // 优先加载启动时的当前语言，让 UI 文案尽快就位。

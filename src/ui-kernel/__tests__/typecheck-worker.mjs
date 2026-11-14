@@ -102,7 +102,7 @@ function runNodeConfigTypecheck(configPath) {
   const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options, projectReferences: parsed.projectReferences });
   return {
     noEmit: parsed.options.noEmit,
-    files: program.getSourceFiles().map((file) => path.relative(root, file.fileName)),
+    files: program.getSourceFiles().map((file) => path.relative(root, file.fileName).replace(/\\/g, '/')),
     errors: [...configErrors, ...parsed.errors, ...ts.getPreEmitDiagnostics(program)]
       .filter((d) => d.category === ts.DiagnosticCategory.Error)
       .map((d) => `${d.file ? path.relative(root, d.file.fileName) : '<config>'} TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`),

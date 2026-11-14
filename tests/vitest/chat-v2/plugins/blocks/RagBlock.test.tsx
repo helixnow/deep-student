@@ -104,11 +104,12 @@ describe('RagBlock', () => {
     it('should show loading state when pending', () => {
       const block = createRagBlock({ status: 'pending' });
 
-      render(<RagBlock block={block} />);
+      const { container } = render(<RagBlock block={block} />);
 
       expect(screen.getByText('Document RAG')).toBeInTheDocument();
       expect(screen.getAllByText('Searching...').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Searching related documents...')).toBeInTheDocument();
+      expect(container.querySelector('.tool-activity-sweep--active')).not.toBeNull();
+      expect(container.querySelector('.animate-spin')).toBeNull();
     });
 
     it('should show loading state when streaming', () => {

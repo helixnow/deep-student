@@ -36,12 +36,13 @@ describe('useAppUpdater lifecycle contracts', () => {
     assert.match(source, /readyToRelaunch: boolean;/u);
   });
 
-  it('installs APK in-app on Android via streaming download + install_apk command', () => {
+  it('supports in-app APK flow only on non-mobile-shell Android and falls back to openLink on Capacitor mobile', () => {
     assert.match(source, /const downloadApkAndInstall = useCallback/u);
     assert.match(source, /resp\.body\.getReader\(\)/u, 'APK download must stream the body');
     assert.match(source, /BaseDirectory\.AppCache/u, 'APK must be written under AppCache (FileProvider scope)');
     assert.match(source, /invoke\('install_apk', \{ path: absPath \}\)/u, 'must invoke install_apk with the absolute path');
-    assert.match(source, /canInstallInApp: mobile && android/u);
+    assert.match(source, /canInstallInApp:\s*readShellPlatform\(\)\?\.kind !== 'mobile' && mobile && android/u);
+    assert.match(source, /if \(readShellPlatform\(\)\?\.kind === 'mobile'\)\s*\{\s*await openLink\(state\.info\?\.apkUrl \|\| GH_RELEASES_PAGE\);/u);
   });
 
   it('gates stable-channel users with a fail-closed two-level channel probe', () => {

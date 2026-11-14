@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../src/*"],
+      "@app/*": ["../src/*"],
+      "@app-public/*": ["../public/*"],
+      "@tauri-apps/api/core": ["./src/shims/tauri-core.ts"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

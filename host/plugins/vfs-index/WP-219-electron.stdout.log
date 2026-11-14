@@ -1,0 +1,18 @@
+
+> deep-student@0.11.0 test:host:electron
+> ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run -c vitest.host.config.ts host/plugins/vfs-index/tests/embedding-owner-errors.test.ts --pool=forks --maxWorkers=1 --minWorkers=1 --reporter=default --reporter=json --outputFile.json=host/plugins/vfs-index/WP-219-electron.vitest.json
+
+
+ RUN  v3.2.7 /home/dsdev/dev/ds-mig/L12-vfs-index
+
+WP-219 runtime {"execPath":"/home/dsdev/dev/deep-student/node_modules/electron/dist/electron","versions":{"node":"24.22.1","acorn":"8.18.0","ada":"4.0.0","amaro":"1.1.11","ares":"1.34.9","brotli":"1.2.0","cldr":"48.0","icu":"78.2","llhttp":"9.4.3","merve":"1.2.2","modules":"150","napi":"10","nbytes":"0.1.4","ncrypto":"0.0.1","nghttp2":"1.70.0","nghttp3":"","ngtcp2":"","openssl":"0.0.0","simdjson":"4.6.11","simdutf":"7.7.0","sqlite":"3.53.4","tz":"2026e","undici":"7.30.1","unicode":"17.0","uv":"1.52.1","uvwasi":"0.0.23","v8":"15.6.75.25-electron.0","zlib":"1.3.2.1-motley","zstd":"1.6.0","electron":"45.2.1","chrome":"156.0.8078.75"}}
+WP-219 re-read RAW {"requests":[{"method":"POST","url":"/v1/embeddings","body":{"model":"embed","input":["Configuration disappears after embedding Configuration disappears after embedding Configuration disappears after embedding"],"encoding_format":"float"}}],"progress":[[1,1]],"segments":0}
+ ✓ host/plugins/vfs-index/tests/embedding-owner-errors.test.ts (3 tests) 6229ms
+   ✓ R12-02 ensure_model_assignment_unchanged preserves the re-read prefix with real L02 errors  353ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  07:23:41
+   Duration  26.67s (transform 12.37s, setup 0ms, collect 18.47s, tests 6.23s, environment 0ms, prepare 299ms)
+
+JSON report written to /home/dsdev/dev/ds-mig/L12-vfs-index/host/plugins/vfs-index/WP-219-electron.vitest.json

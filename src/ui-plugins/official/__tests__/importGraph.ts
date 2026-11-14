@@ -92,5 +92,5 @@ export function staticClosure(entries: readonly string[]): Set<string> {
 
 /** Repository-relative paths, sorted, for readable assertions and evidence files. */
 export function relative(files: Iterable<string>): string[] {
-  return [...files].map((file) => path.relative(process.cwd(), file)).sort();
+  return [...files].map((file) => path.relative(process.cwd(), file).replace(/\\/g, '/')).sort();
 }

@@ -42,6 +42,7 @@ import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useWindowStore, resetWindowStoreForTests } from '@/features/workbench/core/windowStore';
 import { flushSnapshot, WORKBENCH_SNAPSHOT_KEY } from '@/features/workbench/core/snapshot';
+import { resetSpaceSnapshotsForTests } from '@/features/workbench/core/spaceSnapshots';
 import { translateLegacyNavigation } from '@/features/workbench/core/legacyNavigationMap';
 
 const TEST_TYPE_ID = 'p11-smoke';
@@ -68,6 +69,7 @@ describe('P11 WorkbenchDesktop 总装', () => {
     tauriMocks.onCloseRequested.mockReset();
     localStorage.clear();
     resetWindowStoreForTests();
+    resetSpaceSnapshotsForTests();
     setDockPinned([]);
     closeAppsPanel();
     workbenchBus.setEnabled(true);

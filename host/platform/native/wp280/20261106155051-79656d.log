@@ -1,0 +1,1 @@
+boundaries: scanned 1 files, 0 violation(s), 0 suppressed via boundary-allow; rules: native-import, tauri-import, cross-plugin-impl, electron-imports-plugin, sql-outside-repository, test-double, todo-marker, empty-catch, erasable-syntax, console-log

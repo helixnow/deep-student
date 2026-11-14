@@ -1,0 +1,9 @@
+node_modules/
+out/
+.remotion/
+# 开源采样 / 音效 / 脉冲响应的下载缓存（由下载脚本按清单拉取，不入库）
+.cache/
+# 由 scripts/sfx-v2.mjs 与 scripts/score-v2.mjs 生成（npm run audio；studio / render 前会自动生成）
+public/audio/
+# 由 scripts/app-css.mjs 从主应用样式生成（npm run app-css；studio / render 前会自动生成）
+src/app-ui/app.generated.css

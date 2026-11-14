@@ -58,7 +58,7 @@ describe('editor slots (FE-B5)', () => {
       'editor:toggle', 'editor:wikilink', 'editor:mention', 'editor:image-lightbox', 'editor:link-keymap',
       'editor:internal-link-schema', 'editor:pdf-ref', 'editor:media-ref', 'editor:columns', 'editor:block-identity',
       'editor:block-selection', 'editor:typed-placeholder', 'editor:canonical-document', 'editor:command-execute',
-      'editor:command-bindings', 'editor:list-item-has-checked',
+      'editor:command-bindings', 'editor:list-item-has-checked', 'editor:inline-cards',
     ]);
     expect(describeEntries(k.slots.list('editor.extensions'))).toEqual(describeEntries(officialEditorExtensionEntries));
     expect(k.slots.list('editor.extensions').map((item) => item.value)).toEqual(officialEditorExtensionEntries.map((item) => item.value));

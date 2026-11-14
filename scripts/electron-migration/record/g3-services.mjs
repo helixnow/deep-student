@@ -76,7 +76,8 @@ export async function mcpBindingKinds() {
   const { startMcpService } = await import('../../../host/plugins/mcp/equivalence/mcp-service.ts');
   const logDir = mkdtempSync(join(tmpdir(), 'g3-mcp-keys-'));
   try {
-    const service = await startMcpService({ host: '127.0.0.1', port: 0, logDir, nodeCommand: process.execPath, selfContained: true });
+    const nodeCommand = typeof process.versions.electron === 'string' ? undefined : process.execPath;
+    const service = await startMcpService({ host: '127.0.0.1', port: 0, logDir, nodeCommand, selfContained: true });
     try {
       return Object.fromEntries(Object.entries(service.placeholders()).map(([key, value]) => [key,
         typeof value === 'string' ? 'string' : Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value]));

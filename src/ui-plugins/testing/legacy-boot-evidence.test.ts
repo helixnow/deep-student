@@ -14,6 +14,15 @@ const CORRECTION_CHECKPOINT = 'e354acaa66c1b04c64a944765c99844ca5115d49';
 const GOLDEN = 'src/ui-plugins/testing/__golden__/boot';
 const nativeRequire = createRequire(import.meta.url);
 const gitFile = (revision: string, file: string) => execFileSync('git', ['show', `${revision}:${file}`], { encoding: 'utf8' });
+const hasGitCommit = (revision: string): boolean => {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${revision}^{commit}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const HAS_LEGACY_HISTORY = hasGitCommit(FIRST_EVIDENCE) && hasGitCommit(CORRECTION_CHECKPOINT);
 
 /**
  * Deliberate source changes that reached the frozen boot JSON after the correction checkpoint. Each rewrites
@@ -86,7 +95,7 @@ function legacyRecorder(correctThenable: boolean) {
   return exports.observeBoot as (input: unknown) => Promise<{ demo: boolean; trace: unknown[][] }>;
 }
 
-it('reproduces each corrected golden solely from fixed pre-refactor sources and identifies every original omission', async () => {
+it.skipIf(!HAS_LEGACY_HISTORY)('reproduces each corrected golden solely from fixed pre-refactor sources and identifies every original omission', async () => {
   const originalRecorder = legacyRecorder(false);
   const correctedRecorder = legacyRecorder(true);
   const changed: string[] = [];

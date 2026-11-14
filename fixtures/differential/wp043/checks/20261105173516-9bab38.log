@@ -1,0 +1,11 @@
+
+ RUN  v3.2.7 /home/dsdev/dev/ds-mig/X7-differential
+
+ ✓ host/e2e/differential/framework.test.ts (1 test) 4381ms
+   ✓ differential recorder: exact JSON, production adapters, SQLite, kernel replay and evidence gates  4373ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  01:35:19
+   Duration  5.55s (transform 84ms, setup 0ms, collect 70ms, tests 4.38s, environment 1ms, prepare 319ms)
+

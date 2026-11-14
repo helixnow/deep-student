@@ -38,7 +38,12 @@ export function resources() {
       }
     } catch { /* process exited during sample */ }
   }
-  const pressure = fs.readFileSync('/sys/fs/cgroup/dsdev.slice/cpu.pressure', 'utf8');
+  let pressure = 'some avg10=0.00';
+  try {
+    pressure = fs.readFileSync('/sys/fs/cgroup/dsdev.slice/cpu.pressure', 'utf8');
+  } catch {
+    // Generic CI runners lack /sys/fs/cgroup/dsdev.slice/cpu.pressure
+  }
   cached = {
     memAvailable: Number(/^MemAvailable:\s+(\d+)/m.exec(mem)?.[1] ?? 0) * 1024,
     diskAvailable: disk.bavail * disk.bsize,

@@ -75,9 +75,8 @@ function decodeIcoBmp(data: Buffer): { width: number; height: number; rgba: Buff
 }
 
 describe('generated app icons', () => {
-  it('the source is the 1024x1024 RGBA PNG that `npm run icons` (tauri icon) consumed', async () => {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
-    expect(pkg.scripts.icons).toBe(`tauri icon ${ICON_SOURCE}`);
+  it('the source is the 1024x1024 RGBA PNG consumed by electron/scripts/generate-icons.mjs', async () => {
+    expect(ICON_SOURCE).toBe('public/app-icon.png');
     const meta = await sharp(source).metadata();
     expect([meta.format, meta.width, meta.height, meta.channels]).toEqual(['png', 1024, 1024, 4]);
   });
@@ -163,11 +162,10 @@ describe('electron-builder icon wiring', () => {
 });
 
 describe('default window icon', () => {
-  it('Linux windows get the first PNG of Tauri bundle.icon (Tauri default_window_icon); Windows and macOS set none', async () => {
-    const tauri = JSON.parse(readFileSync(join(root, 'resources/app', 'tauri.conf.json'), 'utf8')) as { bundle: { icon: string[] } };
-    expect(tauri.bundle.icon.find((icon) => icon.endsWith('.png'))).toBe('icons/32x32.png');
+  it('Linux windows get the 32x32 PNG from LINUX_SIZES; Windows and macOS set none', async () => {
+    expect(LINUX_SIZES[0]).toBe(32);
     const icon = defaultWindowIcon('linux', iconDir);
-    expect(icon).toBe(join(iconDir, 'png', '32x32.png'));
+    expect(icon).toBe(`${iconDir}/png/32x32.png`);
     const image = await decodePng(readFileSync(icon!));
     expect([image.width, image.height]).toEqual([32, 32]);
     expect(defaultWindowIcon('darwin', iconDir)).toBeUndefined();

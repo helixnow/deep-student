@@ -65,6 +65,8 @@
         "listSeparator": "；",
         "noSuggestionPanel": "当前环境没有可用的建议面板",
         "noSuggestionClaimer": "没有匹配的笔记编辑器认领建议",
+        "missingSetContent": "缺少替换正文，原文未改动",
+        "invalidReplacement": "查找与替换内容必须是文本",
         "fullReadUnsupported": "长笔记编辑器未提供安全的全文读取 API",
         "saveConfirmUnsupported": "编辑器未提供持久化确认能力",
         "contentChanged": "笔记正文已变化，OCC 校验失败",

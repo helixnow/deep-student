@@ -1,0 +1,24 @@
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  host/plugins/vfs-index/tests/embedding-owner-errors.test.ts [ host/plugins/vfs-index/tests/embedding-owner-errors.test.ts ]
+Error: service "embedding@1" has been registered at <root>
+ ❯ Fiber.<anonymous> ../../deep-student/node_modules/@deepseek-ai/cordis/lib/index.js:813:31
+ ❯ ../../deep-student/node_modules/@deepseek-ai/cordis/lib/index.js:1142:34
+ ❯ Proxy.provide ../../deep-student/node_modules/@deepseek-ai/cordis/lib/index.js:801:25
+ ❯ Object.apply [as callback] host/plugins/llm/index.ts:146:9
+    144|     const embeddingModels = createEmbeddingModels(ctx.settings, servic…
+    145|     ctx.provide('llmEmbeddingModels', embeddingModels);
+    146|     ctx.provide('embedding@1', createTextEmbeddingService(service, emb…
+       |         ^
+    147|       const usage = ctx.reflect.get('llmUsage', false) as import('../.…
+    148|       if (!usage) throw AppError.configuration('F3 llmUsage service is…
+ ❯ Fiber.execute ../../deep-student/node_modules/@deepseek-ai/cordis/lib/index.js:1071:28
+ ❯ ../../deep-student/node_modules/@deepseek-ai/cordis/lib/index.js:1142:34
+ ❯ HostRuntime.start host/kernel/runtime.ts:377:30
+ ❯ HostRuntime.installAll host/kernel/runtime.ts:263:57
+ ❯ createTestHost host/kernel/testing.ts:209:5
+ ❯ host/plugins/vfs-index/tests/embedding-owner-errors.test.ts:48:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

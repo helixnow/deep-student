@@ -1,0 +1,46 @@
+{
+  "name": "deep-student-pv",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DeepStudent 产品宣传片（Remotion，1920×1080@60fps，2:46）",
+  "type": "module",
+  "scripts": {
+    "prestudio": "npm run audio && npm run app-css",
+    "studio": "remotion studio src/index.ts",
+    "prerender:preview": "npm run audio && npm run app-css",
+    "render:preview": "remotion render src/index.ts DeepStudentPV out/preview.mp4 --scale=0.5 --image-format=jpeg --crf=22 --x264-preset=veryfast",
+    "prerender": "npm run audio && npm run app-css",
+    "render": "remotion render src/index.ts DeepStudentPV out/deep-student-pv.mp4 --crf=17 --x264-preset=slow",
+    "prerender:4k": "npm run audio && npm run app-css",
+    "render:4k": "remotion render src/index.ts DeepStudentPV out/deep-student-pv-4k.mp4 --scale=2 --crf=15 --x264-preset=slow --audio-bitrate=384k",
+    "prerender:master": "npm run audio && npm run app-css",
+    "render:master": "remotion render src/index.ts DeepStudentPV out/deep-student-pv-master.mov --codec=prores --prores-profile=hq",
+    "prerender:master4k": "npm run audio && npm run app-css",
+    "render:master4k": "remotion render src/index.ts DeepStudentPV out/deep-student-pv-master-4k.mov --scale=2 --codec=prores --prores-profile=hq",
+    "still": "remotion still src/index.ts DeepStudentPV",
+    "audio": "node scripts/audio/fetch-samples.mjs && node scripts/sfx-v2.mjs --public && node scripts/score-v2.mjs --public --no-measure",
+    "app-css": "node scripts/app-css.mjs",
+    "typecheck": "node scripts/typecheck.mjs"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "2.1.10",
+    "@react-three/fiber": "8.17.10",
+    "@react-three/postprocessing": "2.16.3",
+    "@remotion/bundler": "4.0.530",
+    "@remotion/cli": "4.0.530",
+    "@remotion/renderer": "4.0.530",
+    "@remotion/three": "4.0.530",
+    "katex": "0.16.22",
+    "postprocessing": "6.36.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.530",
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/three": "0.169.0",
+    "typescript": "5.6.3"
+  }
+}

@@ -109,7 +109,7 @@ Full guides for every app: [deepstudent.cn/user-guide](https://deepstudent.cn/us
 
 - **Local storage.** Materials, notes, chats and indexes are stored locally (SQLite, LanceDB and local files). Existing data directories from `0.11.x` mount in place with full SQL migration replay. Back up or migrate via *Settings → Data governance*.
 - **When data leaves your machine.** Model calls, web search and MCP send the relevant requests to the services you configured; cloud sync, WeChat iLink Bot and Sentry error reporting send data only when you turn them on.
-- **Cloud & LAN sync (Sync V5).** Desktop supports WebDAV, S3-compatible storage and experimental FTP; mobile/Web supports WebDAV. Sync V5 adds HLC causal ordering, Merkle vault snapshots, encrypted `.dsix` index packs and `DSPAIR2` LAN/QR device pairing alongside encrypted full-fidelity cloud backups.
+- **Cloud & LAN sync (Sync V5).** Desktop supports WebDAV, S3-compatible storage and experimental FTP; **Android is WebDAV only** (S3 and FTP are unsupported on mobile/Web). Sync V5 adds HLC causal ordering, Merkle vault snapshots, encrypted `.dsix` index packs and `DSPAIR2` LAN/QR device pairing; default cloud backup packages remain a **portable archive and cannot slot-restore** a full environment directly, and when no cloud end-to-end encryption password is set, encrypted export is refused.
 - **Open source, verifiable.** AGPL-3.0-or-later. Everything privacy-related is in this repository.
 
 ---

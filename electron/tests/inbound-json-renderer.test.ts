@@ -71,6 +71,9 @@ it('WP-134 preserves 993/992 in actual insight_list calls, contracts, source/ACL
         try { result[command] = { unexpected: await ipc.invoke(command) }; }
         catch (error) { result[command] = error; }
       }
+      for (let i = 0; i < 50 && ipc.callbacks.size > 0; i++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
       result.callbacks = ipc.callbacks.size;
       await fetch('/report', { method: 'POST', body: JSON.stringify(result) });
       location.href = 'http://127.0.0.1:${remoteAddress.port}/';

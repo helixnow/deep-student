@@ -14,7 +14,7 @@ describe('settings data-governance mobile lists', () => {
     const source = readSource(`src/features/settings/components/data-governance/${file}`);
 
     expect(source).toContain('className="hidden md:block"');
-    expect(source).toContain('className="space-y-2 md:hidden"');
+    expect(source).toContain('className="space-y-2 rounded-2xl bg-muted p-4 md:hidden"');
   });
 
   it.each([

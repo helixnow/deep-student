@@ -394,7 +394,7 @@ describe('BilibiliEmbedPlayer', () => {
       const { unmount } = render(<BilibiliEmbedPlayer link={LINK} handleRef={handleRef} />);
       act(() => vi.advanceTimersByTime(20_001));
       expect(screen.getByRole('alert')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'learningHub:mediaBilibili.playback.reloadEmbed' }));
+      fireEvent.click(screen.getByRole('button', { name: 'common:actions.retry' }));
       expect(screen.queryByRole('alert')).toBeNull();
       fireEvent.load(document.querySelector('[data-bilibili-frame]')!);
       act(() => vi.advanceTimersByTime(20_001));
