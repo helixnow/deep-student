@@ -1,0 +1,627 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "dstu_folder_rename",
+    "dstu_folder_delete",
+    "dstu_folder_move",
+    "dstu_folder_set_expanded",
+    "dstu_folder_add_item",
+    "dstu_folder_move_item",
+    "dstu_folder_get_all_resources"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs.folder_rename.title_blank",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "   "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.title_control_char",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "换\n行"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.title_unicode_bypass",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "a​b"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.title_path_separator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "a/b"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.title_too_long",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "fld_missing0000",
+            "title": "新名"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_rename.soft_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "原名",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "新名"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_delete.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "fld_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move.self_parent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "自身",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_move",
+          "args": {
+            "folderId": "${0.id}",
+            "newParentId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move.source_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "目标",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_move",
+          "args": {
+            "folderId": "fld_missing0000",
+            "newParentId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move.parent_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "源",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_move",
+          "args": {
+            "folderId": "${0.id}",
+            "newParentId": "fld_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move.cycle_descendant",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "祖",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "父",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_move",
+          "args": {
+            "folderId": "${0.id}",
+            "newParentId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move.depth_exceeded",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层1",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层2",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层3",
+            "parentId": "${1.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层4",
+            "parentId": "${2.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层5",
+            "parentId": "${3.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层6",
+            "parentId": "${4.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层7",
+            "parentId": "${5.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层8",
+            "parentId": "${6.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "层9",
+            "parentId": "${7.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "移动根",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_move",
+          "args": {
+            "folderId": "${9.id}",
+            "newParentId": "${8.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_set_expanded.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_set_expanded",
+          "args": {
+            "folderId": "fld_missing0000",
+            "isExpanded": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_add_item.invalid_item_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": null,
+            "itemType": "folder",
+            "itemId": "note_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_add_item.folder_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "fld_missing0000",
+            "itemType": "note",
+            "itemId": "note_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_add_item.folder_soft_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "已删",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "note_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_move_item.target_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_move_item",
+          "args": {
+            "itemType": "note",
+            "itemId": "note_missing0000",
+            "newFolderId": "fld_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.folder_get_all_resources.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_get_all_resources",
+          "args": {
+            "folderId": "fld_missing0000",
+            "includeSubfolders": true,
+            "includeContent": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

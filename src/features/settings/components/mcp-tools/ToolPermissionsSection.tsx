@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import { cn } from '@/lib/utils';
 import { isMobilePlatform } from '@/utils/platform';
 import { Plus, ArrowClockwise, Trash, Check, Package, Lock, Shield, ShieldCheck, FolderOpen, Warning, MagnifyingGlass, Funnel, CaretRight, Stack } from '@phosphor-icons/react';
@@ -43,18 +44,18 @@ export function ToolPermissionsSection({ toolsByServer, embedded = false }: {
     policyGroups,
   } = useToolPermissions(toolsByServer);
 
+  useRefreshOnReturn(fetchConfig, !isLoading && !isBulkUpdating);
+
   return (
     <div
       id="settings-tool-permissions"
       className={cn(
         'min-w-0 max-w-full',
-        embedded
-          ? 'mt-3'
-          : 'mt-8 scroll-mt-6 border-t border-border/40 pt-6 [content-visibility:auto] [contain-intrinsic-size:auto_720px]',
+        !embedded && 'mt-8 scroll-mt-6 [content-visibility:auto] [contain-intrinsic-size:auto_720px]',
       )}
     >
       {!embedded && (
-        <h3 className="mb-4 text-sm font-medium text-foreground">
+        <h3 className="mb-3 px-1 text-base font-semibold text-foreground">
           {t('settings:tool_permissions.title')}
         </h3>
       )}
@@ -375,16 +376,6 @@ export function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   {t('settings:tool_permissions.policy_overview_desc')}
                 </p>
               </div>
-              <DsButton
-                variant="outline"
-                size="sm"
-                onClick={fetchConfig}
-                disabled={isLoading || isBulkUpdating}
-                className="flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
-              >
-                <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
-                {t('settings:tool_permissions.refresh')}
-              </DsButton>
             </div>
 
             {allTools.length === 0 ? (

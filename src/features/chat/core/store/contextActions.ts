@@ -20,11 +20,14 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
  *
  * @param set Zustand set 函数
  * @param get Zustand get 函数
+ * @param scheduleAutoSave 上下文引用变更后调度会话自动保存（引用列表随会话持久化，
+ *   新增/删除/注入模式变化必须立刻触发，否则重开会话丢引用）
  * @returns Context Actions 对象
  */
 export function createContextActions(
   set: SetState,
-  get: GetState
+  get: GetState,
+  scheduleAutoSave?: () => void
 ) {
   return {
     /**
@@ -98,6 +101,7 @@ export function createContextActions(
           };
         }
       });
+      scheduleAutoSave?.();
     },
 
     /**
@@ -143,6 +147,7 @@ export function createContextActions(
           skillStateJson: null,
         };
       });
+      scheduleAutoSave?.();
     },
 
     /**
@@ -178,6 +183,7 @@ export function createContextActions(
         } as Partial<ChatStoreState>);
         console.log('[ChatStore] clearContextRefs: all (including activeSkillIds)');
       }
+      scheduleAutoSave?.();
     },
 
     /**
@@ -237,6 +243,7 @@ export function createContextActions(
           pendingContextRefsDirty: true,
         };
       });
+      scheduleAutoSave?.();
     },
   };
 }

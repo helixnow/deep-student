@@ -76,8 +76,6 @@ async function main() {
       for (const run of runs) {
         if (!trustedPaths.has(run.path) || !['push', 'workflow_dispatch', 'workflow_run'].includes(run.event)) continue;
         if (String(run.id) === process.env.GITHUB_RUN_ID || run.status !== 'completed') continue;
-        // All supported callers run tooling from their head revision. Receipts
-        // below also bind source independently (rebuild source != workflow HEAD).
         if (run.head_sha !== process.env.RELEASE_WORKFLOW_SHA) continue;
         const artifacts = api(`repos/${repo}/actions/runs/${run.id}/artifacts?per_page=100`).artifacts;
         for (const name of Object.keys(STAGES)) {

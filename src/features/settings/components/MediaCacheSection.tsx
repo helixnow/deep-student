@@ -8,6 +8,7 @@
  * - 向量索引缓存
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DataGovernanceApi,
@@ -18,13 +19,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   Trash,
-  ArrowClockwise,
   HardDrive,
   Image,
   FileText,
   Database,
   Warning,
-  CheckCircle,
   CircleNotch,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -35,6 +34,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { formatBytes } from '@/types/dataGovernance';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { GroupTitle } from './settingsTabPrimitives';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -74,6 +74,8 @@ export const MediaCacheSection: React.FC = () => {
   }, [t]);
 
   // 初始加载
+  useRefreshOnReturn(loadStats, !loading);
+
   useEffect(() => {
     loadStats();
   }, [loadStats]);
@@ -119,14 +121,14 @@ export const MediaCacheSection: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* 缓存概览 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 rounded-2xl bg-muted px-4 py-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Image size={16} />
             {t('data:governance.cache.stats.pdf_preview')}
           </div>
           <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-semibold text-foreground">
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
               {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.pdfPreviewCount ?? 0)}
             </div>
             {!loading && (
@@ -143,7 +145,7 @@ export const MediaCacheSection: React.FC = () => {
             {t('data:governance.cache.stats.compressed_images')}
           </div>
           <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-semibold text-foreground">
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
               {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.compressedImageCount ?? 0)}
             </div>
             {!loading && (
@@ -159,7 +161,7 @@ export const MediaCacheSection: React.FC = () => {
             <FileText size={16} />
             {t('data:governance.cache.stats.ocr_text')}
           </div>
-          <div className="text-2xl font-semibold text-foreground">
+          <div className="text-2xl font-semibold tabular-nums text-foreground">
             {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.ocrTextCount ?? 0)}
           </div>
         </div>
@@ -170,7 +172,7 @@ export const MediaCacheSection: React.FC = () => {
             {t('data:governance.cache.stats.vector_index')}
           </div>
           <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-semibold text-foreground">
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
               {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.vectorIndexCount ?? 0)}
             </div>
             {!loading && (
@@ -197,71 +199,56 @@ export const MediaCacheSection: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="text-lg font-semibold text-foreground">
+            <div className="text-lg font-semibold tabular-nums text-foreground">
               {loading ? (
                 <CircleNotch size={16} className="animate-spin" />
               ) : (
                 formatBytes(stats?.totalSize ?? 0)
               )}
             </div>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              onClick={loadStats}
-              disabled={loading}
-              className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-            >
-              <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
-            </DsButton>
           </div>
         </div>
       </div>
 
-      <div className="border-t border-border/40" />
-
       {/* 缓存清理 */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-              <Trash size={16} />
-              {t('data:governance.cache.pick_types')}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {selectedSize > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {t('data:governance.cache.estimated_free')}: {formatBytes(selectedSize)}
-              </span>
-            )}
-            <DsButton
-              variant="outline"
-              size="sm"
-              className="!text-destructive max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-              onClick={() => setShowConfirm(true)}
-              disabled={
-                clearing ||
-                (!clearOptions.clearPdfPreview &&
-                  !clearOptions.clearCompressedImages &&
-                  !clearOptions.clearOcrText &&
-                  !clearOptions.clearVectorIndex)
-              }
-            >
-              {clearing ? (
-                <>
-                  <CircleNotch size={14} className="mr-1.5 animate-spin" />
-                  {t('data:governance.cache.clearing')}
-                </>
-              ) : (
-                <>
-                  <Trash size={14} className="mr-1.5" />
-                  {t('data:governance.cache.clear_cache')}
-                </>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.cache.pick_types')}
+          actions={
+            <>
+              {selectedSize > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {t('data:governance.cache.estimated_free')}: {formatBytes(selectedSize)}
+                </span>
               )}
-            </DsButton>
-          </div>
-        </div>
+              <DsButton
+                variant="outline"
+                size="sm"
+                className="!text-destructive max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => setShowConfirm(true)}
+                disabled={
+                  clearing ||
+                  (!clearOptions.clearPdfPreview &&
+                    !clearOptions.clearCompressedImages &&
+                    !clearOptions.clearOcrText &&
+                    !clearOptions.clearVectorIndex)
+                }
+              >
+                {clearing ? (
+                  <>
+                    <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                    {t('data:governance.cache.clearing')}
+                  </>
+                ) : (
+                  <>
+                    <Trash size={14} className="mr-1.5" />
+                    {t('data:governance.cache.clear_cache')}
+                  </>
+                )}
+              </DsButton>
+            </>
+          }
+        />
 
         <div className="rounded-2xl bg-muted divide-y divide-border/40 overflow-hidden">
           <ClearOption
@@ -304,7 +291,7 @@ export const MediaCacheSection: React.FC = () => {
             warning
           />
         </div>
-      </div>
+      </section>
 
       {/* 确认对话框 */}
       <DsAlertDialog

@@ -16,14 +16,21 @@ import { invoke } from '@tauri-apps/api/core';
 
 import {
   STUDY_TICK_MS,
+  dateKey,
   isPresent,
   mergeSeconds,
   takeWholeSeconds,
   tickSlices,
   type StudyDay,
 } from './studyLog';
+import {
+  StudyTimeTracker as RealtimeStudyTimeTracker,
+  formatLocalDateKey,
+} from '@/utils/studyTimeTrackerAndHeatmap';
 
 const FLUSH_EVERY_TICKS = 4;
+// study_time_add 的单次上限；失败积压恢复后也必须遵守。
+const MAX_REPORT_SECONDS = 3600;
 const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
 
 /** 上报完成后派发（热力图等可据此刷新） */
@@ -40,6 +47,7 @@ let lastTick = 0;
 let lastActiveAt = 0;
 let ticksSinceFlush = 0;
 let explicitMediaPlaying = false;
+let wasVisible = false;
 let pending = new Map<string, number>();
 let flushChain: Promise<void> = Promise.resolve();
 let reporter: Reporter = defaultReporter;
@@ -68,12 +76,17 @@ export function flushStudyTime(): Promise<void> {
     const [batch, rest] = takeWholeSeconds(pending);
     if (batch.length === 0) return;
     pending = rest;
-    for (const day of batch) {
+    for (const [index, day] of batch.entries()) {
+      let remaining = day.seconds;
       try {
-        await reporter(day);
+        while (remaining > 0) {
+          const seconds = Math.min(remaining, MAX_REPORT_SECONDS);
+          await reporter({ date: day.date, seconds });
+          remaining -= seconds;
+        }
       } catch (error: unknown) {
         // 上报失败（库未就绪等）：放回内存下次再试，绝不因记时长影响应用
-        mergeSeconds(pending, [day]);
+        mergeSeconds(pending, [{ date: day.date, seconds: remaining }, ...batch.slice(index + 1)]);
         console.warn('[StudyTime] report failed, will retry:', error);
         return;
       }
@@ -88,8 +101,12 @@ export function flushStudyTime(): Promise<void> {
 
 /** 一次心跳（导出供测试驱动） */
 export function studyTimeTick(now: number = Date.now()): void {
+  recordStudyTimeTick(now, isVisible());
+}
+
+function recordStudyTimeTick(now: number, visible: boolean): void {
   const present = isPresent({
-    visible: isVisible(),
+    visible,
     mediaPlaying: isMediaPlaying(),
     now,
     lastActiveAt,
@@ -104,14 +121,16 @@ export function studyTimeTick(now: number = Date.now()): void {
 }
 
 function onVisibilityChange(): void {
-  if (document.visibilityState === 'hidden') {
+  const visible = isVisible();
+  if (!visible) {
     // 先把可见期的最后一截记上，再补报（隐藏后定时器会被节流甚至停摆）
-    studyTimeTick();
+    recordStudyTimeTick(Date.now(), wasVisible);
     void flushStudyTime();
   } else {
     lastTick = Date.now();
     markActive();
   }
+  wasVisible = visible;
 }
 
 function onPageHide(): void {
@@ -136,6 +155,7 @@ export function startStudyTracking(options: { reporter?: Reporter } = {}): () =>
   reporter = options.reporter ?? defaultReporter;
   lastTick = Date.now();
   lastActiveAt = Date.now();
+  wasVisible = isVisible();
   ticksSinceFlush = 0;
   for (const ev of ACTIVITY_EVENTS) {
     window.addEventListener(ev, markActive, { passive: true, capture: true });
@@ -162,6 +182,31 @@ export function stopStudyTracking(): void {
   studyTimeTick();
   void flushStudyTime();
   explicitMediaPlaying = false;
+}
+
+/** 读取当日或指定本地日期尚未上报的内存累计秒数 */
+export function getRealtimePendingStudySeconds(
+  targetDate: string = formatLocalDateKey(Date.now()),
+): number {
+  return pending.get(targetDate) ?? pending.get(dateKey(Date.now())) ?? 0;
+}
+
+/** 创建带独立持久化回调的 StudyTimeTracker 实例 */
+export function createScopedStudyTimeTracker(
+  persistedDays: readonly StudyDay[] = [],
+  customReporter: Reporter = reporter,
+): RealtimeStudyTimeTracker {
+  return new RealtimeStudyTimeTracker({
+    persistedDays,
+    persist: async (deltas) => {
+      for (const day of deltas) {
+        const whole = Math.floor(day.seconds);
+        if (whole > 0) {
+          await customReporter({ date: day.date, seconds: whole });
+        }
+      }
+    },
+  });
 }
 
 /** 仅测试用：读取 / 重置内存状态 */

@@ -4,6 +4,7 @@
  * 卡片网格布局，顶部工具栏包含搜索和筛选功能
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -406,25 +407,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // ========== 操作回调 ==========
 
-  // 刷新
-  const handleRefresh = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await reloadSkills();
-      showGlobalNotification(
-        'success',
-        t('skills:management.refresh_success')
-      );
-    } catch (error) {
-      console.error('[SkillsManagement] 刷新失败:', error);
-      showGlobalNotification(
-        'error',
-        t('skills:management.refresh_failed')
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [t]);
+
+  useRefreshOnReturn(() => { void reloadSkills().catch(console.error); });
 
   // 检查上游更新（只覆盖有 provenance 记录的链接/zip 安装技能）
   const handleCheckUpdates = useCallback(async () => {
@@ -1417,17 +1401,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
             {!collapseToolbarActions ? (
               <>
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleRefresh()}
-                  disabled={isLoading}
-                  className={secondaryBtnCls}
-                  aria-label={t('skills:selector.refresh')}
-                >
-                  <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
-                  {t('skills:management.refresh')}
-                </DsButton>
 
                 <DsButton
                   variant="ghost"
@@ -1513,13 +1486,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={224}>
-                  <AppMenuItem
-                    icon={<ArrowCounterClockwise size={16} className={cn(isLoading && 'animate-spin')} />}
-                    disabled={isLoading}
-                    onClick={() => void handleRefresh()}
-                  >
-                    {t('skills:management.refresh')}
-                  </AppMenuItem>
                   <AppMenuItem
                     icon={<Storefront size={16} />}
                     onClick={() => setTapBrowserOpen((v) => !v)}

@@ -24,13 +24,13 @@ function stopStream(stream: MediaStream): void {
   stream.getTracks().forEach((track) => track.stop());
 }
 
-function createAudioContext(): AudioContext | null {
+function createAudioContext(sampleRate?: number): AudioContext | null {
   const runtime = globalThis as typeof globalThis & {
     AudioContext?: typeof AudioContext;
     webkitAudioContext?: typeof AudioContext;
   };
   const AudioContextConstructor = runtime.AudioContext ?? runtime.webkitAudioContext;
-  return AudioContextConstructor ? new AudioContextConstructor() : null;
+  return AudioContextConstructor ? new AudioContextConstructor(sampleRate ? { sampleRate } : undefined) : null;
 }
 
 function startLevelMeter(options: {
@@ -197,9 +197,11 @@ async function createMediaRecorderVoiceSession(
 
 async function createPcmFallbackVoiceSession(
   stream: MediaStream,
-  options: { onLevel: (level: number) => void }
+  options: { onLevel: (level: number) => void; pcmWav?: boolean }
 ): Promise<VoiceRecorderSession> {
-  const audioContext = createAudioContext();
+  let audioContext: AudioContext | null;
+  try { audioContext = createAudioContext(options.pcmWav ? 16000 : undefined); }
+  catch (error) { stopStream(stream); throw error; }
   if (!audioContext || typeof audioContext.createScriptProcessor !== 'function') {
     stopStream(stream);
     throw new Error('recording-unavailable');
@@ -309,8 +311,9 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 
 export async function startBrowserVoiceRecording(options: {
   onLevel: (level: number) => void;
+  pcmWav?: boolean;
 }): Promise<VoiceRecorderSession> {
-  const support = await detectVoiceRecordingSupport();
+  const support = await detectVoiceRecordingSupport(options.pcmWav ? { mediaRecorder: null } : undefined);
   if (!support.canRecord) {
     throw new Error(support.reasonCode ?? 'recording-unavailable');
   }

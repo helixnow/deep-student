@@ -110,6 +110,8 @@ async function main() {
     { requestChatSessionNavigation },
     { sessionManager },
     { DEMO_SESSIONS },
+    { createAppUiKernel },
+    { UiKernelProvider },
   ] = await Promise.all([
     import('../App'),
     import('../components/ErrorBoundary'),
@@ -120,6 +122,8 @@ async function main() {
     import('../features/chat/navigation/pendingChatNavigation'),
     import('../features/chat/core/session/sessionManager'),
     import('./fixtures'),
+    import('../ui-kernel/bootstrap'),
+    import('../ui-kernel/react'),
   ]);
 
   const validSceneIds = new Set(DEMO_SESSIONS.map((session) => session.meta.id));
@@ -132,19 +136,24 @@ async function main() {
   desktopShell?.prepareDemoDesktop();
 
   const { createRoot } = await import('react-dom/client');
+  const kernel = await createAppUiKernel();
+  window.addEventListener('beforeunload', () => { void kernel.dispose(); });
+  if (import.meta.hot) import.meta.hot.dispose(() => { void kernel.dispose(); });
   createRoot(document.getElementById('root')!).render(
-    <ErrorBoundary
-      name="TopLevel"
-      fallback={(error: Error, componentStack?: string) => (
-        <TopLevelFallback error={error} componentStack={componentStack} />
-      )}
-    >
-      <OverlayCoordinatorProvider>
-        <DialogControlProvider>
-          <App />
-        </DialogControlProvider>
-      </OverlayCoordinatorProvider>
-    </ErrorBoundary>,
+    <UiKernelProvider kernel={kernel}>
+      <ErrorBoundary
+        name="TopLevel"
+        fallback={(error: Error, componentStack?: string) => (
+          <TopLevelFallback error={error} componentStack={componentStack} />
+        )}
+      >
+        <OverlayCoordinatorProvider>
+          <DialogControlProvider>
+            <App />
+          </DialogControlProvider>
+        </OverlayCoordinatorProvider>
+      </ErrorBoundary>
+    </UiKernelProvider>,
   );
 
   // 学习桌面：等桌面挂上再开窗，窗口位置按桌面实际尺寸算

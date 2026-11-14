@@ -23,8 +23,24 @@ import {
   collectNodeAndDescendantIds,
   removeNodesById,
   afterRemoveNodes,
+  deepCloneNode,
 } from '../mindmapStoreHelpers';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
+import { normalizeNodeExcerptFields } from '../../utils/nodeAnchors';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
+import { reconcileSummariesWithTree } from '../../utils/summaryBraces';
+import { reconcileMindMapProjectedFlashcards } from '../../interop/mindmapCardProjection';
+
+/** 摘录与复合卡片字段：patch 中显式 null 等同 undefined（清除该字段） */
+const EXCERPT_NULLABLE_KEYS: ReadonlySet<keyof UpdateNodeParams> = new Set([
+  'anchors',
+  'excerptQuote',
+  'imageAssetId',
+  'excerpts',
+  'cardNote',
+  'isExpandedCard',
+  'isFlashcard',
+]);
 
 export const createNodeEditSlice: MindMapSliceCreator<
   | 'updateNode'
@@ -55,7 +71,9 @@ export const createNodeEditSlice: MindMapSliceCreator<
       const patchKeys = Object.keys(patch).sort();
       const autoCoalescible =
         patchKeys.length > 0 &&
-        patchKeys.every((key) => key === 'text' || key === 'note' || key === 'style');
+        patchKeys.every(
+          (key) => key === 'text' || key === 'note' || key === 'cardNote' || key === 'style',
+        );
       const coalesceKey =
         options?.coalesceKey !== undefined
           ? options.coalesceKey
@@ -97,14 +115,31 @@ export const createNodeEditSlice: MindMapSliceCreator<
           for (const key of Object.keys(patch) as Array<keyof UpdateNodeParams>) {
             const value = patch[key];
             const record = node as unknown as Record<string, unknown>;
-            if (value === undefined) {
+            if (value === undefined || (value === null && EXCERPT_NULLABLE_KEYS.has(key))) {
               delete record[key];
             } else {
               record[key] = value;
             }
           }
+          if (patchKeys.some((key) => EXCERPT_NULLABLE_KEYS.has(key as keyof UpdateNodeParams))) {
+            normalizeNodeExcerptFields(node);
+          }
         }
       }, { ...options, coalesceKey });
+
+      const after = get();
+      if (
+        patchKeys.some(
+          (key) =>
+            key === 'style' ||
+            key === 'text' ||
+            key === 'anchors' ||
+            key === 'excerpts',
+        )
+      ) {
+        syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      }
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
     },
 
     // 添加节点（M-070: 前端深度/节点数限制）
@@ -182,7 +217,7 @@ export const createNodeEditSlice: MindMapSliceCreator<
       });
       const plans = normalizedIds.map((sourceId, index) => ({
         sourceId,
-        clone: regenerateIds(JSON.parse(JSON.stringify(sources[index])) as MindMapNode),
+        clone: regenerateIds(deepCloneNode(sources[index])),
       }));
 
       const newIds: string[] = [];
@@ -203,6 +238,12 @@ export const createNodeEditSlice: MindMapSliceCreator<
           state.selectionAnchorId = newIds[0];
         }
       });
+
+      if (newIds.length > 0) {
+        const after = get();
+        syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+        reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
+      }
 
       return newIds.length > 0 ? newIds : null;
     },
@@ -231,6 +272,10 @@ export const createNodeEditSlice: MindMapSliceCreator<
         removeNodesById(state.document.root, new Set(normalizedIds));
         afterRemoveNodes(state, removedIds, nextFocusedNodeId);
       });
+
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
     },
 
     // 移动节点
@@ -300,9 +345,15 @@ export const createNodeEditSlice: MindMapSliceCreator<
         );
         liveNextParent.children.splice(boundedIndex, 0, ...movingNodes);
         if (liveNextParent.collapsed === true) liveNextParent.collapsed = false;
+        reconcileSummariesWithTree(state.document);
         moved = true;
       });
 
+      if (moved) {
+        const after = get();
+        syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+        reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
+      }
       return moved;
     },
 
@@ -437,7 +488,11 @@ export const createNodeEditSlice: MindMapSliceCreator<
           target.children.push(...movingNodes);
           if (target.collapsed === true) target.collapsed = false;
         }
+        reconcileSummariesWithTree(state.document);
       });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
     },
 
     // 反缩进节点
@@ -518,7 +573,11 @@ export const createNodeEditSlice: MindMapSliceCreator<
             if (adopter.collapsed === true) adopter.collapsed = false;
           }
         }
+        reconcileSummariesWithTree(state.document);
       });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
     },
   };
 };

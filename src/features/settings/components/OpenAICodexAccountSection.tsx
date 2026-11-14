@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -270,6 +271,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
     }
   }, [refreshStatus]);
 
+
   useEffect(() => {
     mountedRef.current = true;
     void refreshStatus(true);
@@ -293,6 +295,10 @@ export const OpenAICodexAccountSection: React.FC = () => {
   );
 
   const statusState = status?.state;
+  useRefreshOnReturn(
+    () => statusState === 'signed_in' ? refreshUsage() : refreshStatus(),
+    !usageLoading && !statusLoading && busyAction === null,
+  );
   const isPending = statusState === 'pending_browser' || statusState === 'pending_device_code';
 
   const accountIdentity = getAccountIdentity(status);
@@ -442,18 +448,6 @@ export const OpenAICodexAccountSection: React.FC = () => {
 
         {state === 'signed_in' && (
           <div className="flex shrink-0 items-center gap-1">
-            <DsButton
-              size="sm"
-              variant="ghost"
-              iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-              onClick={() => void refreshUsage()}
-              disabled={disabled || usageLoading}
-              aria-label={translate(t, 'refresh_usage', 'Refresh usage')}
-              title={translate(t, 'refresh_usage', 'Refresh usage')}
-            >
-              <ArrowClockwise className={`h-3.5 w-3.5 ${usageLoading ? 'animate-spin' : ''}`} />
-            </DsButton>
             <DsButton
               size="sm"
               variant="outline"

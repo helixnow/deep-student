@@ -1,0 +1,4948 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "dstu_soft_delete",
+    "dstu_trash_restore",
+    "dstu_list_trash",
+    "dstu_permanently_delete",
+    "dstu_empty_trash",
+    "vfs_upload_file"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.trash.soft_delete.each_type_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-sd"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-sd",
+              "content": "c-N-sd"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-sd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgc2Q=",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-sd",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-sd",
+              "metadata": {
+                "sourceText": "hello T-sd",
+                "translatedText": "你好 T-sd",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-sd",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-sd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIHNk",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-sd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gc2Q="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-sd",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-sd\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.soft_delete.repeat_is_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-rep"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-rep",
+              "content": "c-N-rep"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-rep.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgcmVw",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-rep",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-rep",
+              "metadata": {
+                "sourceText": "hello T-rep",
+                "translatedText": "你好 T-rep",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-rep",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-rep.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIHJlcA==",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-rep.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gcmVw"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-rep",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-rep\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.soft_delete.missing_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "fld_missing0000",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "tb_missing0000",
+            "itemType": "textbook"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "exam_missing0000",
+            "itemType": "exam"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "tr_missing0000",
+            "itemType": "translation"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "essay_session_missing0000",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "file_missing0000",
+            "itemType": "image"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "file_missing0000",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "mm_missing0000",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.soft_delete.type_mismatch_and_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "keep",
+              "content": "c-keep"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "keep.txt",
+              "mimeType": "text/plain",
+              "base64Content": "a2VlcCBmaWxl"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "notes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "Note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "attachment"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "retrieval"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.soft_delete.folder_cascade",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "P"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "C",
+            "parentId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-C",
+              "content": "c-in-C",
+              "metadata": {
+                "tags": [],
+                "folderId": "${1.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-P",
+              "content": "c-in-P",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "root-note",
+              "content": "c-root-note"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.soft_delete.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "note_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": 123,
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "note_missing0000",
+            "item_type": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.each_type_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-rs"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-rs",
+              "content": "c-N-rs"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-rs.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgcnM=",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-rs",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-rs",
+              "metadata": {
+                "sourceText": "hello T-rs",
+                "translatedText": "你好 T-rs",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-rs",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-rs.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIHJz",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-rs.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gcnM="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-rs",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-rs\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.not_deleted_missing_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-act"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-act",
+              "content": "c-N-act"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgYWN0",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-act",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-act",
+              "metadata": {
+                "sourceText": "hello T-act",
+                "translatedText": "你好 T-act",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-act",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIGFjdA==",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gYWN0"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-act",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-act\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "fld_missing0000",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "tb_missing0000",
+            "itemType": "textbook"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "exam_missing0000",
+            "itemType": "exam"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "tr_missing0000",
+            "itemType": "translation"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "essay_session_missing0000",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "file_missing0000",
+            "itemType": "image"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "file_missing0000",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "mm_missing0000",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "notes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "Folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "attachment"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.twice_and_cycle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "cycle",
+              "content": "c-cycle"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "cycle-mm",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"cycle-mm\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "cycle.txt",
+              "mimeType": "text/plain",
+              "base64Content": "Y3ljbGUgZmlsZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${2.file.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.title_conflict_rename",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "同名",
+              "content": "c-同名"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "同名",
+              "content": "c-同名"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "同名夹"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "同名夹"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${6.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${6.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.folder_cascade_and_orphan",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "P"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "C",
+            "parentId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-C",
+              "content": "c-in-C",
+              "metadata": {
+                "tags": [],
+                "folderId": "${1.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-P",
+              "content": "c-in-P",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.note_in_deleted_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "P"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-P",
+              "content": "c-in-P",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.trash_restore.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "note_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": [
+              "note_missing0000"
+            ],
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.list_trash.empty_and_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": null,
+            "offset": null,
+            "itemTypes": null
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 50,
+            "offset": 0,
+            "itemTypes": null
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": []
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4294967295,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.list_trash.pagination_and_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-lt"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-lt",
+              "content": "c-N-lt"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-lt.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgbHQ=",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-lt",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-lt",
+              "metadata": {
+                "sourceText": "hello T-lt",
+                "translatedText": "你好 T-lt",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-lt",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-lt.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIGx0",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-lt.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gbHQ="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-lt",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-lt\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N2-lt",
+              "content": "c-N2-lt"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${9.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4,
+            "offset": 4
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4,
+            "offset": 8
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4,
+            "offset": 10
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "offset": 100
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 1,
+            "offset": 9
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 2,
+            "offset": 1,
+            "itemTypes": null
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "note"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "notes"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "NOTE",
+              "Mindmap"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "folder",
+              "folders"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "file"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "image"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "images"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "attachment"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "attachments"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "textbook"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "textbooks"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "exam",
+              "translation",
+              "essay"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "exams",
+              "translations",
+              "essays",
+              "mindmaps"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "bogus"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              ""
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": []
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "note"
+            ],
+            "limit": 1,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "image",
+              "note"
+            ],
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              "note",
+              "mindmap",
+              "folder"
+            ],
+            "limit": 50,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.list_trash.after_restore_and_purge",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "a",
+              "content": "c-a"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "b",
+              "content": "c-b"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "c",
+              "content": "c-c"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_trash_restore",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.list_trash.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": "10"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "offset": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "limit": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "itemTypes": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {
+            "unknownKey": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.each_type_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-pd"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-pd",
+              "content": "c-N-pd"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-pd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgcGQ=",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-pd",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-pd",
+              "metadata": {
+                "sourceText": "hello T-pd",
+                "translatedText": "你好 T-pd",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-pd",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-pd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIHBk",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-pd.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gcGQ="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-pd",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-pd\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "keep-active",
+              "content": "c-keep-active"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${9.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.not_in_trash_missing_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-act"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-act",
+              "content": "c-N-act"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgYWN0",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-act",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-act",
+              "metadata": {
+                "sourceText": "hello T-act",
+                "translatedText": "你好 T-act",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-act",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIGFjdA==",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-act.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gYWN0"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-act",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-act\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "notes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "attachment"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "fld_missing0000",
+            "itemType": "folder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "essay_session_missing0000",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "essay_missing0000",
+            "itemType": "essay"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "tb_missing0000",
+            "itemType": "textbook"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "file_missing0000",
+            "itemType": "files"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "mm_missing0000",
+            "itemType": "mindmaps"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "exam_missing0000",
+            "itemType": "exams"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "tr_missing0000",
+            "itemType": "translations"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "Note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.type_mismatch_in_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "mm",
+              "content": "c-mm"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "mm.txt",
+              "mimeType": "text/plain",
+              "base64Content": "bWlzbWF0Y2g="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "mindmap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "exam"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.aliases_and_repeat",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "alias",
+              "content": "c-alias"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "alias.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YWxpYXMgZmlsZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "alias-mm",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"alias-mm\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "alias-fld"
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "alias2.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YWxpYXMgZmlsZSAy"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "notes"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "attachment"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${2.id}",
+            "itemType": "mindmaps"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "folders"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${4.file.id}",
+            "itemType": "images"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "file"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.folder_tree",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "P"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "C",
+            "parentId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-C",
+              "content": "c-in-C",
+              "metadata": {
+                "tags": [],
+                "folderId": "${1.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-P",
+              "content": "c-in-P",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "root",
+              "content": "c-root"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${4.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.permanently_delete.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "note_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": null,
+            "itemType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_permanently_delete",
+          "args": {
+            "id": "note_missing0000",
+            "itemType": [
+              "note"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": null
+          }
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": []
+          }
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "note",
+              "mindmap",
+              "folder"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.all_types_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F-et"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "N-et",
+              "content": "c-N-et"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "tb-et.txt",
+              "mimeType": "text/plain",
+              "base64Content": "dGV4dGJvb2sgZXQ=",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "E-et",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "T-et",
+              "metadata": {
+                "sourceText": "hello T-et",
+                "translatedText": "你好 T-et",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "S-et",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "img-et.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aW1hZ2UgYXJtIGV0",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "file-et.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsZSBhcm0gZXQ="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "M-et",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"M-et\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "keep-active",
+              "content": "c-keep-active"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "keep.txt",
+              "mimeType": "text/plain",
+              "base64Content": "a2VlcCBhY3RpdmUgZmlsZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${7.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${8.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${9.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${10.file.id}"
+          }
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.filtered_sequence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n",
+              "content": "c-n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "m",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"m\",\"children\":[]}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "d"
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "f.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZmlsdGVyZWQgZmlsZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "e",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "t",
+              "metadata": {
+                "sourceText": "hello t",
+                "translatedText": "你好 t",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "s",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": ""
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.id}",
+            "itemType": "mindmap"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${4.id}",
+            "itemType": "exam"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${5.id}",
+            "itemType": "translation"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${6.id}",
+            "itemType": "essay"
+          }
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "note",
+              "mindmap",
+              "folder"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "file"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "EXAMS"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "bogus"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": []
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "Essays"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": null
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.folder_cascade_and_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "P"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "in-P",
+              "content": "c-in-P",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "live",
+              "content": "c-live"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "dead",
+              "content": "c-dead"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${3.id}",
+            "itemType": "note"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "folder"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "notes"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.file_aliases",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YWxpYXMgYQ=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "b.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YWxpYXMgYg==",
+              "fileType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "c.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YWxpYXMgYw==",
+              "fileType": "textbook"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${1.file.id}",
+            "itemType": "image"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${2.file.id}",
+            "itemType": "textbook"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "textbooks"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              "attachments"
+            ]
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.trash.empty_trash.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_empty_trash",
+          "args": {
+            "itemTypes": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.upload.success_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "hello.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aGVsbG8gdHJhc2ggbGFuZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.file.id}"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.upload.folder_and_dedup",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "上传目标"
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.md",
+              "mimeType": "text/markdown",
+              "base64Content": "IyB0aXRsZQ==",
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "b.md",
+              "mimeType": "text/markdown",
+              "base64Content": "IyB0aXRsZQ==",
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "c.md",
+              "mimeType": "text/markdown",
+              "base64Content": "IyB0aXRsZQ==",
+              "folderId": "fld_missing0000"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "root.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZW1wdHkgZm9sZGVyIGlk",
+              "folderId": ""
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "d.json",
+              "mimeType": "application/json",
+              "base64Content": "eyJhIjoxfQ==",
+              "fileType": "document"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "e.csv",
+              "mimeType": "text/csv",
+              "base64Content": "YSxiCjEsMg==",
+              "fileType": "bogus"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${1.file.id}"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.upload.restore_soft_deleted_by_hash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "soft.txt",
+              "mimeType": "text/plain",
+              "base64Content": "c29mdCBkZWxldGVkIGNvbnRlbnQ="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.file.id}",
+            "itemType": "file"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "again.txt",
+              "mimeType": "text/plain",
+              "base64Content": "c29mdCBkZWxldGVkIGNvbnRlbnQ="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.file.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list_trash",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.upload.validation_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "deleted-target"
+          }
+        },
+        {
+          "cmd": "dstu_soft_delete",
+          "args": {
+            "id": "${0.id}",
+            "itemType": "folder"
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "!!!notbase64"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "data:text/plain;base64,aGVsbG8="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aGVsbG8"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aGVs\nbG8="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.exe",
+              "mimeType": "application/x-msdownload",
+              "base64Content": "%%%"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.exe",
+              "mimeType": "application/x-msdownload",
+              "base64Content": "TVogZmFrZQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "noext",
+              "mimeType": "application/octet-stream",
+              "base64Content": "b2N0ZXQ="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "",
+              "base64Content": "ZW1wdHkgbWltZQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "   ",
+              "base64Content": "YmxhbmsgbWltZQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "x.txt",
+              "mimeType": "text/plain",
+              "base64Content": "bWlzc2luZyBmb2xkZXI=",
+              "folderId": "fld_missing0000"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "x.txt",
+              "mimeType": "text/plain",
+              "base64Content": "cm9vdCBsaXRlcmFs",
+              "folderId": "root"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "x.txt",
+              "mimeType": "text/plain",
+              "base64Content": "ZGVsZXRlZCBmb2xkZXI=",
+              "folderId": "${0.id}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.exe",
+              "mimeType": "text/plain",
+              "base64Content": "bWltZSB3aW5z"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "notes.md",
+              "mimeType": "application/octet-stream",
+              "base64Content": "ZXh0ZW5zaW9uIHdpbnM="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "UPPER.TXT",
+              "mimeType": " TEXT/PLAIN ",
+              "base64Content": "dXBwZXIgbWltZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "",
+              "mimeType": "text/plain",
+              "base64Content": "ZW1wdHkgbmFtZQ=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "empty.txt",
+              "mimeType": "text/plain",
+              "base64Content": ""
+            }
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.upload.args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": "hello.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "name": "a.txt",
+            "mimeType": "text/plain",
+            "base64Content": "YQ=="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "mimeType": "text/plain",
+              "base64Content": "YQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": null,
+              "base64Content": "YQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": 123
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YQ==",
+              "fileType": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "YQ==",
+              "folderId": 5
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mime_type": "text/plain",
+              "base64_content": "YQ=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

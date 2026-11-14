@@ -4,6 +4,8 @@ import { uploadConfig } from '@milkdown/kit/plugin/upload';
 import type { EditorView } from '@milkdown/prose/view';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { setupMilkdownTimers } from './__tests__/milkdownTimers';
+setupMilkdownTimers();
 import i18next from 'i18next';
 import { normalizeMarkdown } from './normalizeMarkdown';
 import {

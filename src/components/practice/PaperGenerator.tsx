@@ -62,10 +62,10 @@ interface PaperGeneratorProps {
 const QUESTION_TYPE_KEYS = PRACTICE_QUESTION_TYPES.filter((key) => key !== 'other');
 
 const DIFFICULTY_KEYS = [
-  { key: 'easy', color: 'bg-success/10 text-success' },
-  { key: 'medium', color: 'bg-warning/10 text-warning' },
-  { key: 'hard', color: 'bg-warning/10 text-warning' },
-  { key: 'very_hard', color: 'bg-destructive/10 text-destructive' },
+  { key: 'easy', dot: 'bg-success/75' },
+  { key: 'medium', dot: 'bg-warning/75' },
+  { key: 'hard', dot: 'bg-warning' },
+  { key: 'very_hard', dot: 'bg-destructive/80' },
 ];
 
 const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode; available: boolean }> = [
@@ -278,16 +278,16 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         
         {/* 试卷内容：上限随视口走，大窗口不再浪费一半空间（原 min(60vh,520px)） */}
         <CustomScrollArea className="max-h-[min(74vh,960px)]" fullHeight={false}>
-          <div className="space-y-4 pr-0 sm:pr-4">
+          <div className="space-y-3 pr-0 sm:pr-4">
             {generatedPaper.questions.map((question, idx) => (
-              <Card key={question.id} className="overflow-hidden [content-visibility:auto] [contain-intrinsic-size:auto_72px]">
-                <DsButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-[var(--interactive-hover)]" onClick={() => toggleQuestion(question.id)}>
+              <div key={question.id} className="overflow-hidden rounded-xl border border-border/40 bg-card/30 [content-visibility:auto] [contain-intrinsic-size:auto_72px]">
+                <DsButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-foreground/[0.03]" onClick={() => toggleQuestion(question.id)}>
                   <div className="flex items-start gap-3">
-                    <Badge variant="outline" className="flex-shrink-0 font-mono">
-                      {idx + 1}
-                    </Badge>
+                    <span className="flex-shrink-0 font-mono text-xs font-medium tabular-nums text-muted-foreground pt-0.5">
+                      {idx + 1}.
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm line-clamp-2">{question.content}</p>
+                      <p className="text-sm text-foreground/85 line-clamp-2">{question.content}</p>
                     </div>
                     {expandedQuestions.has(question.id) ? (
                       <CaretUp size={16} className="text-muted-foreground flex-shrink-0" />
@@ -298,14 +298,14 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 </DsButton>
                 
                 {expandedQuestions.has(question.id) && (
-                  <CardContent className="ui-rise-in pt-0 space-y-3">
+                  <div className="ui-rise-in px-4 pb-4 pt-1 space-y-3">
                     {!!question.materials?.length && <QuestionMaterialView materials={question.materials} />}
                     {/* 选项 */}
                     {question.options && question.options.length > 0 && (
-                      <div className="ml-0 space-y-2 sm:ml-8">
+                      <div className="ml-0 space-y-2 sm:ml-6">
                         {question.options.map((opt) => (
                           <div key={opt.key} className="flex items-start gap-2 text-sm">
-                            <span className="font-medium text-muted-foreground">{opt.key}.</span>
+                            <span className="font-mono text-xs font-medium text-muted-foreground pt-0.5">{opt.key}.</span>
                             <span>{opt.content}</span>
                           </div>
                         ))}
@@ -314,9 +314,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     
                     {/* 答案 */}
                     {includeAnswers && question.answer && (
-                      <div className="ml-0 rounded-md border border-success/20 bg-success/5 p-3 sm:ml-8">
-                        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-success">
-                          <CheckCircle size={16} />
+                      <div className="ml-0 rounded-xl border border-success/35 bg-success/[0.05] p-3 sm:ml-6">
+                        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success">
+                          <CheckCircle size={15} />
                           {t('paper.answer')}
                         </div>
                         <div className="text-sm"><MarkdownRenderer content={question.answer} /></div>
@@ -325,16 +325,16 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     
                     {/* 解析 */}
                     {includeExplanations && question.explanation && (
-                      <div className="ml-0 rounded-md border border-primary/20 bg-primary/5 p-3 sm:ml-8">
-                        <div className="mb-1 text-sm font-medium text-primary">
+                      <div className="ml-0 rounded-xl border border-border/40 bg-muted/40 p-3 sm:ml-6">
+                        <div className="mb-1 text-xs font-medium text-foreground">
                           {t('paper.explanation')}
                         </div>
                         <div className="text-sm text-muted-foreground"><MarkdownRenderer content={question.explanation} /></div>
                       </div>
                     )}
-                  </CardContent>
+                  </div>
                 )}
-              </Card>
+              </div>
             ))}
           </div>
         </CustomScrollArea>
@@ -405,18 +405,19 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             <span className="text-muted-foreground text-xs">{t('paper.noRestriction')}</span>
           </Label>
           <div className="flex flex-wrap gap-2">
-            {DIFFICULTY_KEYS.map(({ key, color }) => (
+            {DIFFICULTY_KEYS.map(({ key, dot }) => (
               <DsButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => toggleDifficulty(key)}
                 className={cn(
-                  '!h-auto !rounded-md !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm font-medium',
+                  '!h-auto !rounded-lg !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium gap-1.5 border',
                   selectedDifficulties.includes(key)
-                    ? color
-                    : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
+                    ? 'border-primary/45 bg-primary/[0.06] text-foreground'
+                    : 'border-border/40 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
                 )}
               >
+                <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', dot)} aria-hidden="true" />
                 {t(`difficultyLevel.${key}`)}
               </DsButton>
             ))}

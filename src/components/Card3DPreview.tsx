@@ -24,6 +24,7 @@ interface Card3DPreviewProps {
 }
 
 export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, templateMap, debugContext, onCardClick }) => {
+  // RUST-FIX(RF-W09-english-hardcoded-labels-localized): Rust 把播放/暂停按钮提示和分页圆点的 aria-label 写死为英文，中文界面也是英文
   const { t } = useTranslation('common');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlay, setIsAutoPlay] = useState(false);
@@ -534,7 +535,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       onTouchEnd={handleTouchEnd}
     >
       <div className="card-3d-controls">
-        <DsButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
+        <DsButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? t('card3DPreview.pause') : t('card3DPreview.play')}>
           {isAutoPlay ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
         </DsButton>
         <DsButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
@@ -618,7 +619,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
               variant="ghost" size="icon" iconOnly
               className={`nav-dot ${index === currentIndex ? 'active' : ''}`}
               onClick={() => setCurrentIndex(index)}
-              aria-label={`Go to card ${index + 1}`}
+              aria-label={t('card3DPreview.goToCard', { index: index + 1 })}
             />
           ))}
         </div>

@@ -42,7 +42,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import type { StoreApi } from 'zustand';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -76,6 +76,13 @@ import { getBlocksDigest } from './agent-task/blocksDigest';
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
+import {
+  ProjectKnowledgeDagDrawer,
+  type KnowledgePlan,
+  type KnowledgeTodo,
+  type ProjectKnowledgeStoreLike,
+  type TodoDispatchPayload,
+} from './ProjectKnowledgeDagDrawer';
 import { canRevealInFolder, revealFileOrOpen } from '@/utils/systemFileOpener';
 import {
   getSessionArtifacts,
@@ -161,13 +168,24 @@ interface Props {
   store: AgentTaskStoreApi;
   /** 完整 ChatStore（产物分区读写面：registry 水合 + AnkiCardsBlock）；调用方传真实 store */
   chatStore?: StoreApi<ChatStore> | null;
+  /** 可选自定义项目知识 DAG Store；未传时自动从当前会话 steps 构建拓扑依赖 */
+  knowledgeStore?: ProjectKnowledgeStoreLike;
   className?: string;
 }
 
-export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, className }) => {
+export const AgentTaskPanel: React.FC<Props> = ({
+  store,
+  chatStore = null,
+  knowledgeStore,
+  className,
+}) => {
   const { t } = useTranslation('chatV2');
   const [expanded, setExpanded] = useState(false);
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
+  const [dagDrawerOpen, setDagDrawerOpen] = useState(false);
+  const [dagOverridesBySession, setDagOverridesBySession] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
   // 📱 小屏：面板高度受限 + 不自动展开（避免把输入栏挤出视口）
   const { isSmallScreen } = useBreakpoint();
   const ref = useRef<HTMLDivElement>(null);
@@ -219,6 +237,83 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     () => extractSteps(todoBlocks),
     [todoBlocks],
   );
+
+  const sessionDagKey = sessionId ?? '__default__';
+  const dagCompletedOverrides = useMemo<Record<string, boolean>>(
+    () => dagOverridesBySession[sessionDagKey] ?? {},
+    [dagOverridesBySession, sessionDagKey],
+  );
+
+  const handleToggleDagTodo = useCallback(
+    (todo: KnowledgeTodo, completed: boolean) => {
+      setDagOverridesBySession((prev) => ({
+        ...prev,
+        [sessionDagKey]: {
+          ...(prev[sessionDagKey] ?? {}),
+          [todo.id]: completed,
+        },
+      }));
+    },
+    [sessionDagKey],
+  );
+
+  const handleDispatchDagTodo = useCallback(
+    (payload: TodoDispatchPayload) => {
+      if (chatStore) {
+        chatStore.getState().setInputValue?.(payload.prompt);
+      }
+      window.dispatchEvent(
+        new CustomEvent('CHAT_V2_SET_INPUT', {
+          detail: { content: payload.prompt, autoSend: false },
+        }),
+      );
+      showGlobalNotification('info', '已将就绪任务填入输入框');
+    },
+    [chatStore],
+  );
+
+  const dagPlanData = useMemo(() => {
+    const planId = sessionId ? `plan-${sessionId}` : 'plan-session';
+    const planHeading = title || '当前会话执行计划';
+    const resolvedSteps = steps.map((step, idx) => {
+      const id = step.id || `step-${idx + 1}`;
+      const nativeCompleted = step.status === 'completed';
+      const completed =
+        id in dagCompletedOverrides ? dagCompletedOverrides[id] : nativeCompleted;
+      return {
+        id,
+        description: step.description,
+        completed,
+      };
+    });
+    const planDone = resolvedSteps.filter((s) => s.completed).length;
+    const plan: KnowledgePlan = {
+      id: planId,
+      body: [
+        `# ${planHeading}`,
+        '## Steps',
+        ...resolvedSteps.map((s) => `- [${s.completed ? 'x' : ' '}] ${s.description}`),
+      ].join('\n'),
+      sessionId: sessionId ?? null,
+      progress: {
+        done: planDone,
+        total: resolvedSteps.length,
+      },
+    };
+    const todos: KnowledgeTodo[] = resolvedSteps.map((step, idx) => ({
+      id: step.id,
+      body: step.description,
+      completed: step.completed,
+      planId,
+      dependsOn: idx > 0 ? [resolvedSteps[idx - 1].id] : [],
+      sessionId: sessionId ?? null,
+    }));
+    return {
+      plans: resolvedSteps.length > 0 ? [plan] : [],
+      todos,
+      notes: [],
+    };
+  }, [steps, title, sessionId, dagCompletedOverrides]);
 
   // ── 产物架（会话级 registry：generative-ui / anki-cards / note / file）──
   // 折叠态也参与：有产物但无计划/运行时，面板同样出现（pill 显示「产物 N」）
@@ -510,20 +605,49 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
               <SectionDivider />
 
               {/* ── 区 1：计划（无 todo 计划时整区隐藏，Runtime/Changes 仍可见） ── */}
-              {has && showSections && (
-                <SectionLabel>{t('agentPanel.plan')}</SectionLabel>
+              {has && (
+                <div className="flex items-center justify-between px-4 pt-2 pb-1">
+                  {showSections ? (
+                    <span className="text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none">
+                      {t('agentPanel.plan')}
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    type="button"
+                    data-testid="toggle-project-knowledge-dag-drawer"
+                    aria-expanded={dagDrawerOpen}
+                    onClick={() => setDagDrawerOpen((prev) => !prev)}
+                    className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <span>DAG 拓扑视图</span>
+                  </button>
+                </div>
               )}
               {has && <PlanSteps steps={steps} />}
+              {has && dagDrawerOpen && (
+                <div className="px-4 pb-2">
+                  <ProjectKnowledgeDagDrawer
+                    store={knowledgeStore}
+                    data={knowledgeStore ? undefined : dagPlanData}
+                    isOpen={dagDrawerOpen}
+                    onClose={() => setDagDrawerOpen(false)}
+                    onToggleTodo={handleToggleDagTodo}
+                    onDispatchTodo={handleDispatchDagTodo}
+                    className="max-w-none"
+                  />
+                </div>
+              )}
 
               {/* ── 区 2：来源（信息架构收敛：只显示计数，详情在消息级来源面板） ── */}
               {showSources && (
                 <>
                   <SectionDivider />
                   <div className="flex min-w-0 items-center gap-2 px-4 py-2 text-[11px]">
-                    <MagnifyingGlass size={12} className="flex-shrink-0 text-[color:var(--text-muted)]" />
-                    <span className="flex-shrink-0 font-medium text-[color:var(--text-secondary)]">
+                    <span className="flex-shrink-0 text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none">
                       {t('agentPanel.sources')}
-                      <span className="ml-1.5 font-normal tabular-nums">{sources.length}</span>
+                      <span className="ml-1.5 normal-case tracking-normal font-normal font-mono tabular-nums">{sources.length}</span>
                     </span>
                     {/* 来源类型概览图标（去重后每类一枚） */}
                     <span className="flex flex-shrink-0 items-center gap-1 text-[color:var(--text-muted)]">

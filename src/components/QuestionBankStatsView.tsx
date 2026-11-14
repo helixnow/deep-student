@@ -136,24 +136,24 @@ const StatCard: React.FC<StatCardProps> = ({
   return (
     <div
       className={cn(
-        'ui-rise-in flex items-center gap-3 rounded-lg p-3',
-        'border border-border/50 bg-muted/30',
-        'transition-colors hover:border-border/80 hover:bg-[var(--interactive-hover)]'
+        'ui-rise-in flex items-center gap-3 rounded-2xl p-3.5',
+        'border border-border/40 bg-muted/60',
+        'transition-colors hover:border-border/70 hover:bg-foreground/[0.04]'
       )}
       style={{ animationDelay: `${index * 40}ms` }}
     >
-      <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-border/40 bg-background/60', color)}>
+      <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-foreground/[0.04]', color)}>
         {icon}
       </div>
       <div className="min-w-0">
         <p className="truncate text-xs text-muted-foreground">{label}</p>
         <div className="flex items-baseline gap-1.5">
-          <span className="text-lg font-semibold tabular-nums text-foreground">
+          <span className="font-mono text-lg font-semibold tabular-nums text-foreground">
             {animatedValue}
             {suffix}
           </span>
           {description && (
-            <span className="truncate text-xs tabular-nums text-muted-foreground/70">{description}</span>
+            <span className="truncate font-mono text-xs tabular-nums text-muted-foreground/70">{description}</span>
           )}
         </div>
       </div>
@@ -342,19 +342,19 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
         />
       </div>
 
-      {/* 学习进度（与正确率合并为同一层级的分区卡，对齐管理页 border-border/50 + bg-muted/30 层次） */}
-      <div className="ui-rise-in rounded-lg border border-border/50 bg-muted/20 p-4" style={{ animationDelay: '160ms' }}>
+      {/* 学习进度（与正确率合并为同一层级的分区卡，单层圆角容器） */}
+      <div className="ui-rise-in rounded-2xl border border-border/40 bg-muted/60 p-4" style={{ animationDelay: '160ms' }}>
         <div className="space-y-3">
           <SectionHeader
             icon={<Crosshair size={16} />}
             title={t('exam_sheet:questionBank.stats.progress')}
             right={
-              <span className="text-xs tabular-nums text-muted-foreground">{progressData.masteredPercent}%</span>
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">{progressData.masteredPercent}%</span>
             }
           />
 
           {/* 分段进度条 */}
-          <div className="relative h-1.5 overflow-hidden rounded-full bg-muted/50">
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-foreground/[0.06]">
             <div
               className="absolute left-0 top-0 h-full bg-success transition-all duration-500 ease-out"
               style={{ width: `${progressData.masteredPercent}%` }}
@@ -381,19 +381,19 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
               { dot: 'bg-success', label: t('exam_sheet:questionBank.stats.mastered'), count: stats.mastered },
               { dot: 'bg-warning', label: t('exam_sheet:questionBank.stats.inProgress'), count: stats.inProgress },
               { dot: 'bg-destructive/80', label: t('exam_sheet:questionBank.stats.review'), count: stats.review },
-              { dot: 'bg-muted-foreground/30', label: t('exam_sheet:questionBank.stats.new'), count: stats.newCount },
+              { dot: 'bg-muted-foreground/35', label: t('exam_sheet:questionBank.stats.new'), count: stats.newCount },
             ] as const).map(({ dot, label, count }) => (
               <span key={label} className="flex items-center gap-1.5 text-muted-foreground">
                 <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
                 {label}
-                <span className="tabular-nums text-muted-foreground/70">{count}</span>
+                <span className="font-mono tabular-nums text-muted-foreground/70">{count}</span>
               </span>
             ))}
           </div>
         </div>
 
         {/* 正确率 */}
-        <div className="mt-4 border-t border-border/40 pt-4">
+        <div className="mt-4 border-t border-border/35 pt-4">
           <SectionHeader
             icon={<TrendUp size={16} />}
             title={t('exam_sheet:questionBank.stats.accuracy')}

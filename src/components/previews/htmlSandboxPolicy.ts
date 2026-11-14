@@ -1,5 +1,9 @@
 import DOMPurify from 'dompurify';
 
+import { CARD_FACE_HELPER_SCRIPT } from '@/components/anki/utils/cardMedia';
+
+const CARD_FACE_HELPER_SCRIPT_BODY = CARD_FACE_HELPER_SCRIPT.replace(/^<script>/, '').replace(/<\/script>$/, '');
+
 export type HtmlSandboxMode = 'chat-safe' | 'template-safe';
 
 interface BuildHtmlSandboxDocumentOptions {
@@ -73,17 +77,28 @@ export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): str
   if (!html) return '';
   const isFullDoc = /^\s*(<!doctype|<html[\s>])/i.test(html.trim());
   if (mode === 'template-safe') {
-    // 卡片模板与 Anki 一致：保留模板脚本、onclick 与 data-* 属性（选择题标出正确项、
-    // 填空点击揭示、翻面交互都依赖它们）。隔离边界是 iframe 本身：sandbox 仅
-    // allow-scripts（无同源，不能访问宿主）+ CSP connect-src 'none'（不能联网）。
-    return DOMPurify.sanitize(html, {
-      WHOLE_DOCUMENT: isFullDoc,
-      ADD_TAGS: ['style', 'meta', 'script'],
-      ADD_ATTR: ['onclick'],
-      FORBID_TAGS: ['iframe', 'embed', 'object', 'form', 'base'],
-      FORBID_ATTR: ['onerror', 'onload', 'onmouseover', 'onfocus', 'onblur'],
-      ALLOW_DATA_ATTR: true,
-    });
+    // 保留 onclick 与 data-* 属性（复习页辅助脚本据 [onclick] 判断点击不翻面）。
+    // 模板自带 <script> 会被父页面 CSP（经 srcdoc 继承）拦截并报错，预览中剥除
+    // （D-154/D-166）；模板数据本身不变，Anki 导出仍带脚本。只保留与应用自有
+    // CARD_FACE_HELPER_SCRIPT 文本完全一致的脚本，其哈希在 CSP 白名单内。
+    const dropUntrustedScript = (node: Node, data: { tagName: string }) => {
+      if (data.tagName === 'script' && node.textContent !== CARD_FACE_HELPER_SCRIPT_BODY) {
+        (node as Element).remove();
+      }
+    };
+    DOMPurify.addHook('uponSanitizeElement', dropUntrustedScript);
+    try {
+      return DOMPurify.sanitize(html, {
+        WHOLE_DOCUMENT: isFullDoc,
+        ADD_TAGS: ['style', 'meta', 'script'],
+        ADD_ATTR: ['onclick'],
+        FORBID_TAGS: ['iframe', 'embed', 'object', 'form', 'base'],
+        FORBID_ATTR: ['onerror', 'onload', 'onmouseover', 'onfocus', 'onblur'],
+        ALLOW_DATA_ATTR: true,
+      });
+    } finally {
+      DOMPurify.removeHook('uponSanitizeElement', dropUntrustedScript);
+    }
   }
 
   return DOMPurify.sanitize(html, {

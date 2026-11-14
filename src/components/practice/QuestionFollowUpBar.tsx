@@ -128,12 +128,12 @@ export const QuestionFollowUpBar: React.FC<{
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-foreground/[0.06]">
-      <DsButton variant="ghost" size="sm" onClick={askAi} className="[@media(pointer:coarse)]:min-h-11">
-        <ChatCircleText size={15} aria-hidden="true" />{t('followUp.askAction', { defaultValue: '问 AI 讲解' })}
+    <div className="flex flex-wrap items-center gap-1.5 pt-2.5 border-t border-border/35">
+      <DsButton variant="ghost" size="sm" onClick={askAi} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+        <ChatCircleText size={14} aria-hidden="true" />{t('followUp.askAction', { defaultValue: '问 AI 讲解' })}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={similar} className="[@media(pointer:coarse)]:min-h-11">
-        <CopySimple size={15} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
+      <DsButton variant="ghost" size="sm" onClick={similar} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+        <CopySimple size={14} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
       </DsButton>
       {mediaSource ? (
         <DsButton
@@ -141,14 +141,14 @@ export const QuestionFollowUpBar: React.FC<{
           size="sm"
           onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
           title={t('followUp.mediaSourceTitle', { time: mediaSource.label, defaultValue: '回到课程 {{time}}，重看这道题依据的片段' })}
-          className="tabular-nums [@media(pointer:coarse)]:min-h-11"
+          className="!h-7 !px-2.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
         >
-          <Play size={14} weight="fill" aria-hidden="true" />
+          <Play size={13} weight="fill" aria-hidden="true" />
           {t('followUp.mediaSourceAction', { time: mediaSource.label, defaultValue: '回看 {{time}}' })}
         </DsButton>
       ) : sourceId ? (
-        <DsButton variant="ghost" size="sm" onClick={openSource} className="[@media(pointer:coarse)]:min-h-11">
-          <FileText size={15} aria-hidden="true" />{t('followUp.sourceAction', { defaultValue: '出处' })}
+        <DsButton variant="ghost" size="sm" onClick={openSource} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+          <FileText size={14} aria-hidden="true" />{t('followUp.sourceAction', { defaultValue: '出处' })}
         </DsButton>
       ) : null}
     </div>

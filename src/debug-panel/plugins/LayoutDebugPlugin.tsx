@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ArrowsOut, Copy, Check } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { Switch } from '@/components/ui/shad/Switch';
+import type { DebugPanelPluginProps } from '../DebugPanelHost';
 
 interface CSSRuleInfo {
   selector: string;
@@ -61,11 +61,9 @@ const SELECTORS_TO_MONITOR = [
   'main.app-content > .content-body > .page-container',
 ];
 
-export default function LayoutDebugPlugin() {
+export default function LayoutDebugPlugin({ visible, isActive }: DebugPanelPluginProps) {
   const [analysis, setAnalysis] = useState<LayoutAnalysis | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [copied, setCopied] = useState(false);
-  const intervalRef = useRef<number | null>(null);
 
   const measureElements = useCallback((): LayoutAnalysis => {
     const elements: ElementMeasurement[] = [];
@@ -301,25 +299,11 @@ export default function LayoutDebugPlugin() {
   }, [analysis]);
 
   useEffect(() => {
+    if (!visible || !isActive) return;
     refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (autoRefresh) {
-      intervalRef.current = window.setInterval(refresh, 1000);
-    } else {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [autoRefresh, refresh]);
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, [visible, isActive, refresh]);
 
   if (!analysis) {
     return (
@@ -338,16 +322,6 @@ export default function LayoutDebugPlugin() {
           <h3 className="font-semibold text-sm">布局调试器</h3>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs [@media(pointer:coarse)]:min-h-11">
-            <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            自动刷新
-          </label>
-          <button
-            onClick={refresh}
-            className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            刷新
-          </button>
           <button
             onClick={copyToClipboard}
             className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -27,12 +27,14 @@ const labels = {
   groupActions: 'Group actions',
   newSession: 'New session',
   newSessionInGroup: 'New session in {{groupName}}',
+  pinGroup: 'Pin group',
+  unpinGroup: 'Unpin group',
   renameGroup: 'Rename group',
   editGroup: 'Edit group',
   archiveGroup: 'Archive group',
 };
 
-function renderHarness() {
+function renderHarness(pin?: { isPinned: boolean; onTogglePinGroup: (group: SessionGroup, pinned: boolean) => void }) {
   const onCreateSession = vi.fn();
   const onRenameGroup = vi.fn();
   const onEditGroup = vi.fn();
@@ -42,6 +44,8 @@ function renderHarness() {
     <SessionGroupActions
       group={group}
       labels={labels}
+      isPinned={pin?.isPinned}
+      onTogglePinGroup={pin?.onTogglePinGroup}
       onCreateSession={onCreateSession}
       onRenameGroup={onRenameGroup}
       onEditGroup={onEditGroup}
@@ -107,6 +111,28 @@ describe('SessionGroupActions', () => {
     expect(await screen.findByRole('menuitem', { name: labels.renameGroup })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: labels.editGroup })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: labels.archiveGroup })).toBeInTheDocument();
+  });
+
+  it('labels the pin item from the caller and toggles to the opposite state', async () => {
+    const onTogglePinGroup = vi.fn();
+    renderHarness({ isPinned: false, onTogglePinGroup });
+    fireEvent.click(screen.getByRole('button', { name: labels.groupActions }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: labels.pinGroup }));
+    expect(onTogglePinGroup).toHaveBeenCalledWith(group, true);
+    cleanup();
+
+    renderHarness({ isPinned: true, onTogglePinGroup });
+    fireEvent.click(screen.getByRole('button', { name: labels.groupActions }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: labels.unpinGroup }));
+    expect(onTogglePinGroup).toHaveBeenLastCalledWith(group, false);
+  });
+
+  it('has no pin item when the caller cannot pin', async () => {
+    renderHarness();
+    fireEvent.click(screen.getByRole('button', { name: labels.groupActions }));
+    await screen.findByRole('menuitem', { name: labels.renameGroup });
+    expect(screen.queryByRole('menuitem', { name: labels.pinGroup })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: labels.unpinGroup })).not.toBeInTheDocument();
   });
 
   it('opens the same menu on right click', async () => {

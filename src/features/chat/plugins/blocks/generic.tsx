@@ -14,8 +14,12 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Question, CircleNotch, CaretDown, Copy, Check } from '@phosphor-icons/react';
+import { Question, CaretDown, Copy, Check, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -57,7 +61,7 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
   }, [text]);
 
   return (
-    <div className="mt-2 rounded-md border border-border/30 overflow-hidden">
+    <div className="rounded-md border border-border/30 overflow-hidden">
       <div className="flex items-center bg-muted/30">
         <DsButton
           variant="ghost"
@@ -104,78 +108,118 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
  * GenericBlock - 通用块渲染组件
  *
  * 功能：
- * 1. 友好的"未知块类型"标题 + 类型标签
+ * 1. 友好的"未知块类型"标题 + 类型标识
  * 2. 显示块内容（如果有）
  * 3. 折叠的输入/输出 JSON + 复制
- * 4. 状态徽章与流式指示器
+ * 4. 对齐 ToolHeader 的中性头部与现代进行态
  */
 const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
+  const isActive = Boolean(isStreaming) || block.status === 'running' || block.status === 'pending';
+  const statusLabel = t(`blocks.generic.status.${block.status}`, { defaultValue: block.status });
+  const duration =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
+  const hasInput = block.toolInput !== undefined && block.toolInput !== null;
+  const hasOutput = block.toolOutput !== undefined && block.toolOutput !== null;
+  const hasBody = Boolean(block.content) || hasInput || hasOutput || Boolean(block.error);
 
   return (
     <div
       className={cn(
-        'rounded-lg border p-3',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30'
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        block.status === 'error' ? 'border-destructive/30' : 'border-border/50'
       )}
     >
-      {/* 头部 */}
-      <div className="flex items-center gap-2">
-        <Question size={16} className="text-muted-foreground flex-shrink-0" />
-        <span className="text-sm font-medium text-foreground">
-          {t('blocks.generic.unknownType')}
-        </span>
-        <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-          {block.type}
-        </span>
-        <span
-          className={cn(
-            'text-xs px-1.5 py-0.5 rounded',
-            block.status === 'success' && 'bg-success/10 text-success',
-            block.status === 'error' && 'bg-destructive/10 text-destructive',
-            block.status === 'running' && 'bg-primary/10 text-primary',
-            block.status === 'pending' && 'bg-muted/50 text-muted-foreground'
-          )}
-        >
-          {t(`blocks.generic.status.${block.status}`, { defaultValue: block.status })}
-        </span>
-        {(isStreaming || block.status === 'running') && (
-          <CircleNotch size={12} className="animate-spin text-primary ml-auto" />
+      {/* 头部（对齐 ToolHeader） */}
+      <div
+        className={cn(
+          'flex items-center justify-between gap-2 px-3 py-2.5',
+          hasBody && 'border-b border-border/30'
         )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isActive}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <Question size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+                <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                  {t('blocks.generic.unknownType')}
+                </span>
+              </ToolActivitySweep>
+              <span className="shrink-0 font-mono text-2xs leading-4 text-muted-foreground/80">
+                {block.type}
+              </span>
+            </div>
+            {block.status === 'running' || isStreaming ? (
+              <TextShimmer
+                className="text-xs leading-4 text-muted-foreground"
+                duration={1.5}
+                spread={3}
+              >
+                {statusLabel}
+              </TextShimmer>
+            ) : (
+              <span className="text-xs leading-4 text-muted-foreground">
+                {statusLabel}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {duration !== undefined && (block.status === 'success' || block.status === 'error') && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(duration)}
+            </span>
+          )}
+          {block.status === 'success' ? (
+            <CheckCircle weight="fill" className="w-4 h-4 text-success" />
+          ) : block.status === 'error' ? (
+            <WarningCircle weight="regular" className="w-4 h-4 text-destructive" />
+          ) : isActive ? (
+            <PulseDot className="w-1.5 h-1.5 text-primary" />
+          ) : null}
+        </div>
       </div>
 
-      {/* 内容 */}
-      {block.content && (
-        <pre className="mt-2 text-sm whitespace-pre-wrap break-words text-foreground bg-background/50 p-2 rounded">
-          {block.content}
-        </pre>
-      )}
+      {/* 主体内容 */}
+      {hasBody && (
+        <div className="p-3 space-y-2">
+          {block.content && (
+            <pre className="text-xs whitespace-pre-wrap break-words text-foreground bg-muted/30 dark:bg-muted/20 p-2 rounded-md">
+              {block.content}
+            </pre>
+          )}
 
-      {/* 工具输入（折叠 JSON） */}
-      {block.toolInput !== undefined && block.toolInput !== null && (
-        <CollapsibleJson
-          label={t('blocks.generic.input')}
-          text={safeStringify(block.toolInput)}
-        />
-      )}
+          {hasInput && (
+            <CollapsibleJson
+              label={t('blocks.generic.input')}
+              text={safeStringify(block.toolInput)}
+            />
+          )}
 
-      {/* 工具输出（折叠 JSON） */}
-      {block.toolOutput !== undefined && block.toolOutput !== null && (
-        <CollapsibleJson
-          label={t('blocks.generic.output')}
-          text={
-            typeof block.toolOutput === 'string'
-              ? block.toolOutput
-              : safeStringify(block.toolOutput)
-          }
-        />
-      )}
+          {hasOutput && (
+            <CollapsibleJson
+              label={t('blocks.generic.output')}
+              text={
+                typeof block.toolOutput === 'string'
+                  ? block.toolOutput
+                  : safeStringify(block.toolOutput)
+              }
+            />
+          )}
 
-      {/* 错误信息 */}
-      {block.error && (
-        <div className="mt-2 text-sm text-destructive break-words">
-          {t('blocks.generic.error')}: {block.error}
+          {block.error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive break-words">
+              {t('blocks.generic.error')}: {block.error}
+            </div>
+          )}
         </div>
       )}
     </div>

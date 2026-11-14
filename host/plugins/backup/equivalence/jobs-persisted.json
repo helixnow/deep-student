@@ -1,0 +1,103 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_list_backup_jobs",
+    "data_governance_get_backup_job",
+    "data_governance_list_resumable_jobs",
+    "data_governance_resume_backup_job",
+    "data_governance_cleanup_persisted_jobs"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.jobs.persisted.list_cleanup_resume_errors",
+      "seed": "l21-persisted-jobs-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-failed-nockpt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-running"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-completed"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-failed-ckpt-import-nozip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-failed-ckpt-import-missingzip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "job-failed-ckpt-import-nozip"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "job-failed-nockpt"
+          }
+        },
+        {
+          "cmd": "data_governance_cleanup_persisted_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_cleanup_persisted_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-completed"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

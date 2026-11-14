@@ -25,6 +25,7 @@ import { createPersistenceSlice } from './slices/persistenceSlice';
 import { createRenderConfigSlice } from './slices/renderConfigSlice';
 import { createReciteSlice, createBlankSlice } from './slices/reciteSlice';
 import { createClipboardSlice } from './slices/clipboardSlice';
+import { createExcerptSlice } from './slices/excerptSlice';
 
 export type {
   MindMapViewports,
@@ -34,6 +35,8 @@ export type {
   MindMapHistoryEntry,
   MindMapConflictSnapshot,
   MindMapStoreState,
+  IngestExcerptOptions,
+  ExcerptInsertContext,
 } from './mindmapStoreTypes';
 export { MAX_MINDMAP_DEPTH, MAX_MINDMAP_NODES } from './mindmapStoreHelpers';
 export { HISTORY_COALESCE_WINDOW_MS } from './mindmapStoreRuntime';
@@ -102,6 +105,14 @@ export function createMindMapStore(): MindMapStoreApi {
       setExportProgress: (progress: number) => set({ exportProgress: progress }),
       clipboard: null,
       _reactFlowGetter: null,
+      autoExcerptEnabled: false,
+      setAutoExcerptEnabled: (enabled: boolean) => set({ autoExcerptEnabled: enabled }),
+      excerptIntakeMode: 'direct',
+      setExcerptIntakeMode: (mode) => set({ excerptIntakeMode: mode }),
+      stagingTrayOpen: false,
+      setStagingTrayOpen: (open: boolean) => set({ stagingTrayOpen: open }),
+      lastExcerptContext: null,
+      excerptRevealRequest: null,
 
       ...createLifecycleSlice(set, get, rt),
       ...createDocumentViewSlice(set, get, rt),
@@ -119,6 +130,7 @@ export function createMindMapStore(): MindMapStoreApi {
       ...createBlankSlice(set, get, rt),
       ...createSearchSlice(set, get, rt),
       ...createClipboardSlice(set, get, rt),
+      ...createExcerptSlice(set, get, rt),
     };
     })
   );

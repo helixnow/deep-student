@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ArrowsClockwise,
@@ -133,6 +134,8 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       void loadTrash();
     }
   }, [loadTrash, open]);
+
+  useRefreshOnReturn(loadTrash, open && !busy);
 
   // Drop selections that no longer point at a listed item (restore / purge / reload).
   useEffect(() => {
@@ -355,16 +358,6 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
           {items.length > 0 && <span className="ntd-count">{items.length}</span>}
         </h2>
         <div className="ntd-header-actions">
-          <button
-            type="button"
-            className="ntd-icon-button"
-            disabled={loading || busy}
-            aria-label={t('workbench:notesWorkspace.tree.retry')}
-            title={t('workbench:notesWorkspace.tree.retry')}
-            onClick={() => void loadTrash()}
-          >
-            <ArrowsClockwise size={14} />
-          </button>
           <button
             type="button"
             className="ntd-empty-btn"

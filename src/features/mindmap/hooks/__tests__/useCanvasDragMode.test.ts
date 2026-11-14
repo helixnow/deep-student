@@ -13,11 +13,16 @@ import {
   useCanvasDragMode,
   useCanvasWheelMode,
 } from '../useCanvasDragMode';
+import {
+  REACTFLOW_CONFIG,
+  WHEEL_MODE_PAN_PROPS,
+  WHEEL_MODE_ZOOM_PROPS,
+} from '../../constants/layout';
 
 afterEach(() => {
   // 复位到默认，避免测试间串扰
   setCanvasDragMode('pan');
-  setCanvasWheelMode('pan');
+  setCanvasWheelMode('zoom');
   window.localStorage.removeItem('mindmap:canvas-drag-mode');
   window.localStorage.removeItem('mindmap:canvas-wheel-mode');
 });
@@ -42,32 +47,47 @@ describe('useCanvasDragMode', () => {
 });
 
 describe('useCanvasWheelMode', () => {
-  it('默认 pan（双指平移 + pinch/Ctrl+滚轮缩放，对齐平台习惯）', () => {
-    expect(getCanvasWheelMode()).toBe('pan');
+  it('默认 zoom（滚轮直接缩放）', () => {
+    expect(getCanvasWheelMode()).toBe('zoom');
+    const { result } = renderHook(() => useCanvasWheelMode());
+    expect(result.current[0]).toBe('zoom');
   });
 
-  it('可切换回旧「滚轮缩放」并持久化、跨实例同步', () => {
+  it('可切换为「双指平移」并持久化、跨实例同步', () => {
     const a = renderHook(() => useCanvasWheelMode());
     const b = renderHook(() => useCanvasWheelMode());
 
     act(() => {
-      a.result.current[1]('zoom');
+      a.result.current[1]('pan');
     });
 
-    expect(a.result.current[0]).toBe('zoom');
-    expect(b.result.current[0]).toBe('zoom');
-    expect(window.localStorage.getItem('mindmap:canvas-wheel-mode')).toBe('zoom');
+    expect(a.result.current[0]).toBe('pan');
+    expect(b.result.current[0]).toBe('pan');
+    expect(window.localStorage.getItem('mindmap:canvas-wheel-mode')).toBe('pan');
 
     act(() => {
-      b.result.current[1]('pan');
+      b.result.current[1]('zoom');
     });
-    expect(a.result.current[0]).toBe('pan');
+    expect(a.result.current[0]).toBe('zoom');
   });
 
   it('两个偏好互不影响', () => {
-    setCanvasWheelMode('zoom');
+    setCanvasWheelMode('pan');
     expect(getCanvasDragMode()).toBe('pan');
     setCanvasDragMode('select');
-    expect(getCanvasWheelMode()).toBe('zoom');
+    expect(getCanvasWheelMode()).toBe('pan');
+  });
+
+  it('REACTFLOW_CONFIG 默认配置与 WHEEL_MODE_ZOOM_PROPS 一致', () => {
+    expect(REACTFLOW_CONFIG.panOnScroll).toBe(false);
+    expect(REACTFLOW_CONFIG.zoomOnScroll).toBe(true);
+    expect(WHEEL_MODE_ZOOM_PROPS).toMatchObject({
+      panOnScroll: false,
+      zoomOnScroll: true,
+    });
+    expect(WHEEL_MODE_PAN_PROPS).toMatchObject({
+      panOnScroll: true,
+      zoomOnScroll: false,
+    });
   });
 });

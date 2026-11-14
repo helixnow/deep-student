@@ -1,0 +1,564 @@
+{
+  "domain": "notes",
+  "commands": [
+    "dstu_create",
+    "dstu_delete",
+    "notes_db_stats",
+    "notes_db_vacuum",
+    "notes_get_backlinks",
+    "notes_get_outgoing_links",
+    "notes_get_pref",
+    "notes_history_current",
+    "notes_history_get_retention",
+    "notes_history_set_retention",
+    "notes_list_tags",
+    "notes_mentions_search",
+    "notes_search",
+    "notes_set_pref",
+    "notes_update"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.search.keyword_tags_limits_and_list_tags",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "notes_list_tags",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "苹果笔记",
+              "content": "# 苹果\n\napple banana\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "香蕉笔记",
+              "content": "# 香蕉\n\nbanana only\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${2.id}",
+              "content_md": "# 苹果\n\napple banana\n",
+              "tags": [
+                "fruit",
+                "red"
+              ],
+              "expected_updated_at": "${4.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${3.id}",
+              "content_md": "# 香蕉\n\nbanana only\n",
+              "tags": [
+                "fruit"
+              ],
+              "expected_updated_at": "${5.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "banana",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "苹果",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "tag:fruit",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "tag:fruit tag:red",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "tag:fruit apple",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "tag:",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "   ",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "banana",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "banana",
+            "limit": 1000
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "banana"
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "limit": 5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "banana",
+            "limit": "many"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_tags",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "notes_list_tags",
+          "args": {}
+        },
+        {
+          "cmd": "notes_list_tags",
+          "args": {
+            "subject": 5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "notes_search",
+          "args": {
+            "subject": "_global",
+            "keyword": "tag:red",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "notes_list_tags",
+          "args": {
+            "subject": "_global"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.links.mentions_backlinks_outgoing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "链接目标",
+              "content": "# 目标\n\n## 小节\n\n内容\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "链接来源",
+              "content": "# 来源\n\n见 [[链接目标|别名]] 与 [[链接目标#小节]]。\n\n`[[链接目标]]` 不算\n\n```\n[[链接目标]]\n```\n\n[[不存在的页面]]\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "链接"
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "链接",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "链接",
+            "limit": 100
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "   "
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "limit": 5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "链接",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_get_outgoing_links",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_get_outgoing_links",
+          "args": {
+            "noteId": "note_missing_links"
+          }
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "note_missing_links"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_outgoing_links",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${2.id}",
+              "content_md": "# 来源\n\n链接已移除\n",
+              "expected_updated_at": "${16.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_outgoing_links",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_mentions_search",
+          "args": {
+            "keyword": "链接"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.prefs_db_and_retention_read",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_get_pref",
+          "args": {
+            "key": "notes_tabs"
+          }
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "notes_tabs",
+            "value": "{\"openTabs\":[],\"activeTabId\":null}"
+          }
+        },
+        {
+          "cmd": "notes_get_pref",
+          "args": {
+            "key": "notes_tabs"
+          }
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "notes_tabs",
+            "value": "{\"openTabs\":[\"n1\"],\"activeTabId\":\"n1\"}"
+          }
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "empty_value",
+            "value": ""
+          }
+        },
+        {
+          "cmd": "notes_get_pref",
+          "args": {
+            "key": "empty_value"
+          }
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "",
+            "value": "blank-key"
+          }
+        },
+        {
+          "cmd": "notes_get_pref",
+          "args": {
+            "key": ""
+          }
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "notes_tabs"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "value": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_set_pref",
+          "args": {
+            "key": "notes_tabs",
+            "value": 3
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_pref",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_db_stats",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "统计笔记",
+              "content": "# 统计\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_db_stats",
+          "args": {}
+        },
+        {
+          "cmd": "notes_db_vacuum",
+          "args": {}
+        },
+        {
+          "cmd": "notes_db_stats",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {
+            "unexpected": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

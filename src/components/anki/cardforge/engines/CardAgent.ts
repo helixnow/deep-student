@@ -740,11 +740,8 @@ export class CardAgent {
               failed: number;
               createdModels: string[];
             }>('add_cards_to_anki_connect', {
-              selected_cards: selectedCards,
               selectedCards,
-              deck_name: input.deckName,
               deckName: input.deckName,
-              note_type: noteType,
               noteType,
             });
 

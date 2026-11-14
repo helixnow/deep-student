@@ -1,0 +1,174 @@
+{
+  "trace": [
+    [
+      "import",
+      "react",
+      false
+    ],
+    [
+      "import",
+      "../lang",
+      false
+    ],
+    [
+      "import",
+      "./registry",
+      false
+    ],
+    [
+      "import",
+      "./baseMocks",
+      false
+    ],
+    [
+      "import",
+      "./locale",
+      false
+    ],
+    [
+      "import",
+      "overlayscrollbars/overlayscrollbars.css",
+      false
+    ],
+    [
+      "import",
+      "../../styles/tailwind.css",
+      false
+    ],
+    [
+      "import",
+      "../../styles/shadcn-variables.css",
+      false
+    ],
+    [
+      "import",
+      "../../styles/theme-colors.css",
+      false
+    ],
+    [
+      "import",
+      "../../shared/styles/index.css",
+      false
+    ],
+    [
+      "import",
+      "../../styles/typography.css",
+      false
+    ],
+    [
+      "import",
+      "../../styles/shadcn-overrides.css",
+      false
+    ],
+    [
+      "import",
+      "./app.css",
+      false
+    ],
+    [
+      "import",
+      "../../i18n",
+      false
+    ],
+    [
+      "pack"
+    ],
+    [
+      "storage",
+      "dstu-theme-mode",
+      "dark"
+    ],
+    [
+      "storage",
+      "fixture.setting",
+      "yes"
+    ],
+    [
+      "mocks",
+      "pack"
+    ],
+    [
+      "pack.locale"
+    ],
+    [
+      "pack.prepare"
+    ],
+    [
+      "pack.load"
+    ],
+    [
+      "import",
+      "../../components/ErrorBoundary",
+      true
+    ],
+    [
+      "import",
+      "../../components/shared/OverlayCoordinator",
+      true
+    ],
+    [
+      "import",
+      "../../contexts/DialogControlContext",
+      true
+    ],
+    [
+      "import",
+      "../../components/context-menu/TextContextMenu",
+      true
+    ],
+    [
+      "import",
+      "../../hooks/useTheme",
+      true
+    ],
+    [
+      "import",
+      "react-dom/client",
+      true
+    ],
+    [
+      "render",
+      {
+        "type": "ErrorBoundary",
+        "name": "DemoApp",
+        "children": [
+          {
+            "type": "OverlayCoordinatorProvider",
+            "children": [
+              {
+                "type": "DialogControlProvider",
+                "children": [
+                  {
+                    "type": "TextContextMenuProvider",
+                    "children": [
+                      {
+                        "type": "ThemeSync",
+                        "children": []
+                      },
+                      {
+                        "type": "div",
+                        "className": "demo-app-frame",
+                        "children": [
+                          {
+                            "type": "Suspense",
+                            "children": [
+                              {
+                                "type": "FixtureApp",
+                                "children": []
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  ],
+  "demo": true
+}

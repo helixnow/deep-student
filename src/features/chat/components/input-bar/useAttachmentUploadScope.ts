@@ -4,7 +4,8 @@ interface UploadTask {
   reader: FileReader;
   /** 分块暂存上传的取消信号（大文件路径） */
   controller: AbortController;
-  previewUrl: string;
+  previewUrl: string | undefined;
+  ownedPreviewUrl: string | undefined;
   finished: boolean;
 }
 
@@ -24,7 +25,7 @@ export function useAttachmentUploadScope(
     const task = scope.tasks.get(id);
     if (!task) return;
     scope.tasks.delete(id);
-    URL.revokeObjectURL(task.previewUrl);
+    if (task.ownedPreviewUrl) URL.revokeObjectURL(task.ownedPreviewUrl);
     task.controller.abort();
     if (task.reader.readyState === FileReader.LOADING) task.reader.abort();
   }, [scope]);
@@ -46,12 +47,14 @@ export function useAttachmentUploadScope(
 
   const isCurrent = useCallback(() => currentScopeRef.current === scope && !scope.disposed, [scope]);
 
-  const beginUpload = useCallback((id: string, file: File) => {
+  const beginUpload = useCallback((id: string, file: File | null, customPreviewUrl?: string) => {
     cancel(id);
+    const ownedPreviewUrl = file ? URL.createObjectURL(file) : undefined;
     const task: UploadTask = {
       reader: new FileReader(),
       controller: new AbortController(),
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: customPreviewUrl ?? ownedPreviewUrl,
+      ownedPreviewUrl,
       finished: false,
     };
     scope.tasks.set(id, task);

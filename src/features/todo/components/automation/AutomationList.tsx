@@ -1,5 +1,5 @@
 /**
- * AutomationList — 定时任务卡片列表（TodoAutomationWorkspace 专用）
+ * AutomationList — 定时任务列表（TodoAutomationWorkspace 专用）
  *
  * 每张卡片一眼可见：启用态（开关即时反馈）、排期摘要、下次运行倒计时
  * （自适应频率刷新）、最近一次运行状态、近 5 次运行的迷你状态点。
@@ -291,7 +291,7 @@ function AutomationCard({
     <li
       data-expanded={expanded || undefined}
       data-testid={`automation-card-${automation.id}`}
-      className="automation-item overflow-hidden rounded-[var(--radius-shell-row,8px)]"
+      className="automation-item"
     >
       {confirmingDelete ? (
         <div className="automation-rise-in flex flex-wrap items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/10 px-3 py-2">
@@ -316,7 +316,7 @@ function AutomationCard({
         </div>
       ) : null}
 
-      <div className={cn('flex min-w-0 items-start gap-3 px-3.5 py-3', !automation.enabled && 'opacity-60')}>
+      <div className={'flex min-w-0 items-center gap-3 px-4 py-2.5 sm:px-6'}>
         <div className="min-w-0 flex-1 space-y-1.5">
           {/* 行 1：任务名 + 徽标 + 最近一次运行状态 */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -609,7 +609,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
       </div>
 
       {draft.actionType === 'agent_turn' ? (
-        <div className="grid gap-4 rounded-lg border border-[color:var(--border-soft,hsl(var(--border)))] bg-muted/20 p-3 sm:grid-cols-2">
+        <div className="grid gap-4 rounded-xl border border-[color:var(--border-soft,hsl(var(--border)))] bg-muted/20 p-3 sm:grid-cols-2">
           <div className="space-y-1.5 text-sm sm:col-span-2">
             <label htmlFor={`${idPrefix}-agent-prompt`} className="font-medium text-foreground">
               {t('todo:automation.createPanel.agentPrompt')}
@@ -670,7 +670,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
       </div>
 
       {/* 高级折叠区（重试与超时） */}
-      <div className="rounded-lg border border-[color:var(--border-soft,hsl(var(--border)))] p-3">
+      <div className="rounded-xl border border-[color:var(--border-soft,hsl(var(--border)))] p-3">
         <button
           type="button"
           aria-expanded={advancedOpen}
@@ -756,7 +756,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
 
 function CardSkeleton(): JSX.Element {
   return (
-    <li className="automation-item flex items-center gap-3 rounded-[var(--radius-shell-row,8px)] px-3.5 py-3">
+    <li className="flex items-center gap-3 px-4 py-2.5 sm:px-6">
       <span className="min-w-0 flex-1 space-y-2">
         <Skeleton className="h-4 w-44 max-w-full" />
         <Skeleton className="h-3 w-72 max-w-full" />
@@ -934,10 +934,10 @@ export function AutomationList({ className }: AutomationListProps): JSX.Element 
   return (
     <section
       aria-label={t('todo:automation.card.listTitle')}
-      className={cn('automation-card rounded-[var(--radius-shell-panel,12px)] px-3 py-4 sm:px-4', className)}
+      className={className}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
-        <h2 className="text-sm font-semibold text-foreground">{t('todo:automation.card.listTitle')}</h2>
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-6">
+        <h2 className="text-xs font-semibold text-muted-foreground">{t('todo:automation.card.listTitle')}</h2>
         {!loading ? (
           <span className="text-xs tabular-nums text-muted-foreground" title={t('todo:automation.card.capacityHint', { count, max })}>
             {count}
@@ -947,7 +947,7 @@ export function AutomationList({ className }: AutomationListProps): JSX.Element 
         ) : null}
       </div>
 
-      <ul role="list" className="space-y-2">
+      <ul role="list" className="divide-y divide-border/[0.08]">
         {loading && automations.length === 0 ? (
           <>
             <CardSkeleton />

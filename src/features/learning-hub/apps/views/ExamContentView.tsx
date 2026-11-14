@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle } from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle, DotsSixVertical } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '@/components/ui/DsDialog';
@@ -19,7 +19,7 @@ import {
   type QuestionBankStats,
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
-import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
+import { convertToApiQuestion, useQuestionBankSession, type StoreQuestion } from '@/hooks/useQuestionBankSession';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
@@ -29,13 +29,28 @@ import {
   type PracticeHandoffHydrationResult,
 } from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+import {
+  buildSelectiveQuestionRevertParams,
+  QuestionRevertError,
+  isQbankAgentModifyPayload,
+  useQbankAgentDiffStore,
+} from '@/stores/qbankAgentDiffStore';
+import { QBankAgentDiffBar } from '@/components/practice/QBankAgentDiffBar';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { useExamDueReviewCount } from './useExamDueReviewCount';
-import { cn } from '@/lib/utils';
+import {
+  DS_EXCERPT_MIME,
+  createQuestionRevealSequencer,
+  deriveQuestionExcerptMeta,
+  extractQuestionIdFromAnchor,
+  startQuestionExcerptDrag,
+} from './examQuestionInterop';
+import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
-import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import { emitExamSheetDebug } from '@/shared/debug/channels/examSheetProcessing';
 import {
   QBANK_FOCUS_EVENT,
   type QbankFocusEventDetail,
@@ -61,7 +76,7 @@ const QuestionBankStatsView = lazy(() => import('@/components/QuestionBankStatsV
 const QuestionFavoritesView = lazy(() => import('@/components/QuestionFavoritesView'));
 const QuestionHistoryView = lazy(() => import('@/components/QuestionHistoryView'));
 const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'));
-// ★ I1 修复：接入 SM-2 间隔复习系统（复习计划 + 复习会话）
+// I1 修复：接入 SM-2 间隔复习系统（复习计划 + 复习会话）
 const ReviewPlanView = lazy(() => import('@/components/ReviewPlanView'));
 const ReviewSession = lazy(() => import('@/components/ReviewSession'));
 const ReviewCalendarView = lazy(() => import('@/components/ReviewCalendarView'));
@@ -96,7 +111,7 @@ const LAUNCHER_REQUIRED_MODES = new Set<LauncherRequestedMode>([
 ]);
 
 /**
- * ★ I1 修复：SM-2 间隔复习面板
+ * I1 修复：SM-2 间隔复习面板
  *
  * 有活跃复习会话时渲染 ReviewSession（答题打分），否则渲染 ReviewPlanView
  * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
@@ -215,58 +230,28 @@ function useAnimatedNumber(target: number, duration = 600): number {
   return value;
 }
 
-/** 轻量 SVG 进度环（颜色随 currentColor） */
-const ProgressRing: React.FC<{ ratio: number; size?: number; className?: string }> = ({ ratio, size = 18, className }) => {
-  const stroke = 2.5;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const clamped = Math.min(1, Math.max(0, ratio));
-  const center = size / 2;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={className} aria-hidden="true">
-      <circle cx={center} cy={center} r={r} fill="none" stroke="currentColor" strokeOpacity={0.18} strokeWidth={stroke} />
-      <circle
-        cx={center}
-        cy={center}
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={c}
-        strokeDashoffset={c * (1 - clamped)}
-        transform={`rotate(-90 ${center} ${center})`}
-        className="transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none"
-      />
-    </svg>
-  );
-};
-
-/** 顶栏统计摘要：掌握率进度环 + 正确率，数字滚动 */
+/** 顶栏统计摘要：极简纯文本微指标（掌握率 · 正确率），数字滚动 */
 const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) => {
   const { t } = useTranslation('learningHub');
-  const masteryRatio = stats.total > 0 ? stats.mastered / stats.total : 0;
   const masteryPercent = Math.round(useAnimatedNumber(percentOf(stats.mastered, stats.total)));
   const correctPercent = Math.round(useAnimatedNumber(ratioToPercent(stats.correctRate)));
 
   return (
     <div
-      className="hidden md:flex items-center gap-3 pr-1 select-none"
+      className="hidden md:flex items-center gap-2.5 pr-1 text-xs text-muted-foreground select-none"
       role="group"
       aria-label={t('exam.shell.statsSummary')}
     >
-      <div className="flex items-center gap-1.5" title={`${t('exam.shell.mastery')} ${stats.mastered}/${stats.total}`}>
-        <ProgressRing ratio={masteryRatio} className="text-success" />
-        <div className="flex items-baseline gap-1 leading-none">
-          <span className="text-xs font-semibold tabular-nums text-foreground">{masteryPercent}%</span>
-          <span className="text-2xs text-muted-foreground">{t('exam.shell.mastery')}</span>
-        </div>
-      </div>
-      <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
-      <div className="flex items-baseline gap-1 leading-none" title={t('exam.shell.correctRate')}>
-        <span className="text-xs font-semibold tabular-nums text-foreground">{correctPercent}%</span>
-        <span className="text-2xs text-muted-foreground">{t('exam.shell.correctRate')}</span>
-      </div>
+      <span className="inline-flex items-center gap-1 leading-none" title={`${t('exam.shell.mastery')} ${stats.mastered}/${stats.total}`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+        <span>{t('exam.shell.mastery')}</span>
+        <span className="font-mono font-medium tabular-nums text-foreground">{masteryPercent}%</span>
+      </span>
+      <span className="text-border" aria-hidden="true">·</span>
+      <span className="inline-flex items-center gap-1 leading-none" title={t('exam.shell.correctRate')}>
+        <span>{t('exam.shell.correctRate')}</span>
+        <span className="font-mono font-medium tabular-nums text-foreground">{correctPercent}%</span>
+      </span>
     </div>
   );
 };
@@ -324,7 +309,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] 渲染: sessionId=${sessionId}, node.name=${node.name}`, { sessionId });
   }, [sessionId, node.name]);
 
-  // 🆕 2026-01 改造：使用 useQuestionBankSession Hook 管理题目状态
+  // 2026-01 改造：使用 useQuestionBankSession Hook 管理题目状态
   const {
     practiceSessionOwner,
     questions,
@@ -438,6 +423,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const qbankRefreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedRefreshEntityIdsRef = useRef<string[]>([]);
   const queuedRefreshPayloadRef = useRef<DomainChangePayload | undefined>(undefined);
+  const queuedRefreshAgentModifyRef = useRef(false);
+  const queuedRefreshRunIdRef = useRef<string | undefined>(undefined);
+  const questionsRef = useRef<Question[]>(questions);
+  questionsRef.current = questions;
+  const pendingAgentReconcileRef = useRef(false);
+  const [agentRefreshTick, setAgentRefreshTick] = useState(0);
+  const revealSequencerRef = useRef(createQuestionRevealSequencer());
+  const pendingAnchorRevealRef = useRef<{
+    questionId: string;
+    pulse: boolean;
+    token: number;
+  } | null>(null);
   // 行内编辑聚焦时的 800ms 延迟重试 timer：同样必须跨 effect 重建存活，
   // 否则 deps（questions 等）一变就取消，被延迟的刷新会静默丢失
   const qbankDeferredEditorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -506,12 +503,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
     queuedRefreshEntityIdsRef.current = [];
     queuedRefreshPayloadRef.current = undefined;
+    queuedRefreshAgentModifyRef.current = false;
+    queuedRefreshRunIdRef.current = undefined;
+    pendingAgentReconcileRef.current = false;
+    pendingAnchorRevealRef.current = null;
+    revealSequencerRef.current.cancel();
     setDraftState({ examId: sessionId, dirty: false });
     setPendingDraftNavigation(null);
   }, [sessionId]);
 
   // 卸载时清理仍在排队的域刷新 timer（防止卸载后触发无意义的刷新）
   useEffect(() => () => {
+    revealSequencerRef.current.cancel();
+    pendingAnchorRevealRef.current = null;
     if (qbankRefreshDebounceTimerRef.current) {
       clearTimeout(qbankRefreshDebounceTimerRef.current);
       qbankRefreshDebounceTimerRef.current = null;
@@ -819,7 +823,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [viewMode]);
 
-  // ★ 会话切换：记录最新 sessionId（异步回调的过期守卫），并重置上一会话的 UI 状态，
+  // 会话切换：记录最新 sessionId（异步回调的过期守卫），并重置上一会话的 UI 状态，
   //   防止旧会话的详情/错误/弹窗/筛选串到新会话（快速切换场景）
   const latestSessionIdRef = useRef(sessionId);
   const sessionScope = useMemo(() => ({ sessionId }), [sessionId]);
@@ -922,7 +926,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   ]);
 
   // 计时器逻辑
-  // ★ 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
+  // 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
   //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
   //   否则与后端 time_spent（ended_at - started_at）和启动页的绝对时间倒计时不一致。
   useEffect(() => {
@@ -1082,7 +1086,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     viewMode,
   ]);
 
-  // 🆕 加载 sessionDetail（仅用于 ExamSheetUploader 等需要原始 preview 的组件）
+  // 加载 sessionDetail（仅用于 ExamSheetUploader 等需要原始 preview 的组件）
   const loadSessionDetail = useCallback(async () => {
     if (!sessionId) return;
     emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 开始: ${sessionId}`, { sessionId });
@@ -1113,12 +1117,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (latestSessionIdRef.current !== sessionId) return;
     emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] handleSessionUpdate: pages=${detail.preview.pages?.length}, cards=${detail.preview.pages?.reduce((s, p) => s + (p.cards?.length ?? 0), 0)}`, { sessionId });
     setSessionDetail(detail);
-    // 🆕 刷新 Store 中的题目和统计
+    // 刷新 Store 中的题目和统计
     await loadQuestions();
     emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] handleSessionUpdate 完成`, { sessionId });
   }, [loadQuestions, sessionId]);
 
-  // 🆕 使用 Hook 的 submitAnswer（已改名避免冲突）
+  // 使用 Hook 的 submitAnswer（已改名避免冲突）
   const handleSubmitAnswer = useCallback(async (questionId: string, answer: string, questionType?: QuestionType) => {
     if (!sessionId) throw new Error('No session');
     const result = await submitAnswer(questionId, answer);
@@ -1136,7 +1140,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
 
     // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写。
-    // ★ 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
+    // 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
     //   避免连续快速提交时后写覆盖先写、丢失已答记录
     if (practiceMode === 'mock_exam') {
       const latestSession = useQuestionBankStore.getState().mockExamSession;
@@ -1164,7 +1168,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     return result;
   }, [sessionId, submitAnswer, practiceMode, setMockExamSession]);
 
-  // 🆕 使用 Hook 的 markCorrect
+  // 使用 Hook 的 markCorrect
   const handleMarkCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
     if (!sessionId) return;
     const result = await markCorrect(questionId, isCorrect);
@@ -1230,7 +1234,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [sessionId, practiceMode, setMockExamSession]);
 
-  // 🆕 使用 Hook 的 navigate
+  // 使用 Hook 的 navigate
   const handleNavigate = useCallback((index: number) => {
     navigate(index);
   }, [navigate]);
@@ -1239,7 +1243,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     requestDraftNavigation(proceed)
   ), [requestDraftNavigation]);
 
-  // 🆕 更新 Store 练习模式（Store 是 SSOT，无本地 state）
+  // 更新 Store 练习模式（Store 是 SSOT，无本地 state）
   const handleModeChange = useCallback((mode: PracticeMode, tag?: string) => {
     if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode)
       && (mode !== 'by_tag' || !tag)) {
@@ -1958,11 +1962,60 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     await refreshQuestionsAndStats();
   }, [refreshQuestionsAndStats]);
 
+  const handleRevertQuestions = useCallback(
+    async (targets: Question[]) => {
+      if (targets.length === 0) return;
+      const completed: string[] = [];
+      try {
+        for (const snapshot of targets) {
+          const entry = useQbankAgentDiffStore.getState().entriesByExamId[sessionId]
+            ?.find((item) => item.questionId === snapshot.id && item.before === snapshot);
+          if (!entry?.after) continue;
+          const current = await invoke<StoreQuestion | null>('qbank_get_question', { questionId: snapshot.id });
+          if (!useQbankAgentDiffStore.getState().entriesByExamId[sessionId]?.includes(entry)) continue;
+          if (!current) { completed.push(snapshot.id); continue; }
+          await invoke('qbank_update_question', {
+            request: {
+              question_id: snapshot.id,
+              params: buildSelectiveQuestionRevertParams(snapshot, entry.after, convertToApiQuestion(current)),
+              record_history: true,
+            },
+          });
+          completed.push(snapshot.id);
+        }
+      } catch (err: unknown) {
+        showGlobalNotification(
+          'error',
+          err,
+          t('exam_sheet:agentDiff.revertFailed', {
+            defaultValue: '撤回题目修改失败，请重试',
+          }),
+        );
+        await refreshQuestionsAndStats().catch(() => undefined);
+        throw new QuestionRevertError(completed, err);
+      }
+
+      try {
+        await refreshQuestionsAndStats();
+      } catch (refreshErr: unknown) {
+        debugLog.warn('[ExamContentView] refresh after revert failed:', refreshErr);
+      }
+
+      showGlobalNotification(
+        'success',
+        t('exam_sheet:agentDiff.revertSuccess', {
+          defaultValue: '已撤回题目修改',
+        }),
+      );
+    },
+    [refreshQuestionsAndStats, sessionId, t],
+  );
+
   const handleBackToLauncher = useCallback(() => {
     requestViewMode('launcher');
   }, [requestViewMode]);
 
-  // ★ 断点续导：检测 importing 状态
+  // 断点续导：检测 importing 状态
   const isImportingSession = sessionDetail?.summary.status === 'importing';
   const [isResuming, setIsResuming] = useState(false);
   const [resumedImportDraft, setResumedImportDraft] = useState<import('@/components/ExamSheetUploader').ImportDraftResponse | null>(null);
@@ -2042,11 +2095,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
   const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
 
-  // 📱 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
+  // 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
   // 返回键先执行页内返回（practice 回启动台，二级视图回题库列表），
   // 而不是让 MobileSlidingLayout 直接把整个右屏收回中屏。
   //
-  // ⚠️ 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
+  // 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
   // MobileSlidingLayout 的 A-5 注释），view 档在右屏打开时永远轮不到。
   // 本 handler 仅在进入非根态时才注册（必然晚于布局 mount 时的注册），
   // 同优先级后注册者先执行，因此能先拿到事件；之后打开的浮层（Dialog/
@@ -2238,7 +2291,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       // Keep the short focus debounce for an editor that has just received a
       // keystroke. It is supplementary only; dirty state above is the durable
       // guard once focus leaves the form.
-      // ★ timer 存组件级 ref：此前存 effect 局部变量，effect 因 deps
+      // timer 存组件级 ref：此前存 effect 局部变量，effect 因 deps
       //   （questions/currentIndex）频繁重建时 cleanup 会取消延迟刷新，
       //   编辑器聚焦期间到达的域变更会被静默丢弃
       if (isQbankInlineEditorActive()) {
@@ -2251,8 +2304,25 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         }, 800);
         return;
       }
+
+      const isAgentModify = isQbankAgentModifyPayload(payload);
+      if (isAgentModify) {
+        useQbankAgentDiffStore
+          .getState()
+          .stageBeforeRefresh(
+            sessionId,
+            questionsRef.current,
+            mergedEntityIds?.length ? mergedEntityIds : payload?.entityIds,
+            payload?.runId,
+          );
+      }
+
       void refreshQuestionsAndStats()
         .then(() => {
+          if (isAgentModify) {
+            pendingAgentReconcileRef.current = true;
+            setAgentRefreshTick((tick) => tick + 1);
+          }
           flashIds(mergedEntityIds?.length ? mergedEntityIds : payload?.entityIds, payload);
         })
         .catch((err: unknown) => {
@@ -2282,7 +2352,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const onRefresh = (ev: Event) => {
       const detail = (ev as CustomEvent<DomainChangePayload>).detail;
       if (detail) {
-        queuedRefreshEntityIdsRef.current.push(...collectDomainEntityIds(detail));
+        const incomingIds = collectDomainEntityIds(detail);
+        queuedRefreshEntityIdsRef.current.push(...incomingIds);
+        if (isQbankAgentModifyPayload(detail)) {
+          queuedRefreshAgentModifyRef.current = true;
+          if (typeof detail.runId === 'string' && detail.runId) {
+            queuedRefreshRunIdRef.current = detail.runId;
+          }
+          useQbankAgentDiffStore
+            .getState()
+            .stageBeforeRefresh(
+              sessionId,
+              questionsRef.current,
+              incomingIds.length > 0 ? incomingIds : detail.entityIds,
+              detail.runId,
+            );
+        }
         queuedRefreshPayloadRef.current = detail;
       }
       if (qbankRefreshDebounceTimerRef.current) {
@@ -2291,10 +2376,29 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       qbankRefreshDebounceTimerRef.current = setTimeout(() => {
         qbankRefreshDebounceTimerRef.current = null;
         const mergedIds = Array.from(new Set(queuedRefreshEntityIdsRef.current));
-        const payload = queuedRefreshPayloadRef.current;
+        const rawPayload = queuedRefreshPayloadRef.current;
+        const wasAgentModify = queuedRefreshAgentModifyRef.current;
+        const latchedRunId = queuedRefreshRunIdRef.current;
         queuedRefreshEntityIdsRef.current = [];
         queuedRefreshPayloadRef.current = undefined;
-        runLocalRefresh(payload, mergedIds);
+        queuedRefreshAgentModifyRef.current = false;
+        queuedRefreshRunIdRef.current = undefined;
+
+        const effectivePayload =
+          wasAgentModify && rawPayload
+            ? {
+                ...rawPayload,
+                source: 'agent' as const,
+                action:
+                  isQbankAgentModifyPayload(rawPayload) && rawPayload.action
+                    ? rawPayload.action
+                    : 'changed',
+                entityIds: mergedIds,
+                ...(latchedRunId ? { runId: latchedRunId } : {}),
+              }
+            : rawPayload;
+
+        runLocalRefresh(effectivePayload, mergedIds);
       }, 200);
     };
 
@@ -2335,6 +2439,275 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       }
     };
   }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId, focusScopeId, viewMode, gradingMode]);
+
+  // Reconcile staged Agent snapshots after React commits the refreshed `questions` array.
+  useEffect(() => {
+    if (!pendingAgentReconcileRef.current) return;
+    pendingAgentReconcileRef.current = false;
+    useQbankAgentDiffStore.getState().reconcileAfterRefresh(sessionId, questions);
+  }, [agentRefreshTick, questions, sessionId]);
+
+  const examTitle = sessionDetail?.summary?.exam_name || node.name;
+
+  const interopIds = useMemo(() => {
+    const raw = [sessionId, node.path].filter(
+      (val): val is string => typeof val === 'string' && val.trim().length > 0,
+    );
+    return Array.from(new Set(raw));
+  }, [sessionId, node.path]);
+  const interopKey = interopIds.join('\u0000');
+
+  const activeQuestionId = useMemo(() => {
+    if (viewMode === 'browse') {
+      return questions[browseIndex]?.id ?? sessionCurrentQuestionId;
+    }
+    if (viewMode === 'practice') {
+      return practiceQuestions[practiceCurrentIndex]?.id ?? sessionCurrentQuestionId;
+    }
+    return sessionCurrentQuestionId;
+  }, [browseIndex, practiceCurrentIndex, practiceQuestions, questions, sessionCurrentQuestionId, viewMode]);
+
+  const activeDragQuestionIndex = useMemo(() => {
+    if (!activeQuestionId) return -1;
+    return questions.findIndex((q) => q.id === activeQuestionId);
+  }, [activeQuestionId, questions]);
+
+  const activeDragQuestion = activeDragQuestionIndex >= 0 ? questions[activeDragQuestionIndex] : null;
+
+  const activeDragQuestionMeta = useMemo(() => {
+    if (!activeDragQuestion || !sessionId) return null;
+    return deriveQuestionExcerptMeta({
+      resourceId: sessionId,
+      question: activeDragQuestion,
+      questionIndex: activeDragQuestionIndex,
+    });
+  }, [activeDragQuestion, activeDragQuestionIndex, sessionId]);
+
+  const mistakeQuestions = useMemo(
+    () => questions.filter((q) => q.status === 'review'),
+    [questions],
+  );
+
+  const findQuestionEntityElement = useCallback((questionId: string): HTMLElement | null => {
+    const scope = agentFlashRootRef.current;
+    if (!scope || !questionId) return null;
+    const targetAttr = `exam:${questionId}`;
+    const candidates = scope.querySelectorAll<HTMLElement>('[data-agent-entity]');
+    for (const el of candidates) {
+      if (el.getAttribute('data-agent-entity') === targetAttr) {
+        return el;
+      }
+    }
+    return null;
+  }, []);
+
+  const revealQuestionInView = useCallback(
+    (questionId: string | null, pulse: boolean, token: number): boolean => {
+      if (!revealSequencerRef.current.isCurrent(token)) return false;
+      if (!questionId) return true;
+
+      const list = questionsRef.current;
+      const index = list.findIndex((q) => q.id === questionId);
+      if (index < 0) {
+        return false;
+      }
+
+      const targetQuestion = list[index]!;
+      const existingRow = findQuestionEntityElement(questionId);
+
+      if (viewMode === 'list' || (viewMode === 'review' && targetQuestion.status === 'review')) {
+        navigate(index);
+        if (existingRow) {
+          existingRow.scrollIntoView?.({ block: 'center', behavior: 'auto' });
+        }
+      } else if (viewMode === 'browse') {
+        setBrowseQuestionId(questionId);
+        navigate(index);
+      } else if (viewMode === 'practice') {
+        if (gradingMode === 'on_submit' && batchNavigateRef.current) {
+          void batchNavigateRef.current(questionId).catch(() => undefined);
+        } else {
+          if (!practiceQuestions.some((q) => q.id === questionId)) {
+            setGroupPracticeIds(null);
+            setStorePracticeMode('sequential');
+          }
+          navigate(index);
+        }
+      } else {
+        requestViewMode('browse', () => {
+          if (!revealSequencerRef.current.isCurrent(token)) return;
+          setBrowseQuestionId(questionId);
+          navigate(index);
+        });
+      }
+
+      if (pulse) {
+        agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
+        if (!existingRow && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => {
+            if (!revealSequencerRef.current.isCurrent(token)) return;
+            const mountedRow = findQuestionEntityElement(questionId);
+            if (mountedRow) {
+              mountedRow.scrollIntoView?.({ block: 'center', behavior: 'auto' });
+            }
+            agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
+          });
+        }
+      }
+
+      return true;
+    },
+    [
+      findQuestionEntityElement,
+      gradingMode,
+      navigate,
+      practiceQuestions,
+      requestViewMode,
+      setStorePracticeMode,
+      viewMode,
+    ],
+  );
+
+  const handleFocusQuestionById = useCallback(
+    (questionId: string) => {
+      const token = revealSequencerRef.current.next();
+      if (!revealQuestionInView(questionId, true, token)) {
+        handleOpenQuestion(questionId);
+      }
+    },
+    [handleOpenQuestion, revealQuestionInView],
+  );
+
+  useEffect(() => {
+    if (interopIds.length === 0) return;
+    const idSet = new Set(interopIds);
+    const kernel = getAppKernel();
+
+    const computeMatchQuality = (resourceId: string, aliasResourceId?: string) => {
+      const matches =
+        idSet.has(resourceId) ||
+        (aliasResourceId !== undefined && idSet.has(aliasResourceId));
+      if (!matches) return false as const;
+      const active = typeof document !== 'undefined' ? document.activeElement : null;
+      if ((active && agentFlashRootRef.current?.contains(active)) || isActive === true) {
+        return 'exact-focused' as const;
+      }
+      return 'exact-mounted' as const;
+    };
+
+    const handleAnchorReveal = (questionId: string | null, pulse: boolean) => {
+      const token = revealSequencerRef.current.next();
+      if (revealQuestionInView(questionId, pulse, token)) {
+        pendingAnchorRevealRef.current = null;
+        return true;
+      }
+      if (questionId && questionsRef.current.length === 0) {
+        pendingAnchorRevealRef.current = { questionId, pulse, token };
+        return true;
+      }
+      return false;
+    };
+
+    const disposeQbank = kernel.anchors.registerAnchorRevealHandler('qbank', {
+      canHandle: (anchor) => computeMatchQuality(anchor.resourceId, anchor.aliasResourceId),
+      reveal: (anchor, ctx) => handleAnchorReveal(extractQuestionIdFromAnchor(anchor), ctx.pulse),
+    });
+
+    const disposeCustom = kernel.anchors.registerAnchorRevealHandler('custom', {
+      canHandle: (anchor) => {
+        if (anchor.namespace !== 'exam' && anchor.namespace !== 'qbank') return false;
+        return computeMatchQuality(anchor.resourceId, anchor.aliasResourceId);
+      },
+      reveal: (anchor, ctx) => handleAnchorReveal(extractQuestionIdFromAnchor(anchor), ctx.pulse),
+    });
+
+    return () => {
+      disposeQbank();
+      disposeCustom();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- interopKey summarizes interopIds stably
+  }, [interopKey, isActive, revealQuestionInView]);
+
+  useEffect(() => {
+    const pending = pendingAnchorRevealRef.current;
+    if (!pending || questions.length === 0) return;
+    pendingAnchorRevealRef.current = null;
+    revealQuestionInView(pending.questionId, pending.pulse, pending.token);
+  }, [questions, revealQuestionInView]);
+
+  useEffect(() => {
+    if (interopIds.length === 0) return;
+    const idSet = new Set(interopIds);
+    const onHostFocusQbank = (ev: Event) => {
+      const detail = (
+        ev as CustomEvent<{ bankId?: string; questionId?: string; splitIfClosed?: boolean }>
+      ).detail;
+      if (!detail?.bankId || !idSet.has(detail.bankId)) return;
+      const token = revealSequencerRef.current.next();
+      const targetId = detail.questionId?.trim() || null;
+      if (!revealQuestionInView(targetId, true, token) && targetId && questionsRef.current.length === 0) {
+        pendingAnchorRevealRef.current = { questionId: targetId, pulse: true, token };
+      }
+    };
+    window.addEventListener('DSTU_FOCUS_QBANK', onHostFocusQbank);
+    return () => window.removeEventListener('DSTU_FOCUS_QBANK', onHostFocusQbank);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- interopKey summarizes interopIds stably
+  }, [interopKey, revealQuestionInView]);
+
+  const handleQuestionDragStart = useCallback(
+    (event: React.DragEvent, question: Question, questionIndex?: number) => {
+      if (!sessionId) return;
+      startQuestionExcerptDrag(event.nativeEvent, {
+        resourceId: sessionId,
+        aliasResourceId: node.path,
+        examTitle,
+        question,
+        questionIndex,
+      });
+    },
+    [examTitle, node.path, sessionId],
+  );
+
+  const handleRootPointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (
+      target.closest(
+        'input, textarea, select, [contenteditable="true"], [data-question-inline-editor]',
+      )
+    ) {
+      return;
+    }
+    const entityEl = target.closest<HTMLElement>('[data-agent-entity^="exam:"]');
+    if (entityEl && !entityEl.draggable) {
+      entityEl.draggable = true;
+    }
+  }, []);
+
+  const handleRootDragStart = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || !sessionId) return;
+      if (event.dataTransfer?.types?.includes(DS_EXCERPT_MIME)) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest('[data-question-inline-editor]')) return;
+      const entityEl = target.closest<HTMLElement>('[data-agent-entity^="exam:"]');
+      if (!entityEl) return;
+      const attr = entityEl.getAttribute('data-agent-entity') ?? '';
+      const questionId = attr.slice('exam:'.length).trim();
+      if (!questionId) return;
+      const qIndex = questionsRef.current.findIndex((q) => q.id === questionId);
+      if (qIndex < 0) return;
+      startQuestionExcerptDrag(event.nativeEvent, {
+        resourceId: sessionId,
+        aliasResourceId: node.path,
+        examTitle,
+        question: questionsRef.current[qIndex]!,
+        questionIndex: qIndex,
+      });
+    },
+    [examTitle, node.path, sessionId],
+  );
 
   // ========== 条件返回（早期退出） ==========
   
@@ -2419,15 +2792,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   };
 
   return (
-    <div ref={agentFlashRootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {/* ★ 断点续导：importing 状态横幅 */}
+    <div
+      ref={agentFlashRootRef}
+      onPointerDownCapture={handleRootPointerDownCapture}
+      onDragStart={handleRootDragStart}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background"
+    >
+      {/* 断点续导：importing 状态横幅 */}
       {isImportingSession && (
-        <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">
-          {/* 📱 flex-wrap：375px 下右侧「恢复导入」按钮组换行到第二行，避免把提示文案挤到不可读 */}
+        <div className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4">
+          {/* flex-wrap：375px 下右侧「恢复导入」按钮组换行到第二行，避免把提示文案挤到不可读 */}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
             <div className="flex items-center gap-2 min-w-0">
-              <WarningCircle size={16} className="flex-shrink-0 text-warning" />
-              <span className="truncate text-sm text-warning">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
+              <span className="truncate text-xs text-foreground/85">
                 {t('exam_sheet:uploader.import_interrupted', { count: questions.length })}
               </span>
             </div>
@@ -2442,12 +2820,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:!min-h-11"
+                className="h-7 gap-1.5 px-2.5 text-xs text-foreground hover:bg-foreground/[0.05] [@media(pointer:coarse)]:!min-h-11"
               >
                 {isResuming ? (
-                  <CircleNotch size={14} className="animate-spin" />
+                  <CircleNotch size={13} className="animate-spin" />
                 ) : (
-                  <RotateCw size={14} />
+                  <RotateCw size={13} />
                 )}
                 {isResuming
                   ? t('exam_sheet:uploader.resuming')
@@ -2460,22 +2838,25 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       )}
 
       {error && (
-        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-destructive/20 bg-destructive/5" role="alert">
+        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-border/40 bg-muted/50" role="alert">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-destructive truncate" title={error}>
-              {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
-            </span>
-            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
-              <ArrowClockwise size={14} />
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+              <span className="text-xs text-foreground/85 truncate" title={error}>
+                {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
+              </span>
+            </div>
+            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="h-7 gap-1.5 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11">
+              <ArrowClockwise size={13} />
               {t('common:actions.retry')}
             </DsButton>
           </div>
         </div>
       )}
 
-      {/* Tab 栏 */}
-      <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 border-b border-border/40">
-        <div className="flex items-center justify-between gap-2">
+      {/* Tab 栏：收敛为干净的 h-11 单行导航；整卷练习（BatchPracticeWorkspace）激活时隐藏右侧管理/导出噪点 */}
+      <div className="flex-shrink-0 h-11 px-3 sm:px-4 border-b border-border/35 bg-background/95 backdrop-blur-sm flex items-center">
+        <div className="flex w-full items-center justify-between gap-2">
           {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多；方向键在一级入口间移动焦点 */}
           <div
             ref={tabListRef}
@@ -2489,7 +2870,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             {tabIndicator && (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute z-0 rounded-md bg-accent transition-[left,top,width,height] duration-200 ease-out motion-reduce:transition-none"
+                className="pointer-events-none absolute z-0 rounded-lg bg-foreground/[0.06] transition-[left,top,width,height] duration-200 ease-out motion-reduce:transition-none"
                 style={{
                   left: tabIndicator.left,
                   top: tabIndicator.top,
@@ -2506,10 +2887,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'list' || undefined}
               aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'list'
-                  ? 'text-accent-foreground font-medium hover:bg-transparent'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                  ? 'text-foreground font-medium hover:bg-transparent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
               )}
             >
               {t('learningHub:exam.tab.questionBank')}
@@ -2521,7 +2902,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-exam-tab=""
               data-active={viewMode === 'papers' || undefined}
               aria-pressed={viewMode === 'papers'}
-              className="relative z-[1] shrink-0 whitespace-nowrap text-sm"
+              className={cn(
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                viewMode === 'papers'
+                  ? 'text-foreground font-medium hover:bg-transparent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
+              )}
             >
               {t('practice:batch.papers')}
             </DsButton>
@@ -2538,10 +2924,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'practice' || undefined}
               aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'practice'
-                  ? 'text-accent-foreground font-medium hover:bg-transparent'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
+                  ? 'text-foreground font-medium hover:bg-transparent'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]',
                 !hasQuestions && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -2559,16 +2945,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
+                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
                       activeTopTab === 'more'
-                        ? 'text-accent-foreground font-medium hover:bg-transparent'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                        ? 'text-foreground font-medium hover:bg-transparent'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
                     )}
                   >
                     {activeSecondaryTab?.label ?? t('learningHub:exam.tab.more')}
                     {sm2DueCount > 0 && viewMode !== 'sm2' && (
                       <span
-                        className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-2xs font-medium tabular-nums text-warning"
+                        className="min-w-[18px] rounded-full bg-foreground/[0.06] px-1.5 py-px text-center font-mono text-2xs font-medium tabular-nums text-warning"
                         aria-hidden="true"
                       >
                         {sm2DueCount > 99 ? '99+' : sm2DueCount}
@@ -2588,7 +2974,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       icon={<Icon size={16} />}
                       checked={viewMode === mode}
                       suffix={badge > 0 ? (
-                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-2xs font-medium tabular-nums text-warning">
+                        <span className="min-w-[18px] rounded-full bg-foreground/[0.06] px-1.5 py-px text-center font-mono text-2xs font-medium tabular-nums text-warning">
                           {badge > 99 ? '99+' : badge}
                         </span>
                       ) : undefined}
@@ -2602,12 +2988,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
             {(viewMode === 'practice') && gradingMode === 'immediate' && hasQuestions && (
               <>
-                <div className="w-px h-4 bg-border/60 mx-1 sm:mx-2 flex-shrink-0" />
+                <div className="w-px h-3.5 bg-border/45 mx-1 sm:mx-1.5 flex-shrink-0" />
                 <AppSelect value={practiceMode} onValueChange={handleSelectMode}
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11"
+                  className="h-7 flex-shrink-0 border-0 bg-foreground/[0.04] px-2 text-xs hover:bg-foreground/[0.07] [@media(pointer:coarse)]:!h-11"
                 />
                 
                 <DsButton
@@ -2623,12 +3009,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
-                    isAdvancedRuntimeTimer
-                      ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
-                      : isTimerRunning
-                        ? 'text-primary bg-primary/5 hover:bg-primary/10'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] transition-colors font-mono tabular-nums text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
+                    isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining <= 60
+                      ? 'bg-destructive/[0.08] text-destructive hover:bg-destructive/[0.12]'
+                      : isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining < 300
+                        ? 'bg-warning/[0.08] text-warning hover:bg-warning/[0.12]'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.07]'
                   )}
                   title={
                     isAdvancedRuntimeTimer
@@ -2639,13 +3025,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   }
                 >
                   {isAdvancedRuntimeTimer ? (
-                    <Clock size={14} />
+                    <Clock size={13} />
                   ) : isTimerRunning ? (
-                    <Pause size={14} />
+                    <Pause size={13} />
                   ) : (
-                    <Play size={14} />
+                    <Play size={13} />
                   )}
-                  <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'animate-pulse')}>
+                  <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'opacity-65')}>
                     {formatTime(advancedTimerRemaining ?? elapsedTime)}
                   </span>
                 </DsButton>
@@ -2653,151 +3039,203 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             )}
           </div>
           
-          {/* 右侧：统计摘要 + 导出 + 添加题目菜单（只读模式下隐藏添加） */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {hasQuestions && stats && !(viewMode === 'practice' && gradingMode === 'on_submit') && <StatsSummary stats={stats} />}
-            {hasQuestions && (
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={handleOpenExport}
-                aria-label={t('learningHub:exam.tab.export')}
-                title={t('learningHub:exam.tab.export')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
-              >
-                <Download size={14} />
-                <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
-              </DsButton>
-            )}
-            {!readOnly && (
-              <AppMenu>
-                <AppMenuTrigger asChild>
-                  <DsButton
-                    variant={viewMode === 'upload' ? 'default' : 'ghost'}
-                    size="sm"
-                    aria-label={t('learningHub:exam.tab.addQuestion')}
-                    title={t('learningHub:exam.tab.addQuestion')}
-                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
+          {/* 右侧：统计摘要 + 导出 + 添加题目菜单（整卷练习激活时隐藏右侧二级操作噪点） */}
+          {!(viewMode === 'practice' && gradingMode === 'on_submit') && (
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {hasQuestions && stats && <StatsSummary stats={stats} />}
+              {(viewMode === 'practice' || viewMode === 'browse') &&
+                activeDragQuestion &&
+                activeDragQuestionMeta && (
+                  <button
+                    type="button"
+                    draggable
+                    data-testid="exam-active-question-drag-pill"
+                    onDragStart={(e) =>
+                      handleQuestionDragStart(e, activeDragQuestion, activeDragQuestionIndex)
+                    }
+                    title={t('exam_sheet:interop.dragQuestionHint', {
+                      defaultValue: '将当前题目或错题拖入思维导图知识卡片',
+                    })}
+                    aria-label={t('exam_sheet:interop.dragQuestionHint', {
+                      defaultValue: '将当前题目或错题拖入思维导图知识卡片',
+                    })}
+                    className="inline-flex h-7 cursor-grab items-center gap-1 rounded-lg border border-border/35 bg-card/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground active:cursor-grabbing [@media(pointer:coarse)]:!min-h-11"
                   >
-                    <Plus size={14} />
-                    <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
-                    <CaretDown size={12} className="opacity-60" />
-                  </DsButton>
-                </AppMenuTrigger>
-                <AppMenuContent align="end" width={200}>
-                  <AppMenuItem
-                    onClick={handleCreateQuestionEntry}
-                    icon={<PencilSimple size={16} />}
-                  >
-                    {t('exam_sheet:questionBank.create.title')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    onClick={handleOpenAiGeneration}
-                    icon={<Sparkle size={16} />}
-                  >
-                    {t('exam_sheet:aiGeneration.title')}
-                  </AppMenuItem>
-                  <AppMenuSeparator />
-                  <AppMenuItem
-                    onClick={handleOpenUploadEntry}
-                    icon={<Scan size={16} />}
-                  >
-                    {t('learningHub:exam.tab.add')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    onClick={handleOpenCsvImport}
-                    icon={<TableIcon size={16} />}
-                  >
-                    {t('learningHub:exam.tab.importCsv')}
-                  </AppMenuItem>
-                  <AppMenuItem onClick={() => setShowImportAudit(true)} icon={<Scan size={16} />}>
-                    {t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}
-                  </AppMenuItem>
-                </AppMenuContent>
-              </AppMenu>
-            )}
-          </div>
+                    <DotsSixVertical size={13} aria-hidden="true" />
+                    <span className="hidden md:inline">
+                      {t('exam_sheet:interop.dragQuestion', { defaultValue: '拖入导图' })}
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-foreground/85">
+                      {activeDragQuestionMeta.questionLabel}
+                    </span>
+                  </button>
+                )}
+              {hasQuestions && (
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleOpenExport}
+                  aria-label={t('learningHub:exam.tab.export')}
+                  title={t('learningHub:exam.tab.export')}
+                  className="h-7 gap-1.5 px-2.5 sm:px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
+                >
+                  <Download size={14} />
+                  <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
+                </DsButton>
+              )}
+              {!readOnly && (
+                <AppMenu>
+                  <AppMenuTrigger asChild>
+                    <DsButton
+                      variant={viewMode === 'upload' ? 'default' : 'ghost'}
+                      size="sm"
+                      aria-label={t('learningHub:exam.tab.addQuestion')}
+                      title={t('learningHub:exam.tab.addQuestion')}
+                      className={cn(
+                        'h-7 gap-1.5 px-2.5 sm:px-3 text-xs ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11',
+                        viewMode !== 'upload' && 'bg-foreground/[0.04] text-foreground hover:bg-foreground/[0.08]'
+                      )}
+                    >
+                      <Plus size={14} />
+                      <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
+                      <CaretDown size={11} className="opacity-60" />
+                    </DsButton>
+                  </AppMenuTrigger>
+                  <AppMenuContent align="end" width={200}>
+                    <AppMenuItem
+                      onClick={handleCreateQuestionEntry}
+                      icon={<PencilSimple size={16} />}
+                    >
+                      {t('exam_sheet:questionBank.create.title')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      onClick={handleOpenAiGeneration}
+                      icon={<Sparkle size={16} />}
+                    >
+                      {t('exam_sheet:aiGeneration.title')}
+                    </AppMenuItem>
+                    <AppMenuSeparator />
+                    <AppMenuItem
+                      onClick={handleOpenUploadEntry}
+                      icon={<Scan size={16} />}
+                    >
+                      {t('learningHub:exam.tab.add')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      onClick={handleOpenCsvImport}
+                      icon={<TableIcon size={16} />}
+                    >
+                      {t('learningHub:exam.tab.importCsv')}
+                    </AppMenuItem>
+                    <AppMenuItem onClick={() => setShowImportAudit(true)} icon={<Scan size={16} />}>
+                      {t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}
+                    </AppMenuItem>
+                  </AppMenuContent>
+                </AppMenu>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 行内确认条：退出复习 / 丢弃草稿（全端统一为 Tab 栏下方的内联确认，不再使用模态） */}
+      {/* 行内确认条：退出复习 / 丢弃草稿（全端统一为 Tab 栏下方的轻量内联确认条，不再使用高饱和告警框） */}
       {pendingReviewExitView !== null && (
         <div
-          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 ui-drop-in"
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
           role="alert"
           aria-label={t('review:session.exitTitle')}
         >
-          <div className="flex items-start gap-2">
-            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-foreground">{t('review:session.exitTitle')}</div>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t('review:session.exitDescription')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('review:session.exitTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('review:session.exitDescription')}</span>
+              </div>
             </div>
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
-              {t('common:cancel')}
-            </DsButton>
-            <DsButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
-              {t('review:session.exitConfirm')}
-            </DsButton>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
+                {t('review:session.exitConfirm')}
+              </DsButton>
+            </div>
           </div>
         </div>
       )}
       {pendingPracticeExitView !== null && (
         <div
-          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 ui-drop-in"
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
           role="alert"
           aria-label={t('practice:session.exitTitle')}
         >
-          <div className="flex items-start gap-2">
-            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-foreground">{t('practice:session.exitTitle')}</div>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t('practice:session.exitDescription')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('practice:session.exitTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('practice:session.exitDescription')}</span>
+              </div>
             </div>
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelPracticeExit}>
-              {t('common:cancel')}
-            </DsButton>
-            <DsButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmPracticeExit}>
-              {t('practice:session.exitConfirm')}
-            </DsButton>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelPracticeExit}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmPracticeExit}>
+                {t('practice:session.exitConfirm')}
+              </DsButton>
+            </div>
           </div>
         </div>
       )}
       {pendingDraftNavigation !== null && (
         <div
-          className="flex-shrink-0 border-b border-destructive/30 bg-destructive/5 px-3 py-2 ui-drop-in"
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
           role="alert"
           aria-label={t('editor.discardDraftTitle')}
         >
-          <div className="flex items-start gap-2">
-            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-foreground">{t('editor.discardDraftTitle')}</div>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('editor.discardDraftTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</span>
+              </div>
             </div>
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
-              {t('common:cancel')}
-            </DsButton>
-            <DsButton variant="danger" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
-              {t('common:actions.discard')}
-            </DsButton>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="danger" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
+                {t('common:actions.discard')}
+              </DsButton>
+            </div>
           </div>
         </div>
       )}
 
       {!readOnly && viewMode !== 'upload' && pendingAuthoringDrafts.length > 0 && (
-        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2" role="status">
-          <span className="min-w-0 flex-1 text-sm">{t('exam_sheet:uploader.pending_drafts', {count:pendingAuthoringDrafts.length,defaultValue:'待确认草稿：{{count}}'})}</span>
-          <DsButton size="sm" variant="outline" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
-            <Scan size={16} />{t('exam_sheet:uploader.review_pending_draft', {defaultValue:'复核并导入'})} ({pendingAuthoringDrafts[0].question_count})
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4" role="status">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-xs text-foreground/85 tabular-nums">{t('exam_sheet:uploader.pending_drafts', {count:pendingAuthoringDrafts.length,defaultValue:'待确认草稿：{{count}}'})}</span>
+          <DsButton size="sm" variant="ghost" className="h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
+            <Scan size={14} />
+            <span className="tabular-nums">{t('exam_sheet:uploader.review_pending_draft', {defaultValue:'复核并导入'})} ({pendingAuthoringDrafts[0].question_count})</span>
           </DsButton>
         </div>
+      )}
+
+      {!readOnly && viewMode !== 'upload' && (
+        <QBankAgentDiffBar
+          examId={sessionId}
+          activeQuestionId={activeQuestionId}
+          onRevertQuestions={handleRevertQuestions}
+          onFocusQuestion={handleFocusQuestionById}
+        />
       )}
 
       {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡（懒加载 chunk 未就绪时
@@ -2863,18 +3301,87 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onRenameTag={readOnly ? undefined : handleRenameTag}
             />
           ) : viewMode === 'sm2' && hasQuestions ? (
-            /* ★ I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
+            /* I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
             <Sm2ReviewPanel examId={sessionId} isActive={isActive} />
           ) : viewMode === 'review' && hasQuestions ? (
-            /* 错题本视图 */
-            <ReviewQuestionsView
-              questions={questions}
-              stats={stats}
-              onQuestionClick={handleQuestionClick}
-              onStartReview={handleStartReview}
-              onResetProgress={readOnly ? undefined : handleResetProgress}
-              onDelete={readOnly ? undefined : handleDeleteQuestions}
-            />
+            /* 错题本视图（顶部提供轻量错题摘录拖拽胶囊条，直连思维导图考点卡） */
+            <div className="flex h-full min-h-0 flex-col">
+              {mistakeQuestions.length > 0 && (
+                <div
+                  data-testid="exam-mistake-excerpt-strip"
+                  className="flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
+                >
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]"
+                    aria-hidden="true"
+                  />
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {t('exam_sheet:interop.dragMistakeStripTitle', {
+                      defaultValue: '拖入导图考点卡',
+                    })}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {mistakeQuestions.map((mistake) => {
+                      const fullIdx = questions.findIndex((q) => q.id === mistake.id);
+                      const meta = deriveQuestionExcerptMeta({
+                        resourceId: sessionId,
+                        question: mistake,
+                        questionIndex: fullIdx >= 0 ? fullIdx : undefined,
+                      });
+                      return (
+                        <button
+                          key={mistake.id}
+                          type="button"
+                          draggable
+                          data-testid={`exam-mistake-drag-pill-${mistake.id}`}
+                          data-agent-entity={`exam:${mistake.id}`}
+                          onClick={() => handleOpenQuestion(mistake.id)}
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            handleQuestionDragStart(
+                              e,
+                              mistake,
+                              fullIdx >= 0 ? fullIdx : undefined,
+                            );
+                          }}
+                          title={t('exam_sheet:interop.dragQuestionHint', {
+                            defaultValue: '将当前题目或错题拖入思维导图知识卡片',
+                          })}
+                          className="inline-flex shrink-0 cursor-grab items-center gap-1 rounded-md border border-border/35 bg-background/75 px-2 py-0.5 text-xs transition-colors hover:bg-foreground/[0.04] active:cursor-grabbing"
+                        >
+                          <DotsSixVertical
+                            size={12}
+                            className="shrink-0 text-muted-foreground/70"
+                            aria-hidden="true"
+                          />
+                          <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+                            {meta.questionLabel}
+                          </span>
+                          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                            {meta.accuracyText}
+                          </span>
+                          {meta.errorCauseLabels[0] && (
+                            <span className="rounded bg-[hsl(var(--destructive)/0.10)] px-1 py-px text-[10px] text-[hsl(var(--destructive))]">
+                              {meta.errorCauseLabels[0]}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <ReviewQuestionsView
+                  questions={questions}
+                  stats={stats}
+                  onQuestionClick={handleQuestionClick}
+                  onStartReview={handleStartReview}
+                  onResetProgress={readOnly ? undefined : handleResetProgress}
+                  onDelete={readOnly ? undefined : handleDeleteQuestions}
+                />
+              </div>
+            </div>
           ) : viewMode === 'csvImport' && !readOnly ? (
             /* CSV 导入 — 内嵌整页流程（非模态） */
             <CsvImportPanel

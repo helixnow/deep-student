@@ -5,7 +5,6 @@ import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
 import {
-  ArrowsClockwise,
   CaretLeft,
   FileArchive,
   FileArrowUp,
@@ -117,6 +116,13 @@ import {
 } from '@/features/notes/noteInputLimits';
 import './notes-empty-states.css';
 import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import type { NotesTreeMenuActions } from '@/ui-kernel/contracts/content';
+import {
+  officialNotesTreeMenuEntries,
+  resolveNotesTreeMenu,
+  type ResourceMenuError,
+} from '@/ui-plugins/official/menu/notesTreeMenu';
 import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
 
 // 导图视图懒加载：@xyflow/react 体积大，只有导图标签页真正展示时才拉取，
@@ -2324,93 +2330,68 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     setResourceDialog({ mode: 'delete-many', targets });
   }, []);
 
+  // 目录树右键菜单：resource.contextMenu 的 notes-tree 行（官方行见 ui-plugins/official/menu/notesTreeMenu.ts）；无 UI 内核时用官方表
+  const uiKernel = useOptionalUiKernel();
+  const treeMenuEntries = useOptionalSlot('resource.contextMenu') ?? officialNotesTreeMenuEntries;
+  const treeMenuActions = useMemo<NotesTreeMenuActions>(() => ({
+    open: (item) => {
+      if (item.kind !== 'folder') void openResource({ type: item.kind, id: item.id }, item.name);
+    },
+    openInSplit: (item) => {
+      if (item.kind === 'folder') return;
+      const resourceType = item.kind;
+      void (async () => {
+        await openResource({ type: resourceType, id: item.id }, item.name);
+        openTabInRightSplit(`${resourceType}:${item.id}`);
+      })();
+    },
+    isFavorite: (item) => favorites.items.some((entry) => entry.id === item.id && entry.type === item.kind)
+      || item.favorite === true,
+    setFavorite: (item, favorite) => {
+      if (item.kind === 'folder') return;
+      void favorites.setFavorite(item.id, item.kind, favorite, {
+        path: item.path,
+        name: item.name,
+      });
+    },
+    createResource: (kind, folderId) => { void createResource(kind, folderId); },
+    createFolder: (parentId) => {
+      setDialogError(null);
+      setResourceDialog({
+        mode: 'create-folder',
+        value: '',
+        parentId,
+      });
+    },
+    createLearningNote: (folderId) => { setLearningCreateFolderId(folderId); setLearningCreateOpen(true); },
+    requestDelete: (item) => { requestDeleteTreeItem(item); },
+  }), [createResource, favorites, openResource, openTabInRightSplit, requestDeleteTreeItem]);
+  const reportTreeMenuError = useCallback<ResourceMenuError>((entry, phase, error) => {
+    if (uiKernel) uiKernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase, error, slot: 'resource.contextMenu', entryId: entry.id });
+    else console.error(`[NotesWorkspaceApp] resource.contextMenu "${entry.id}" failed`, error);
+  }, [uiKernel]);
+
   const getTreeMenuItems = useCallback((
     item: NotesWorkspaceTreeItem,
     helpers: { beginRename: () => void },
-  ): NotesWorkspaceTreeMenuItem[] => {
-    const items: NotesWorkspaceTreeMenuItem[] = [];
-    if (item.kind === 'note' || item.kind === 'mindmap') {
-      const resourceType = item.kind;
-      items.push({
-        id: 'open',
-        label: t('notesWorkspace.context.open'),
-        onSelect: () => void openResource({ type: resourceType, id: item.id }, item.name),
-      });
-      items.push({
-        id: 'openSplit',
-        label: t('notesWorkspace.context.openSplit'),
-        onSelect: () => {
-          void (async () => {
-            await openResource({ type: resourceType, id: item.id }, item.name);
-            openTabInRightSplit(`${resourceType}:${item.id}`);
-          })();
-        },
-      });
-      const isFavorite = favorites.items.some((entry) => entry.id === item.id && entry.type === resourceType)
-        || item.favorite === true;
-      items.push({
-        id: 'favorite',
-        label: isFavorite
-          ? t('notesWorkspace.context.unfavorite')
-          : t('notesWorkspace.context.favorite'),
-        onSelect: () => {
-          void favorites.setFavorite(item.id, resourceType, !isFavorite, {
-            path: item.path,
-            name: item.name,
-          });
-        },
-      });
-    }
-    if (item.canRename !== false) {
-      items.push({
-        id: 'rename',
-        label: t('notesWorkspace.context.rename'),
-        onSelect: () => helpers.beginRename(),
-      });
-    }
-    const createFolderId = resolveCreateFolderId(item);
-    items.push({
-      id: 'newNote',
-      label: t('notesWorkspace.context.newNote'),
-      separatorBefore: true,
-      onSelect: () => { void createResource('note', createFolderId ?? null); },
-    });
-    items.push({
-      id: 'newFolder',
-      label: t('notesWorkspace.context.newFolder'),
-      onSelect: () => {
-        setDialogError(null);
-        setResourceDialog({
-          mode: 'create-folder',
-          value: '',
-          parentId: createFolderId ?? null,
-        });
-      },
-    });
-    items.push({
-      id: 'newMindmap',
-      label: t('notesWorkspace.context.newMindmap'),
-      onSelect: () => { void createResource('mindmap', createFolderId ?? null); },
-    });
-    // 与资源管理器「+」菜单对齐：右键同样能新建学习笔记（落到右键所在文件夹）
-    items.push({
-      id: 'newLearningNote',
-      label: t('notes:learning.create.title', { defaultValue: '新建学习笔记' }),
-      onSelect: () => { setLearningCreateFolderId(createFolderId ?? null); setLearningCreateOpen(true); },
-    });
-    if (item.kind === 'folder' ? isStableVfsFolderId(item.id) : true) {
-      items.push({
-        id: 'delete',
-        label: t('notesWorkspace.context.delete'),
-        danger: true,
-        separatorBefore: true,
-        onSelect: () => {
-          requestDeleteTreeItem(item);
-        },
-      });
-    }
-    return items;
-  }, [createResource, favorites, openResource, openTabInRightSplit, requestDeleteTreeItem, resolveCreateFolderId, t]);
+  ): NotesWorkspaceTreeMenuItem[] => resolveNotesTreeMenu(treeMenuEntries, {
+    scope: 'notes-tree',
+    // TreeContextMenu closes the menu after every row it runs
+    closeMenu: () => {},
+    item: {
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      favorite: item.favorite,
+      path: item.path,
+      canRename: item.canRename,
+      canMove: item.canMove,
+    },
+    beginRename: helpers.beginRename,
+    createFolderId: resolveCreateFolderId(item) ?? null,
+    canDelete: item.kind === 'folder' ? isStableVfsFolderId(item.id) : true,
+    actions: treeMenuActions,
+  }, t, reportTreeMenuError), [reportTreeMenuError, resolveCreateFolderId, t, treeMenuActions, treeMenuEntries]);
 
   const openTabContextMenu = useCallback((key: string, x: number, _y: number, trigger: HTMLElement) => {
     restoreTabContextFocusRef.current = false;
@@ -2543,7 +2524,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     { key: 'new-mindmap', label: t('notesWorkspace.explorer.newMindmap', 'New mind map'), icon: <TreeStructure size={15} />, onSelect: () => { void createResource('mindmap'); } },
   ];
   const explorerTailActions: ExplorerOverflowAction[] = [
-    { key: 'refresh', label: t('notesWorkspace.explorer.refresh', 'Refresh'), icon: <ArrowsClockwise size={15} />, onSelect: () => { void loadResources({ blocking: false }); } },
     { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: () => openSearchOverlay('full-text') },
     { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: () => setBacklinksOpen((open) => !open) },
     { key: 'trash', label: t('notesWorkspace.ribbon.trash', 'Trash'), icon: <Trash size={15} />, onSelect: () => setTrashOpen(true) },

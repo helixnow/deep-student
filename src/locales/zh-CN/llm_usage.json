@@ -7,6 +7,7 @@
   "no_data": "暂无数据",
   "no_data_or_load_failed": "暂无数据或加载失败",
   "sessions": "会话",
+  "tokens": "Token 数",
   "unknown_model": "未知模型",
   "custom_config": "自定义配置",
   "summary": {

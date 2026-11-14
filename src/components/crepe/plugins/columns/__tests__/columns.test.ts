@@ -6,6 +6,8 @@ import { NodeSelection, TextSelection } from '@milkdown/prose/state'
 import { Fragment, DOMSerializer, DOMParser, Slice } from '@milkdown/prose/model'
 import { $prose, getMarkdown } from '@milkdown/utils'
 import { afterEach, describe, expect, it } from 'vitest'
+import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers'
+setupMilkdownTimers()
 import { performance } from 'node:perf_hooks'
 import { Crepe } from '@milkdown/crepe'
 import { togglePlugin } from '../../toggle'

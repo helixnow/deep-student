@@ -19,7 +19,8 @@ import { shortcutManager, type ShortcutConflict } from '../registry/shortcutMana
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { SettingSection } from '@/features/settings';
+import { SettingSection, settingsQuietInteractiveRowClassName } from '@/features/settings';
+import { GroupTitle as BaseGroupTitle } from '@/components/settings/settingsTabPrimitives';
 import {
   SettingsVirtualList,
   type SettingsVirtualItem,
@@ -39,10 +40,7 @@ interface EditingState {
 }
 
 const GroupTitle = ({ title, rightSlot }: { title: string; rightSlot?: React.ReactNode }) => (
-  <div className="px-1 mb-3 mt-0 flex items-center justify-between">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-    {rightSlot}
-  </div>
+  <BaseGroupTitle title={title} actions={rightSlot} />
 );
 
 export function ShortcutSettings({ className, scrollElement = null }: ShortcutSettingsProps) {
@@ -290,10 +288,10 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                     <div
                       key={command.id}
                       className={cn(
-                        'group flex items-center justify-between py-2.5 px-1 rounded transition-colors',
+                        'group flex items-center justify-between py-2.5 px-2 rounded-lg',
                         isEditing
                           ? 'bg-primary/5'
-                          : 'hover:bg-[var(--interactive-hover)]'
+                          : settingsQuietInteractiveRowClassName
                       )}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">

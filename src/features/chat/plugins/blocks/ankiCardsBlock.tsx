@@ -9,18 +9,19 @@
  * 自执行注册：import 即注册
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
+import { PulseDot } from '@/components/ui/PulseDot';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { isMobilePlatform } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
-  CircleNotch,
   FloppyDisk,
   DownloadSimple,
   PaperPlaneRight,
@@ -875,7 +876,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               className="[@media(pointer:coarse)]:!min-h-11"
             >
               {savePending ? (
-                <CircleNotch size={14} className="animate-spin" />
+                <PulseDot className="h-1.5 w-1.5 text-current" />
               ) : (
                 <Check size={14} />
               )}
@@ -894,7 +895,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
     return (
       <div className="group relative transition-all duration-150 cursor-pointer">
         {/* 序号标签 */}
-        <div data-wb-blur-surface className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-2xs font-medium text-muted-foreground border">
+        <div data-wb-blur-surface className="absolute top-2 left-2 z-10 h-5 min-w-5 px-1 rounded-md bg-background/80 backdrop-blur flex items-center justify-center text-2xs font-medium text-muted-foreground border tabular-nums">
           {index + 1}
         </div>
         {/* 编辑/删除/引用按钮(触屏常显:卡片本体点击是翻面,编辑只能走此按钮) */}
@@ -971,7 +972,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         {card.tags && card.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 px-3 pb-2 -mt-1">
             {card.tags.slice(0, 4).map((tag, i) => (
-              <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              <span key={i} className="rounded-md bg-muted px-1.5 py-0.5 text-xs">
                 {tag}
               </span>
             ))}
@@ -1018,7 +1019,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
       )}
       <div className="flex items-start gap-3 p-3">
         {/* 序号 */}
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground mt-0.5">
+        <span className="flex-shrink-0 h-6 min-w-6 px-1 rounded-md bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground tabular-nums mt-0.5">
           {index + 1}
         </span>
         {/* 内容（cloze 挖空高亮：正面隐藏、背面显示答案） */}
@@ -1036,7 +1037,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           {card.tags && card.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
               {card.tags.slice(0, 4).map((tag, i) => (
-                <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                <span key={i} className="rounded-md bg-muted px-1.5 py-0.5 text-xs">
                   {tag}
                 </span>
               ))}
@@ -1480,7 +1481,7 @@ const ActionButtons: React.FC<{
   const renderIcon = (status: ActionStatus, DefaultIcon: React.ComponentType<{ className?: string; size?: string | number }>) => {
     switch (status) {
       case 'loading':
-        return <CircleNotch size={16} className="animate-spin" />;
+        return <PulseDot className="h-1.5 w-1.5 text-current" />;
       case 'success':
         return <Check size={16} className="text-success" />;
       case 'error':
@@ -2165,6 +2166,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       console.warn('[AnkiCardsBlock] Failed to refresh AnkiConnect status:', err);
     }
   }, [store, block.id]);
+
+  useRefreshOnReturn(handleRefreshAnkiConnect, hasAnkiConnect && data?.ankiConnect?.available !== true);
 
   // Zombie block watchdog: 如果 block 持续处于 running 状态超过 5 分钟无更新，自动标记为 error
   const lastActivityRef = useRef(Date.now());
@@ -2867,7 +2870,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
         <div className="ui-drop-in">
           {/* 头部统计 + 全选 + 布局切换 */}
           <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+            <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
               {selectableIds.length > 0 && (
                 <Checkbox
                   checked={allSelected ? true : selectedCount > 0 ? 'indeterminate' : false}
@@ -2876,7 +2879,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   title={t('blocks.ankiCards.selectAll')}
                 />
               )}
-              <span className="truncate">
+              <span className="truncate tabular-nums">
                 {t('blocks.ankiCards.title')} · {cards.length} {t('blocks.ankiCards.cards')}
               </span>
             </span>
@@ -2960,7 +2963,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'save' ? (
-                    <CircleNotch size={13} className="animate-spin" />
+                    <PulseDot className="h-1.5 w-1.5 text-current" />
                   ) : (
                     <FloppyDisk size={13} />
                   )}
@@ -2976,7 +2979,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'export' ? (
-                    <CircleNotch size={13} className="animate-spin" />
+                    <PulseDot className="h-1.5 w-1.5 text-current" />
                   ) : (
                     <DownloadSimple size={13} />
                   )}
@@ -3124,7 +3127,6 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               blockStatus={block.status}
               finalStatus={data?.finalStatus}
               errorMessage={errorMessage}
-              onRefreshAnkiConnect={handleRefreshAnkiConnect}
             />
           )}
 

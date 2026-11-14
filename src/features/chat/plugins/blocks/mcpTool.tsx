@@ -25,20 +25,13 @@ import {
   CaretRight,
   ArrowSquareOut,
   CheckCircle,
-  FileText,
-  FileXls,
-  Eye,
 } from '@phosphor-icons/react';
+import { useOptionalSlot } from '@/ui-kernel/react';
+import type { ChatToolResultProps } from '@/ui-kernel/contracts/chat';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
-import { ToolInputView, ToolOutputView, ShellOutputView, isTemplateVisualOutput } from './components';
-import {
-  CompletionCard,
-  extractCompletionData,
-  isAttemptCompletionTool,
-} from '../../components/CompletionCard';
-import { TodoListBlock } from './todoList';
-import { PaperSaveBlock } from './paperSave';
-import type { Block } from '../../core/types/block';
+import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
+import { officialToolResultEntries } from './toolResults';
+import { resolveToolResult } from './toolResultSlot';
 import {
   getExternalToolProviderName,
   getReadableToolName,
@@ -294,6 +287,13 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
 // 子组件：错误展示
 // ============================================================================
 
+/**
+ * 本地 shell / git_* 工具在命令启动前失败（RF-S01-shell-environment-failure）时的报错开头；git_commit 第二步失败会在前面加
+ * `git add succeeded but git commit could not start: `。只认开头：命令真的跑了并失败时，stderr/stdout 尾部附在
+ * `Exit code N` 之后，里面恰好含这个标记也不能提示“命令没有运行”。
+ */
+const SHELL_ENVIRONMENT_FAILURE_START = /^(?:git add succeeded but git commit could not start: )?LOCAL_SHELL_ENVIRONMENT_FAILURE \(stage=/;
+
 interface ToolErrorProps {
   error: string;
   onRetry?: () => void;
@@ -313,6 +313,10 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
     : '';
   // Runtime root 授权类拦截：附带「去授权」入口，避免用户自己在设置里找
   const isRuntimeBlocked = useMemo(() => isRuntimeRootBlockedError(error), [error]);
+  // RUST-FIX(RF-W09-shell-environment-failure-hint): Tauri 版卡片只显示英文原文，用户看不出命令根本没有运行、重试无用
+  const shellEnvironmentHint = SHELL_ENVIRONMENT_FAILURE_START.test(error)
+    ? t('blocks.mcpTool.shellEnvironmentFailure', { defaultValue: '' })
+    : '';
 
   return (
     <div className="p-3">
@@ -329,6 +333,9 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
               <WarningCircle size={14} className="shrink-0" />
               <span>{t('blocks.mcpTool.executionFailed')}</span>
             </div>
+            {shellEnvironmentHint && (
+              <div className="mt-1 text-xs text-destructive">{shellEnvironmentHint}</div>
+            )}
             <div className="mt-1 text-xs text-destructive/80 break-words">
               {localizedError}
             </div>
@@ -382,142 +389,6 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
 const EMPTY_TOOL_INPUT: Record<string, unknown> = Object.freeze({});
 
 /**
- * TodoList 工具名常量（永续执行 Agent）
- * 支持 builtin- 前缀和无前缀两种格式
- */
-const TODO_TOOLS = [
-  'todo_init', 'todo_update', 'todo_add', 'todo_get',
-  'builtin-todo_init', 'builtin-todo_update', 'builtin-todo_add', 'builtin-todo_get',
-];
-
-/**
- * 检测是否为 PaperSave 工具
- * 去除所有已知前缀后匹配基础名称，使用专用 PaperSaveBlock 显示细粒度下载进度
- */
-function isPaperSaveTool(name: string): boolean {
-  const stripped = name
-    .replace(/^builtin[-:]/, '')
-    .replace(/^mcp_/, '')
-    .replace(/^mcp\.tools\./, '')
-    .replace(/^.*\./, '');
-  return stripped === 'paper_save';
-}
-
-/** 本地 shell 执行工具（使用专用 stdout/stderr 分栏输出块）。 */
-function isShellExecuteTool(name: string): boolean {
-  const stripped = name
-    .replace(/^builtin[-:]/, '')
-    .replace(/^mcp_/, '')
-    .replace(/^mcp\.tools\./, '')
-    .replace(/^.*\./, '');
-  return stripped === 'local_shell_execute';
-}
-
-// 笔记编辑工具列表
-const NOTE_TOOLS = [
-  'note_create', 'note_read', 'note_append', 'note_replace', 'note_set', 'note_list', 'note_search',
-  'builtin-note_create', 'builtin-note_read', 'builtin-note_append', 'builtin-note_replace', 'builtin-note_set', 'builtin-note_list', 'builtin-note_search',
-];
-
-// DOCX/PPTX/XLSX 写入/编辑工具列表（生成文件的工具）
-const DOC_WRITE_TOOLS = [
-  'docx_create', 'docx_replace_text',
-  'builtin-docx_create', 'builtin-docx_replace_text',
-  'pptx_create', 'pptx_replace_text',
-  'builtin-pptx_create', 'builtin-pptx_replace_text',
-  'xlsx_create', 'xlsx_replace_text', 'xlsx_edit_cells',
-  'builtin-xlsx_create', 'builtin-xlsx_replace_text', 'builtin-xlsx_edit_cells',
-];
-
-// DOCX/PPTX/XLSX 读取工具列表（读取已有文件的工具）
-const DOC_READ_TOOLS = [
-  'docx_read_structured', 'docx_extract_tables', 'docx_get_metadata', 'docx_to_spec',
-  'builtin-docx_read_structured', 'builtin-docx_extract_tables', 'builtin-docx_get_metadata', 'builtin-docx_to_spec',
-  'pptx_read_structured', 'pptx_get_metadata', 'pptx_extract_tables', 'pptx_to_spec',
-  'builtin-pptx_read_structured', 'builtin-pptx_get_metadata', 'builtin-pptx_extract_tables', 'builtin-pptx_to_spec',
-  'xlsx_read_structured', 'xlsx_extract_tables', 'xlsx_get_metadata', 'xlsx_to_spec',
-  'builtin-xlsx_read_structured', 'builtin-xlsx_extract_tables', 'builtin-xlsx_get_metadata', 'builtin-xlsx_to_spec',
-];
-
-/**
- * 根据工具名称获取对应的文件类型图标
- */
-function getDocToolFileIcon(toolName: string): typeof FileText {
-  const stripped = toolName.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
-  if (stripped.startsWith('xlsx')) return FileXls;
-  // DOCX 和 PPTX 都用 FileText
-  return FileText;
-}
-
-/**
- * 从 DOCX/PPTX/XLSX 工具输出中提取 file_id 和 file_name
- */
-function extractDocWriteFileInfo(toolOutput: unknown): { fileId: string; fileName: string } | null {
-  if (toolOutput && typeof toolOutput === 'object') {
-    const output = toolOutput as Record<string, unknown>;
-    const fileId = (output.file_id || output.new_file_id) as string | undefined;
-    const fileName = (output.file_name || 'document') as string;
-    if (fileId) {
-      return { fileId, fileName };
-    }
-  }
-  return null;
-}
-
-/**
- * 从读取类工具的输出/输入中提取 resource_id 和显示标题
- */
-function extractDocReadInfo(toolOutput: unknown, toolInput: Record<string, unknown>): { resourceId: string; title: string } | null {
-  let resourceId: string | undefined;
-  let title: string | undefined;
-
-  // 优先从 output 中取（后端返回的 resource_id）
-  if (toolOutput && typeof toolOutput === 'object') {
-    const output = toolOutput as Record<string, unknown>;
-    // output 可能被包裹在 result 中
-    const inner = (output.result && typeof output.result === 'object') ? output.result as Record<string, unknown> : output;
-    resourceId = inner.resource_id as string | undefined;
-    // 尝试从 metadata 中提取文件名
-    if (inner.metadata && typeof inner.metadata === 'object') {
-      const meta = inner.metadata as Record<string, unknown>;
-      title = (meta.title || meta.file_name || meta.name) as string | undefined;
-    }
-  }
-  // 回退到 input 参数中的 resource_id
-  if (!resourceId && typeof toolInput.resource_id === 'string' && toolInput.resource_id) {
-    resourceId = toolInput.resource_id;
-  }
-  if (!resourceId) return null;
-  return { resourceId, title: title || resourceId };
-}
-
-/**
- * 从工具输出中提取 note_id
- */
-function extractNoteId(toolOutput: unknown, toolInput: Record<string, unknown>): string | null {
-  // 优先从 toolOutput 中提取
-  if (toolOutput && typeof toolOutput === 'object') {
-    const output = toolOutput as Record<string, unknown>;
-    // 尝试多种可能的字段名
-    const noteId = output.note_id || output.noteId || output.id ||
-      (output.result && typeof output.result === 'object' && (output.result as Record<string, unknown>).note_id) ||
-      (output.result && typeof output.result === 'object' && (output.result as Record<string, unknown>).noteId) ||
-      (output.result && typeof output.result === 'object' && (output.result as Record<string, unknown>).id);
-    if (typeof noteId === 'string' && noteId) {
-      return noteId;
-    }
-  }
-  // 回退到 toolInput 中的 note_id
-  if (toolInput.note_id && typeof toolInput.note_id === 'string') {
-    return toolInput.note_id;
-  }
-  if (toolInput.noteId && typeof toolInput.noteId === 'string') {
-    return toolInput.noteId;
-  }
-  return null;
-}
-
-/**
  * McpToolBlock - MCP 工具块渲染组件
  */
 const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
@@ -527,6 +398,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 }) => {
   const { t } = useTranslation('chatV2');
   const [inputCollapsed, setInputCollapsed] = useState(true);
+  const toolResultEntries = useOptionalSlot('chat.toolResults');
 
   // 从 block 中提取数据（通过 updateBlock 设置到 block 的直接字段上）
   const toolName = block.toolName || t('blocks.mcpTool.unknownTool');
@@ -612,37 +484,13 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     });
   }, [block.id, block.status, toolInput, toolName, toolOutput]);
 
-  // 🆕 文档 29 P1-4：检测 attempt_completion 工具（识别规则与 CompletionCard 统一）
-  const isAttemptCompletion = isAttemptCompletionTool(toolName);
+  // 专用结果视图查 `chat.toolResults`（内核贡献优先，其次内置表）；找不到时用下面的通用视图
+  const toolResultProps: ChatToolResultProps = { block, isStreaming, store, toolName, toolInput, toolOutput };
+  const toolResult = resolveToolResult([toolResultEntries, officialToolResultEntries], toolResultProps);
+  const ToolResultView = toolResult?.component;
 
-  // 🆕 检测 TodoList 工具（永续执行 Agent）
-  const isTodoTool = TODO_TOOLS.includes(toolName);
-
-  // 如果是 TodoList 工具，使用专用组件渲染
-  if (isTodoTool) {
-    // 从 toolOutput 提取 result 数据
-    const rawOutput = toolOutput as { result?: Record<string, unknown> } | undefined;
-    const todoData = rawOutput?.result || toolOutput;
-    
-    // 构造 todo_list 块格式供 TodoListBlock 使用
-    const todoBlock: Block = {
-      ...block,
-      type: 'todo_list',
-      toolOutput: todoData,
-    };
-    
-    return <TodoListBlock block={todoBlock} isStreaming={isStreaming} />;
-  }
-
-  // 🆕 如果是 PaperSave 工具，使用专用进度组件渲染
-  if (isPaperSaveTool(toolName)) {
-    return <PaperSaveBlock block={block} isStreaming={isStreaming} />;
-  }
-
-  // 如果是 attempt_completion 工具且已完成，显示 CompletionCard
-  // 提取逻辑统一走 CompletionCard 的 extractCompletionData（兼容嵌套 result 与 toolInput 回退）
-  if (isAttemptCompletion && block.status === 'success' && toolOutput) {
-    return <CompletionCard data={extractCompletionData(toolInput, toolOutput)} />;
+  if (ToolResultView && toolResult.placement === 'block') {
+    return <ToolResultView {...toolResultProps} />;
   }
 
   // 计算执行耗时
@@ -680,7 +528,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       />
 
       {/* 输入参数 */}
-      {Object.keys(toolInput).length > 0 && (
+      {Object.keys(toolInput).length > 0 && !(ToolResultView && toolResult.placement === 'output' && toolName.replace(/^builtin[-:]/, '') === 'dstu_plugin_propose_install') && (
         <div className="px-3 py-2 border-b border-border/20">
           <ToolInputView
             input={toolInput}
@@ -700,88 +548,14 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       {/* 成功输出 - 当 _templateVisual 时由独立 template_preview 块显示 */}
       {block.status === 'success' && toolOutput !== undefined && !isTemplateVisualOutput(toolOutput) && (
         <div className="p-3">
-          {isShellExecuteTool(toolName) ? (
-            <ShellOutputView output={toolOutput} />
+          {ToolResultView && toolResult.placement === 'output' ? (
+            <ToolResultView {...toolResultProps} />
           ) : (
             <ToolOutputView output={toolOutput} />
           )}
-          
-          {/* DOCX/PPTX/XLSX 写入工具：文件引用卡片 + 跳转按钮 */}
-          {DOC_WRITE_TOOLS.includes(toolName) && (() => {
-            const fileInfo = extractDocWriteFileInfo(toolOutput);
-            if (!fileInfo) return null;
-            const DocIcon = getDocToolFileIcon(toolName);
-            return (
-              <div className="mt-2 flex items-center gap-2">
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
-                      detail: {
-                        id: fileInfo.fileId,
-                        type: 'file',
-                        title: fileInfo.fileName,
-                      }
-                    }));
-                  }}
-                  className="bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-                >
-                  <DocIcon size={12} />
-                  <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
-                  <ArrowSquareOut size={10} className="text-muted-foreground shrink-0" />
-                </DsButton>
-              </div>
-            );
-          })()}
 
-          {/* DOCX/PPTX/XLSX 读取工具：源文件引用按钮 */}
-          {DOC_READ_TOOLS.includes(toolName) && (() => {
-            const readInfo = extractDocReadInfo(toolOutput, toolInput);
-            if (!readInfo) return null;
-            const DocIcon = getDocToolFileIcon(toolName);
-            return (
-              <DsButton
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
-                    detail: {
-                      id: readInfo.resourceId,
-                      type: 'file',
-                      title: readInfo.title,
-                    }
-                  }));
-                }}
-                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-              >
-                <DocIcon size={12} />
-                <Eye size={10} />
-                {t('blocks.mcpTool.viewSourceFile')}
-              </DsButton>
-            );
-          })()}
-
-          {/* 笔记工具跳转按钮 */}
-          {NOTE_TOOLS.includes(toolName) && (() => {
-            const noteId = extractNoteId(toolOutput, toolInput);
-            if (!noteId) return null;
-            return (
-              <DsButton
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
-                    detail: { noteId, source: 'mcp_tool_block' }
-                  }));
-                }}
-                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
-              >
-                <ArrowSquareOut size={12} />
-                {t('timeline.noteTool.openNote')}
-              </DsButton>
-            );
-          })()}
+          {/* 输出下方的操作（例如 DOCX/PPTX/XLSX 文件引用、笔记跳转） */}
+          {ToolResultView && toolResult.placement === 'actions' && <ToolResultView {...toolResultProps} />}
         </div>
       )}
 

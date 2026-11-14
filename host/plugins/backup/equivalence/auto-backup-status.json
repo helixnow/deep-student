@@ -1,0 +1,43 @@
+{
+  "domain": "backup",
+  "commands": ["get_auto_backup_status", "save_setting"],
+  "scenarios": [
+    {
+      "id": "backup.auto_status.empty_defaults",
+      "seed": "empty",
+      "steps": [{"cmd": "get_auto_backup_status", "args": {}}],
+      "capture": {"events": true, "db": ["*"]},
+      "normalize": []
+    },
+    {
+      "id": "backup.auto_status.persisted_fields",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_setting", "args": {"key": "backup.auto_backup_status", "value": "{\"lastAttemptAt\":\"2026-01-02T03:04:05Z\",\"lastSuccessAt\":\"2026-01-01T03:04:05Z\",\"lastError\":\"fixture: disk full\",\"nextDueAt\":\"2026-01-03T03:04:05Z\",\"lastJobId\":\"g3-auto-backup-job\"}"}},
+        {"cmd": "get_auto_backup_status", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]},
+      "normalize": []
+    },
+    {
+      "id": "backup.auto_status.partial_nullable",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_setting", "args": {"key": "backup.auto_backup_status", "value": "{\"lastError\":null,\"lastJobId\":\"g3-auto-backup-job\"}"}},
+        {"cmd": "get_auto_backup_status", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]},
+      "normalize": []
+    },
+    {
+      "id": "backup.auto_status.invalid_json",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_setting", "args": {"key": "backup.auto_backup_status", "value": "not-json"}},
+        {"cmd": "get_auto_backup_status", "args": {}, "expect": "error"}
+      ],
+      "capture": {"events": true, "db": ["*"]},
+      "normalize": []
+    }
+  ]
+}

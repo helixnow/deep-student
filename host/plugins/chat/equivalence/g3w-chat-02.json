@@ -1,0 +1,345 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_add_tag",
+    "chat_v2_create_group",
+    "chat_v2_delete_group",
+    "chat_v2_export_session",
+    "chat_v2_export_session_meta",
+    "chat_v2_import_session"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.chat.chat_v2_add_tag.invalid_session_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "bad_g3w",
+            "tag": "数学"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_add_tag.empty_tag",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "tag": "   "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_add_tag.session_fk_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "tag": "数学"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_group.runtime_root_absolute_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题",
+              "defaultSkillIds": [],
+              "pinnedResourceIds": [],
+              "defaultRuntimeRootId": "/tmp"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_group.runtime_root_authorized_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题",
+              "defaultSkillIds": [],
+              "pinnedResourceIds": [],
+              "defaultRuntimeRootId": "authorized_missing_g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_group.runtime_root_workspace_unconfigured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题",
+              "defaultSkillIds": [],
+              "pinnedResourceIds": [],
+              "defaultRuntimeRootId": "workspace"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_group.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "group_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_group.still_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_export_session.empty_session_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_export_session",
+          "args": {
+            "sessionId": "  ",
+            "format": "markdown",
+            "includeThinking": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_export_session.invalid_format",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_export_session",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "format": "pdf",
+            "includeThinking": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_export_session.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_export_session",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "format": "json",
+            "includeThinking": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_export_session_meta.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_export_session_meta",
+          "args": {
+            "sessionId": "sess_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_import_session.invalid_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_import_session",
+          "args": {
+            "snapshotJson": "{not json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_import_session.unknown_format",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_import_session",
+          "args": {
+            "snapshotJson": "{\"format\":\"other-format\",\"version\":1,\"session\":{\"id\":\"sess_g3w_src\",\"mode\":\"chat\",\"title\":\"t\",\"titleLocked\":false,\"persistStatus\":\"active\",\"createdAt\":\"2026-01-01T00:00:00Z\",\"updatedAt\":\"2026-01-01T00:00:00Z\"},\"messages\":[],\"blocks\":[]}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_import_session.unsupported_version",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_import_session",
+          "args": {
+            "snapshotJson": "{\"format\":\"deepstudent-conversation-snapshot\",\"version\":2,\"session\":{\"id\":\"sess_g3w_src\",\"mode\":\"chat\",\"title\":\"t\",\"titleLocked\":false,\"persistStatus\":\"active\",\"createdAt\":\"2026-01-01T00:00:00Z\",\"updatedAt\":\"2026-01-01T00:00:00Z\"},\"messages\":[],\"blocks\":[]}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

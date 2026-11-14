@@ -7,6 +7,8 @@ import i18next from 'i18next';
 import type { MindMapDocument, MindMapNode, MindMapAssociation, BlankRange } from '../types';
 import { findNodeById } from '../utils/node/find';
 import { mergeRanges, validateRanges, remapRangesAfterTextEdit } from '../utils/node/blankRanges';
+import { normalizeTreeExcerptFields, treeHasExcerptFields } from '../utils/nodeAnchors';
+import { reconcileSummariesWithTree } from '../utils/summaryBraces';
 import type { MindMapStoreState } from './mindmapStoreTypes';
 
 /** 将历史保存的主题 ID 规范化为中性命名。 */
@@ -124,6 +126,7 @@ export function afterRemoveNodes(
   fallbackFocusId?: string,
 ): void {
   pruneAssociationsForRemovedNodes(state.document, removedIds);
+  reconcileSummariesWithTree(state.document);
   if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
     state.focusedNodeId = fallbackFocusId ?? state.document.root.id;
   }
@@ -145,6 +148,24 @@ export function afterRemoveNodes(
   ) {
     state.viewRootId = null;
   }
+  if (
+    state.lastExcerptContext &&
+    (removedIds.has(state.lastExcerptContext.parentId) ||
+      !findNodeById(state.document.root, state.lastExcerptContext.parentId))
+  ) {
+    state.lastExcerptContext = null;
+  }
+}
+
+/**
+ * 深拷贝节点子树，并规范化摘录字段（anchors / excerptQuote / imageAssetId，空数组或空白字段移除）。
+ */
+export function deepCloneNode(node: MindMapNode): MindMapNode {
+  const cloned = JSON.parse(JSON.stringify(node)) as MindMapNode;
+  if (treeHasExcerptFields(cloned)) {
+    normalizeTreeExcerptFields(cloned);
+  }
+  return cloned;
 }
 
 /**

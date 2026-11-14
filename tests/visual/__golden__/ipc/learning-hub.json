@@ -1,0 +1,33 @@
+{
+  "scene": "learning-hub",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:tauri://close-requested",
+        "vfs_get_embedding_readiness()",
+        "vfs_get_all_index_status(folderId,limit,offset,resourceType,stateFilter)",
+        "listen:vfs-index-progress",
+        "listen:mm_index_progress",
+        "listen:tauri://drag-enter",
+        "memory_get_config()",
+        "dstu_list(options{sortBy,sortOrder},path)",
+        "dstu_watch(path)",
+        "dstu_list(options{isFavorite},path)",
+        "listen:dstu:change",
+        "unlisten:vfs-index-progress",
+        "unlisten:mm_index_progress",
+        "listen:tauri://drag-over",
+        "listen:tauri://drag-drop",
+        "listen:tauri://drag-leave",
+        "unlisten:tauri://drag-enter",
+        "unlisten:tauri://drag-drop",
+        "unlisten:tauri://drag-over",
+        "unlisten:tauri://drag-leave",
+        "get_setting(key)",
+        "save_setting(key,value)"
+      ]
+    }
+  ]
+}

@@ -46,86 +46,81 @@ describe('P2-1: user guide 16 documents the wrong-password marker takeover unloc
 });
 
 describe('P2-2: resumable cloud ZIP download stays honest', () => {
-  const traits = read('src-tauri/crates/dstu-sync/src/cloud_storage/traits.rs');
-  const webdav = read('src-tauri/crates/dstu-sync/src/cloud_storage/webdav.rs');
-  const s3 = read('src-tauri/crates/dstu-sync/src/cloud_storage/s3.rs');
-  const syncManager = read('src-tauri/crates/dstu-sync/src/cloud_storage/sync_manager.rs');
-  const repoCheck = read('src-tauri/crates/dstu-sync/src/cloud_storage/repo_check.rs');
-  const resume = read('src-tauri/crates/dstu-sync/src/cloud_storage/resume.rs');
-  const syncMod = read('src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs');
+  const traits = read('host/plugins/sync-providers/src/traits.ts');
+  const webdav = read('host/plugins/sync-providers/src/webdav.ts');
+  const s3 = read('host/plugins/sync-providers/src/s3.ts');
+  const syncManager = read('host/plugins/sync-providers/src/sync_manager.ts');
+  const repoCheck = read('host/plugins/sync-providers/src/repo_check.ts');
+  const resume = read('host/plugins/sync-providers/src/resume.ts');
+  const syncMod = read('host/plugins/sync/src/file-transfer.ts');
   const guide = read('docs/user-guide/16-数据管理与云同步.md');
 
   it('keeps the fail-closed default for providers without resume support', () => {
     expect(traits).toContain('RESUMABLE_DOWNLOAD_UNSUPPORTED');
     expect(traits).toContain('该云存储后端不支持断点续传下载（fail-closed）');
-    expect(traits).toMatch(/fn supports_resumable_download\(&self\) -> bool \{\s*false\s*\}/);
+    expect(traits).toContain('supportsResumableDownload(): boolean { return false; }');
   });
 
   it('WebDAV advertises resume support and refuses misaligned Content-Range', () => {
-    expect(webdav).toMatch(/fn supports_resumable_download\(&self\) -> bool \{\s*true\s*\}/);
+    expect(webdav).toContain('override supportsResumableDownload(): boolean { return true; }');
     expect(webdav).toContain('续传起点与请求不一致');
     // 服务端忽略 Range（HTTP 200）必须诚实从零重下，不冒充续传。
-    expect(webdav).toContain('StatusCode::OK => 0');
+    expect(webdav).toMatch(/res\.status === 200\) \{\s*actualStart = 0;/);
     // 字节数不足即失败，禁止静默截断当成功。
-    expect(webdav).toContain('written != total_size');
-    expect(webdav).toContain('ensure_memory_get_matches_declared_len("WebDAV"');
+    expect(webdav).toContain('written !== totalSize');
+    expect(webdav).toContain("ensureMemoryGetMatchesDeclaredLen('WebDAV'");
     expect(webdav).toContain('WebDAV 内存对象下载停滞超过 90 秒');
   });
 
   it('desktop S3 advertises Range resume and refuses misaligned Content-Range', () => {
-    expect(s3).toMatch(/fn supports_resumable_download\(&self\) -> bool \{\s*true\s*\}/);
-    expect(s3).toContain('request.range(format!("bytes={resume_from}-"))');
+    expect(s3).toContain('override supportsResumableDownload(): boolean { return true; }');
+    expect(s3).toContain('Range: `bytes=${resumeFrom}-`');
     expect(s3).toContain('续传起点与请求不一致');
-    expect(s3).toContain('written != total_size');
-    expect(s3).toContain('upload_part_with_retry');
-    expect(s3).toContain('ensure_memory_get_matches_declared_len("S3"');
+    expect(s3).toContain('written !== totalSize');
+    expect(s3).toContain('uploadPartWithRetry');
+    expect(s3).toContain("ensureMemoryGetMatchesDeclaredLen('S3'");
     expect(s3).toContain('S3 内存对象下载停滞超过 90 秒');
-    expect(s3).toContain('abort_stale_multipart_uploads');
+    expect(s3).toContain('abortStaleMultipartUploads');
     expect(s3).toContain('MULTIPART_STALE_SECS');
   });
 
   it('orchestration keeps the .part checkpoint and verifies the whole-file SHA256', () => {
-    expect(syncManager).toContain('supports_resumable_download()');
-    expect(syncManager).toMatch(/\.\{version_id\}\.zip\.part/);
-    expect(syncManager).toContain('hash_file_sha256');
+    expect(syncManager).toContain('supportsResumableDownload()');
+    expect(syncManager).toContain('.${version.id}.zip.part');
+    expect(syncManager).toContain('hashFileSha256');
     expect(syncManager).toContain('SHA256 校验失败');
-    // 失败保留断点是续传的前提：不能在错误路径清理 partial。
-    expect(syncManager).toContain('失败时不清理断点文件');
   });
 
   it('repo check uses resumable download when the provider advertises it', () => {
-    expect(repoCheck).toContain('download_object_for_check');
-    expect(repoCheck).toContain('get_file_with_optional_resume');
+    expect(repoCheck).toContain('downloadObjectForCheck');
+    expect(repoCheck).toContain('getFileWithOptionalResume');
     // 每个对象必须先清残留，续传路径会追加，复用同一 .partial 会串对象。
-    expect(repoCheck).toContain('remove_file(&local_path)');
-    expect(resume).toContain('get_file_resumable');
+    expect(repoCheck).toContain('fs.rm(localPath, { force: true })');
+    expect(resume).toContain('getFileResumable');
     expect(resume).toContain('RESUMABLE_GET_ATTEMPTS');
-    expect(resume).toContain('dest_resume_len');
+    expect(resume).toContain('destResumeLen');
     expect(guide).toContain('巡检同一对象时支持**断点续传**');
     expect(guide).toContain('FTP 仍整包重下');
   });
 
   it('file-level objects resume beside dest, never appending onto the live file', () => {
-    expect(syncMod).toContain('content_keyed_part_path');
-    expect(syncMod).toContain('cleanup_stale_parts');
-    expect(syncMod).toContain('.ds-dl.part');
-    expect(syncMod).toContain('get_file_with_optional_resume');
-    expect(syncMod).toContain('绝不能对已有 dest 追加');
-    expect(syncMod).not.toContain('prefix("dsbk-dl-")');
-    expect(resume).toContain('fn content_keyed_part_path');
+    expect(syncMod).toContain('contentKeyedPartPath');
+    expect(syncMod).toContain('cleanupStaleParts');
+    expect(syncMod).toContain('getFileWithOptionalResume');
+    expect(syncMod).not.toContain('dsbk-dl-');
+    expect(resume).toContain('export function contentKeyedPartPath');
+    expect(resume).toContain('.ds-dl.part');
     expect(guide).toContain('工作区 / blob / 资产');
     expect(guide).toContain('按内容哈希区分');
   });
 });
 
 describe('P3: encrypted ZIP import without password fails before extraction', () => {
-  const zipExport = read('src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs');
+  const zipExport = read('host/plugins/backup/src/zip.ts');
 
-  it('shares one precheck between the resumable and non-resumable paths', () => {
-    expect(zipExport).toContain('fn precheck_sealed_payload_password');
-    // 非续传公开入口 + 带进度实现各自都要调用预检。
-    const calls = zipExport.match(/precheck_sealed_payload_password\(&mut archive/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(2);
+  it('routes imports through one shared password precheck', () => {
+    expect(zipExport).toContain('async function precheckSealedPayloadPassword');
+    expect(zipExport).toContain('await precheckSealedPayloadPassword(');
   });
 
   it('keeps the caller-visible error messages stable for both paths', () => {

@@ -1,0 +1,1091 @@
+{
+  "shortcuts": {
+    "s_note": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "onOpenResource",
+              "note_1",
+              "note"
+            ]
+          ],
+          "syncEffects": 1,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "线代笔记",
+              "value": "线代笔记",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    },
+    "s_untyped": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "无类型资源",
+              "value": "无类型资源",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    },
+    "s_folder": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "onOpenFolder",
+              "folder_1"
+            ]
+          ],
+          "syncEffects": 1,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "资料夹",
+              "value": "资料夹",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    },
+    "s_quick": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "onNavigateQuickAccess",
+              "favorites"
+            ]
+          ],
+          "syncEffects": 1,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "收藏",
+              "value": "收藏",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    },
+    "s_exam": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "onNavigateQuickAccess",
+              "exams"
+            ]
+          ],
+          "syncEffects": 1,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "题目集",
+              "value": "题目集",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    },
+    "s_textbook": {
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 120px; top: 140px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 120px; top: 140px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "onNavigateQuickAccess",
+              "textbooks"
+            ]
+          ],
+          "syncEffects": 1,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": {
+              "card": "教材",
+              "value": "教材",
+              "focused": true
+            },
+            "dialog": null,
+            "folderPicker": null
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "menu": null,
+          "view": {
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集"
+            ],
+            "desktopRoot": {
+              "folderId": null,
+              "folderName": null,
+              "folderPath": null
+            },
+            "renaming": null,
+            "dialog": null,
+            "folderPicker": null
+          }
+        }
+      }
+    }
+  },
+  "blank": {
+    "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 200px; top: 260px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z\" opacity=\"0.2\"></path><path d=\"M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">添加快捷方式</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M207.86,123.18l16.78-21a99.14,99.14,0,0,0-10.07-24.29l-26.7-3a81,81,0,0,0-6.81-6.81l-3-26.71a99.43,99.43,0,0,0-24.3-10l-21,16.77a81.59,81.59,0,0,0-9.64,0l-21-16.78A99.14,99.14,0,0,0,77.91,41.43l-3,26.7a81,81,0,0,0-6.81,6.81l-26.71,3a99.43,99.43,0,0,0-10,24.3l16.77,21a81.59,81.59,0,0,0,0,9.64l-16.78,21a99.14,99.14,0,0,0,10.07,24.29l26.7,3a81,81,0,0,0,6.81,6.81l3,26.71a99.43,99.43,0,0,0,24.3,10l21-16.77a81.59,81.59,0,0,0,9.64,0l21,16.78a99.14,99.14,0,0,0,24.29-10.07l3-26.7a81,81,0,0,0,6.81-6.81l26.71-3a99.43,99.43,0,0,0,10-24.3l-16.77-21A81.59,81.59,0,0,0,207.86,123.18ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8.06,8.06,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8.06,8.06,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">设置桌面根目录</span></button><div class=\"px-3 py-1.5 text-xs text-muted-foreground\"><div class=\"flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208h0a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg><span class=\"truncate max-w-[140px]\">根目录</span></div></div></div>",
+    "menu": {
+      "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+      "style": "position: fixed; left: 200px; top: 260px; z-index: 9050;",
+      "rows": [
+        {
+          "other": "wb-glass-replica",
+          "text": ""
+        },
+        {
+          "role": "menuitem",
+          "label": "添加快捷方式",
+          "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+        },
+        {
+          "separator": true,
+          "className": "wb-desk-menu-sep"
+        },
+        {
+          "role": "menuitem",
+          "label": "设置桌面根目录",
+          "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+        },
+        {
+          "other": "px-3 py-1.5 text-xs text-muted-foreground",
+          "text": "根目录"
+        }
+      ]
+    },
+    "clicks": {
+      "0:添加快捷方式": {
+        "effects": [],
+        "syncEffects": 0,
+        "menu": null,
+        "view": {
+          "shortcuts": [
+            "s_note:线代笔记",
+            "s_untyped:无类型资源",
+            "s_folder:资料夹",
+            "s_quick:收藏",
+            "s_exam:题目集",
+            "s_textbook:教材"
+          ],
+          "desktopRoot": {
+            "folderId": null,
+            "folderName": null,
+            "folderPath": null
+          },
+          "renaming": null,
+          "dialog": "添加快捷方式选择要添加到桌面的快捷方式笔记题目集已添加作文批改翻译思维导图全部笔记全部题目集全部作文全部翻译思维导图收藏已添加最近访问关闭",
+          "folderPicker": null
+        }
+      },
+      "1:设置桌面根目录": {
+        "effects": [],
+        "syncEffects": 0,
+        "menu": null,
+        "view": {
+          "shortcuts": [
+            "s_note:线代笔记",
+            "s_untyped:无类型资源",
+            "s_folder:资料夹",
+            "s_quick:收藏",
+            "s_exam:题目集",
+            "s_textbook:教材"
+          ],
+          "desktopRoot": {
+            "folderId": null,
+            "folderName": null,
+            "folderPath": null
+          },
+          "renaming": null,
+          "dialog": null,
+          "folderPicker": {
+            "title": "设置桌面根目录",
+            "inline": "false"
+          }
+        }
+      }
+    }
+  },
+  "blankCustomRoot": {
+    "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden\" style=\"position: fixed; left: 200px; top: 260px; z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z\" opacity=\"0.2\"></path><path d=\"M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">添加快捷方式</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M207.86,123.18l16.78-21a99.14,99.14,0,0,0-10.07-24.29l-26.7-3a81,81,0,0,0-6.81-6.81l-3-26.71a99.43,99.43,0,0,0-24.3-10l-21,16.77a81.59,81.59,0,0,0-9.64,0l-21-16.78A99.14,99.14,0,0,0,77.91,41.43l-3,26.7a81,81,0,0,0-6.81,6.81l-26.71,3a99.43,99.43,0,0,0-10,24.3l16.77,21a81.59,81.59,0,0,0,0,9.64l-16.78,21a99.14,99.14,0,0,0,10.07,24.29l26.7,3a81,81,0,0,0,6.81,6.81l3,26.71a99.43,99.43,0,0,0,24.3,10l21-16.77a81.59,81.59,0,0,0,9.64,0l21,16.78a99.14,99.14,0,0,0,24.29-10.07l3-26.7a81,81,0,0,0,6.81-6.81l26.71-3a99.43,99.43,0,0,0,10-24.3l-16.77-21A81.59,81.59,0,0,0,207.86,123.18ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8.06,8.06,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8.06,8.06,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">设置桌面根目录</span></button><div class=\"px-3 py-1.5 text-xs text-muted-foreground\"><div class=\"flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208h0a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg><span class=\"truncate max-w-[140px]\">我的桌面</span></div></div></div>",
+    "menu": {
+      "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+      "style": "position: fixed; left: 200px; top: 260px; z-index: 9050;",
+      "rows": [
+        {
+          "other": "wb-glass-replica",
+          "text": ""
+        },
+        {
+          "role": "menuitem",
+          "label": "添加快捷方式",
+          "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+        },
+        {
+          "separator": true,
+          "className": "wb-desk-menu-sep"
+        },
+        {
+          "role": "menuitem",
+          "label": "设置桌面根目录",
+          "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+        },
+        {
+          "other": "px-3 py-1.5 text-xs text-muted-foreground",
+          "text": "我的桌面"
+        }
+      ]
+    },
+    "clicks": {
+      "0:添加快捷方式": {
+        "effects": [],
+        "syncEffects": 0,
+        "menu": null,
+        "view": {
+          "shortcuts": [
+            "s_note:线代笔记",
+            "s_untyped:无类型资源",
+            "s_folder:资料夹",
+            "s_quick:收藏",
+            "s_exam:题目集",
+            "s_textbook:教材"
+          ],
+          "desktopRoot": {
+            "folderId": "folder_9",
+            "folderName": "我的桌面",
+            "folderPath": "/我的桌面"
+          },
+          "renaming": null,
+          "dialog": "添加快捷方式选择要添加到桌面的快捷方式笔记题目集已添加作文批改翻译思维导图全部笔记全部题目集全部作文全部翻译思维导图收藏已添加最近访问关闭",
+          "folderPicker": null
+        }
+      },
+      "1:设置桌面根目录": {
+        "effects": [],
+        "syncEffects": 0,
+        "menu": null,
+        "view": {
+          "shortcuts": [
+            "s_note:线代笔记",
+            "s_untyped:无类型资源",
+            "s_folder:资料夹",
+            "s_quick:收藏",
+            "s_exam:题目集",
+            "s_textbook:教材"
+          ],
+          "desktopRoot": {
+            "folderId": "folder_9",
+            "folderName": "我的桌面",
+            "folderPath": "/我的桌面"
+          },
+          "renaming": null,
+          "dialog": null,
+          "folderPicker": {
+            "title": "设置桌面根目录",
+            "inline": "false"
+          }
+        }
+      }
+    }
+  },
+  "touch": {
+    "shortcut": {
+      "moreLabel": "更多",
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden max-w-none rounded-t-2xl\" style=\"position: fixed; left: 8px; right: 8px; bottom: 0px; top: auto; width: auto; max-height: calc(100dvh - var(--mobile-header-total-height, 56px) - 8px); padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)); z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><div aria-hidden=\"true\" class=\"mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden max-w-none rounded-t-2xl",
+        "style": "position: fixed; left: 8px; right: 8px; bottom: 0px; top: auto; width: auto; max-height: calc(100dvh - var(--mobile-header-total-height, 56px) - 8px); padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)); z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "other": "mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "effects": []
+    },
+    "afterRename": {
+      "menu": null,
+      "view": {
+        "shortcuts": [
+          "s_note:线代笔记",
+          "s_untyped:无类型资源",
+          "s_folder:资料夹",
+          "s_quick:收藏",
+          "s_exam:题目集",
+          "s_textbook:教材"
+        ],
+        "desktopRoot": {
+          "folderId": null,
+          "folderName": null,
+          "folderPath": null
+        },
+        "renaming": {
+          "card": "线代笔记",
+          "value": "线代笔记",
+          "focused": true
+        },
+        "dialog": null,
+        "folderPicker": null
+      }
+    },
+    "blank": {
+      "tile": "<button type=\"button\" aria-label=\"添加快捷方式\" aria-haspopup=\"menu\" class=\"flex w-[88px] shrink-0 select-none flex-col items-center justify-center gap-2 rounded-xl p-4 border border-dashed border-border/60 text-muted-foreground transition-colors duration-200 hover:bg-[var(--interactive-hover)] active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z\"></path></svg><span class=\"text-xs text-center\">添加</span></button>",
+      "html": "<div role=\"menu\" data-wb-blur-surface=\"true\" class=\"scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden max-w-none rounded-t-2xl\" style=\"position: fixed; left: 8px; right: 8px; bottom: 0px; top: auto; width: auto; max-height: calc(100dvh - var(--mobile-header-total-height, 56px) - 8px); padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)); z-index: 9050;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><div aria-hidden=\"true\" class=\"mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z\" opacity=\"0.2\"></path><path d=\"M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">添加快捷方式</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" role=\"menuitem\" class=\"wb-desk-menu-item [@media(pointer:coarse)]:min-h-11\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M207.86,123.18l16.78-21a99.14,99.14,0,0,0-10.07-24.29l-26.7-3a81,81,0,0,0-6.81-6.81l-3-26.71a99.43,99.43,0,0,0-24.3-10l-21,16.77a81.59,81.59,0,0,0-9.64,0l-21-16.78A99.14,99.14,0,0,0,77.91,41.43l-3,26.7a81,81,0,0,0-6.81,6.81l-26.71,3a99.43,99.43,0,0,0-10,24.3l16.77,21a81.59,81.59,0,0,0,0,9.64l-16.78,21a99.14,99.14,0,0,0,10.07,24.29l26.7,3a81,81,0,0,0,6.81,6.81l3,26.71a99.43,99.43,0,0,0,24.3,10l21-16.77a81.59,81.59,0,0,0,9.64,0l21,16.78a99.14,99.14,0,0,0,24.29-10.07l3-26.7a81,81,0,0,0,6.81-6.81l26.71-3a99.43,99.43,0,0,0,10-24.3l-16.77-21A81.59,81.59,0,0,0,207.86,123.18ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8.06,8.06,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8.06,8.06,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">设置桌面根目录</span></button><div class=\"px-3 py-1.5 text-xs text-muted-foreground\"><div class=\"flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208h0a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg><span class=\"truncate max-w-[140px]\">我的桌面</span></div></div></div>",
+      "menu": {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden max-w-none rounded-t-2xl",
+        "style": "position: fixed; left: 8px; right: 8px; bottom: 0px; top: auto; width: auto; max-height: calc(100dvh - var(--mobile-header-total-height, 56px) - 8px); padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)); z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "other": "mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "添加快捷方式",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "设置桌面根目录",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "other": "px-3 py-1.5 text-xs text-muted-foreground",
+            "text": "我的桌面"
+          }
+        ]
+      }
+    },
+    "steps": [
+      [
+        "touch inside",
+        true
+      ],
+      [
+        "touch outside",
+        false
+      ],
+      [
+        "add shortcut",
+        false,
+        "添加快捷方式选择要添加到桌面的快捷方式笔记题目集已添加作文批改翻译思维导图全部笔记全部题目集全部作文全部翻译思维导图收藏已添加最近访问关闭"
+      ]
+    ]
+  },
+  "dismissal": [
+    [
+      "escape before listeners attach",
+      true
+    ],
+    [
+      "after flush",
+      true
+    ],
+    [
+      "other key",
+      true
+    ],
+    [
+      "pointer down inside",
+      true
+    ],
+    [
+      "scroll inside",
+      true
+    ],
+    [
+      "contextmenu on menu",
+      true,
+      false
+    ],
+    [
+      "right-click another card",
+      true,
+      {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 300px; top: 20px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11 wb-desk-menu-item--danger"
+          }
+        ]
+      }
+    ],
+    [
+      "right-click blank area while open",
+      true,
+      {
+        "className": "scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden",
+        "style": "position: fixed; left: 200px; top: 260px; z-index: 9050;",
+        "rows": [
+          {
+            "other": "wb-glass-replica",
+            "text": ""
+          },
+          {
+            "role": "menuitem",
+            "label": "添加快捷方式",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "设置桌面根目录",
+            "className": "wb-desk-menu-item [@media(pointer:coarse)]:min-h-11"
+          },
+          {
+            "other": "px-3 py-1.5 text-xs text-muted-foreground",
+            "text": "根目录"
+          }
+        ]
+      }
+    ],
+    [
+      "escape",
+      false
+    ],
+    [
+      "pointer down outside",
+      false
+    ],
+    [
+      "scroll outside",
+      false
+    ],
+    [
+      "touch outside",
+      false
+    ],
+    [
+      "android back",
+      false,
+      true
+    ]
+  ]
+}

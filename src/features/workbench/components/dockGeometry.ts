@@ -13,6 +13,9 @@
  *   因此坐标在放大动效进行中依然稳定；
  * - 引用稳定：仅当坐标发生 >0.5px 的实质变化时才更换快照并通知订阅者，
  *   可直接用于 useSyncExternalStore。
+ * - 快照是 rAF 防抖发布的：开窗与 Dock 挂载 / 新增运行项落在同一次提交时，
+ *   消费方的 layout effect 先于发布执行。为此 Dock 挂载期间登记同步量测函数，
+ *   按 typeId 取坐标缺项时现场补测一次（同一套量测，结果照常发布）。
  */
 
 export interface DockIconRect {
@@ -27,7 +30,10 @@ export type DockIconRectMap = Readonly<Record<string, DockIconRect>>;
 
 const EPSILON = 0.5;
 
+export type DockGeometryMeasurer = () => Record<string, DockIconRect>;
+
 let snapshot: DockIconRectMap = {};
+let measurer: DockGeometryMeasurer | null = null;
 const listeners = new Set<() => void>();
 
 function rectEquals(a: DockIconRect, b: DockIconRect): boolean {
@@ -54,14 +60,18 @@ function emit(): void {
   for (const fn of listeners) fn();
 }
 
-/** 单个应用图标的视口 rect；Dock 未挂载或该 typeId 不在 Dock 上时为 null */
+/**
+ * 单个应用图标的视口 rect；Dock 未挂载或该 typeId 不在 Dock 上时为 null。
+ * 快照缺项而 Dock 已挂载时，先现场补测并发布（见文件头）。
+ */
 export function getDockIconRect(typeId: string): DockIconRect | null {
+  if (!snapshot[typeId] && measurer) publishDockIconRects(measurer());
   return snapshot[typeId] ?? null;
 }
 
 /** 单个应用图标的视口中心点（genie 收敛点常用） */
 export function getDockIconCenter(typeId: string): { x: number; y: number } | null {
-  const rect = snapshot[typeId];
+  const rect = getDockIconRect(typeId);
   if (!rect) return null;
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
@@ -87,6 +97,14 @@ export function publishDockIconRects(next: Record<string, DockIconRect>): void {
   if (mapEquals(snapshot, next)) return;
   snapshot = Object.freeze({ ...next });
   emit();
+}
+
+/** 发布方（Dock）挂载期间登记同步量测函数；返回注销函数 */
+export function registerDockGeometryMeasurer(fn: DockGeometryMeasurer): () => void {
+  measurer = fn;
+  return () => {
+    if (measurer === fn) measurer = null;
+  };
 }
 
 /** Dock 卸载时清空（消费方拿到 null 即回退默认收敛点） */

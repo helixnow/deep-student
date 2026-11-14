@@ -742,6 +742,10 @@ export class ChatV2TauriAdapter {
     modelSelection.applyRuntimeThinkingCapability(this.asHost(), options);
   }
 
+  private applyRuntimeContextBudget(options: SendOptions): void {
+    modelSelection.applyRuntimeContextBudget(this.asHost(), options);
+  }
+
   private shouldResolveContextAsMultimodal(options: {
     modelId?: string;
     model2OverrideId?: string;

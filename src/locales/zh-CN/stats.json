@@ -42,7 +42,10 @@
       "hours": "{{hours}} 小时",
       "hoursMinutes": "{{hours}} 小时 {{minutes}} 分",
       "totalAria": "共学习 {{duration}}",
-      "legendHint": "按每日学习时长分档：不到 15 分钟 / 15–45 分钟 / 45–90 分钟 / 90 分钟以上（仅统计页面可见且在场的时间，播放音视频时计入）"
+      "legendHint": "按每日学习时长分档：不到 15 分钟 / 15–45 分钟 / 45–90 分钟 / 90 分钟以上（仅统计页面可见且在场的时间，播放音视频时计入）",
+      "currentStreak": "连续 {{count}} 天",
+      "longestStreak": "最长连续 {{count}} 天",
+      "last7Active": "近 7 日活跃 {{count}}/7 天"
     }
   },
   "calendar": {

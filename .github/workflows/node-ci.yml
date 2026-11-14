@@ -1,0 +1,25 @@
+name: Node port checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    env:
+      DEEP_STUDENT_BUILD_NUMBER: '20000'
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: node scripts/generate-version.mjs
+      - run: npm run typecheck
+      - run: npm run typecheck:host
+      - run: npx tsc --noEmit -p examples/tsconfig.json

@@ -78,18 +78,13 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
         </DsButton>
       </div>
 
-      {/* 卡面渲染 */}
-      <div className="min-w-0 rounded-md border border-border/70 bg-card">
-        <div className="px-3 pt-2 text-xs uppercase tracking-wide text-muted-foreground/70">
-          {showFront ? t('anki:preview_front') : t('anki:preview_back')}
-        </div>
-        <div className="p-3">
-          <IframePreview
-            key={`${cardIdentity}-${showFront ? 'front' : 'back'}`}
-            htmlContent={showFront ? renderedContent.front : renderedContent.back}
-            cssContent={template?.css_style || ''}
-          />
-        </div>
+      {/* 卡面渲染：单层扁平容器，消除重复的内层标题行与厚重悬浮阴影 */}
+      <div className="min-w-0 rounded-lg border border-border/35 bg-muted/15 p-3">
+        <IframePreview
+          key={`${cardIdentity}-${showFront ? 'front' : 'back'}`}
+          htmlContent={showFront ? renderedContent.front : renderedContent.back}
+          cssContent={template?.css_style || ''}
+        />
       </div>
 
       {/* 卡片信息：标签 / 模板 / 额外字段 */}
@@ -100,7 +95,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
             {card.tags.map((tag, index) => (
               <span
                 key={`${tag}-${index}`}
-                className="rounded-sm bg-success/10 px-1.5 py-0.5 text-xs text-success"
+                className="rounded bg-foreground/[0.045] px-1.5 py-0.5 text-xs text-muted-foreground"
               >
                 {tag}
               </span>
@@ -117,7 +112,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
 
         {card.fields && Object.keys(card.fields).length > 0 ? (
           <details>
-            <summary className="cursor-pointer select-none py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3 font-mono text-xs tabular-nums text-muted-foreground">
               {t('anki:extra_fields')} ({Object.keys(card.fields).length})
             </summary>
             <div className="mt-1 space-y-1">

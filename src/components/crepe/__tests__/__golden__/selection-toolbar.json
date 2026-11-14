@@ -1,0 +1,1062 @@
+{
+  "lightweight": {
+    "no-host-actions": {
+      "zh-CN": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "host-actions": {
+      "zh-CN": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "host-actions",
+            "label": "更多",
+            "items": [
+              {
+                "key": "add-to-chat",
+                "label": "引用到聊天",
+                "icon": "37eb2192c14f8d1f",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "add-to-chat:target"
+                  }
+                ]
+              },
+              {
+                "key": "make-cards",
+                "label": "制卡",
+                "icon": "965d67215d224a51",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "make-cards:target"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "host-actions",
+            "label": "More",
+            "items": [
+              {
+                "key": "add-to-chat",
+                "label": "引用到聊天",
+                "icon": "37eb2192c14f8d1f",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "add-to-chat:target"
+                  }
+                ]
+              },
+              {
+                "key": "make-cards",
+                "label": "制卡",
+                "icon": "965d67215d224a51",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "make-cards:target"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "kernel": {
+    "no-host-actions": {
+      "zh-CN": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "host-actions": {
+      "zh-CN": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "host-actions",
+            "label": "更多",
+            "items": [
+              {
+                "key": "add-to-chat",
+                "label": "引用到聊天",
+                "icon": "37eb2192c14f8d1f",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "add-to-chat:target"
+                  }
+                ]
+              },
+              {
+                "key": "make-cards",
+                "label": "制卡",
+                "icon": "965d67215d224a51",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "make-cards:target"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "configKeys": [
+          "buildToolbar"
+        ],
+        "groups": [
+          {
+            "key": "formatting",
+            "label": "Formatting",
+            "items": [
+              {
+                "key": "bold",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "bold",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "italic",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "italic",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "strikethrough",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "strikethrough",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "function",
+            "label": "Function",
+            "items": [
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-code",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "latex",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "inline-math",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "link",
+                "label": null,
+                "icon": "builtin",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "link",
+                    "options": {
+                      "slash": false
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "host-actions",
+            "label": "More",
+            "items": [
+              {
+                "key": "add-to-chat",
+                "label": "引用到聊天",
+                "icon": "37eb2192c14f8d1f",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "add-to-chat:target"
+                  }
+                ]
+              },
+              {
+                "key": "make-cards",
+                "label": "制卡",
+                "icon": "965d67215d224a51",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "hostText": "make-cards:target"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

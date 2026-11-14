@@ -1,0 +1,1158 @@
+{
+  "domain": "agent-orchestration",
+  "commands": [
+    "super_session_get_state",
+    "super_session_set_enabled",
+    "super_session_ensure",
+    "super_session_get_settings",
+    "super_session_set_settings",
+    "chat_v2_super_deliver_inbox"
+  ],
+  "scenarios": [
+    {
+      "id": "super.get_state.fresh_disabled",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.get_state.enabled_self_heals_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.get_state.after_disable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.enable_creates_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.enable_twice_reuses_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.disable_without_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.disable_hides_then_reenable_unhides",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.args_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.args_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": "true"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_enabled.args_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.ensure.disabled_returns_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_ensure",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.ensure.enabled_emits_changed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_ensure",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.ensure.retires_duplicate_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "dup-super",
+            "groupId": null,
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "super_session_ensure",
+          "args": {}
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.ensure.after_disable_stays_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "super_session_ensure",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.get_settings.fresh_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.trim_roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": "  先复习错题再做新题  \n"
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.clip_4000_chars_multibyte",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": "题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题"
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.whitespace_only_saves_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": "seed"
+            }
+          }
+        },
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": " \t\n "
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.empty_object_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {}
+          }
+        },
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.unknown_field_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": "x",
+              "extra": 1
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_settings",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.settings_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.settings_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.instructions_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.set_settings.instructions_number",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": 42
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.invalid_session_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "chat_123",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.blank_user_message_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "   ",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.blank_assistant_message_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "",
+              "options": {},
+              "force": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.setting_disabled",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.enabled_unknown_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.enabled_non_super_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "plain",
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${1.id}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.hidden_super_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "super_session_set_settings",
+          "args": {
+            "settings": {
+              "instructions": "keep"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.retired_super_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "dup-super",
+            "groupId": null,
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "super_session_ensure",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.subagent_metadata_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "sub-super",
+            "groupId": null,
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "hidden": false
+              },
+              "is_subagent": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${1.id}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.empty_inbox",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.empty_inbox_force",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.options_omitted_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.kill_switch_tripped",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": "user_emergency_stop"
+          }
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_resume_automations",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.started_after_inbox_message",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "super_session_set_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "${0.sessionId}",
+            "request": {
+              "workspace_id": "${0.workspaceId}",
+              "content": "WP-049 inbox probe",
+              "target_session_id": "${0.sessionId}",
+              "message_type": "result"
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "${0.sessionId}",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": false
+            }
+          }
+        },
+        {
+          "cmd": "super_session_get_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.request_missing_assistant_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "user_wp049_1"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.force_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {
+            "request": {
+              "sessionId": "sess_wp049_missing",
+              "userMessageId": "user_wp049_1",
+              "assistantMessageId": "assistant_wp049_1",
+              "options": {},
+              "force": "yes"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "super.deliver.request_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_super_deliver_inbox",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

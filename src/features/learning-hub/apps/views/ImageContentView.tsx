@@ -264,12 +264,26 @@ const ImageContentView: React.FC<ContentViewProps> = ({
 
       // 2) 回退：附件内容 base64
       if (!blob) {
-        const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
+        let result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
           attachmentId: node.id,
         });
 
-        // ★ 结果已过期（节点已切换或组件已卸载）：直接丢弃，不创建 ObjectURL
+        // ★ 节点已切换或组件已卸载：直接丢弃，不创建 ObjectURL
         if (gen !== loadGenRef.current) return;
+
+        // 旧版小文件上传只写了空 inline 行、没有 blob；附件查询也空时，
+        // 用 blob-first 的 file content 命令再试一次（att_* 会抛错，忽略即可）
+        if (!result.found || !result.content) {
+          try {
+            const direct = await invoke<{ content: string | null; found: boolean }>('vfs_get_file_content', {
+              fileId: node.id,
+            });
+            if (gen !== loadGenRef.current) return;
+            if (direct.found && direct.content) result = direct;
+          } catch {
+            // att_* ids are not file ids; keep the attachment result.
+          }
+        }
 
         if (result.found && result.content) {
           blob = base64ToBlob(result.content, mimeType);
@@ -948,9 +962,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {/* 工具栏（触控目标 ≥44px：max-md + pointer:coarse 双保险，覆盖 iPad 横屏；桌面鼠标端不变） */}
+      {/* 单层高定控制栏：收敛原顶部工具条 + 底部尺寸信息条为单行 h-10 控制栏（触控目标 ≥44px） */}
       <div
-        className="flex items-center justify-between px-4 py-2 border-b bg-muted/30"
+        className="flex h-10 shrink-0 items-center justify-between px-3 border-b border-border/35 bg-background/95 backdrop-blur-sm"
         role="toolbar"
         aria-label={t('learningHub:image.toolbarLabel')}
       >
@@ -985,7 +999,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               aria-label={t('learningHub:image.zoomLevel')}
               aria-haspopup="menu"
               aria-expanded={zoomMenuOpen}
-              className="min-w-[4.5rem] gap-1 tabular-nums text-muted-foreground max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+              className="min-w-[4.5rem] gap-1 font-mono tabular-nums text-muted-foreground max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               {displayZoom}%
               <CaretDown size={10} aria-hidden="true" />
@@ -993,7 +1007,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             {zoomMenuOpen && (
               <div
                 role="menu"
-                className="ui-zoom-fade-in absolute left-1/2 top-full z-50 mt-1 min-w-[8rem] -translate-x-1/2 rounded-[var(--radius-shell-control)] border bg-popover py-1 text-popover-foreground shadow-md"
+                className="ui-zoom-fade-in absolute left-1/2 top-full z-50 mt-1 min-w-[8rem] -translate-x-1/2 rounded-[var(--radius-shell-control)] border border-border/35 bg-popover py-1 text-popover-foreground shadow-md"
               >
                 <button
                   type="button"
@@ -1003,19 +1017,19 @@ const ImageContentView: React.FC<ContentViewProps> = ({
                 >
                   {t('learningHub:image.fitToWindow')}
                 </button>
-                <div className="my-1 h-px bg-border" aria-hidden="true" />
+                <div className="my-1 h-px bg-border/35" aria-hidden="true" />
                 {ZOOM_PRESETS.map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center px-3 py-1.5 text-left text-sm tabular-nums transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11"
+                    className="flex w-full items-center px-3 py-1.5 text-left font-mono text-sm tabular-nums transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11"
                     onClick={() => selectZoomPreset(preset)}
                   >
                     {preset}%
                   </button>
                 ))}
-                <div className="my-1 h-px bg-border md:hidden" aria-hidden="true" />
+                <div className="my-1 h-px bg-border/35 md:hidden" aria-hidden="true" />
                 <button
                   type="button"
                   role="menuitem"
@@ -1052,7 +1066,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           >
             <MagnifyingGlassPlus size={16} />
           </DsButton>
-          <div className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+          <div className="mx-1 h-3.5 w-px bg-border/35" aria-hidden="true" />
           <DsButton
             variant="ghost"
             size="sm"
@@ -1096,9 +1110,30 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             <ArrowCounterClockwise size={16} />
           </DsButton>
         </div>
-        {/* 文件名：移动端隐藏；低频的 1:1/重置动作已收进百分比菜单，避免窄屏挤压。 */}
-        <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-          <span className="truncate max-w-[200px]">{node.name}</span>
+        {/* 右侧内联图片元信息（尺寸 / 格式 / 大小）与文件名，消除底部独立状态条 */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+          {naturalSize && (
+            <div
+              className="flex items-center gap-1.5 font-mono tabular-nums text-muted-foreground/80 shrink-0"
+              role="group"
+              aria-label={t('learningHub:image.imageInfo')}
+            >
+              <span>{naturalSize.w} × {naturalSize.h}</span>
+              {formatLabel && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{formatLabel}</span>
+                </>
+              )}
+              {fileSize > 0 && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{formatFileSize(fileSize)}</span>
+                </>
+              )}
+            </div>
+          )}
+          <span className="hidden md:inline truncate max-w-[180px] text-muted-foreground/70">{node.name}</span>
         </div>
       </div>
 
@@ -1110,7 +1145,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           （justify-center + 溢出会让左/上边缘不可达）。 */}
       <CustomScrollArea
         className="min-h-0 flex-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
-        viewportClassName="bg-muted/10"
+        viewportClassName="bg-background"
         orientation="both"
         viewportRef={setViewportEl}
         tabIndex={0}
@@ -1122,7 +1157,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           className={`flex min-h-full min-w-full p-4 select-none ${
             isPanning ? 'cursor-grabbing' : isPannable ? 'cursor-grab' : ''
           }`}
-          // 📱 放大溢出后，单指横向拖动是图片平移，不应被三屏布局手势劫持
+          // 放大溢出后，单指横向拖动是图片平移，不应被三屏布局手势劫持
           // （对齐 PDF/导图的豁免范式；未放大时不豁免，保留边缘滑屏返回）
           {...(isPannable ? { 'data-no-screen-swipe': true } : null)}
           onPointerDown={handlePanPointerDown}
@@ -1178,29 +1213,6 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           )}
         </div>
       </CustomScrollArea>
-
-      {/* 图片信息条：尺寸 / 格式 / 文件大小（常驻底部细条） */}
-      {naturalSize && (
-        <div
-          className="flex items-center justify-center gap-2 border-t bg-muted/30 px-4 py-1 text-xs tabular-nums text-muted-foreground"
-          role="group"
-          aria-label={t('learningHub:image.imageInfo')}
-        >
-          <span>{naturalSize.w} × {naturalSize.h}</span>
-          {formatLabel && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{formatLabel}</span>
-            </>
-          )}
-          {fileSize > 0 && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{formatFileSize(fileSize)}</span>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 };

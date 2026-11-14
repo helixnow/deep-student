@@ -320,4 +320,97 @@ describe('completeStream lifecycle cleanup', () => {
 
     expect(harness.getState().pendingBlockingInteraction).toBe(toolLimit);
   });
+
+  it('cleans up residual preparing and running blocks even when sessionStatus is already idle', () => {
+    const prepBlock: Block = {
+      id: 'blk_idle_prep',
+      type: 'mcp_tool',
+      status: 'pending',
+      messageId: 'msg_idle',
+      toolName: 'note_read',
+      toolCallId: 'call_idle_prep',
+      isPreparing: true,
+    };
+    const runningBlock: Block = {
+      id: 'blk_idle_run',
+      type: 'rag',
+      status: 'running',
+      messageId: 'msg_idle',
+    };
+    const msg = {
+      id: 'msg_idle',
+      role: 'assistant',
+      blockIds: ['blk_idle_prep', 'blk_idle_run'],
+      _meta: { preparingToolCall: { toolCallId: 'call_idle_prep', toolName: 'note_read' } },
+    } as unknown as Message;
+
+    const harness = createHarness({
+      sessionStatus: 'idle',
+      currentStreamingMessageId: null,
+      messageOrder: ['msg_idle'],
+      activeBlockIds: new Set(['blk_idle_prep', 'blk_idle_run']),
+      blocks: new Map([
+        ['blk_idle_prep', prepBlock],
+        ['blk_idle_run', runningBlock],
+      ]),
+      messageMap: new Map([['msg_idle', msg]]),
+    });
+
+    harness.actions.completeStream('error', 'upstream timeout');
+
+    expect(harness.getState().activeBlockIds.size).toBe(0);
+    expect(harness.getState().blocks.get('blk_idle_prep')).toMatchObject({
+      isPreparing: false,
+      status: 'error',
+      error: 'upstream timeout',
+    });
+    expect(harness.getState().blocks.get('blk_idle_run')).toMatchObject({
+      status: 'error',
+    });
+    expect(harness.getState().messageMap.get('msg_idle')?._meta?.preparingToolCall).toBeUndefined();
+  });
+
+  it('cleans up preparing and running blocks inside message.variants', () => {
+    const vPrep: Block = {
+      id: 'blk_v_prep',
+      type: 'mcp_tool',
+      status: 'pending',
+      messageId: 'msg_var',
+      toolName: 'web_search',
+      toolCallId: 'call_v',
+      isPreparing: true,
+    };
+    const vRun: Block = {
+      id: 'blk_v_run',
+      type: 'mcp_tool',
+      status: 'running',
+      messageId: 'msg_var',
+      toolName: 'note_read',
+    };
+    const msg = {
+      id: 'msg_var',
+      role: 'assistant',
+      blockIds: [],
+      variants: [
+        { id: 'var_1', modelId: 'm1', status: 'streaming', blockIds: ['blk_v_prep', 'blk_v_run'], createdAt: 1 },
+      ],
+    } as unknown as Message;
+
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_var',
+      activeBlockIds: new Set(['blk_v_prep', 'blk_v_run']),
+      blocks: new Map([
+        ['blk_v_prep', vPrep],
+        ['blk_v_run', vRun],
+      ]),
+      messageMap: new Map([['msg_var', msg]]),
+    });
+
+    harness.actions.completeStream('success');
+
+    expect(harness.getState().blocks.has('blk_v_prep')).toBe(false);
+    expect(harness.getState().blocks.get('blk_v_run')?.status).toBe('success');
+    expect(harness.getState().messageMap.get('msg_var')?.variants?.[0]?.blockIds).toEqual(['blk_v_run']);
+  });
 });

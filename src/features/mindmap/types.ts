@@ -4,7 +4,72 @@
  * 这是主要的类型定义文件，types/ 目录中的文件也会重新导出这些类型
  */
 
+import type { ExcerptContentKind, SemanticAnchor } from '@/ui-kernel/contracts/interop';
+
 export type MindMapViewType = 'outline' | 'mindmap';
+
+/** 摘录入图策略：直挂节点 | 先入待整理池 */
+export type ExcerptIntakeMode = 'direct' | 'staging';
+
+/** 复合卡片摘录槽类型：文本引文 / 框选截图 / 音视频时间片与关键帧 / 题库题目引用 */
+export type MindMapExcerptSlotKind = 'text' | 'image' | 'media' | 'qbank';
+
+/** 节点内复合摘录槽（支持多源图文、时间片、题库引用归并进同一知识点卡片） */
+export interface MindMapExcerptSlot {
+  /** 稳定槽位 ID（`slot_<fnv1a64>`） */
+  id: string;
+  kind: MindMapExcerptSlotKind;
+  /** 摘录正文 / OCR 文本 / 字幕片段 / 题干摘要 */
+  text?: string;
+  /** 框选截图或视频关键帧缩略图（data:image/... / vfs:// / https://） */
+  imageDataUrl?: string;
+  /** 截图资源稳定 ID（`img_<fnv1a64>`） */
+  imageAssetId?: string;
+  /** 音视频时间片起点（毫秒，media 槽可选） */
+  startMs?: number;
+  /** 音视频时间片终点（毫秒，media 槽可选） */
+  endMs?: number;
+  /** 题库题目 ID（qbank 槽可选） */
+  questionId?: string;
+  /** 出处语义锚点 */
+  anchor: SemanticAnchor;
+  /** 来源文档 / 音视频 / 题单标题快照 */
+  sourceTitle?: string;
+  /** 采集时间戳（毫秒） */
+  createdAt?: number;
+}
+
+/** 待整理池（Staging Tray）暂存摘录条目（随导图文档持久化） */
+export interface MindMapStagingExcerpt {
+  /** 暂存条目唯一 ID（`stg_<nanoid>`） */
+  id: string;
+  excerptKind: ExcerptContentKind;
+  /** 原始摘录正文 */
+  text: string;
+  /** 提炼后的预览标题 */
+  title: string;
+  /** 超出标题的完整引文（可选） */
+  excerptQuote?: string;
+  /** 区域截图或关键帧缩略图（可选） */
+  imageDataUrl?: string;
+  imageAssetId?: string;
+  /** 出处语义锚点 */
+  anchor: SemanticAnchor;
+  /** 规范化 `ds-anchor://v1/...` URI */
+  anchorUri: string;
+  /** 来源标题快照 */
+  sourceTitle?: string;
+  createdAt: number;
+}
+
+/** 同父兄弟区间归纳总结大括号 `}`（保持确定性单根树排版） */
+export interface MindMapSummaryBrace {
+  id: string;
+  parentId: NodeId;
+  startChildId: NodeId;
+  endChildId: NodeId;
+  label: string;
+}
 
 // ============================================================================
 // 挖空（背诵模式）相关类型
@@ -51,6 +116,8 @@ export type MindMapNodeStyle = NodeStyle;
  * 超过大小阈值的图片不内联，仍走备注占位文案；见 importers 中的 resource 提取逻辑。
  */
 export interface MindMapImage {
+  /** 稳定资源 ID（区域截图摘录写入 `img_<fnv1a64>`，用于去重；导入小图无此字段） */
+  id?: string;
   /**
    * data URL（data:image/png;base64,...）或 https 地址。
    * 外部入口（JSON 导入 / 剪贴板结构化载荷）经 utils/imageSanitize 运行时清洗：
@@ -106,6 +173,23 @@ export interface MindMapNode {
   href?: string;
   /** 内嵌图片列表（导入内联小图；画布渲染缩略图，大纲渲染角标） */
   images?: MindMapImage[];
+  /**
+   * 摘录出处锚点（PDF 页码 + 归一化矩形、音视频时间戳、笔记块等）。
+   * 可选；为空时不写入 JSON，旧文档无需迁移。
+   */
+  anchors?: SemanticAnchor[];
+  /** 摘录原文：标题被提炼/截断，或附带较长原文段落时保存完整引文 */
+  excerptQuote?: string;
+  /** 区域截图摘录的图片资源 ID（`img_<fnv1a64>`） */
+  imageAssetId?: string;
+  /** 复合摘录槽列表（支持多段引文、截图、时间片关键帧、题库引用归并） */
+  excerpts?: MindMapExcerptSlot[];
+  /** 复合卡片个人理解批注（可折叠合成笔记） */
+  cardNote?: string;
+  /** 复合卡片内容区是否默认展开 */
+  isExpandedCard?: boolean;
+  /** 是否投影至当前课题 FSRS 闪卡牌组（`card_mm_${mapId}_${nodeId}`） */
+  isFlashcard?: boolean;
   // 运行时注入属性
   branchColor?: string;
 }
@@ -138,6 +222,20 @@ export interface UpdateNodeParams {
   href?: string;
   /** 内嵌图片列表（显式 undefined 移除） */
   images?: MindMapImage[];
+  /** 摘录出处锚点（null / undefined / 空数组移除） */
+  anchors?: SemanticAnchor[] | null;
+  /** 摘录原文（null / undefined / 空串移除） */
+  excerptQuote?: string | null;
+  /** 区域截图资源 ID（null / undefined / 空串移除） */
+  imageAssetId?: string | null;
+  /** 复合摘录槽列表（null / undefined / 空数组移除） */
+  excerpts?: MindMapExcerptSlot[] | null;
+  /** 复合卡片个人批注（null / undefined / 空串移除） */
+  cardNote?: string | null;
+  /** 复合卡片展开状态（null / undefined 移除） */
+  isExpandedCard?: boolean | null;
+  /** 闪卡投影开关（null / undefined / false 移除） */
+  isFlashcard?: boolean | null;
 }
 
 /** 节点路径（从根到当前节点的 ID 数组） */
@@ -208,6 +306,10 @@ export interface MindMapDocument {
   meta: MindMapMeta;
   /** 跨分支关联线；布局引擎不消费此字段 */
   associations?: MindMapAssociation[];
+  /** 待整理池暂存摘录；随文档持久化，为空时省略 */
+  stagingExcerpts?: MindMapStagingExcerpt[];
+  /** 同父兄弟区间归纳总结大括号 `}`；为空时省略 */
+  summaries?: MindMapSummaryBrace[];
 }
 
 export interface DocumentSettings {
@@ -255,6 +357,8 @@ export interface LayoutConfig {
   nodeHeight: number;
   /** 根节点高度 */
   rootNodeHeight: number;
+  /** 空标题实际显示的本地化文案。 */
+  unnamedNodeLabel?: string;
   /** 实测节点高度（nodeId -> height） */
   measuredNodeHeights?: Record<string, number>;
   /** 布局方向 */

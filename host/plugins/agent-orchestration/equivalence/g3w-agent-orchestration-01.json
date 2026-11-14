@@ -1,0 +1,47 @@
+{
+  "domain": "agent-orchestration",
+  "commands": [
+    "super_session_ensure"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.agent-orchestration.super_session_ensure.err_register_agent_quota",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "requester", "metadata": null } },
+        { "cmd": "workspace_create", "args": { "sessionId": "${0.id}", "request": { "name": "quota-ws" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "${0.id}", "role": "worker" } } },
+        { "cmd": "super_session_set_enabled", "args": { "enabled": true } },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "forged-super",
+            "groupId": null,
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": "${1.workspace_id}",
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        { "cmd": "super_session_ensure", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

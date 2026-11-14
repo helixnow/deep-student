@@ -16,6 +16,8 @@ import { Separator } from '../../components/ui/shad/Separator';
 import { Copy, Trash, WarningCircle, CheckCircle, Warning, Stack, ArrowRight, Bug } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { MULTI_VARIANT_DEBUG_CHANNEL } from '@/shared/debug/channels/multiVariant';
 import {
   logChatV2,
   clearChatV2Logs,
@@ -363,5 +365,7 @@ const MultiVariantDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     </div>
   );
 };
+
+serveDebugChannel(MULTI_VARIANT_DEBUG_CHANNEL, { logMultiVariant });
 
 export default MultiVariantDebugPlugin;

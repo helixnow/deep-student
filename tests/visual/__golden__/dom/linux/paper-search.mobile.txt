@@ -1,0 +1,587 @@
+<body .light-theme>
+  <div data-demo-app="paper-search" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .bg-background.h-full.min-h-0.min-w-0.overflow-hidden.w-full data-wb-chat-session-window="demo-paper-search">
+        <div .h-full.min-h-0.overflow-hidden.relative.w-full.wb-chat-surface data-sandbox-owner-key="sandbox:chat:demo-paper-search" data-wb-chat-active="true" data-wb-chat-session="demo-paper-search">
+          <div .bg-[color:var(--shell-workspace-panel)].chat-v2.flex.flex-col.h-full.min-h-0.overflow-hidden.relative>
+            <div .chat-thread-enter.flex-1.min-h-0.overflow-hidden.relative>
+              <div .h-full.relative>
+                <div .sr-only aria-atomic="true" aria-live="polite" role="status">
+                  "收到新消息，共 2 条"
+                <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                  <div .h-full.max-h-[inherit].min-h-0.min-w-0.overscroll-contain.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                    <div aria-live="polite" aria-relevant="additions" role="log">
+                      <div data-agent-entity="chat:msg_<id>_ixw9tx_0" data-chat-message-id="msg_<id>_ixw9tx_0">
+                        <div .group.md:px-8.message.pt-6.px-4.py-4.relative.user>
+                          <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                            <div .message-content.message-selectable-area.min-w-0>
+                              <div .chat-message-user.flex.flex-col.items-end.space-y-2>
+                                <div .user-message-bubble>
+                                  <div .user-message-bubble__content>
+                                    <div .block-renderer>
+                                      <div .chat-message-body.chat-message-body--markdown>
+                                        <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                          <div .streaming-blocks>
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  "我在写数据并行训练的课程报告。先在 arXiv 上找几篇梯度压缩方向的论文，再用学术搜索找这个领域引用量高的经典论文，整理成表，标上年份和引用数。"
+                              <div .mt-3>
+                                <div .flex.gap-1.5.items-center.justify-end>
+                                  <div .flex.gap-0.5.items-center>
+                                    <div .flex.gap-0.5.items-center>
+                                      <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                        <span .t-icon-swap data-state="a">
+                                          <span .t-icon data-icon="a">
+                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                          <span .t-icon data-icon="b">
+                                            <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                      <div .app-menu-root.inline-flex.relative>
+                                        <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@2" title="更多" type="button">
+                                          <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                    <span .flex.items-center.leading-none.text-caption.text-muted-foreground/45 title="2026/3/2 09:30:<ss>">
+                                      "09:30"
+                              <div .chat-collapse aria-hidden="true" data-open="false" data-slot="message-touch-action-bar">
+                                <div .pointer-events-none>
+                                  <div .bg-[color:var(--surface-root,hsl(var(--background)))].border.border-[color:var(--composer-panel-border,hsl(var(--border)))].flex.gap-1.items-stretch.mt-2.p-1.rounded-2xl.shadow-[var(--shadow-shell-soft)] aria-label="消息快捷操作" role="toolbar">
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="复制" tabindex="-1" type="button">
+                                      <span .t-icon-swap data-state="a">
+                                        <span .t-icon data-icon="a">
+                                          <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                        <span .t-icon data-icon="b">
+                                          <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "复制"
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="编辑" tabindex="-1" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "编辑"
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:!text-destructive.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" aria-live="polite" tabindex="-1" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "删除"
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="取消" tabindex="-1" title="取消" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                      <div .chat-msg-enter data-agent-entity="chat:msg_<id>_bepirw_1" data-chat-message-id="msg_<id>_bepirw_1">
+                        <div .assistant.bg-background.group.md:px-8.message.px-4.py-4.relative>
+                          <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                            <div .message-content.message-selectable-area.min-w-0>
+                              <div .space-y-2>
+                                <div .activity-timeline>
+                                  <div .activity-timeline__node.flex.gap-1.5>
+                                    <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                      <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                        <svg .text-primary viewBox="0 0 256 256" />
+                                    <div .flex-1.min-w-0>
+                                      <div .flex.items-center.max-w-full.pb-0.5.thinking-summary-row.w-full>
+                                        <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-thinking-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].cursor-pointer.disabled:cursor-default.disabled:cursor-not-allowed.disabled:hover:!bg-transparent.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.focus-visible:text-foreground.font-medium.gap-2.group.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-muted-foreground.text-ui.thinking-summary-trigger.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-full.whitespace-nowrap aria-controls="@3" aria-expanded="false" type="button">
+                                          <span .activity-timeline-summary>
+                                            "已用时 <n> 秒"
+                                          <span .flex-shrink-0.group-hover:text-foreground/70.inline-flex.items-center.justify-center.text-muted-foreground/50 aria-hidden="true">
+                                            <svg viewBox="0 0 256 256" />
+                                  <div .activity-timeline__node.flex.gap-1.5>
+                                    <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                      <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                        <span .tool-activity-sweep>
+                                          <svg .text-muted-foreground viewBox="0 0 256 256" />
+                                    <div .flex-1.min-w-0>
+                                      <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-tool-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-controls="@4" aria-expanded="false" type="button">
+                                        <span .activity-timeline-tool-name.min-w-0.tool-activity-sweep>
+                                          <span .activity-timeline-tool-name.truncate>
+                                            "已调用 2 个工具"
+                                        <span .activity-timeline-status.text-muted-foreground/70>
+                                          "执行完成"
+                                        <svg .transition-transform aria-hidden="true" viewBox="0 0 256 256" />
+                                <div .block-renderer>
+                                  <div .chat-message-body.chat-message-body--markdown>
+                                    <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                      <div .streaming-blocks>
+                                        <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <p>
+                                              "两路检索共找到 9 篇，按用途分成两组（引用数来自 OpenAlex，为约数）。"
+                                        <div .stream-block data-active="false" data-block-type="heading" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <h3>
+                                              "梯度压缩方向（arXiv）"
+                                        <div .stream-block data-active="false" data-block-type="table" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <div .table-wrapper>
+                                              <div .min-h-0.min-w-0.relative.table-scroll-area data-native-scrollbars="false" data-orientation="horizontal" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="horizontal" data-slot="scroll-area">
+                                                <div .h-full.min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                                                  <table .markdown-table>
+                                                    <thead>
+                                                      <tr>
+                                                        <th>
+                                                          "#"
+                                                        <th>
+                                                          "论文"
+                                                        <th>
+                                                          "年份"
+                                                        <th>
+                                                          "发表"
+                                                        <th>
+                                                          "引用数"
+                                                    <tbody>
+                                                      <tr>
+                                                        <td>
+                                                          "1"
+                                                        <td>
+                                                          "Deep Gradient Compression: Reducing the Communication Bandwidth for Distributed Training（Lin 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "1"
+                                                              "]"
+                                                        <td>
+                                                          "2018"
+                                                        <td>
+                                                          "ICLR 2018"
+                                                        <td>
+                                                          "≈1,500"
+                                                      <tr>
+                                                        <td>
+                                                          "2"
+                                                        <td>
+                                                          "QSGD: Communication-Efficient SGD via Gradient Quantization and Encoding（Alistarh 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "2"
+                                                              "]"
+                                                        <td>
+                                                          "2017"
+                                                        <td>
+                                                          "NeurIPS 2017"
+                                                        <td>
+                                                          "≈1,600"
+                                                      <tr>
+                                                        <td>
+                                                          "3"
+                                                        <td>
+                                                          "PowerSGD: Practical Low-Rank Gradient Compression for Distributed Optimization（Vogels 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "3"
+                                                              "]"
+                                                        <td>
+                                                          "2019"
+                                                        <td>
+                                                          "NeurIPS 2019"
+                                                        <td>
+                                                          "≈500"
+                                                      <tr>
+                                                        <td>
+                                                          "4"
+                                                        <td>
+                                                          "Sparsified SGD with Memory（Stich 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "4"
+                                                              "]"
+                                                        <td>
+                                                          "2018"
+                                                        <td>
+                                                          "NeurIPS 2018"
+                                                        <td>
+                                                          "≈700"
+                                                      <tr>
+                                                        <td>
+                                                          "5"
+                                                        <td>
+                                                          "TernGrad: Ternary Gradients to Reduce Communication in Distributed Deep Learning（Wen 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "5"
+                                                              "]"
+                                                        <td>
+                                                          "2017"
+                                                        <td>
+                                                          "NeurIPS 2017"
+                                                        <td>
+                                                          "≈900"
+                                                <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                                  <div .os-scrollbar-track>
+                                                    <div .os-scrollbar-handle />
+                                                <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                                  <div .os-scrollbar-track>
+                                                    <div .os-scrollbar-handle />
+                                        <div .stream-block data-active="false" data-block-type="heading" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <h3>
+                                              "数据并行训练的高引经典（OpenAlex）"
+                                        <div .stream-block data-active="false" data-block-type="table" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <div .table-wrapper>
+                                              <div .min-h-0.min-w-0.relative.table-scroll-area data-native-scrollbars="false" data-orientation="horizontal" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="horizontal" data-slot="scroll-area">
+                                                <div .h-full.min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                                                  <table .markdown-table>
+                                                    <thead>
+                                                      <tr>
+                                                        <th>
+                                                          "#"
+                                                        <th>
+                                                          "论文"
+                                                        <th>
+                                                          "年份"
+                                                        <th>
+                                                          "发表"
+                                                        <th>
+                                                          "引用数"
+                                                    <tbody>
+                                                      <tr>
+                                                        <td>
+                                                          "6"
+                                                        <td>
+                                                          "Large Scale Distributed Deep Networks（Dean 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "6"
+                                                              "]"
+                                                        <td>
+                                                          "2012"
+                                                        <td>
+                                                          "NeurIPS 2012"
+                                                        <td>
+                                                          "≈4,000"
+                                                      <tr>
+                                                        <td>
+                                                          "7"
+                                                        <td>
+                                                          "Scaling Distributed Machine Learning with the Parameter Server（Li 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "7"
+                                                              "]"
+                                                        <td>
+                                                          "2014"
+                                                        <td>
+                                                          "OSDI 2014"
+                                                        <td>
+                                                          "≈2,000"
+                                                      <tr>
+                                                        <td>
+                                                          "8"
+                                                        <td>
+                                                          "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour（Goyal 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "8"
+                                                              "]"
+                                                        <td>
+                                                          "2017"
+                                                        <td>
+                                                          "arXiv 1706.02677"
+                                                        <td>
+                                                          "≈3,000"
+                                                      <tr>
+                                                        <td>
+                                                          "9"
+                                                        <td>
+                                                          "Horovod: fast and easy distributed deep learning in TensorFlow（Sergeev 等）"
+                                                          <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                            <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                              "["
+                                                              "网"
+                                                              "9"
+                                                              "]"
+                                                        <td>
+                                                          "2018"
+                                                        <td>
+                                                          "arXiv 1802.05799"
+                                                        <td>
+                                                          "≈1,200"
+                                                <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                                  <div .os-scrollbar-track>
+                                                    <div .os-scrollbar-handle />
+                                                <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                                  <div .os-scrollbar-track>
+                                                    <div .os-scrollbar-handle />
+                                        <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <p>
+                                              <strong>
+                                                "怎么读"
+                                              "：先看参数服务器"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "7"
+                                                  "]"
+                                              "和大批量 SGD"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "8"
+                                                  "]"
+                                              "，理解数据并行的基本流程与扩展瓶颈；再按「稀疏化」（DGC"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "1"
+                                                  "]"
+                                              "、误差反馈"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "4"
+                                                  "]"
+                                              "）与「量化 / 低秩」（QSGD"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "2"
+                                                  "]"
+                                              "、TernGrad"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "5"
+                                                  "]"
+                                              "、PowerSGD"
+                                              <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                  "["
+                                                  "网"
+                                                  "3"
+                                                  "]"
+                                              "）两条线读压缩方法。"
+                                        <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                          <div .markdown-content>
+                                            <p>
+                                              "接下来可以说「把第 1、3 篇下载保存」存进资源库，或者「按 GB/T 7714 排出参考文献」。"
+                              <div .mt-3>
+                                <div .text-left.unified-source-panel data-testid="unified-source-panel">
+                                  <div .usp-header>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-header-left.whitespace-nowrap aria-expanded="true" data-testid="btn-toggle-source-panel" type="button">
+                                      <svg .panel-header-icon viewBox="0 0 256 256" />
+                                      <span .usp-header-title>
+                                        "9 个结果"
+                                      <svg .expanded.usp-header-arrow viewBox="0 0 256 256" />
+                                  <div .duration-300.ease-in-out.grid.grid-rows-[1fr].motion-reduce:transition-none.opacity-100.transition-all.usp-collapse-wrapper.w-full aria-hidden="false">
+                                    <div .min-h-0.overflow-hidden>
+                                      <div .usp-container>
+                                        <div .relative.usp-body>
+                                          <div .usp-category-pills role="tablist">
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-category-pill.whitespace-nowrap aria-pressed="true" type="button">
+                                              <span .usp-pill-icon>
+                                                <svg viewBox="0 0 256 256" />
+                                              <span .usp-pill-label>
+                                                "学术论文"
+                                              <span .usp-pill-count>
+                                                "9"
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].ml-auto.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-expand-btn.whitespace-nowrap title="展开全部" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                              <span>
+                                                "展开全部"
+                                          <div .relative.usp-sources-wrapper>
+                                            <button .!h-11.!w-11.-translate-y-1/2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].absolute.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/90.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.right-0.rounded-[var(--button-radius)].rounded-full.select-none.shadow-md.shrink-0.text-muted-foreground.text-ui.top-1/2.transition-[background-color,border-color,color].ui-press-coarse.usp-scroll-btn.usp-scroll-right.w-[var(--touch-target-size)].whitespace-nowrap.z-10 aria-label="向右滚动" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                            <div .h-full.min-h-0.min-w-0.py-1.relative.w-full data-native-scrollbars="false" data-orientation="horizontal" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="horizontal" data-slot="scroll-area">
+                                              <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXScroll overflowYHidden" tabindex="-1">
+                                                <div .usp-carousel role="list">
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "1"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Deep Gradient Compression: Reducing the Communication Bandwidth for Distributed Training"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "分布式 SGD 中 99.9% 的梯度交换是冗余的：只传大梯度，配合动量修正、局部梯度裁剪与预热训练，通信量压缩数百倍而精度不降。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "2"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "QSGD: Communication-Efficient SGD via Gradient Quantization and Encoding"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "对梯度做随机量化与高效编码，在通信比特数与方差之间给出可调的折中，并保证收敛。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "3"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "PowerSGD: Practical Low-Rank Gradient Compression for Distributed Optimization"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "用幂迭代求梯度的低秩近似，压缩结果可直接用 all-reduce 聚合，在真实集群上带来端到端加速。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "4"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Sparsified SGD with Memory"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "只传 top-k 梯度分量并把其余误差累积到下一轮（误差反馈），证明其收敛速度与普通 SGD 同阶。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "5"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "TernGrad: Ternary Gradients to Reduce Communication in Distributed Deep Learning"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "把梯度量化为 {-1, 0, 1} 三值，配合逐层缩放与梯度裁剪，在多种网络上基本保持精度。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "6"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Large Scale Distributed Deep Networks"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "DistBelief 框架：用 Downpour SGD（异步数据并行 + 参数服务器）与模型并行，在上万 CPU 核上训练大规模网络。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "7"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Scaling Distributed Machine Learning with the Parameter Server"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "第三代参数服务器：异步通信、灵活一致性模型与容错设计，支撑数十亿参数的分布式训练。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "8"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "线性缩放学习率加预热，把 minibatch 扩到 8192 张图仍保持精度，256 块 GPU 一小时训完 ResNet-50。"
+                                                  <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@5" aria-expanded="false" role="button" tabindex="0">
+                                                    <div .flex.gap-1.5.items-center.mb-1>
+                                                      <span .usp-item-badge.usp-item-badge-sm>
+                                                        "9"
+                                                      <span .shrink-0.usp-card-icon>
+                                                        <svg viewBox="0 0 256 256" />
+                                                      <span .font-medium.text-xs.truncate.usp-card-title>
+                                                        "Horovod: fast and easy distributed deep learning in TensorFlow"
+                                                    <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                      "基于 ring all-reduce 的数据并行库，几行代码即可把单机训练脚本扩展到多机多卡。"
+                                              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-visible.os-theme-deep-student>
+                                                <div .os-scrollbar-track>
+                                                  <div .os-scrollbar-handle />
+                                              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                                <div .os-scrollbar-track>
+                                                  <div .os-scrollbar-handle />
+                              <div .mt-3>
+                                <div .flex.gap-1.5.items-center.justify-between>
+                                  <div .flex.flex-shrink-0.gap-1.items-center>
+                                    <span .flex.items-center.leading-none.text-caption.text-muted-foreground/45.whitespace-nowrap title="2026/3/2 09:30:<ss>">
+                                      "09:30"
+                                  <div .flex.gap-0.5.items-center>
+                                    <div .flex.gap-0.5.items-center>
+                                      <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                        <span .t-icon-swap data-state="a">
+                                          <span .t-icon data-icon="a">
+                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                          <span .t-icon data-icon="b">
+                                            <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                      <div .app-menu-root.inline-flex.relative>
+                                        <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@6" title="更多" type="button">
+                                          <svg .h-4.w-4 viewBox="0 0 256 256" />
+                              <div .chat-collapse aria-hidden="true" data-open="false" data-slot="message-touch-action-bar">
+                                <div .pointer-events-none>
+                                  <div .bg-[color:var(--surface-root,hsl(var(--background)))].border.border-[color:var(--composer-panel-border,hsl(var(--border)))].flex.gap-1.items-stretch.mt-2.p-1.rounded-2xl.shadow-[var(--shadow-shell-soft)] aria-label="消息快捷操作" role="toolbar">
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="复制" tabindex="-1" type="button">
+                                      <span .t-icon-swap data-state="a">
+                                        <span .t-icon data-icon="a">
+                                          <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                        <span .t-icon data-icon="b">
+                                          <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "复制"
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="重试" tabindex="-1" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "重试"
+                                    <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:!text-destructive.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" aria-live="polite" tabindex="-1" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                      <span>
+                                        "删除"
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="取消" tabindex="-1" title="取消" type="button">
+                                      <svg .h-4.w-4 viewBox="0 0 256 256" />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+                <div .absolute.bottom-2.inset-x-0.md:bottom-3.md:px-8.pointer-events-none.px-4>
+                  <div .max-w-thread.mx-auto.overflow-visible.pointer-events-none.w-full data-slot="thread-content-shell">
+                    <div .ml-auto.t-panel-slide.w-fit aria-hidden="true" data-open="false">
+                      <button .active:bg-[color:var(--button-utility-active)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[color:var(--button-utility-surface)].border.border-[color:var(--button-utility-border)].cursor-pointer.duration-150.flex.focus-visible:ring-2.focus-visible:ring-primary/30.focus:outline-none.h-10.hover:bg-[color:var(--button-utility-hover)].hover:border-[color:var(--button-utility-border)].hover:text-[color:var(--button-utility-foreground)].items-center.justify-center.ml-auto.pointer-events-auto.relative.rounded-full.text-[color:var(--button-utility-foreground)].transition-colors.w-10 aria-label="回到底部" data-slot="message-list-scroll-to-bottom" tabindex="-1" title="回到底部" type="button">
+                        <svg viewBox="0 0 256 256" />
+            <div .chat-composer-motion-frame.chat-composer-motion-frame--docked>
+              <div .w-full>
+                <div .md:px-8.px-4.w-full>
+                  <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell" />
+                <div .duration-500.ease-out.flex-shrink-0.isolate.md:pb-4.md:px-8.px-4.relative.transition-[padding,background-color].unified-input-docked.w-full.z-[100] data-testid="input-bar-v2-root">
+                  <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                    <div .bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))].border.border-[color:var(--input-shell-border)].duration-150.ease-out.focus-within:shadow-[var(--shadow-shell-panel)].p-3.pl-4.relative.rounded-[var(--radius-shell-toolbar)].shadow-[var(--shadow-shell-soft)].transition-[background-color,border-color,box-shadow].z-[200] data-composer-panel-anchor="true">
+                      <div .mb-2.relative>
+                        <div .overflow-y-hidden.relative.w-full>
+                          <textarea .[@media(pointer:coarse)]:text-[16px].bg-transparent.border-0.focus:ring-0.leading-relaxed.outline-none.overflow-hidden.placeholder:text-muted-foreground/70.py-1.resize-none.text-foreground.text-md.w-full aria-label="请输入问题..." data-testid="input-bar-v2-textarea" placeholder="请输入问题..." />
+                        <div .-z-50.[@media(pointer:coarse)]:text-[16px].absolute.break-words.invisible.leading-relaxed.left-0.overflow-hidden.text-md.top-0.whitespace-pre-wrap aria-hidden="true">
+                          "​"
+                      <div .flex.gap-2.items-center.justify-between>
+                        <div .flex.flex-1.gap-1.5.items-center.min-w-0.overflow-x-auto.pr-2.scrollbar-none>
+                          <div .flex.gap-1.items-center>
+                            <div .app-menu-root.inline-flex.relative>
+                              <span .app-menu-trigger.inline-flex.rounded-[var(--radius-shell-control)] aria-expanded="false" aria-haspopup="menu" id="@7">
+                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[color:var(--button-utility-active)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:opacity-60.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-9.h-[var(--touch-target-size)].hover:bg-[color:var(--button-utility-hover)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-[color:var(--button-utility-foreground)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-9.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="添加与会话选项" data-testid="btn-toggle-attachments" type="button">
+                                  <svg .duration-[var(--dropdown-close-dur,150ms)].transition-transform viewBox="0 0 256 256" />
+                        <div .flex.flex-shrink-0.gap-2.items-center>
+                          <span .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].font-semibold.h-8.inline-flex.items-center.leading-none.max-w-[8rem].min-w-0.px-1.relative.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-primary)].text-ui data-testid="thinking-runtime-control">
+                            <div .app-menu-root.inline-flex.relative>
+                              <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].app-menu-trigger.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].gap-1.h-7.inline-flex.items-center.min-w-0.outline-none.px-1.rounded-md.text-inherit.transition-colors aria-expanded="false" aria-haspopup="menu" aria-label="选择推理深度" data-testid="thinking-runtime-menu-trigger" id="@8" title="模型: DeepSeek / deepseek-v4 · 推理: 高" type="button">
+                                <div .opacity-90.shrink-0.text-[color:var(--text-primary)]>
+                                  <svg viewBox="0 0 24 24" />
+                                <span .inline-block.opacity-70.relative.text-[color:var(--text-muted)].text-left.whitespace-nowrap data-testid="thinking-runtime-state-label">
+                                  <span .inline-block.t-resize.whitespace-nowrap>
+                                    <span .t-text-swap>
+                                      "高"
+                                  <span .absolute.invisible.left-0.pointer-events-none.top-0.whitespace-nowrap aria-hidden="true">
+                                    "高"
+                                <svg .opacity-55.shrink-0 viewBox="0 0 256 256" />
+                          <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].font-medium.gap-2.h-8.hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].inline-flex.items-center.motion-reduce:transition-none.px-2.5.rounded-full.text-[color:var(--button-utility-foreground)].text-sm.transition-colors aria-label="语音输入" data-phase="idle" title="开始语音输入 · ⌘⇧space" type="button">
+                            <svg viewBox="0 0 256 256" />
+                          <span .inline-flex.relative>
+                            <button .!bg-muted.!border-transparent.!rounded-full.!text-muted-foreground.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-[var(--touch-target-size)].[@media(pointer:coarse)]:!w-[var(--touch-target-size)].active:!bg-muted/70.border.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-11.h-[var(--button-icon-size)].hover:!bg-muted/80.inline-flex.items-center.justify-center.leading-none.md:h-[var(--button-icon-size)].md:w-[var(--button-icon-size)].motion-reduce:transition-none.outline-none.ring-offset-background.rounded-[var(--button-radius)].select-none.shrink-0.text-ui.tracking-[0.01em].transition-[background-color,border-color,color,box-shadow].w-11.w-[var(--button-icon-size)].whitespace-nowrap aria-label="发送消息" data-testid="btn-send" disabled type="button">
+                              <svg viewBox="0 0 256 256" />
+                  <div>
+                    <input .hidden type="file" />
+                    <input .hidden type="file" />
+  <div id="@9" />

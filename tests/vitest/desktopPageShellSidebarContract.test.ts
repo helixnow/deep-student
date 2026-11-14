@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { readOfficialShellEntries, shellViewsWhere } from '@/app/__tests__/officialShellEntries';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('desktop page shell sidebar contract', () => {
   const appSource = readAppShellSource();
-  const learningHubPageSource = readFileSync(resolve(process.cwd(), 'src/features/learning-hub/LearningHubPage.tsx'), 'utf-8');
+  const learningHubPageSource = ['LearningHubPage.tsx', 'useLearningHubPageController.tsx']
+    .map(file => readFileSync(resolve(process.cwd(), 'src/features/learning-hub', file), 'utf-8')).join('\n');
   const templatePageSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/TemplateManagementApp.tsx'), 'utf-8');
 
-  it('uses the shared desktop page shell sidebar target for learning hub', () => {
+  it('uses the shared desktop page shell sidebar target for learning hub', async () => {
     expect(appSource).toContain('const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);');
-    expect(appSource).toContain("const shouldShowDesktopPageBackButton = currentView === 'learning-hub';");
+    expect(appSource).toContain('const shouldShowDesktopPageBackButton = activeShell?.pageBackButton ?? false;');
+    const { views } = await readOfficialShellEntries();
+    expect(shellViewsWhere(views, (shell) => shell.pageBackButton === true)).toEqual(['learning-hub']);
+    expect(views.get('learning-hub')?.shell?.sidebarKind).toBe('desktop-page');
     expect(appSource).toContain('const desktopPageShellSidebarElement = useMemo(() => (');
     expect(appSource).toContain("{t('common:actions.backToHome')}");
     expect(appSource).toContain('ref={handleDesktopPageSidebarTarget}');

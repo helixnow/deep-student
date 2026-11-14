@@ -1,0 +1,62 @@
+use std::fs::File;
+use std::io::{copy, Write};
+use zip::write::FileOptions;
+use zip::{CompressionMethod, ZipWriter};
+
+fn pattern(len: usize, seed: u32) -> Vec<u8> {
+    let mut x = seed.wrapping_mul(2654435761).wrapping_add(1);
+    (0..len).map(|i| { x ^= x << 13; x ^= x >> 17; x ^= x << 5; if i % 7 == 0 { (x & 0xff) as u8 } else { b'a' + (i % 26) as u8 } }).collect()
+}
+
+fn small(path: &str, method: CompressionMethod) {
+    let mut w = ZipWriter::new(File::create(path).unwrap());
+    let o = FileOptions::default().compression_method(method);
+    w.add_directory("databases", o).unwrap();
+    w.start_file("databases/chat_v2.db", o).unwrap();
+    w.write_all(&pattern(5000, 1)).unwrap();
+    w.add_directory("vfs_blobs", o).unwrap();
+    w.add_directory("vfs_blobs/ab", o).unwrap();
+    w.start_file("vfs_blobs/ab/abcdef.bin", o).unwrap();
+    w.write_all(&pattern(70000, 2)).unwrap();
+    w.start_file("manifest.json", o).unwrap();
+    w.write_all(b"{\n  \"backup_id\": \"fixture\"\n}").unwrap();
+    w.start_file("\u{7b14}\u{8bb0}/\u{6587}\u{6863}.md", o).unwrap();
+    w.write_all("# \u{6807}\u{9898}\n".as_bytes()).unwrap();
+    w.start_file("empty.txt", o).unwrap();
+    w.start_file("checksums.sha256", o).unwrap();
+    w.write_all(b"0000000000000000000000000000000000000000000000000000000000000000  manifest.json").unwrap();
+    w.finish().unwrap();
+}
+
+fn many(path: &str, n: usize) {
+    let mut w = ZipWriter::new(File::create(path).unwrap());
+    let o = FileOptions::default().compression_method(CompressionMethod::Stored);
+    for i in 0..n {
+        w.start_file(format!("files/{:06}.txt", i), o).unwrap();
+        w.write_all(format!("entry {}\n", i).as_bytes()).unwrap();
+    }
+    w.finish().unwrap();
+}
+
+fn big(path: &str, sources: &[String]) {
+    let mut w = ZipWriter::new(File::create(path).unwrap());
+    let o = FileOptions::default().compression_method(CompressionMethod::Stored);
+    w.add_directory("assets", o).unwrap();
+    for (i, src) in sources.iter().enumerate() {
+        w.start_file(format!("assets/big{}.bin", i), o).unwrap();
+        copy(&mut File::open(src).unwrap(), &mut w).unwrap();
+    }
+    w.start_file("manifest.json", o).unwrap();
+    w.write_all(b"{}").unwrap();
+    w.finish().unwrap();
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    match args[1].as_str() {
+        "small" => { small(&format!("{}/rust-stored.zip", args[2]), CompressionMethod::Stored); small(&format!("{}/rust-deflated.zip", args[2]), CompressionMethod::Deflated); }
+        "many" => many(&args[2], args[3].parse().unwrap()),
+        "big" => big(&args[2], &args[3..]),
+        _ => panic!("mode"),
+    }
+}

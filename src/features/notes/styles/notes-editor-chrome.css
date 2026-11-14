@@ -145,26 +145,27 @@
   .notes-document-header { padding-top: 12px; }
 }
 
-/* 宿主状态横幅（刷新失败 / 草稿恢复 / AI 恢复）：与正文同一版心，一种外观 */
+/* 宿主状态横幅（刷新失败 / 草稿恢复 / AI 恢复）：轻量极细底线与淡墨底，弱化警报噪音 */
 .notes-banner {
   flex-shrink: 0;
-  border-bottom: 1px solid hsl(var(--border) / 0.7);
-  background: hsl(var(--muted) / 0.45);
+  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border) / 0.5));
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 0.35));
   font-size: 12px;
   line-height: 1.5;
-  color: hsl(var(--foreground) / 0.85);
+  color: hsl(var(--muted-foreground));
 }
 
 .notes-banner[data-tone='warning'] {
-  background: hsl(var(--warning) / 0.08);
+  background: hsl(var(--warning) / 0.06);
+  color: hsl(var(--foreground) / 0.85);
 }
 
 .notes-banner-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  padding-block: 6px;
+  gap: 4px 6px;
+  padding-block: 5px;
 }
 
 /* AI 审阅面板的范围 / 落点下拉：与周边 ghost 按钮同尺度，不用浏览器默认外观 */

@@ -454,6 +454,12 @@ export interface AppDefinition {
   defaultFrame: Size;
   minSize: Size;
   render: React.LazyExoticComponent<React.FC<AppWindowProps>>;
+  /**
+   * 应用的数据由哪个 Host 插件提供（如 `'dstu.anki'`）。经 `contributeWorkbenchApp` 登记时由 `dstu.ui.workbench`
+   * 按 Host 状态处理：缺失时不出现在工作台；降级时窗口内显示 Host 不可用面板（已打开的窗口即时切换）；
+   * 恢复后照常。Host 清单未到或没有 UI 内核时按在线处理。
+   */
+  hostPlugin?: string;
   /** 一次性指令送达（scrollToMessage / gotoPage 等）；可返回结构化回执 */
   onActivation?: (
     ctx: ActivationContext,

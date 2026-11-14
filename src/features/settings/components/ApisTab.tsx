@@ -11,7 +11,10 @@ import { SettingSection } from './SettingsCommon';
 import { VendorSettingsProvider, type VendorSettingsContextValue } from './VendorSettingsContext';
 import { VendorSidebar } from './VendorSidebar';
 import { VendorDetailPanel } from './VendorDetailPanel';
+import type { DeepSeekCapabilitySettings } from './DeepSeekCapabilities';
+import { QuickByokProvisionerCard } from '../byok';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
+import { isVendorConfiguredForSidebar } from '@/utils/vendorAuth';
 import type { VendorConfig, ModelProfile, ApiConfig } from '@/types';
 
 // 内联编辑状态类型（保持向后兼容）
@@ -69,12 +72,16 @@ interface ApisTabProps {
   onMobileVendorDetailOpenChange?: (open: boolean) => void;
   /** Settings 外层滚动视口，供模型长列表虚拟化复用。 */
   scrollElement?: HTMLElement | null;
+  deepseekCapabilities?: DeepSeekCapabilitySettings;
 }
 
 export const ApisTab: React.FC<ApisTabProps> = (props) => {
   const { t } = useTranslation(['settings', 'common']);
   const isSmallScreen = props.isSmallScreen ?? false;
   const mobileVendorDetailOpen = props.mobileVendorDetailOpen ?? false;
+  const hasAnyConfiguredModel = props.vendors.some((vendor) =>
+    isVendorConfiguredForSidebar(vendor, props.openAICodexAuthenticated ?? false),
+  );
 
   // 将 props 映射为 Context value
   const contextValue: VendorSettingsContextValue = {
@@ -137,16 +144,22 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
             这里单独补回分区描述，给从欢迎弹窗进来的新用户「这是什么/该做什么」的定位。
             移动端进入供应商详情态时隐藏，避免挤占详情面板。 */}
         {!(isSmallScreen && mobileVendorDetailOpen) && (
-          <p className="text-sm text-muted-foreground">
-            {t('settings:sections.api_config_desc')}
-          </p>
+          <div className="space-y-3 border-b border-border/35 pb-4">
+            <p className="text-sm text-muted-foreground">
+              {t('settings:sections.api_config_desc')}
+            </p>
+            <QuickByokProvisionerCard
+              mode="settings"
+              defaultCollapsed={hasAnyConfiguredModel}
+            />
+          </div>
         )}
         <VendorSettingsProvider value={contextValue}>
           {isSmallScreen ? (
             <ShellViewSwitch viewKey={mobileVendorDetailOpen ? 'vendor-detail' : 'vendor-list'} direction={mobileVendorDetailOpen ? 1 : -1}>
               {mobileVendorDetailOpen ? (
                 <div className="w-full min-w-0 space-y-6">
-                  <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
+                  <VendorDetailPanel scrollElement={props.scrollElement ?? null} deepseekCapabilities={props.deepseekCapabilities} />
                 </div>
               ) : (
                 <div className="w-full min-w-0">
@@ -158,7 +171,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
             <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
               <VendorSidebar />
               <div className="space-y-6 w-full min-w-0">
-                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
+                <VendorDetailPanel scrollElement={props.scrollElement ?? null} deepseekCapabilities={props.deepseekCapabilities} />
               </div>
             </div>
           )}

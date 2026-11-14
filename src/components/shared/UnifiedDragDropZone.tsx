@@ -299,8 +299,10 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     
-    // 🔥 关键修复：检查祖先容器的 opacity 和 pointer-events（页面切换机制）
+    // 🔥 关键修复：检查祖先容器的 opacity 和 z-index（页面切换机制）
+    // pointer-events 会继承：只看元素自身的计算值（工作台窗口层父级为 none、窗口恢复 auto）。
     // ⚠️ 不在这里发送调试事件，避免性能问题
+    if (style.pointerEvents === 'none') return false;
     let current: HTMLElement | null = el;
     while (current) {
       const computedStyle = window.getComputedStyle(current);
@@ -308,9 +310,6 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
       // 检查 opacity（App.tsx 的页面切换使用 opacity: 0 隐藏）
       const opacity = parseFloat(computedStyle.opacity);
       if (opacity === 0) return false;
-      
-      // 检查 pointer-events（App.tsx 的页面切换使用 pointer-events: none）
-      if (computedStyle.pointerEvents === 'none') return false;
       
       // 检查 z-index（App.tsx 的页面切换使用 z-index: -1）
       const zIndexValue = parseInt(computedStyle.zIndex, 10);

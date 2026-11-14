@@ -1,0 +1,658 @@
+{
+ "source": "refinery_schema_history rows written by the Rust (refinery 0.9) build in a local smoke-test profile; only (version,name,checksum), no user data",
+ "databases": {
+  "vfs": [
+   {
+    "version": 20260130,
+    "name": "init",
+    "checksum": "11170139590874923953"
+   },
+   {
+    "version": 20260131,
+    "name": "add_change_log",
+    "checksum": "9725397078700206908"
+   },
+   {
+    "version": 20260201,
+    "name": "add_sync_fields",
+    "checksum": "7500882861453155479"
+   },
+   {
+    "version": 20260202,
+    "name": "add_segments_fk",
+    "checksum": "2376488263543072925"
+   },
+   {
+    "version": 20260203,
+    "name": "schema_repair",
+    "checksum": "9719547178112988942"
+   },
+   {
+    "version": 20260204,
+    "name": "add_pdf_processing_status",
+    "checksum": "9034228587268660406"
+   },
+   {
+    "version": 20260205,
+    "name": "add_compressed_blob_hash",
+    "checksum": "6879583188756445230"
+   },
+   {
+    "version": 20260206,
+    "name": "repair_vfs_index_segments_unit",
+    "checksum": "7877180584002294594"
+   },
+   {
+    "version": 20260207,
+    "name": "unify_deleted_at_type",
+    "checksum": "15589829125990274439"
+   },
+   {
+    "version": 20260208,
+    "name": "add_questions_last_attempt_date_index",
+    "checksum": "11939891416986497455"
+   },
+   {
+    "version": 20260209,
+    "name": "add_questions_images",
+    "checksum": "17628667373803692297"
+   },
+   {
+    "version": 20260210,
+    "name": "add_answer_submissions",
+    "checksum": "5954994297980446410"
+   },
+   {
+    "version": 20260211,
+    "name": "fix_change_log_record_id",
+    "checksum": "4007832211829877028"
+   },
+   {
+    "version": 20260212,
+    "name": "add_mindmap_versions",
+    "checksum": "645943109938514858"
+   },
+   {
+    "version": 20260213,
+    "name": "add_index_status_perf_indexes",
+    "checksum": "9653638367709818689"
+   },
+   {
+    "version": 20260214,
+    "name": "drop_notes_versions",
+    "checksum": "5731428187569022340"
+   },
+   {
+    "version": 20260215,
+    "name": "add_import_checkpoint",
+    "checksum": "8323900147895324474"
+   },
+   {
+    "version": 20260227,
+    "name": "add_memory_audit_log",
+    "checksum": "5784351099465337832"
+   },
+   {
+    "version": 20260302,
+    "name": "normalize_folder_items_timestamps",
+    "checksum": "14803823078266617788"
+   },
+   {
+    "version": 20260303,
+    "name": "add_memory_write_idempotency",
+    "checksum": "358079516254179140"
+   },
+   {
+    "version": 20260304,
+    "name": "harden_memory_folder_items_and_audit_indexes",
+    "checksum": "27309697258231002"
+   },
+   {
+    "version": 20260305,
+    "name": "add_answer_submission_idempotency",
+    "checksum": "15631406589043772548"
+   },
+   {
+    "version": 20260306,
+    "name": "canonicalize_folder_item_mounts",
+    "checksum": "1676803949542158673"
+   },
+   {
+    "version": 20260308,
+    "name": "add_todo_tables",
+    "checksum": "16661642045574492852"
+   },
+   {
+    "version": 20260309,
+    "name": "decouple_todo_from_vfs",
+    "checksum": "9587866830026635457"
+   },
+   {
+    "version": 20260310,
+    "name": "add_pomodoro",
+    "checksum": "5551710037394359807"
+   },
+   {
+    "version": 20260311,
+    "name": "todo_constraints",
+    "checksum": "5421537024732088519"
+   },
+   {
+    "version": 20260312,
+    "name": "add_blob_deletion_queue",
+    "checksum": "15587357169363672041"
+   },
+   {
+    "version": 20260523,
+    "name": "add_missing_sync_coverage",
+    "checksum": "4386445922970675229"
+   },
+   {
+    "version": 20260524,
+    "name": "add_change_log_field_deltas",
+    "checksum": "417851633219573743"
+   },
+   {
+    "version": 20260525,
+    "name": "repair_legacy_questions_change_log_record_ids",
+    "checksum": "8874925508903678687"
+   },
+   {
+    "version": 20260526,
+    "name": "add_blob_metadata_sync",
+    "checksum": "10029950198772364024"
+   },
+   {
+    "version": 20260527,
+    "name": "add_asset_deletion_queue",
+    "checksum": "7500327760741228357"
+   },
+   {
+    "version": 20260610,
+    "name": "fix_questions_fts_triggers",
+    "checksum": "8309207877080825122"
+   },
+   {
+    "version": 20260611,
+    "name": "add_lance_orphan_queue",
+    "checksum": "9928250533337065123"
+   },
+   {
+    "version": 20260612,
+    "name": "todo_insert_self_ref_check",
+    "checksum": "9532448443146608627"
+   },
+   {
+    "version": 20260613,
+    "name": "pomodoro_timestamps_and_constraints",
+    "checksum": "8326760967348211074"
+   },
+   {
+    "version": 20260614,
+    "name": "todo_parent_check_softdelete_fix",
+    "checksum": "7859881335333682729"
+   },
+   {
+    "version": 20260615,
+    "name": "todo_cycle_check_full_graph",
+    "checksum": "6149061364763342602"
+   },
+   {
+    "version": 20260714,
+    "name": "add_vector_index_profiles",
+    "checksum": "14980482255186469040"
+   },
+   {
+    "version": 20260715,
+    "name": "automation_todo_delivery_receipts",
+    "checksum": "17151718118616163701"
+   },
+   {
+    "version": 20260718,
+    "name": "add_mastery_tables",
+    "checksum": "13200401158631642529"
+   },
+   {
+    "version": 20260719,
+    "name": "mastery_events_signal",
+    "checksum": "8306874158738335851"
+   },
+   {
+    "version": 20260720,
+    "name": "mastery_events_sync",
+    "checksum": "7805934830693853819"
+   },
+   {
+    "version": 20260721,
+    "name": "pomodoro_backfill_updated_at",
+    "checksum": "232142756970376926"
+   },
+   {
+    "version": 20260722,
+    "name": "note_tags",
+    "checksum": "3177899650693154592"
+   },
+   {
+    "version": 20260723,
+    "name": "translation_soft_delete_repair_and_indexes",
+    "checksum": "15403315935875047108"
+   },
+   {
+    "version": 20260724,
+    "name": "notes_fts",
+    "checksum": "4168012885135976108"
+   },
+   {
+    "version": 20260725,
+    "name": "note_links",
+    "checksum": "6632066804658846706"
+   },
+   {
+    "version": 20260726,
+    "name": "mindmap_content_updated_at",
+    "checksum": "2335687665727317735"
+   },
+   {
+    "version": 20260727,
+    "name": "todo_completed_at_index",
+    "checksum": "1779123942500733522"
+   },
+   {
+    "version": 20260728,
+    "name": "todo_reminder_index_and_list_sort",
+    "checksum": "426222920877442428"
+   },
+   {
+    "version": 20260801,
+    "name": "todo_pomodoro_stats_indexes",
+    "checksum": "8386486585140788871"
+   },
+   {
+    "version": 20260806,
+    "name": "mindmap_versions_lookup_index",
+    "checksum": "235364926991813915"
+   },
+   {
+    "version": 20260807,
+    "name": "question_structured_data",
+    "checksum": "7045775241155082253"
+   },
+   {
+    "version": 20260808,
+    "name": "file_deletion_intent_journal",
+    "checksum": "9568911993359206292"
+   },
+   {
+    "version": 20260824,
+    "name": "note_props",
+    "checksum": "4022943006004359992"
+   },
+   {
+    "version": 20260907,
+    "name": "insight_cards",
+    "checksum": "16902123102996347122"
+   },
+   {
+    "version": 20260908,
+    "name": "insight_fts",
+    "checksum": "17601080076412000671"
+   },
+   {
+    "version": 20260909,
+    "name": "mastery_events_insight_source",
+    "checksum": "7575158074018316857"
+   },
+   {
+    "version": 20260910,
+    "name": "insight_jobs",
+    "checksum": "11030611230542634787"
+   },
+   {
+    "version": 20260911,
+    "name": "insight_fts_update_trigger_narrowing",
+    "checksum": "7430781705666238900"
+   },
+   {
+    "version": 20260912,
+    "name": "qbank_generation_tasks",
+    "checksum": "7579456071051975211"
+   },
+   {
+    "version": 20260921,
+    "name": "note_document_revisions",
+    "checksum": "5112568842988721304"
+   },
+   {
+    "version": 20260922,
+    "name": "note_storage_foundations",
+    "checksum": "1874829342333687192"
+   },
+   {
+    "version": 20260923,
+    "name": "note_history_integration",
+    "checksum": "8619442136681068221"
+   },
+   {
+    "version": 20260924,
+    "name": "note_editor_leases",
+    "checksum": "14142371228817457122"
+   },
+   {
+    "version": 20261005,
+    "name": "media_transcripts",
+    "checksum": "6372214588332544463"
+   },
+   {
+    "version": 20261006,
+    "name": "study_time",
+    "checksum": "4184328836068024026"
+   }
+  ],
+  "chat_v2": [
+   {
+    "version": 20260130,
+    "name": "init",
+    "checksum": "744929442360551984"
+   },
+   {
+    "version": 20260131,
+    "name": "add_change_log",
+    "checksum": "10114171680360372172"
+   },
+   {
+    "version": 20260201,
+    "name": "add_sync_fields",
+    "checksum": "8552208900012783575"
+   },
+   {
+    "version": 20260202,
+    "name": "schema_repair",
+    "checksum": "17760013124805774007"
+   },
+   {
+    "version": 20260203,
+    "name": "ensure_subagent_task",
+    "checksum": "13902890512301443255"
+   },
+   {
+    "version": 20260204,
+    "name": "session_groups",
+    "checksum": "13256798877256573300"
+   },
+   {
+    "version": 20260207,
+    "name": "add_active_skill_ids_json",
+    "checksum": "2574789029421954419"
+   },
+   {
+    "version": 20260221,
+    "name": "group_pinned_resources",
+    "checksum": "1090449039767062503"
+   },
+   {
+    "version": 20260301,
+    "name": "content_search_and_tags",
+    "checksum": "7992561602385090660"
+   },
+   {
+    "version": 20260302,
+    "name": "subagent_task_schema_align",
+    "checksum": "7867085132285773063"
+   },
+   {
+    "version": 20260306,
+    "name": "add_skill_state_json",
+    "checksum": "1989302134651210752"
+   },
+   {
+    "version": 20260502,
+    "name": "archive_legacy_deleted_sessions",
+    "checksum": "3752038329506220287"
+   },
+   {
+    "version": 20260510,
+    "name": "add_compaction",
+    "checksum": "11251934640900393286"
+   },
+   {
+    "version": 20260516,
+    "name": "add_title_locked",
+    "checksum": "12018983041458429109"
+   },
+   {
+    "version": 20260523,
+    "name": "add_missing_sync_coverage",
+    "checksum": "12614756961021903525"
+   },
+   {
+    "version": 20260524,
+    "name": "add_change_log_field_deltas",
+    "checksum": "417851633219573743"
+   },
+   {
+    "version": 20260527,
+    "name": "add_workspace_deletion_queue",
+    "checksum": "15371546101406709233"
+   },
+   {
+    "version": 20260528,
+    "name": "resources_type_check_rebuild",
+    "checksum": "14999443569411311830"
+   },
+   {
+    "version": 20260711,
+    "name": "session_tags_sync_coverage",
+    "checksum": "7416592044101066305"
+   },
+   {
+    "version": 20260717,
+    "name": "group_preferred_runtime_root",
+    "checksum": "218769364023906543"
+   },
+   {
+    "version": 20260719,
+    "name": "fts_blocktype_coverage_and_indexes",
+    "checksum": "6071617267474322741"
+   },
+   {
+    "version": 20260720,
+    "name": "compaction_lineage_and_sync",
+    "checksum": "16295399050485539707"
+   },
+   {
+    "version": 20260721,
+    "name": "workspace_deletion_intent_journal",
+    "checksum": "17757304963429835690"
+   },
+   {
+    "version": 20260806,
+    "name": "prompt_cache_replay_consistency",
+    "checksum": "10152654854883595012"
+   },
+   {
+    "version": 20260905,
+    "name": "goal_table",
+    "checksum": "8488205125703530789"
+   },
+   {
+    "version": 20260907,
+    "name": "connector_operations",
+    "checksum": "10015297935436517329"
+   },
+   {
+    "version": 20260908,
+    "name": "completion_outbox",
+    "checksum": "23560556591082039"
+   },
+   {
+    "version": 20260909,
+    "name": "skill_usage_candidates",
+    "checksum": "14298017026471721075"
+   },
+   {
+    "version": 20260910,
+    "name": "revocation_epochs_and_budget",
+    "checksum": "17780265296518726746"
+   }
+  ],
+  "mistakes": [
+   {
+    "version": 20260130,
+    "name": "init",
+    "checksum": "7056604260822007762"
+   },
+   {
+    "version": 20260131,
+    "name": "add_change_log",
+    "checksum": "6608506450117968322"
+   },
+   {
+    "version": 20260201,
+    "name": "add_sync_fields",
+    "checksum": "7301675098626191735"
+   },
+   {
+    "version": 20260207,
+    "name": "add_template_preview_data",
+    "checksum": "1743993301467245459"
+   },
+   {
+    "version": 20260208,
+    "name": "add_hot_query_indexes",
+    "checksum": "17202954835638165067"
+   },
+   {
+    "version": 20260209,
+    "name": "anki_card_dedup_unique",
+    "checksum": "13701066855322671875"
+   },
+   {
+    "version": 20260523,
+    "name": "add_missing_sync_coverage",
+    "checksum": "6343691248788572142"
+   },
+   {
+    "version": 20260524,
+    "name": "add_change_log_field_deltas",
+    "checksum": "417851633219573743"
+   },
+   {
+    "version": 20260705,
+    "name": "add_document_tasks_source_session_id",
+    "checksum": "10927560918158328655"
+   },
+   {
+    "version": 20260709,
+    "name": "flashcard_fsrs",
+    "checksum": "3099774520752553145"
+   },
+   {
+    "version": 20260710,
+    "name": "anki_export_receipt",
+    "checksum": "8672886196158617961"
+   },
+   {
+    "version": 20260711,
+    "name": "fsrs_sync_coverage",
+    "checksum": "13539785444761611991"
+   },
+   {
+    "version": 20260712,
+    "name": "fsrs_undo_snapshot",
+    "checksum": "11763057337870966300"
+   },
+   {
+    "version": 20260713,
+    "name": "apkg_card_identity",
+    "checksum": "9866187645454259872"
+   },
+   {
+    "version": 20260714,
+    "name": "automation_scheduler",
+    "checksum": "15018988436487580117"
+   },
+   {
+    "version": 20260715,
+    "name": "harden_automation_runtime",
+    "checksum": "8332733441449950659"
+   },
+   {
+    "version": 20260720,
+    "name": "fsrs_mastery_outbox",
+    "checksum": "16271601134189950924"
+   },
+   {
+    "version": 20260721,
+    "name": "trusted_automation_profile",
+    "checksum": "5837270328434309245"
+   },
+   {
+    "version": 20260722,
+    "name": "fsrs_scheduler_hardening",
+    "checksum": "8521263247832451368"
+   },
+   {
+    "version": 20260723,
+    "name": "template_user_state",
+    "checksum": "1035286137891469713"
+   },
+   {
+    "version": 20260724,
+    "name": "anki_dedup_index_exclude_deleted",
+    "checksum": "12860009361473216846"
+   },
+   {
+    "version": 20260824,
+    "name": "normalize_anki_card_optional_json",
+    "checksum": "11475050403973432488"
+   },
+   {
+    "version": 20261005,
+    "name": "fsrs_learning_step",
+    "checksum": "15009873917906083320"
+   }
+  ],
+  "llm_usage": [
+   {
+    "version": 20260130,
+    "name": "init",
+    "checksum": "13612658459221767560"
+   },
+   {
+    "version": 20260131,
+    "name": "add_change_log",
+    "checksum": "2810994984165943366"
+   },
+   {
+    "version": 20260201,
+    "name": "add_sync_fields",
+    "checksum": "13212613122439026119"
+   },
+   {
+    "version": 20260202,
+    "name": "fix_change_log_record_id",
+    "checksum": "9615798093808321569"
+   },
+   {
+    "version": 20260524,
+    "name": "add_change_log_field_deltas",
+    "checksum": "417851633219573743"
+   },
+   {
+    "version": 20260525,
+    "name": "drop_daily_change_log_triggers",
+    "checksum": "18420425166652129088"
+   },
+   {
+    "version": 20260824,
+    "name": "add_cache_write_tokens",
+    "checksum": "11327350215955484592"
+   },
+   {
+    "version": 20260826,
+    "name": "add_stream_identity",
+    "checksum": "3538657643559729633"
+   }
+  ]
+ }
+}

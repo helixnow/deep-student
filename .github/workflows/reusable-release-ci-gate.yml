@@ -12,16 +12,14 @@ permissions:
 jobs:
   verify-ci:
     runs-on: ubuntu-22.04
-    # Automatic publication is CI-completion driven. Manual recovery must select
-    # an already verified commit, rather than occupy a runner polling for hours.
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           sparse-checkout: scripts/ci
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: 22
+          node-version: '24'
       - name: Require successful CI on the exact source commit
         env:
           GH_TOKEN: ${{ github.token }}

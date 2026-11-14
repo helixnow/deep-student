@@ -11,12 +11,12 @@ on:
         default: ''
         type: string
       force_rebuild:
-        description: 'Rebuild every stage, including native binaries (e.g. after rotating embedded configuration)'
+        description: 'Rebuild every stage, including binaries (e.g. after rotating embedded configuration)'
         default: false
         type: boolean
       allow_unsigned_desktop:
         description: 'No platform certificates (updater signatures remain required)'
-        default: true
+        default: false
         type: boolean
       allow_missing_migration_fixtures:
         description: 'Explicit recovery override: production migration tests only'

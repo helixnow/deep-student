@@ -1,0 +1,538 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_backup_list",
+    "data_governance_verify_backup",
+    "data_governance_check_disk_space_for_restore",
+    "data_governance_auto_verify_latest_backup",
+    "data_governance_delete_backup"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.inventory.empty.list_then_missing_dir_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "20260101_000000_full"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "20260101_000000_full"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_auto_verify_latest_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "20260101_000000_full"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.inventory.verify.backup_id_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": " valid_id-1.0 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.inventory.check_disk.backup_id_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": " valid_id-1.0 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.inventory.delete.backup_id_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": " valid_id-1.0 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.inventory.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": [
+              "x"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_auto_verify_latest_backup",
+          "args": {
+            "backupId": "ignored_extra_key"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

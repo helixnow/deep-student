@@ -7,6 +7,7 @@
  * - resourceSync 用 RESOURCE_APP_TYPE_IDS 判断哪些窗口是"资源窗口"。
  */
 import type { ResourceType } from '@/features/learning-hub/types';
+import { resourceTypeAppId } from '@/shared/resource-types/lookup';
 
 /** 六类内容应用的 typeId（apps/content/register.ts 注册） */
 export const CONTENT_APP_TYPE_IDS = [
@@ -46,26 +47,12 @@ export const RESOURCE_APP_TYPE_IDS: ReadonlySet<string> = new Set([
   FILE_PREVIEW_APP_TYPE_ID,
 ]);
 
-const RESOURCE_TYPE_TO_APP_TYPE_ID = Object.freeze(
-  Object.assign(Object.create(null) as Record<string, string>, {
-    note: NOTES_APP_TYPE_ID,
-    textbook: FILE_PREVIEW_APP_TYPE_ID,
-    exam: 'exam',
-    translation: 'translation',
-    essay: 'essay',
-    image: FILE_PREVIEW_APP_TYPE_ID,
-    file: FILE_PREVIEW_APP_TYPE_ID,
-    mindmap: NOTES_APP_TYPE_ID,
-  } satisfies Partial<Record<ResourceType, string>>),
-);
-
 /**
  * learning-hub ResourceType → workbench typeId。
  * 不可开窗的类型（'all' 等聚合视图）返回 null。
  */
 export function resourceTypeToAppTypeId(type: ResourceType | string): string | null {
-  if (typeof type !== 'string' || !type) return null;
-  return RESOURCE_TYPE_TO_APP_TYPE_ID[type] ?? null;
+  return resourceTypeAppId(type);
 }
 
 /**

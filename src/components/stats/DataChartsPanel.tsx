@@ -8,6 +8,7 @@
  * - 学习热力图并入分组容器
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl';
+import { GroupTitle } from '@/components/settings/settingsTabPrimitives';
 import { LearningHeatmap } from '@/components/LearningHeatmap';
 import { useChatV2Stats, type DailyActivity } from '@/hooks/useChatV2Stats';
 import {
@@ -117,10 +119,7 @@ const Group: React.FC<{
 }> = ({ title, right, children, className, boxClassName }) => (
   <section className={cn('min-w-0', className)}>
     {(title || right) && (
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
-        <h3 className="text-base font-semibold text-foreground/85">{title}</h3>
-        {right}
-      </div>
+      <GroupTitle title={title ?? ''} actions={right} />
     )}
     <div className={cn(GROUP_BOX_CLASS, boxClassName)}>{children}</div>
   </section>
@@ -319,7 +318,7 @@ const BarList: React.FC<{ items: BarListItem[]; emptyLabel: string }> = ({ items
               )}
             </span>
           </div>
-          <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div className="h-1 overflow-hidden rounded-full bg-background/60">
             <div
               className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
               style={{ width: `${Math.max((item.value / maxValue) * 100, 2)}%` }}
@@ -338,6 +337,7 @@ const BarList: React.FC<{ items: BarListItem[]; emptyLabel: string }> = ({ items
 type RangeDays = '7' | '30' | '90';
 
 export const DataChartsPanel: React.FC<{ className?: string }> = ({ className }) => {
+  // RUST-FIX(RF-W09-english-hardcoded-labels-localized): Rust 把活跃趋势图例的 “Tokens” 写死为英文，旁边的 “会话” 已本地化
   const { t } = useTranslation(['data', 'llm_usage', 'common', 'stats']);
 
   const [rangeDays, setRangeDays] = useState<RangeDays>('30');
@@ -395,6 +395,8 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
       setTrendLoading(false);
     }
   }, [trendDays]);
+
+  useRefreshOnReturn(() => { void loadLlmData(); void loadTrends(); });
 
   useEffect(() => {
     loadLlmData();
@@ -463,19 +465,6 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
             options={rangeOptions}
             itemClassName="[@media(pointer:coarse)]:!min-h-11"
           />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label={t('llm_usage:actions.refresh')}
-            onClick={() => {
-              void loadLlmData();
-              void loadTrends();
-            }}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-          >
-            <ArrowsClockwise size={14} className={cn((loading || trendLoading) && 'animate-spin')} />
-          </DsButton>
         </div>
       </div>
 
@@ -594,7 +583,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
             right={
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div className="flex items-center gap-3">
-                  <LegendChip color="hsl(var(--primary))" label="Tokens" />
+                  <LegendChip color="hsl(var(--primary))" label={t('llm_usage:tokens')} />
                   <LegendChip color="hsl(var(--success))" label={t('llm_usage:sessions')} />
                 </div>
                 <SegmentedControl<RangeDays>

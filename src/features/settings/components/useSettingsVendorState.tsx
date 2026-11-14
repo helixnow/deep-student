@@ -142,52 +142,31 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         // 使用用户指定的模型名称进行测试
         // 传递 vendor_id 以便后端从安全存储获取真实密钥
         const vendorId = api.vendorId;
+        // 键名以 contracts/ipc test_api_connection 为准（Rust 参数 supports_openai_responses → supportsOpenaiResponses）。
         const outcome = await invoke<ConnectionTestOutcome>('test_api_connection', {
-          // 双写兼容：后端参数为 snake_case（api_key, api_base），某些桥接层可能校验 camelCase
-          api_key: api.apiKey,
           apiKey: api.apiKey,
-          api_base: api.baseUrl,
           apiBase: api.baseUrl,
-          api_protocol: api.apiProtocol,
           apiProtocol: api.apiProtocol,
-          supports_openai_responses: api.supportsOpenAIResponses,
-          supportsOpenAIResponses: api.supportsOpenAIResponses,
-          provider_type: api.providerType,
+          supportsOpenaiResponses: api.supportsOpenAIResponses,
           providerType: api.providerType,
-          provider_scope: api.providerScope,
           providerScope: api.providerScope,
-          auth_mode: api.authMode,
           authMode: api.authMode,
-          model_adapter: api.modelAdapter,
           modelAdapter: api.modelAdapter,
           model: api.model, // 传递用户指定的模型名称
-          vendor_id: vendorId, // 传递供应商 ID 以便后端获取真实密钥
-          vendorId: vendorId,
+          vendorId, // 传递供应商 ID 以便后端获取真实密钥
           headers: api.headers,
           // 能力字段透传：后端据此构造与生产一致的探测请求（推理方言/思考开关/模型类型）
-          is_embedding: api.isEmbedding,
           isEmbedding: api.isEmbedding,
-          is_reranker: api.isReranker,
           isReranker: api.isReranker,
-          is_image_generation: api.isImageGeneration,
           isImageGeneration: api.isImageGeneration,
-          is_reasoning: api.isReasoning,
           isReasoning: api.isReasoning,
-          supports_reasoning: api.supportsReasoning,
           supportsReasoning: api.supportsReasoning,
-          enable_thinking: api.enableThinking,
           enableThinking: api.enableThinking,
-          thinking_budget: api.thinkingBudget,
           thinkingBudget: api.thinkingBudget,
-          include_thoughts: api.includeThoughts,
           includeThoughts: api.includeThoughts,
-          reasoning_effort: api.reasoningEffort,
           reasoningEffort: api.reasoningEffort,
-          max_output_tokens: api.maxOutputTokens,
           maxOutputTokens: api.maxOutputTokens,
-          max_tokens_limit: api.maxTokensLimit,
           maxTokensLimit: api.maxTokensLimit,
-          gemini_api_version: api.geminiApiVersion,
           geminiApiVersion: api.geminiApiVersion,
         });
 
@@ -618,7 +597,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     try {
       await upsertModelProfile(toSave);
       showGlobalNotification('success', t('common:config_saved'));
-      setModelEditor(null);
+      handleCloseModelEditor();
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.model_save_failed', { error: errorMessage }));
@@ -715,8 +694,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   // 保存模型配置后关闭编辑器
   const handleSaveModelProfileAndClose = useCallback(async (api: ApiConfig) => {
     await handleSaveModelProfile(api);
-    handleCloseModelEditor();
-  }, [handleSaveModelProfile, handleCloseModelEditor]);
+  }, [handleSaveModelProfile]);
 
   // 模型删除的实际执行体（桌面对话框确认 / 移动行内二次确认共用）
   const performDeleteModelProfile = async (

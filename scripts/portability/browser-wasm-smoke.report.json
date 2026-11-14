@@ -1,0 +1,84 @@
+{
+  "environment": {
+    "node": false,
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36",
+    "f7Url": "http://127.0.0.1:5173/host/platform/native/wasm/f7-native-wasm.wasm",
+    "tiktokenUrl": "/@fs<repo>/node_modules/tiktoken/tiktoken_bg.wasm"
+  },
+  "fsrs": {
+    "actual": {
+      "logLoss": 0.75737625,
+      "rmseBins": 0.2673556
+    },
+    "expected": {
+      "logLoss": 0.75737625,
+      "rmseBins": 0.2673556
+    },
+    "tolerance": 0.000001,
+    "match": true,
+    "ms": 148
+  },
+  "tokenizer": {
+    "actual": [
+      [
+        15339,
+        1917,
+        220,
+        57668,
+        53901
+      ],
+      [
+        24912,
+        2375,
+        220,
+        177519
+      ]
+    ],
+    "expected": [
+      [
+        15339,
+        1917,
+        220,
+        57668,
+        53901
+      ],
+      [
+        24912,
+        2375,
+        220,
+        177519
+      ]
+    ],
+    "ms": 192
+  },
+  "argon2": {
+    "actual": [
+      "be83b1db264fc96b59e7908088c80db582679659f8a070ebc03bf4c6942bee2f",
+      "d61133347d337006cc35cb8d74f98382"
+    ],
+    "expected": [
+      "be83b1db264fc96b59e7908088c80db582679659f8a070ebc03bf4c6942bee2f",
+      "d61133347d337006cc35cb8d74f98382"
+    ],
+    "ms": 42
+  },
+  "wasmResponses": [
+    {
+      "url": "http://127.0.0.1:5173/@fs<repo>/node_modules/tiktoken/tiktoken_bg.wasm?import&url",
+      "status": 200,
+      "contentType": "text/javascript"
+    },
+    {
+      "url": "http://127.0.0.1:5173/host/platform/native/wasm/f7-native-wasm.wasm",
+      "status": 200,
+      "contentType": "application/wasm"
+    },
+    {
+      "url": "http://127.0.0.1:5173/@fs<repo>/node_modules/tiktoken/tiktoken_bg.wasm",
+      "status": 200,
+      "contentType": "application/wasm"
+    }
+  ],
+  "pageErrors": [],
+  "pass": true
+}

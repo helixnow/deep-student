@@ -1,0 +1,528 @@
+{
+  "domain": "vfs",
+  "commands": ["dstu_export", "dstu_export_formats", "dstu_purge_all", "dstu_search_in_folder"],
+  "scenarios": [
+    {
+      "id": "vfs.dstu.export_formats.each_type",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "fmt-note", "content": "c", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "fmt-tr", "metadata": { "sourceText": "hello", "translatedText": "你好", "srcLang": "en", "tgtLang": "zh", "formality": "auto" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "fmt-essay", "metadata": { "essayType": "", "gradeLevel": "", "inputText": "", "totalRounds": 0 } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "fmt-exam", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "fmt-mm", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}", "metadata": { "theme": "default", "defaultView": "mindmap" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "file", "name": "fmt.txt", "fileBase64": "Zm10LWZpbGU=", "metadata": { "mimeType": "text/plain" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "image", "name": "pixel.png", "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "metadata": { "mimeType": "image/png" } } } },
+        { "cmd": "dstu_folder_create", "args": { "title": "fmt-folder", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "vfs_upload_attachment", "args": { "params": { "name": "fmt-att.txt", "mimeType": "text/plain", "base64Content": "Zm10LWF0dA==" } } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${0.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${1.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${2.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${3.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${4.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${5.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${6.path}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${7.id}" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${8.sourceId}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export_formats.prefix_only_missing",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_export_formats", "args": { "path": "/note_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "note_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/note_missing0000/" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/数学/函数/note_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/tb_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/exam_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/tr_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/essay_session_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/essay_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/img_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/file_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/att_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/mm_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/fld_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "fld_missing0000" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "/note_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export_formats.invalid_path",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_export_formats", "args": { "path": "" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "abc" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/数学/函数" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/@trash" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/数学/00000000-0000-4000-8000-000000000000" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/数学/note_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/00000000-0000-4000-8000-000000000000" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "/res_missing0000" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": {}, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": null }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.note.markdown",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "他说\"你好\"", "content": "# 标题\n\n正文", "metadata": { "tags": ["数学", "a\"b"] } } } },
+        { "cmd": "dstu_set_favorite", "args": { "path": "${0.path}", "favorite": true } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "md" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "MARKDOWN" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "Md" } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "plain", "content": "", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_export", "args": { "path": "${6.path}", "format": "markdown" } },
+        { "cmd": "dstu_get", "args": { "path": "${0.path}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.note.unsupported_and_lifecycle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "life", "content": "body", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "raw" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "pdf" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": " markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/", "format": "pdf" }, "expect": "error" },
+        { "cmd": "dstu_delete", "args": { "path": "${0.path}" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_restore", "args": { "path": "${0.path}" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "/note_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/数学/note_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/note_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "format": "markdown" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.path_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_export", "args": { "path": "", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "abc", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/数学/函数", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/@trash", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/00000000-0000-4000-8000-000000000000", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/res_missing0000", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/数学/note_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/note_missing0000" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/note_missing0000", "format": 1 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.translation",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "英译\"中\"", "metadata": { "sourceText": "Hello world", "translatedText": "你好世界", "srcLang": "en", "tgtLang": "zh", "formality": "auto" } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "RAW" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "", "metadata": { "sourceText": "", "translatedText": "" } } } },
+        { "cmd": "dstu_export", "args": { "path": "${5.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${5.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "/tr_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/tr_missing0000", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_get_content", "args": { "path": "${0.path}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.mindmap",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "导图\"一\"", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心\",\"children\":[{\"id\":\"n1\",\"text\":\"分支一\",\"children\":[{\"id\":\"n2\",\"text\":\"叶子\",\"children\":[]}]},{\"id\":\"n3\",\"text\":\"分支二\",\"children\":[]}]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}", "metadata": { "theme": "default", "defaultView": "mindmap", "description": "描述\"x\"" } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}" } } },
+        { "cmd": "dstu_export", "args": { "path": "${4.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "/mm_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/mm_missing0000", "format": "original" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.exam.empty_sheet",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "期中\"卷\"", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 } } } },
+        { "cmd": "dstu_export", "args": { "path": "${4.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "/exam_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/exam_missing0000", "format": "original" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.exam.with_questions",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "有题", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 } } } },
+        { "cmd": "qbank_create_question", "args": { "params": { "exam_id": "${0.id}", "content": "1+1=?", "question_type": "short_answer", "options": null, "answer": "2", "structured_data": null, "explanation": "加法", "difficulty": null, "tags": null, "question_label": null, "card_id": null, "source_type": "manual", "source_ref": null, "images": null, "parent_id": null } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.essay",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "我的\"作文\"", "metadata": { "essayType": "议论文", "gradeLevel": "高一", "inputText": "", "totalRounds": 0 } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "", "metadata": { "essayType": "", "gradeLevel": "", "inputText": "", "totalRounds": 0 } } } },
+        { "cmd": "dstu_export", "args": { "path": "${2.path}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/essay_session_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/essay_missing0000", "format": "markdown" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.file.dstu_created",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "file", "name": "export.txt", "fileBase64": "ZXhwb3J0LWZpbGUg5paH5pysIEEK", "metadata": { "mimeType": "text/plain" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "image", "name": "pixel.png", "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "metadata": { "mimeType": "image/png" } } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "raw" } },
+        { "cmd": "dstu_export", "args": { "path": "${1.path}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${1.path}", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.path}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/file_missing0000", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/file_missing0000", "format": "markdown" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.file.uploaded",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "vfs_upload_attachment", "args": { "params": { "name": "att.txt", "mimeType": "text/plain", "base64Content": "YXR0YWNobWVudCDpmYTku7YgQgo=" } } },
+        { "cmd": "dstu_export", "args": { "path": "${0.sourceId}", "format": "original" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.sourceId}", "format": "markdown" } },
+        { "cmd": "vfs_upload_file", "args": { "params": { "name": "upload.txt", "mimeType": "text/plain", "base64Content": "aW5uZXIg5LiK5LygIEMK" } } },
+        { "cmd": "dstu_export", "args": { "path": "${3.sourceId}", "format": "markdown" } },
+        { "cmd": "dstu_export", "args": { "path": "${3.sourceId}", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/att_missing0000", "format": "original" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.image_textbook_missing",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_export", "args": { "path": "/img_missing0000", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/img_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/img_missing0000", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/tb_missing0000", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/tb_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/tb_missing0000", "format": "zip" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.folder.zip_mixed",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "导出包", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_folder_create", "args": { "title": "子 目录", "parentId": "${0.id}", "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "同名", "content": "一", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "同名", "content": "二", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "译文", "metadata": { "sourceText": "a", "translatedText": "甲", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "导图", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}", "metadata": { "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "作文", "metadata": { "essayType": "", "gradeLevel": "", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "题集", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0, "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "file", "name": "zip.txt", "fileBase64": "emlwIGF0dGFjaCBHCg==", "metadata": { "mimeType": "text/plain", "folderId": "${0.id}" } } } },
+        { "cmd": "vfs_upload_file", "args": { "params": { "name": "empty-src.txt", "mimeType": "text/plain", "base64Content": "dXBsb2FkLW9ubHkgRQo=", "folderId": "${0.id}" } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "深层", "content": "三", "metadata": { "tags": [], "folderId": "${1.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "已删", "content": "四", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_delete", "args": { "path": "${11.path}" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "zip" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "ZIP" } },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "original" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "${1.id}", "format": "zip" } },
+        { "cmd": "dstu_export_formats", "args": { "path": "${0.id}" } },
+        { "cmd": "dstu_list", "args": { "path": "/", "options": { "folderId": "${0.id}" } } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.export.folder.zip_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "空", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_export", "args": { "path": "${0.id}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_folder_create", "args": { "title": "仅子目录", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_folder_create", "args": { "title": "空子", "parentId": "${2.id}", "icon": null, "color": null } },
+        { "cmd": "dstu_export", "args": { "path": "${2.id}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_folder_create", "args": { "title": "全失败", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "vfs_upload_file", "args": { "params": { "name": "only-failing.txt", "mimeType": "text/plain", "base64Content": "b25seS1mYWlsaW5nIEQK", "folderId": "${5.id}" } } },
+        { "cmd": "dstu_export", "args": { "path": "${5.id}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/fld_missing0000", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export", "args": { "path": "/fld_missing0000", "format": "markdown" }, "expect": "error" },
+        { "cmd": "dstu_folder_create", "args": { "title": "将删", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "待删", "content": "x", "metadata": { "tags": [], "folderId": "${10.id}" } } } },
+        { "cmd": "dstu_folder_delete", "args": { "folderId": "${10.id}" } },
+        { "cmd": "dstu_export", "args": { "path": "${10.id}", "format": "zip" }, "expect": "error" },
+        { "cmd": "dstu_export_formats", "args": { "path": "${10.id}" } },
+        { "cmd": "dstu_folder_list", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.purge_all.notes",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "回收", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "p1", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "p2", "content": "y", "metadata": { "tags": ["t"], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "keep", "content": "z", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_delete", "args": { "path": "${1.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${2.path}" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_get", "args": { "path": "${3.path}" } },
+        { "cmd": "dstu_list", "args": { "path": "/", "options": { "folderId": "${0.id}" } } },
+        { "cmd": "dstu_list", "args": { "path": "/" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.purge_all.empty_trash",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "textbooks" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "textbooks" } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "live", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_get", "args": { "path": "${3.path}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.purge_all.other_types_untouched",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "n", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "t", "metadata": { "sourceText": "a", "translatedText": "b" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "e", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "s", "metadata": { "essayType": "", "gradeLevel": "" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "m", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}" } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "file", "name": "untouched.txt", "fileBase64": "dW50b3VjaGVk", "metadata": { "mimeType": "text/plain" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "control", "content": "c", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_delete", "args": { "path": "${0.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${1.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${2.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${3.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${4.path}" } },
+        { "cmd": "dstu_delete", "args": { "path": "${5.path}" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "textbooks" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "translations" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "exams" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "essays" } },
+        { "cmd": "dstu_get", "args": { "path": "${6.path}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.purge_all.invalid_type",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "x", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_delete", "args": { "path": "${0.path}" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "Notes" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "note" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "translations" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "exams" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "essays" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "mindmaps" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "files" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "images" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "folders" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": " notes" }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": {}, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": null }, "expect": "error" },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": 1 }, "expect": "error" },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_purge_all", "args": { "resourceType": "notes" } },
+        { "cmd": "dstu_list_deleted", "args": { "resourceType": "notes" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.folder_scope",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "搜索根", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_folder_create", "args": { "title": "搜索子", "parentId": "${0.id}", "icon": null, "color": null } },
+        { "cmd": "dstu_folder_create", "args": { "title": "搜索兄弟", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "Alpha 笔记", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "alpha-小写", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "无关", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "__alpha__", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "Alpha 翻译", "metadata": { "sourceText": "s", "translatedText": "t", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "exam", "name": "Alpha 题集", "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0, "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "mindmap", "name": "Alpha 导图", "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\"}}", "metadata": { "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "file", "name": "Alpha.txt", "fileBase64": "YWxwaGEtZmlsZQ==", "metadata": { "mimeType": "text/plain", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "image", "name": "alpha.png", "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "metadata": { "mimeType": "image/png", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "Alpha 作文", "metadata": { "essayType": "", "gradeLevel": "", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "Alpha 子目录", "content": "x", "metadata": { "tags": [], "folderId": "${1.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "Alpha 兄弟", "content": "x", "metadata": { "tags": [], "folderId": "${2.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "Alpha 根", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "alpha" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "ALPHA", "options": { "sortBy": "name", "sortOrder": "asc" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "笔记" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "zzz-不存在" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${1.id}", "folderId": "${1.id}", "query": "alpha" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${2.id}", "folderId": "${2.id}", "query": "alpha" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.empty_query",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "空查询", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "e1", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "e2", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "essay", "name": "e3", "metadata": { "essayType": "", "gradeLevel": "", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.options",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "选项", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "opt-a", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "opt-b", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "opt-c", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "opt-tr", "metadata": { "sourceText": "s", "translatedText": "t", "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_set_favorite", "args": { "path": "${1.path}", "favorite": true } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "limit": 2 } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "limit": 0 } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "typeFilter": "translation" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "isFavorite": true } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "offset": 2, "sortBy": "name", "sortOrder": "asc" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "tags": ["不存在"], "propFilters": [{ "key": "k", "value": "v" }], "recursive": true, "types": ["note"] } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "folderId": "fld_missing0000" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": null } },
+        { "cmd": "dstu_update", "args": { "path": "${1.path}", "content": "v2", "resourceType": "note", "expectedUpdatedAtMs": null } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "opt", "options": { "sortBy": "createdAt", "sortOrder": "asc" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": "fld_missing0000", "query": "opt", "options": { "limit": -1 } }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": "fld_missing0000", "query": "opt", "options": { "typeFilter": "notes" } }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": "fld_missing0000", "query": "opt", "options": { "limit": "2" } }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.global_fallback",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "全局", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "glob-in", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "glob-root", "content": "x", "metadata": { "tags": [] } } } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "translation", "name": "glob-tr", "metadata": { "sourceText": "s", "translatedText": "t" } } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": null, "folderId": null, "query": "glob" } },
+        { "cmd": "dstu_search_in_folder", "args": { "query": "glob" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "query": "glob" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": null, "query": "glob", "options": { "folderId": "${0.id}" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": null, "query": "glob", "options": { "typeFilter": "translation" } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": null, "query": "glob", "options": { "folderId": "fld_missing0000" } } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.folder_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "fld_missing0000", "folderId": "fld_missing0000", "query": "a" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "root", "folderId": "root", "query": "a" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "", "folderId": "", "query": "a" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": "00000000-0000-4000-8000-000000000000", "query": "a" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": "fld_missing0000" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": 1, "query": "a" }, "expect": "error" },
+        { "cmd": "dstu_search_in_folder", "args": { "folderId": null, "query": 1 }, "expect": "error" },
+        { "cmd": "dstu_folder_create", "args": { "title": "将删除", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "del-in", "content": "x", "metadata": { "tags": [], "folderId": "${7.id}" } } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${7.id}", "folderId": "${7.id}", "query": "del" } },
+        { "cmd": "dstu_folder_delete", "args": { "folderId": "${7.id}" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${7.id}", "folderId": "${7.id}", "query": "del" } },
+        { "cmd": "dstu_folder_get", "args": { "folderId": "${7.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.search_in_folder.trash_restore",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "dstu_folder_create", "args": { "title": "回收站搜索", "parentId": null, "icon": null, "color": null } },
+        { "cmd": "dstu_create", "args": { "path": "/", "options": { "type": "note", "name": "tr-note", "content": "x", "metadata": { "tags": [], "folderId": "${0.id}" } } } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "tr-" } },
+        { "cmd": "dstu_delete", "args": { "path": "${1.path}" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "tr-" } },
+        { "cmd": "dstu_restore", "args": { "path": "${1.path}" } },
+        { "cmd": "dstu_search_in_folder", "args": { "folder_id": "${0.id}", "folderId": "${0.id}", "query": "tr-" } },
+        { "cmd": "dstu_list", "args": { "path": "/", "options": { "folderId": "${0.id}" } } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

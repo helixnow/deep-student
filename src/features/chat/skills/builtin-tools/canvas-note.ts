@@ -50,8 +50,9 @@ export const canvasNoteSkill: SkillDefinition = {
 2. 增量修改优先使用 note_append 或 note_replace；任何已有笔记写入前必须先 note_read，并原样传入 updatedAt 作为 expected_updated_at
 3. 只有需要完全重写时才使用 note_set
 4. 支持 Markdown 格式
-5. 删除笔记是 Medium 软删除；批量删除超过 5 篇前先用 builtin-ask_user 确认
-6. 删除后如需查看或恢复，加载 dstu-tools 调用 dstu_list_trash / dstu_restore
+5. **正文不要重复标题**：界面已在标签上方将 \`title\` 渲染为文档标题，因此 \`builtin-note_create\` / \`builtin-note_set\` 写入的 \`content\` 必须直接以正文、导语或二级标题（\`##\`）开头，**不得在开头重复笔记标题或添加一级标题（\`# 标题\`）**
+6. 删除笔记是 Medium 软删除；批量删除超过 5 篇前先用 builtin-ask_user 确认
+7. 删除后如需查看或恢复，加载 dstu-tools 调用 dstu_list_trash / dstu_restore
 
 ## 可见操作演示（必须遵守）
 
@@ -121,12 +122,17 @@ export const canvasNoteSkill: SkillDefinition = {
     },
     {
       name: 'builtin-note_set',
-      description: '覆盖笔记完整内容。仅用户明确要求完整重写时使用；先 note_read 传入 expected_updated_at。',
+      description:
+        '覆盖笔记完整内容。仅用户明确要求完整重写时使用；先 note_read 传入 expected_updated_at。界面已单独渲染笔记 title 为顶部文档标题，content 必须直接从正文、导语或二级标题（##）开始，不得在开头重复标题或添加一级标题（# 标题）。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: { type: 'string', description: '笔记 ID（Canvas 已选中时可省略）' },
-          content: { type: 'string', description: '新完整内容（Markdown）' },
+          content: {
+            type: 'string',
+            description:
+              '新完整内容（Markdown）。界面已将笔记 title 渲染为顶部文档标题，请直接以正文、导语或二级标题（##）开头，不得在开头重复标题或添加 # 一级标题。',
+          },
           expected_updated_at: { type: 'string', minLength: 1, description: 'note_read 返回的 updatedAt（OCC 基线）' },
         },
         required: ['content', 'expected_updated_at'],
@@ -135,12 +141,20 @@ export const canvasNoteSkill: SkillDefinition = {
     },
     {
       name: 'builtin-note_create',
-      description: '创建新笔记，返回笔记 ID。',
+      description:
+        '创建新笔记，返回笔记 ID。界面已将 title 渲染为顶部文档标题，content 必须直接从正文、导语或二级标题（##）开始，不得在开头重复 title 或添加一级标题（# 标题）。',
       inputSchema: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '笔记标题' },
-          content: { type: 'string', description: '初始内容（Markdown）' },
+          title: {
+            type: 'string',
+            description: '笔记标题（界面会将其单独渲染为文档顶部标题，无需在 content 开头重复）',
+          },
+          content: {
+            type: 'string',
+            description:
+              '初始内容（Markdown）。界面已将 title 渲染为顶部文档标题，请直接以正文、导语或二级标题（##）开头，不得在开头重复笔记标题或添加 # 一级标题。',
+          },
           tags: { type: 'array', items: { type: 'string' }, description: '标签' },
           folder_id: { type: 'string', description: '存放文件夹 ID' },
         },
@@ -150,7 +164,7 @@ export const canvasNoteSkill: SkillDefinition = {
     },
     {
       name: 'builtin-note_list',
-      description: '分页列出笔记。',
+      description: '分页列出笔记；每条带 path/folderId，path 可直接传给 dstu_rename / dstu_move。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -162,7 +176,7 @@ export const canvasNoteSkill: SkillDefinition = {
     },
     {
       name: 'builtin-note_search',
-      description: '按关键词搜索笔记。',
+      description: '按关键词搜索笔记；每条结果带 path/folderId，path 可直接传给 dstu_rename / dstu_move。',
       inputSchema: {
         type: 'object',
         properties: {

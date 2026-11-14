@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowsClockwise,
   CaretDown,
   CircleNotch,
   PencilSimple,
@@ -939,18 +938,6 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                     {t('settings:automation.capacity', { count, max })}
                   </span>
                 )}
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  aria-label={t('settings:automation.actions.refresh')}
-                  title={t('settings:automation.actions.refresh')}
-                  className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                  disabled={loading}
-                  onClick={() => void refresh()}
-                >
-                  <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
-                </DsButton>
                 <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
                   <DsButton
                     variant="primary"

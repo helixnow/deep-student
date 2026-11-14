@@ -16,7 +16,7 @@ import { registerTransientRuntime } from '../../core/store/transientRuntimeRegis
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
-import { emitToolCallDebug, trackStart, trackEnd } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+import { emitToolCallDebug, trackStart, trackEnd } from '@/shared/debug/channels/toolCallLifecycle';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
 /**

@@ -1,0 +1,176 @@
+/* Light Mode — Mineral Celadon (青瓷微染) */
+:root {
+  --mm-celadon-accent: #2A6F5E;
+  --mm-celadon-pill-bg: rgba(42, 111, 94, 0.08);
+  --mm-celadon-pill-bg-hover: rgba(42, 111, 94, 0.15);
+  --mm-celadon-pill-fg: #1E3A34;
+  --mm-celadon-border: rgba(42, 111, 94, 0.24);
+
+  --mm-ghost-bg: rgba(244, 248, 246, 0.88);
+  --mm-ghost-border: rgba(42, 111, 94, 0.48);
+  --mm-ghost-stroke: rgba(42, 111, 94, 0.52);
+  --mm-ghost-accent: #2A6F5E;
+  --mm-ghost-bar-bg: rgba(42, 111, 94, 0.07);
+  --mm-ghost-remove-bg: rgba(180, 68, 55, 0.06);
+  --mm-ghost-remove-border: rgba(180, 68, 55, 0.42);
+  --mm-ghost-remove-fg: #9E3B30;
+}
+
+/* Dark Mode — Deep Celadon Slate */
+.dark {
+  --mm-celadon-accent: #5EA893;
+  --mm-celadon-pill-bg: rgba(94, 168, 147, 0.13);
+  --mm-celadon-pill-bg-hover: rgba(94, 168, 147, 0.22);
+  --mm-celadon-pill-fg: #D2E8E2;
+  --mm-celadon-border: rgba(94, 168, 147, 0.30);
+
+  --mm-ghost-bg: rgba(24, 34, 31, 0.88);
+  --mm-ghost-border: rgba(94, 168, 147, 0.52);
+  --mm-ghost-stroke: rgba(94, 168, 147, 0.55);
+  --mm-ghost-accent: #5EA893;
+  --mm-ghost-bar-bg: rgba(94, 168, 147, 0.10);
+  --mm-ghost-remove-bg: rgba(224, 108, 96, 0.10);
+  --mm-ghost-remove-border: rgba(224, 108, 96, 0.45);
+  --mm-ghost-remove-fg: #E5857B;
+}
+
+.mm-ghost-proposal-layer {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.mm-ghost-edges-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mm-ghost-node {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--mm-ghost-border);
+  background: var(--mm-ghost-bg);
+  backdrop-filter: blur(4px);
+  border-radius: 10px;
+  padding: 6px 12px;
+  box-shadow: 0 2px 8px rgba(30, 58, 52, 0.06);
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mm-ghost-diff-halo {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--mm-ghost-border);
+  border-radius: 10px;
+}
+
+.mm-ghost-diff-pill {
+  position: absolute;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px dashed var(--mm-ghost-border);
+  background: var(--mm-ghost-bg);
+  backdrop-filter: blur(4px);
+  border-radius: 9999px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(30, 58, 52, 0.07);
+}
+
+.mm-ghost-remove-overlay {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--mm-ghost-remove-border);
+  background: var(--mm-ghost-remove-bg);
+  border-radius: 10px;
+}
+
+.mm-ghost-remove-badge {
+  position: absolute;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px dashed var(--mm-ghost-remove-border);
+  background: var(--mm-ghost-bg);
+  color: var(--mm-ghost-remove-fg);
+  backdrop-filter: blur(4px);
+  border-radius: 9999px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(30, 58, 52, 0.07);
+}
+
+.mm-ghost-action-capsule {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.92;
+  transition: opacity 140ms ease;
+}
+
+.mm-ghost-action-capsule:hover,
+.mm-ghost-action-capsule:focus-within {
+  opacity: 1;
+}
+
+.mm-ghost-action-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--mm-celadon-border);
+  background: var(--mm-celadon-pill-bg);
+  color: var(--mm-celadon-pill-fg);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.mm-ghost-action-btn:hover {
+  background: var(--mm-celadon-pill-bg-hover);
+}
+
+.mm-ghost-action-btn:active {
+  transform: scale(0.97);
+}
+
+.mm-ghost-action-btn--reject {
+  border-color: var(--mm-border, rgba(30, 58, 52, 0.14));
+  background: transparent;
+  color: var(--mm-text-secondary, inherit);
+}
+
+.mm-ghost-action-btn--reject:hover {
+  background: var(--mm-ghost-remove-bg);
+  color: var(--mm-ghost-remove-fg);
+  border-color: var(--mm-ghost-remove-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-ghost-node,
+  .mm-ghost-action-capsule,
+  .mm-ghost-action-btn {
+    transition-duration: 0ms !important;
+  }
+}

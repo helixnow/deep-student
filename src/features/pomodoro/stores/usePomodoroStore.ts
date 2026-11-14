@@ -229,6 +229,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       endReminderFiredPhase: null,
 
       start: (taskId?: string, taskTitle?: string) => {
+        void flushPendingRecords().catch(error => console.warn('[Pomodoro] Record retry failed:', error));
         const {
           mode,
           status,
@@ -533,6 +534,10 @@ export const usePomodoroStore = create<PomodoroState>()(
         // 正计时：向上累加，无自动完成
         if (phaseStartedAt != null) {
           const elapsed = countUpElapsed(phaseStartedAt, timeLeft);
+          if ((elapsed - timeLeft) * 1000 > AWAY_JUMP_MS) {
+            get().syncWallClock();
+            return;
+          }
           if (elapsed !== timeLeft) {
             set({ timeLeft: elapsed });
           }
@@ -579,7 +584,8 @@ export const usePomodoroStore = create<PomodoroState>()(
         }
 
         if (remaining <= 0) {
-          get().completeCurrentSession();
+          const overdueMs = phaseEndsAt == null ? 0 : Date.now() - phaseEndsAt;
+          get().completeCurrentSession(overdueMs > AWAY_JUMP_MS ? { awayMs: overdueMs } : undefined);
         } else if (remaining !== timeLeft) {
           set({ timeLeft: remaining });
         }
@@ -589,6 +595,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       // 运行中已超时 → 按完成处理；超时幅度大（> AWAY_JUMP_MS，典型是长时间休眠）
       // 则走「离开期间完成」温和路径：静音、换文案、不自动连锁开下一阶段
       syncWallClock: () => {
+        void flushPendingRecords().catch(error => console.warn('[Pomodoro] Record retry failed:', error));
         const { status, phaseEndsAt, phaseStartedAt, timeLeft, mode } = get();
         if (status !== 'running' || mode === 'idle') return;
 

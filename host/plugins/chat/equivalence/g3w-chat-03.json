@@ -1,0 +1,253 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_move_session_to_group",
+    "chat_v2_create_group",
+    "chat_v2_update_group",
+    "chat_v2_remove_tag",
+    "chat_v2_restore_group",
+    "chat_v2_rollback_migration"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.chat.chat_v2_move_session_to_group.group_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "groupId": "group_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_move_session_to_group.group_archived",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_remove_tag.invalid_session_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "bad_g3w",
+            "tag": "数学"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_remove_tag.empty_tag",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "tag": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_restore_group.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_restore_group",
+          "args": {
+            "groupId": "group_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_rollback_migration.legacy_migrated_column_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_rollback_migration",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_group.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "group_missing_g3w",
+            "request": {
+              "sortOrder": 3
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_group.runtime_root_absolute_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "name": "g3w课题",
+              "description": "",
+              "icon": "",
+              "color": "",
+              "systemPrompt": "",
+              "defaultSkillIds": [],
+              "pinnedResourceIds": [],
+              "defaultRuntimeRootId": "/tmp",
+              "preferredProjectRootPath": ""
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_group.runtime_root_unsupported_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "name": "g3w课题",
+              "description": "",
+              "icon": "",
+              "color": "",
+              "systemPrompt": "",
+              "defaultSkillIds": [],
+              "pinnedResourceIds": [],
+              "defaultRuntimeRootId": "bogus_root_g3w",
+              "preferredProjectRootPath": ""
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

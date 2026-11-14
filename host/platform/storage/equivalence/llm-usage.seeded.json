@@ -1,0 +1,195 @@
+{
+  "domain": "storage",
+  "commands": [
+    "llm_usage_get_trends",
+    "llm_usage_by_model",
+    "llm_usage_by_caller",
+    "llm_usage_summary",
+    "llm_usage_session_summary",
+    "llm_usage_recent",
+    "llm_usage_daily",
+    "llm_usage_cleanup"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.llm_usage.seeded.aggregates",
+      "seed": "f3-llm-usage-rows-w0",
+      "steps": [
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-12-31"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-12-31"
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-12-31"
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-10-01",
+            "endDate": "2026-10-01"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-12-31"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {}
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-10-01"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "endDate": "2026-10-01"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.seeded.trends",
+      "seed": "f3-llm-usage-rows-w0",
+      "steps": [
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 36500,
+            "granularity": "day"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 36500,
+            "granularity": "hour"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 36500,
+            "granularity": "week"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 36500,
+            "granularity": "month"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 36500,
+            "granularity": "bogus"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.seeded.recent_and_session",
+      "seed": "f3-llm-usage-rows-w0",
+      "steps": [
+        {
+          "cmd": "llm_usage_recent",
+          "args": {}
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": "sess_wp236_a"
+          }
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": "sess_wp236_none"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.seeded.cleanup",
+      "seed": "f3-llm-usage-rows-w0",
+      "steps": [
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": "2026-10-02"
+          }
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": "2026-10-02"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {}
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

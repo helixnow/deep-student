@@ -27,6 +27,7 @@ export interface MemoryDistributions {
 }
 
 export interface RetentionInsights {
+  model?: 'fsrs-7';
   trueRetention: TrueRetentionRow[];
   distributions: MemoryDistributions;
   studyMsToday: number;
@@ -73,6 +74,7 @@ export function parseRetentionInsights(raw: unknown, todayKey: string): Retentio
   const studyByDate = new Map(daily.map((day) => [String(day.date ?? ''), count(day, 'studyMs', 'study_ms')]));
   const recent = [...studyByDate.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 7);
   return {
+    ...(row.model === 'fsrs-7' && { model: 'fsrs-7' as const }),
     trueRetention,
     distributions: {
       cards: count(dist, 'cards', 'cards'),
@@ -161,6 +163,7 @@ export const RetentionInsightsPanel: React.FC = () => {
   const difficultyLabels = useMemo(() => Array.from({ length: 10 }, (_, index) => `${index + 1}`), []);
 
   if (!insights) return null;
+  const v7 = insights.model === 'fsrs-7';
   const rows = PERIODS.map((period) => insights.trueRetention.find((row) => row.period === period))
     .filter((row): row is TrueRetentionRow => Boolean(row));
 
@@ -217,7 +220,7 @@ export const RetentionInsightsPanel: React.FC = () => {
               labels={tenths}
             />
             <MiniBars
-              title={t('stats.insights.stability')}
+              title={t(v7 ? 'stats.insights.stabilitySlow' : 'stats.insights.stability')}
               values={insights.distributions.stability}
               labels={STABILITY_LABELS}
             />
@@ -228,7 +231,7 @@ export const RetentionInsightsPanel: React.FC = () => {
             />
           </div>
         ) : null}
-        <p className="wb-fcx-footnote">{t('stats.insights.hint')}</p>
+        <p className="wb-fcx-footnote">{t(v7 ? 'stats.insights.hintV7' : 'stats.insights.hint')}</p>
       </div>
     </section>
   );

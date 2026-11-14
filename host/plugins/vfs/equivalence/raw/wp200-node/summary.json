@@ -1,0 +1,220 @@
+{
+  "targets": 8,
+  "helpers": 1,
+  "scenarios": 21,
+  "steps": 208,
+  "counts": {
+    "dstu_folder_get": {
+      "steps": 24,
+      "errorIntent": 3,
+      "serdeError": 3
+    },
+    "dstu_folder_rename": {
+      "steps": 36,
+      "errorIntent": 28,
+      "serdeError": 5
+    },
+    "dstu_folder_delete": {
+      "steps": 13,
+      "errorIntent": 6,
+      "serdeError": 3
+    },
+    "dstu_folder_move": {
+      "steps": 22,
+      "errorIntent": 15,
+      "serdeError": 3
+    },
+    "dstu_folder_set_expanded": {
+      "steps": 13,
+      "errorIntent": 8,
+      "serdeError": 6
+    },
+    "dstu_folder_list": {
+      "steps": 18,
+      "errorIntent": 0,
+      "serdeError": 0
+    },
+    "dstu_folder_get_tree": {
+      "steps": 16,
+      "errorIntent": 0,
+      "serdeError": 0
+    },
+    "dstu_folder_get_breadcrumbs": {
+      "steps": 25,
+      "errorIntent": 3,
+      "serdeError": 3
+    },
+    "dstu_folder_create": {
+      "steps": 41,
+      "errorIntent": 0,
+      "serdeError": 0
+    }
+  },
+  "normalization": [],
+  "comparison": "not-run",
+  "rustCoverage": "not-run",
+  "runtime": {
+    "node": "26.5.0",
+    "acorn": "8.17.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.10",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.3",
+    "libffi": "3.6.0",
+    "lief": "0.17.0",
+    "llhttp": "9.4.2",
+    "merve": "1.2.2",
+    "modules": "147",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "3.5.7",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.3",
+    "tz": "2026b",
+    "undici": "8.7.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.6.202.34-node.24",
+    "zlib": "1.3.2.1-motley-3246f1b",
+    "zstd": "1.5.7"
+  },
+  "results": [
+    {
+      "id": "vfs.folder.read.empty",
+      "steps": 8,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.read.root_child_tree",
+      "steps": 11,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.rename.readback",
+      "steps": 13,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.rename.duplicate_and_literal_titles",
+      "steps": 9,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.rename.validation_order",
+      "steps": 13,
+      "mismatches": [],
+      "errors": 10
+    },
+    {
+      "id": "vfs.folder.rename.unicode_bypass",
+      "steps": 11,
+      "mismatches": [],
+      "errors": 9
+    },
+    {
+      "id": "vfs.folder.rename.utf8_limits",
+      "steps": 8,
+      "mismatches": [],
+      "errors": 2
+    },
+    {
+      "id": "vfs.folder.rename.missing_and_deleted",
+      "steps": 7,
+      "mismatches": [],
+      "errors": 2
+    },
+    {
+      "id": "vfs.folder.move.subtree_and_root",
+      "steps": 17,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.move.invalid_parent_and_precedence",
+      "steps": 10,
+      "mismatches": [],
+      "errors": 7
+    },
+    {
+      "id": "vfs.folder.move.cycle",
+      "steps": 8,
+      "mismatches": [],
+      "errors": 2
+    },
+    {
+      "id": "vfs.folder.move.depth_boundary",
+      "steps": 20,
+      "mismatches": [],
+      "errors": 2
+    },
+    {
+      "id": "vfs.folder.move.deleted_parent_and_source",
+      "steps": 11,
+      "mismatches": [],
+      "errors": 1
+    },
+    {
+      "id": "vfs.folder.expanded.toggle_and_deleted",
+      "steps": 13,
+      "mismatches": [],
+      "errors": 2
+    },
+    {
+      "id": "vfs.folder.delete.cascade_and_repeat",
+      "steps": 16,
+      "mismatches": [],
+      "errors": 0
+    },
+    {
+      "id": "vfs.folder.delete.missing",
+      "steps": 5,
+      "mismatches": [],
+      "errors": 3
+    },
+    {
+      "id": "vfs.folder.args.get_and_breadcrumbs",
+      "steps": 8,
+      "mismatches": [],
+      "errors": 6
+    },
+    {
+      "id": "vfs.folder.args.rename",
+      "steps": 5,
+      "mismatches": [],
+      "errors": 5
+    },
+    {
+      "id": "vfs.folder.args.move_and_delete",
+      "steps": 6,
+      "mismatches": [],
+      "errors": 6
+    },
+    {
+      "id": "vfs.folder.args.expanded",
+      "steps": 6,
+      "mismatches": [],
+      "errors": 6
+    },
+    {
+      "id": "vfs.folder.args.list_tree_unknown_ignored",
+      "steps": 3,
+      "mismatches": [],
+      "errors": 0
+    }
+  ],
+  "passed": 21,
+  "failed": 0,
+  "skipped": 0
+}

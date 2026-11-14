@@ -1,0 +1,1846 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "dstu_move",
+    "dstu_copy",
+    "dstu_move_many",
+    "dstu_purge_all",
+    "dstu_search_in_folder",
+    "dstu_set_metadata",
+    "vfs_upload_attachment",
+    "vfs_upload_file",
+    "vfs_download_paper"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs.move.src_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move.src_res_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/res_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move.dst_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "源",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/abc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move.dst_not_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "源",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/note_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move.dst_folder_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "源",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move.src_missing_after_move",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/note_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.src_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.dst_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "源",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/abc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.dst_not_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "源",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/note_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/note_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.translation_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/tr_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.exam_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/exam_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.essay_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/essay_session_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.file_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/file_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.mindmap_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/mm_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.folder_into_self",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "源夹",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.folder_into_descendant",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "父",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "子",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.folder_src_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/fld_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.folder_dst_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "源夹",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.copy.res_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/res_missing",
+            "dst": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move_many.over_batch_limit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/note_missing0",
+              "/note_missing1",
+              "/note_missing2",
+              "/note_missing3",
+              "/note_missing4",
+              "/note_missing5",
+              "/note_missing6",
+              "/note_missing7",
+              "/note_missing8",
+              "/note_missing9",
+              "/note_missing10",
+              "/note_missing11",
+              "/note_missing12",
+              "/note_missing13",
+              "/note_missing14",
+              "/note_missing15",
+              "/note_missing16",
+              "/note_missing17",
+              "/note_missing18",
+              "/note_missing19",
+              "/note_missing20",
+              "/note_missing21",
+              "/note_missing22",
+              "/note_missing23",
+              "/note_missing24",
+              "/note_missing25",
+              "/note_missing26",
+              "/note_missing27",
+              "/note_missing28",
+              "/note_missing29",
+              "/note_missing30",
+              "/note_missing31",
+              "/note_missing32",
+              "/note_missing33",
+              "/note_missing34",
+              "/note_missing35",
+              "/note_missing36",
+              "/note_missing37",
+              "/note_missing38",
+              "/note_missing39",
+              "/note_missing40",
+              "/note_missing41",
+              "/note_missing42",
+              "/note_missing43",
+              "/note_missing44",
+              "/note_missing45",
+              "/note_missing46",
+              "/note_missing47",
+              "/note_missing48",
+              "/note_missing49",
+              "/note_missing50",
+              "/note_missing51",
+              "/note_missing52",
+              "/note_missing53",
+              "/note_missing54",
+              "/note_missing55",
+              "/note_missing56",
+              "/note_missing57",
+              "/note_missing58",
+              "/note_missing59",
+              "/note_missing60",
+              "/note_missing61",
+              "/note_missing62",
+              "/note_missing63",
+              "/note_missing64",
+              "/note_missing65",
+              "/note_missing66",
+              "/note_missing67",
+              "/note_missing68",
+              "/note_missing69",
+              "/note_missing70",
+              "/note_missing71",
+              "/note_missing72",
+              "/note_missing73",
+              "/note_missing74",
+              "/note_missing75",
+              "/note_missing76",
+              "/note_missing77",
+              "/note_missing78",
+              "/note_missing79",
+              "/note_missing80",
+              "/note_missing81",
+              "/note_missing82",
+              "/note_missing83",
+              "/note_missing84",
+              "/note_missing85",
+              "/note_missing86",
+              "/note_missing87",
+              "/note_missing88",
+              "/note_missing89",
+              "/note_missing90",
+              "/note_missing91",
+              "/note_missing92",
+              "/note_missing93",
+              "/note_missing94",
+              "/note_missing95",
+              "/note_missing96",
+              "/note_missing97",
+              "/note_missing98",
+              "/note_missing99",
+              "/note_missing100"
+            ],
+            "dest_folder": "/",
+            "destFolder": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move_many.dest_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/note_missing0000"
+            ],
+            "dest_folder": "/abc",
+            "destFolder": "/abc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.move_many.dest_not_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/note_missing0000"
+            ],
+            "dest_folder": "/note_missing1",
+            "destFolder": "/note_missing1"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.purge_all.unsupported_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_purge_all",
+          "args": {
+            "resourceType": "exams"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.search_in_folder.folder_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_search_in_folder",
+          "args": {
+            "folder_id": "fld_missing0000",
+            "folderId": "fld_missing0000",
+            "query": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.cached_path_unsupported_item_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "新思维导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${0.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.simple_path_unknown_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/abc",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.multi_segment_not_cached",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/数学/note_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_metadata_not_object",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": [
+              "title"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_unknown_field",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "status": "done"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_title_not_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "title": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_tags_item_not_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "tags": [
+                "math",
+                3
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_tags_not_array",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "tags": "math"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_favorite_not_bool",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "isFavorite": "yes"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_props_not_object",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "props": [
+                "not",
+                "an",
+                "object"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_title_blank",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原题",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "   "
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_title_control_char",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原题",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "换\n行"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_tags_too_many",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原题",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "t0",
+                "t1",
+                "t2",
+                "t3",
+                "t4",
+                "t5",
+                "t6",
+                "t7",
+                "t8",
+                "t9",
+                "t10",
+                "t11",
+                "t12",
+                "t13",
+                "t14",
+                "t15",
+                "t16",
+                "t17",
+                "t18",
+                "t19",
+                "t20",
+                "t21",
+                "t22",
+                "t23",
+                "t24",
+                "t25",
+                "t26",
+                "t27",
+                "t28",
+                "t29",
+                "t30",
+                "t31",
+                "t32",
+                "t33",
+                "t34",
+                "t35",
+                "t36",
+                "t37",
+                "t38",
+                "t39",
+                "t40",
+                "t41",
+                "t42",
+                "t43",
+                "t44",
+                "t45",
+                "t46",
+                "t47",
+                "t48",
+                "t49",
+                "t50",
+                "t51",
+                "t52",
+                "t53",
+                "t54",
+                "t55",
+                "t56",
+                "t57",
+                "t58",
+                "t59",
+                "t60",
+                "t61",
+                "t62",
+                "t63",
+                "t64",
+                "t65",
+                "t66",
+                "t67",
+                "t68",
+                "t69",
+                "t70",
+                "t71",
+                "t72",
+                "t73",
+                "t74",
+                "t75",
+                "t76",
+                "t77",
+                "t78",
+                "t79",
+                "t80",
+                "t81",
+                "t82",
+                "t83",
+                "t84",
+                "t85",
+                "t86",
+                "t87",
+                "t88",
+                "t89",
+                "t90",
+                "t91",
+                "t92",
+                "t93",
+                "t94",
+                "t95",
+                "t96",
+                "t97",
+                "t98",
+                "t99",
+                "t100"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.note_occ_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原题",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.translation_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.essay_session_no_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_session_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.essay_session_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_session_missing",
+            "metadata": {
+              "title": "新标题"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.essay_round_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.exam_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/exam_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.file_bookmarks_not_array",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing",
+            "metadata": {
+              "bookmarks": "x"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.file_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.mindmap_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/mm_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.folder_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/fld_missing0000",
+            "metadata": {
+              "title": "新名"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.set_metadata.res_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/res_missing",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.staged_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "",
+              "stagedUploadId": "upl_missing",
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.media_base64_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.mp3",
+              "mimeType": "audio/mpeg",
+              "base64Content": "!!!",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.name_blank",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "  ",
+              "mimeType": "text/plain",
+              "base64Content": "aGVsbG8=",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.unsupported_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "virus.exe",
+              "mimeType": "application/x-msdownload",
+              "base64Content": "aGVsbG8=",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.attachment_type_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aGVsbG8=",
+              "stagedUploadId": null,
+              "attachmentType": "video",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.image_type_non_image_mime",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "aGVsbG8=",
+              "stagedUploadId": null,
+              "attachmentType": "image",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.file_type_image_mime",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.data_url_without_comma",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "data:text/plain;base64",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.base64_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "!!!",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_attachment.pdf_bad_header",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "aGVsbG8=",
+              "stagedUploadId": null,
+              "attachmentType": "file",
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_file.base64_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "!!!"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_upload_file.unsupported_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "virus.exe",
+              "mimeType": "application/x-msdownload",
+              "base64Content": "aGVsbG8="
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs.vfs_download_paper.non_https_url",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "http://arxiv.org/pdf/1706.03762",
+              "title": "Attention Is All You Need"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

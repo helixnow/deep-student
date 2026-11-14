@@ -1,0 +1,138 @@
+## errors and warnings only
+日志记录 (4 / 10)
+Prism 语言包加载慢
+Crepe.create() 失败
+全局错误捕获: Prism is not defined
+Promise 拒绝: Error: milkdown plugin failed
+## category chip 错误
+日志记录 (3 / 10)
+Crepe.create() 失败
+全局错误捕获: Prism is not defined
+Promise 拒绝: Error: milkdown plugin failed
+## category chip 错误 again (all)
+日志记录 (10 / 10)
+Crepe 编辑器调试插件已激活
+CrepeEditor mount
+创建 Crepe 实例
+Prism 语言包加载慢
+DOM 状态
+markdownUpdated
+编辑器快照
+Crepe.create() 失败
+全局错误捕获: Prism is not defined
+Promise 拒绝: Error: milkdown plugin failed
+## category select editor
+日志记录 (1 / 10)
+markdownUpdated
+## level debug
+日志记录 (2 / 10)
+创建 Crepe 实例
+markdownUpdated
+## level info
+日志记录 (4 / 10)
+Crepe 编辑器调试插件已激活
+CrepeEditor mount
+DOM 状态
+编辑器快照
+## level warning
+日志记录 (1 / 10)
+Prism 语言包加载慢
+## level error
+日志记录 (3 / 10)
+Crepe.create() 失败
+全局错误捕获: Prism is not defined
+Promise 拒绝: Error: milkdown plugin failed
+## keyword NOTE_1 (case-insensitive, matches the details JSON)
+日志记录 (2 / 10)
+CrepeEditor mount
+markdownUpdated
+## keyword without matches
+日志记录 (0 / 10)
+
+## manual snapshot without a wrapper
+日志记录 (11 / 11)
+Crepe 编辑器调试插件已激活
+CrepeEditor mount
+创建 Crepe 实例
+Prism 语言包加载慢
+DOM 状态
+markdownUpdated
+编辑器快照
+Crepe.create() 失败
+全局错误捕获: Prism is not defined
+Promise 拒绝: Error: milkdown plugin failed
+手动触发 DOM 快照
+----
+<button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-red-500 text-white" title="仅显示错误和警告">
+  <svg size=16 icon="M230.6,49.53A15.81,15.81">
+<button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+  "错误"
+  ":"
+  "3"
+<button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-gray-200 text-gray-700" title="自动滚动到底部">
+  "自动滚动"
+----
+<div class="max-h-[400px] overflow-auto">
+  <div class="p-8 text-center text-gray-500">
+    <div class="mb-2">
+      "没有符合过滤条件的日志"
+    <div class="text-xs text-gray-400">
+      "请打开笔记模块并选择一条笔记，观察编辑器初始化日志"
+copy all disabled: true
+----
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div class="border rounded-lg p-3 bg-slate-50">
+    <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+      <svg size=16 icon="M247.31,124.76c-.35-.79-">
+      "实时 DOM 快照"
+    <div class="text-xs font-mono space-y-1">
+      <div class="text-red-600">
+        "wrapper:"
+        "✗"
+      <div class="text-red-600">
+        "data-ready:"
+        "null"
+      <div class="text-red-600">
+        ".milkdown:"
+        "✗"
+      <div class="text-red-600">
+        ".ProseMirror:"
+        "✗"
+      <div class="text-orange-600">
+        "contentEditable:"
+        "null"
+      <div class="text-green-600">
+        "pointer-events:"
+      <div class="text-gray-500">
+        "opacity:"
+      <div class="text-gray-500">
+        "children:"
+        "0"
+  <div class="border rounded-lg p-3 bg-red-50 border-red-200">
+    <div class="text-sm font-medium mb-2 flex items-center gap-2">
+      <svg size=16 icon="M236.8,188.09,149.35,36." class="text-red-600">
+      <span class="text-red-700">
+        "检测到问题"
+    <div class="space-y-2">
+      <div class="text-xs space-y-1">
+        <div class="text-red-700">
+          "❌ Crepe 编辑器容器不存在"
+        <div class="text-red-700">
+          "⚠️ 存在 3 条错误日志"
+      <div class="text-xs text-gray-600 border-t pt-2 mt-2">
+        <div class="font-medium mb-1">
+          "建议："
+        <div>
+          "•"
+          "检查 NotesCrepeEditor 是否正确渲染"
+        <div>
+          "•"
+          "Prism 加载错误可能导致代码高亮失败"
+----
+<div class="max-h-[400px] overflow-auto">
+  <div class="p-8 text-center text-gray-500">
+    <div class="mb-2">
+      "暂无日志记录"
+    <div class="text-xs text-gray-400">
+      "请打开笔记模块并选择一条笔记，观察编辑器初始化日志"
+export disabled: true

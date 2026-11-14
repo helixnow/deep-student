@@ -1,0 +1,738 @@
+{
+  "domain": "notes",
+  "commands": [
+    "canvas_note_append",
+    "canvas_note_read",
+    "canvas_note_replace",
+    "canvas_note_set",
+    "chat_v2_canvas_edit_ack",
+    "chat_v2_canvas_edit_result",
+    "dstu_create",
+    "dstu_delete",
+    "notes_enable_columns",
+    "notes_history_current",
+    "notes_history_set_retention",
+    "notes_migrate_blocks"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.canvas.read_append_sections_and_missing_notes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布读写",
+              "content": "# Intro\n\nHello\n\n## Part A ##\n\nAlpha\n\n```md\n## Fake\n```\n\n## part b\n\nBeta\n\n# Tail\n\nEnd\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "   "
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "Part A"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "## PART B"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "### Part A"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "Fake"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "section": "Nope"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "追加全文"
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "- 追加到 A",
+            "section": "Part A"
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "x",
+            "section": "Nope"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "# 新正文\n\n整体替换\n"
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "# 新正文\n\n整体替换\n"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "空画布",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${16.id}",
+            "content": "首段"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${16.id}"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing_canvas"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing_canvas",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing_canvas",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${16.path}"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${16.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${16.id}",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${16.id}",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.canvas.replace_literal_regex_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布替换",
+              "content": "# 替换\n\nfoo bar foo\n\nv1 v22 v333\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "foo",
+            "replace": "baz",
+            "isRegex": false
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "bar",
+            "replace": "BAR"
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "absent",
+            "replace": "x",
+            "isRegex": false
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "v(\\d+)",
+            "replace": "w$1",
+            "isRegex": true
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "[.]",
+            "replace": "!",
+            "isRegex": true
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "(",
+            "replace": "[",
+            "isRegex": false
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "",
+            "replace": "x",
+            "isRegex": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing_canvas",
+            "search": "",
+            "replace": "x",
+            "isRegex": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "(",
+            "replace": "x",
+            "isRegex": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "w(?=1)",
+            "replace": "x",
+            "isRegex": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing_canvas",
+            "search": "a",
+            "replace": "b",
+            "isRegex": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "baz",
+            "replace": "x",
+            "isRegex": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "baz",
+            "isRegex": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.canvas.format_guards_columns_blocks_and_markers",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布旧格式",
+              "content": "# 旧\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "<!-- ds:block-id=m1 -->\n# 旧\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": ":::ds-columns{version=1 layout=cornell}\n\n:::column\n\n## Cues\n\nQuestion\n\n:::end-column\n\n:::column\n\n## Notes\n\nAnswer\n\n:::end-column\n\n:::end-ds-columns\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "<!-- ds:schema=v9 -->\n正文\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": ":::column\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${6.updated_at}"
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "# 新\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "content": "追加"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "search": "正文",
+            "replace": "改",
+            "isRegex": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布块格式",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${12.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${12.id}",
+            "expectedUpdatedAt": "${13.updated_at}",
+            "content": "<!-- ds:block-id=ba -->\n# Heading\n\n<!-- ds:block-id=bb -->\nBody\n"
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${12.id}",
+            "content": "# 无标记\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${12.id}",
+            "content": "无标记追加"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${12.id}",
+            "search": "Body",
+            "replace": "Body2",
+            "isRegex": false
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${12.id}",
+            "content": "<!-- ds:block-id=ba -->\n# Heading\n\n<!-- ds:block-id=bb -->\nBody3\n"
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${12.id}",
+            "section": "Heading"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.canvas.chat_edit_ack_and_result_without_pending_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_canvas_edit_ack",
+          "args": {
+            "requestId": "canvas_req_absent"
+          }
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_ack",
+          "args": {
+            "requestId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_ack",
+          "args": {
+            "requestId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_ack",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "canvas_req_absent",
+              "success": true,
+              "affectedCount": 1,
+              "replaceCount": null,
+              "beforePreview": "a",
+              "afterPreview": "b",
+              "addedContent": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "canvas_req_absent",
+              "success": false,
+              "error": "用户拒绝"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "",
+              "success": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "  ",
+              "success": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "canvas_req_absent"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -62,6 +62,7 @@ import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { StatusBarItems, formatStatusBarTime } from './StatusBarItems';
+import { StudyFlowStageSwitcher } from './StudyFlowStageSwitcher';
 import './StatusBar.css';
 
 export { formatStatusBarTime } from './StatusBarItems';
@@ -201,6 +202,7 @@ const StatusBarComponent: React.FC = () => {
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [appMenusOpen, setAppMenusOpen] = useState(false);
   const [clockOpen, setClockOpen] = useState(false);
+  const [stageMenuOpen, setStageMenuOpen] = useState(false);
   const [automation, setAutomation] = useState<AutomationSummary | null>(null);
   const titleId = useId();
   const winChromeInset = isWindows();
@@ -249,7 +251,7 @@ const StatusBarComponent: React.FC = () => {
   const revealTimerRef = useRef(0);
   const concealTimerRef = useRef(0);
   const overlaysOpen =
-    centerPhase !== 'closed' || brandMenuOpen || appMenusOpen || clockOpen;
+    centerPhase !== 'closed' || brandMenuOpen || appMenusOpen || clockOpen || stageMenuOpen;
 
   const updateRevealed = useCallback((next: boolean) => {
     revealedRef.current = next;
@@ -588,6 +590,9 @@ const StatusBarComponent: React.FC = () => {
           onClose={closeBrandMenu}
         />
         <StatusBarAppMenus onOpenChange={setAppMenusOpen} />
+      </div>
+      <div className="wb-menubar-stage-slot" data-no-drag>
+        <StudyFlowStageSwitcher onOpenChange={setStageMenuOpen} />
       </div>
       <div className="wb-menubar-trailing" data-no-drag>
         <button

@@ -91,7 +91,7 @@ function buildDiff(originalText: string, polishedText: string): RenderedDiff {
     .filter((op) => op.kind !== 'ins')
     .map((op, idx) =>
       op.kind === 'del' ? (
-        <span key={idx} className="text-red-500/90 line-through decoration-red-400/60 bg-red-500/5 rounded-sm">
+        <span key={idx} className="text-destructive/85 line-through decoration-destructive/50 bg-destructive/[0.06] px-0.5 rounded-sm">
           {op.text}
         </span>
       ) : (
@@ -102,7 +102,7 @@ function buildDiff(originalText: string, polishedText: string): RenderedDiff {
     .filter((op) => op.kind !== 'del')
     .map((op, idx) =>
       op.kind === 'ins' ? (
-        <span key={idx} className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-400/60 underline-offset-2 bg-emerald-500/5 rounded-sm">
+        <span key={idx} className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-400/60 underline-offset-2 bg-emerald-500/[0.08] px-0.5 rounded-sm">
           {op.text}
         </span>
       ) : (
@@ -177,17 +177,17 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
         return (
           <div
             key={index}
-            className="rounded-xl border border-border/40 bg-card/50 overflow-hidden"
+            className="rounded-r-xl rounded-l-sm border-y border-r border-border/35 border-l-2 border-l-emerald-500/75 bg-foreground/[0.015] overflow-hidden"
           >
-            {/* 原句（删除部分红色删除线） */}
-            <div className="px-4 py-3 border-b border-border/20">
+            {/* 原句（删除部分柔和删除线） */}
+            <div className="px-4 py-3 border-b border-border/25">
               <div className="text-xs text-muted-foreground/50 mb-1">{t('essay_grading:sections.original')}</div>
               <div className="text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap">
                 {showDiff ? diff.original : item.original}
               </div>
             </div>
-            {/* 润色句（新增部分绿色下划线） */}
-            <div className="px-4 py-3 bg-emerald-50/30 dark:bg-emerald-950/10">
+            {/* 润色句（新增部分微底色下划线） */}
+            <div className="px-4 py-3 bg-foreground/[0.01]">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
                   <ArrowRight size={12} />

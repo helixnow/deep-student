@@ -1,0 +1,4 @@
+{
+  "$comment": "测试里代替 extends: \"official\" 的官方 profile：translation 服务由测试宿主的替身提供，官方插件一个也不装。",
+  "plugins": []
+}

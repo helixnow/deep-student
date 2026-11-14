@@ -338,9 +338,6 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <Button size="sm" variant="ghost" onClick={handleClearLogs} title="清空">
                 <Trash size={16} />
               </Button>
-              <Button size="sm" variant="ghost" onClick={refreshLogs} title="刷新">
-                <ArrowClockwise size={16} />
-              </Button>
             </div>
           </div>
         </CardContent>

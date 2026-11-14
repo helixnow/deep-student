@@ -1,5 +1,9 @@
 # Visual Regression Tests
 
+> The automated FE-A1 regression net (slot snapshot, DOM golden, IPC trace, screenshots with
+> baselines, chunk graph) is documented in [REGRESSION.md](./REGRESSION.md). This page describes the
+> older manual capture script, which is unchanged.
+
 Manual visual regression testing for CSS migration.
 
 ## Usage

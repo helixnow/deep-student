@@ -70,7 +70,8 @@ describe('StyleDebugPage LLM output lab', () => {
   it('renders the current migration overview instead of the removed LLM playback lab', async () => {
     render(<StyleDebugPage />);
 
-    expect(screen.getByRole('button', { name: '迁移概览' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: '迁移概览' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: '迁移概览' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('总体迁移率')).toBeInTheDocument();
     expect(screen.getByText('组件族迁移进度')).toBeInTheDocument();
     expect(document.querySelector('.llm-output-playback')).toBeNull();
@@ -82,7 +83,7 @@ describe('StyleDebugPage LLM output lab', () => {
     render(<StyleDebugPage />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: '混用清单' }));
+    await user.click(screen.getByRole('tab', { name: '混用清单' }));
 
     expect(screen.getByText('Button')).toBeInTheDocument();
     expect(screen.getByText('Form Controls')).toBeInTheDocument();

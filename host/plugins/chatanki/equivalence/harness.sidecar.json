@@ -1,0 +1,1891 @@
+{
+ "note": "Runner bindings that WAVE0 v0 cannot express. Keyed by scenario id; step = index into steps[]. See README.md.",
+ "scripts": {
+  "w0.directive": "Answer round k (k = assistant tool_calls messages after the last user message) with rounds[k] of the W0_DIRECTIVE JSON found in the last user message; when k == rounds.length answer content=final, finish=stop."
+ },
+ "scenarios": {
+  "chatanki.template.list.default": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_default_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.filters": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_filters_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.limit_zero": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_limit_zero_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.limit_over_cap": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_limit_over_cap_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.query_no_match": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_query_no_match_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.inactive_hidden": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_inactive_hidden_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.bad_args.type": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_bad_args_type_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.bad_args.negative_limit": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_bad_args_negative_limit_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.list.bad_args.null_active_only": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_list_bad_args_null_active_only_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.custom": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_custom_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.builtin_after_list": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_builtin_after_list_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.snake_alias": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_snake_alias_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.bad_args.missing_id": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_bad_args_missing_id_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.get.bad_args.number_id": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_get_bad_args_number_id_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.valid": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_valid_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.errors_and_warnings": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_errors_and_warnings_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.cloze_missing_placeholder": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_cloze_missing_placeholder_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.rules_mismatch": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_rules_mismatch_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.json_string": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_json_string_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.bad_json_string": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_bad_json_string_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.json_string_array": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_json_string_array_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.non_object": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_non_object_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.parse_error_name_type": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_parse_error_name_type_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.parse_error_fields_item": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_parse_error_fields_item_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.parse_error_fields_type": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_parse_error_fields_type_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.parse_error_rules": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_parse_error_rules_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.parse_error_bool": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_parse_error_bool_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.alias_and_snake": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_alias_and_snake_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.validate.bad_args.missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_validate_bad_args_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.success": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_success_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.success_version_inactive": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_success_version_inactive_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.validation_failed": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_validation_failed_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.parse_error": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_parse_error_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.normalize_error": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_normalize_error_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.bad_args.missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_bad_args_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.create.duplicate_name": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_create_duplicate_name_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.success": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_success_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.stale_reuse": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_stale_reuse_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.stale_literal": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_stale_literal_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.numeric_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_numeric_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.bool_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_bool_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.missing_expected_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_missing_expected_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.top_level_expected_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_top_level_expected_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.no_changes": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_no_changes_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.only_is_built_in": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_only_is_built_in_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.flattened_patch": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_flattened_patch_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.template_alias_patch": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_template_alias_patch_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_json_string": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_json_string_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_bad_json_string": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_bad_json_string_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_json_string_non_object": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_json_string_non_object_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_array": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_array_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_field_type": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_field_type_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.patch_rules_error": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_patch_rules_error_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.missing_template": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_missing_template_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.bad_args.missing_id": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_bad_args_missing_id_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.builtin_marks_user_modified": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_builtin_marks_user_modified_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.update.explicit_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_update_explicit_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.fork.builtin_default_name": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_fork_builtin_default_name_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.fork.custom_named_inactive": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_fork_custom_named_inactive_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.fork.template_id_alias": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_fork_template_id_alias_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.fork.missing_source": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_fork_missing_source_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.fork.bad_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_fork_bad_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.by_id_sample": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_by_id_sample_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.by_id_missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_by_id_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft_snake_preview_data": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_snake_preview_data_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft_empty": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_empty_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft_bad_json": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_bad_json_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft_fields_error": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_fields_error_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.draft_preview_data_type": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_draft_preview_data_type_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.id_precedence": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_id_precedence_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.neither": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_neither_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.preview.bad_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_preview_bad_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.delete.custom_approved": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_082"
+     }
+    },
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_delete_custom_approved_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.delete.custom_rejected": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_083"
+     }
+    },
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_delete_custom_rejected_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.delete.builtin_soft": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_084"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_delete_builtin_soft_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.delete.missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_086"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_delete_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.delete.bad_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_087"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_delete_bad_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.custom": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_custom_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.builtin_after_list": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_builtin_after_list_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.inactive": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_inactive_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.after_builtin_soft_delete": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_092"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_after_builtin_soft_delete_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.missing": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_missing_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.snake_alias": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_snake_alias_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.template.set_default.bad_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_template_set_default_bad_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.empty": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_empty_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.seeded_filters": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_seeded_filters_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.query_alias_trim": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_query_alias_trim_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.page_zero": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_page_zero_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.schedules": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_schedules_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.bad_args.unknown_field": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_bad_args_unknown_field_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.bad_args.enum": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_bad_args_enum_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.list.bad_args.negative_page": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_list_bad_args_negative_page_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.success_session_owned": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_108"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_success_session_owned_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.success_no_session": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_109"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_success_no_session_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.cross_session": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_110"
+     }
+    },
+    {
+     "step": 7,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_cross_session_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.stale_reuse": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_111"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_stale_reuse_a1"
+     }
+    },
+    {
+     "step": 7,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_112"
+     }
+    },
+    {
+     "step": 8,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_stale_reuse_a2"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.stale_literal": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_113"
+     }
+    },
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_stale_literal_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.missing_card": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_114"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_missing_card_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.blank_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_115"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_blank_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.empty_patch": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_116"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_empty_patch_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.patch_unknown_field": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_117"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_patch_unknown_field_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.unknown_top_field": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_118"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_unknown_top_field_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.content_required": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_119"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_content_required_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.text_null_tags": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_120"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_text_null_tags_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.update.rejected": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_121"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_update_rejected_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.success": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_122"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_success_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.missing_review_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_123"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_missing_review_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.negative_review_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_124"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_negative_review_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.stale_content": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_125"
+     }
+    },
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_stale_content_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.review_conflict": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_126"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_review_conflict_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.missing_card": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_127"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_missing_card_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.then_update": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_128"
+     }
+    },
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_then_update_a1"
+     }
+    },
+    {
+     "step": 7,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_129"
+     }
+    },
+    {
+     "step": 8,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_then_update_a2"
+     }
+    }
+   ]
+  },
+  "chatanki.library.delete.blank_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "tool_approval_request",
+      "toolCallId": "call_w0_130"
+     }
+    },
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_library_delete_blank_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.owned_success": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_owned_success_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.foreign_session": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_foreign_session_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.no_owner": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_no_owner_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.stale": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_stale_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.args_required": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_args_required_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.bad_args": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_bad_args_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.update.content_required": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_update_content_required_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.owned_success": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_owned_success_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.foreign_session": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 6,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_foreign_session_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.missing_review_version": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_missing_review_version_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.stale": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 4,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_stale_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.review_conflict": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 5,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_review_conflict_a1"
+     }
+    }
+   ]
+  },
+  "chatanki.card.delete.unknown_field": {
+   "llm": "w0.directive",
+   "steps": [
+    {
+     "step": 3,
+     "waitAfter": {
+      "event": "stream_complete|stream_error|stream_cancelled",
+      "channelPrefix": "chat_v2_session_",
+      "messageId": "msg_w0_card_delete_unknown_field_a1"
+     }
+    }
+   ]
+  }
+ }
+}

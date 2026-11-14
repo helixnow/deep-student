@@ -2,19 +2,89 @@
  * UnifiedMobileHeader - 统一的移动端顶部导航栏
  *
  * 嵌在页面滑动轨道的主栏里，跟着原页面一起平移，而不是 fixed 盖住侧栏。
+ * 支持：
+ * - 手机横屏紧凑高度（40px）与左右安全区避让
+ * - 4 层阶梯渐进模糊垫层（MobileProgressiveBlurBar），向外延伸 14px 羽化尾迹
  */
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
 import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
+import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
+import { MOBILE_LAYOUT } from '@/config/mobileLayout';
+import { usePhoneLandscape } from '@/hooks/useBreakpoint';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { cn } from '@/utils/cn';
+import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { useMobileHeaderContextSafe, useMobileHeaderNav } from './MobileHeaderContext';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
-import { isMacOS, isMobilePlatform } from '@/utils/platform';
-import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
-import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+
+export interface MobileProgressiveBlurBarProps {
+  /** 渐进模糊方向：top 为顶栏向下消融，bottom 为底栏向上消融 */
+  position?: 'top' | 'bottom';
+  /** 向外延伸羽化尾迹高度（px），默认 14px */
+  tailPx?: number;
+  /** 额外的 className */
+  className?: string;
+}
+
+const PROGRESSIVE_BLUR_STEPS = [
+  { filter: 'blur(1px)', maskStops: 'black 0%, black 28%, transparent 100%' },
+  { filter: 'blur(2px)', maskStops: 'black 0%, black 20%, transparent 82%' },
+  { filter: 'blur(4px)', maskStops: 'black 0%, black 12%, transparent 62%' },
+  { filter: 'blur(8px) saturate(140%)', maskStops: 'black 0%, transparent 42%' },
+] as const;
+
+/**
+ * 移动端 4 层阶梯渐进模糊条
+ * 通过分段 mask-image 递减模糊半径，配合语义背景色线性渐变与 14px 羽化尾迹，
+ * 让滚入栏后的列表与消息自然消融，无硬切边界。
+ */
+export const MobileProgressiveBlurBar: React.FC<MobileProgressiveBlurBarProps> = ({
+  position = 'top',
+  tailPx = MOBILE_LAYOUT.PROGRESSIVE_BLUR_TAIL_PX,
+  className,
+}) => {
+  const direction = position === 'top' ? 'to bottom' : 'to top';
+  const placementStyle: React.CSSProperties =
+    position === 'top'
+      ? { top: 0, bottom: `-${tailPx}px` }
+      : { bottom: 0, top: `-${tailPx}px` };
+  const tintGradient = `linear-gradient(${direction}, hsl(var(--background) / 0.92) 0%, hsl(var(--background) / 0.72) 48%, hsl(var(--background) / 0.28) 78%, hsl(var(--background) / 0) 100%)`;
+
+  return (
+    <div
+      aria-hidden="true"
+      data-mobile-progressive-blur={position}
+      className={cn('pointer-events-none absolute inset-x-0 z-0 select-none', className)}
+      style={placementStyle}
+    >
+      {PROGRESSIVE_BLUR_STEPS.map((step, index) => {
+        const maskValue = `linear-gradient(${direction}, ${step.maskStops})`;
+        return (
+          <span
+            key={step.filter}
+            data-blur-layer={index + 1}
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backdropFilter: step.filter,
+              WebkitBackdropFilter: step.filter,
+              maskImage: maskValue,
+              WebkitMaskImage: maskValue,
+            }}
+          />
+        );
+      })}
+      <div
+        data-blur-tint
+        className="pointer-events-none absolute inset-0"
+        style={{ backgroundImage: tintGradient }}
+      />
+    </div>
+  );
+};
 
 export interface UnifiedMobileHeaderProps {
   /** 是否可以返回（有历史记录） */
@@ -31,6 +101,8 @@ export interface UnifiedMobileHeaderProps {
   style?: React.CSSProperties;
   /** D-1: 当前视图未注册 useMobileHeader 时的兜底标题（取导航标签），避免顶栏空白 */
   fallbackTitle?: string;
+  /** 是否启用 4 层阶梯渐进模糊垫层（默认启用） */
+  progressiveBlur?: boolean;
 }
 
 export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
@@ -41,8 +113,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   className,
   style,
   fallbackTitle,
+  progressiveBlur = true,
 }) => {
   const { t } = useTranslation(['common']);
+  const isPhoneLandscape = usePhoneLandscape();
   const ctx = useMobileHeaderContextSafe();
   const config = ctx?.config ?? {
     title: '',
@@ -84,25 +158,34 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
     return null;
   }
 
-  // macOS 桌面窗口拉窄（< 768）也走这套移动端顶栏：红绿灯叠在左上角，会压住菜单 / 返回按钮。
-  // 桌面 mac 上左侧让出红绿灯宽度；真移动平台不受影响（仍按安全区）。
-  const paddingLeft = !isMobilePlatform() && isMacOS()
-    ? `${DESKTOP_SHELL.macTrafficLightsSpacer}px`
-    : 'calc(0.75rem + var(--mobile-safe-area-left, 0px))';
+  // 手机横屏优先使用 max(12px, env(safe-area-inset-left/right)) 避让刘海与圆角；
+  // macOS 桌面窗口拉窄（< 768）则让出红绿灯宽度；其余竖屏走标准安全区变量。
+  const paddingLeft = isPhoneLandscape
+    ? 'max(12px, env(safe-area-inset-left))'
+    : !isMobilePlatform() && isMacOS()
+      ? `${DESKTOP_SHELL.macTrafficLightsSpacer}px`
+      : 'calc(0.75rem + var(--mobile-safe-area-left, 0px))';
+  const paddingRight = isPhoneLandscape
+    ? 'max(12px, env(safe-area-inset-right))'
+    : 'calc(0.75rem + var(--mobile-safe-area-right, 0px))';
+  const headerHeight = isPhoneLandscape
+    ? `${MOBILE_LAYOUT.LANDSCAPE_HEADER_HEIGHT}px`
+    : `var(--mobile-header-total-height, ${MOBILE_LAYOUT.mobileHeader.height}px)`;
 
   if (config.floatingMenuButton && showMenuButton) {
     return (
       <div
         data-mobile-shell="floating-sidebar-trigger"
+        data-phone-landscape={isPhoneLandscape ? 'true' : undefined}
         className={cn(
-          "pointer-events-none flex w-full items-start justify-between px-3",
+          'pointer-events-none flex w-full items-start justify-between px-3',
           chromeMotionClass,
-          className
+          className,
         )}
         style={{
           paddingTop: 'calc(var(--mobile-safe-area-top, 0px) + 0.375rem)',
           paddingLeft,
-          paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+          paddingRight,
           ...style,
         }}
       >
@@ -133,27 +216,28 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       // 且移动端本无窗口拖拽需求；仅桌面窄窗口场景保留拖拽区
       {...(!isMobilePlatform() ? { 'data-tauri-drag-region': true } : {})}
       data-mobile-shell="header"
+      data-phone-landscape={isPhoneLandscape ? 'true' : undefined}
       className={cn(
-        // 基础布局
-        "flex w-full flex-shrink-0 items-center gap-2 px-3",
-        // 样式 — 不用 backdrop-blur，避免与下方工具栏/遮罩叠出「顶栏阴影」
-        "mobile-shell-header border-b border-transparent bg-transparent shadow-none",
+        'relative z-10 flex w-full flex-shrink-0 items-center gap-2 px-3',
+        isPhoneLandscape && 'h-10',
+        'mobile-shell-header border-b border-transparent bg-transparent shadow-none',
         chromeMotionClass,
-        className
+        className,
       )}
       style={{
-        paddingTop: 'var(--mobile-safe-area-top, 0px)',
-        // 横屏刘海/挖孔机型：左右叠加安全区（px-3 = 12px 基础内边距）
+        paddingTop: isPhoneLandscape ? '0px' : 'var(--mobile-safe-area-top, 0px)',
         paddingLeft,
-        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
-        height: 'var(--mobile-header-total-height, 56px)',
-        minHeight: 'var(--mobile-header-total-height, 56px)',
+        paddingRight,
+        height: headerHeight,
+        minHeight: headerHeight,
         ...style,
       }}
     >
+      {progressiveBlur && <MobileProgressiveBlurBar position="top" />}
+
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}
       <nav
-        className="flex min-w-[var(--touch-target-size)] shrink-0 items-center lg:min-w-10"
+        className="relative z-10 flex min-w-[var(--touch-target-size)] shrink-0 items-center lg:min-w-10"
         aria-label={t('common:navigation_label')}
         data-no-drag
       >
@@ -205,7 +289,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       </nav>
 
       {/* 中间：标题区域 */}
-      <div className="flex-1 min-w-0 flex flex-col items-center justify-center overflow-hidden">
+      <div className="relative z-10 flex-1 min-w-0 flex flex-col items-center justify-center overflow-hidden">
         {/* titleNode 优先级高于 title，用于面包屑等复杂渲染；均为空时回退到导航标签（D-1） */}
         {config.titleNode ? (
           config.titleNode
@@ -222,10 +306,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       </div>
 
       {/* 右侧：操作按钮。
-          约定：≤2 个动作（每个 ≥44px 触控目标）。头部无溢出收纳机制，
+          约定：<= 2 个动作（每个 >= 44px 触控目标）。头部无溢出收纳机制，
           超过 2 个会挤压中间标题区并在 320-375px 窄屏溢出；
           更多动作请收进页面内的「更多」菜单，而不是继续往这里塞。 */}
-      <div className="flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
+      <div className="relative z-10 flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
         {config.rightActions}
       </div>
     </header>

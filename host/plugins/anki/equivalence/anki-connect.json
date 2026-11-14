@@ -1,0 +1,1908 @@
+{
+  "domain": "anki",
+  "commands": [
+    "check_anki_connect_status",
+    "get_anki_deck_names",
+    "anki_get_deck_names",
+    "get_anki_model_names",
+    "create_anki_deck",
+    "add_cards_to_anki_connect",
+    "save_anki_cards",
+    "get_document_cards",
+    "create_custom_template",
+    "save_setting"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.connect.status-success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {
+            "unexpected": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.status-version-too-old",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.status-version-boundaries",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.status-remote-and-bad-response",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.status-disconnect",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.lists-success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {}
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {
+            "extra": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.lists-empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.deck-names-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.deck-names-alias-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.model-names-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.create-deck-success-and-boundaries",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "W157::新牌组"
+          }
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "W157::新牌组"
+          }
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "Default"
+          }
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": ""
+          }
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "  "
+          }
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deck_name": "W157"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.create-deck-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          }
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-validation-and-serde",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": " ",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "\t",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "",
+            "noteType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": "x",
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": "x",
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selected_cards": [
+              {
+                "id": "w157-v-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deck_name": "Default",
+            "note_type": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-basic-then-duplicates",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-b-1",
+                "task_id": "w157-task",
+                "front": "Q1",
+                "back": "A1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-b-2",
+                "task_id": "w157-task",
+                "front": "Q2",
+                "back": "A2",
+                "text": null,
+                "tags": [
+                  "t1",
+                  "t2"
+                ],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {}
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-b-1",
+                "task_id": "w157-task",
+                "front": "Q1",
+                "back": "A1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-b-2",
+                "task_id": "w157-task",
+                "front": "Q2",
+                "back": "A2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-b-3",
+                "task_id": "w157-task",
+                "front": "Q3",
+                "back": "A3",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-b-1",
+                "task_id": "w157-task",
+                "front": "Q1",
+                "back": "A1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "front": "Q4",
+                "back": "A4"
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-b-5",
+                "task_id": "w157-task",
+                "front": "   ",
+                "back": "A5",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-cloze-and-models",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-c-1",
+                "task_id": "w157-task",
+                "front": "{{c1::x}} y",
+                "back": "",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-c-2",
+                "task_id": "w157-task",
+                "front": "plain",
+                "back": "b",
+                "text": "{{c1::t}}",
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-c-3",
+                "task_id": "w157-task",
+                "front": "{{c1::m}}",
+                "back": "extra",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-c-4",
+                "task_id": "w157-task",
+                "front": "basic q",
+                "back": "basic a",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-c-5",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {
+                  "Front": "ignored",
+                  "Back": "ignored",
+                  "_occlusion": "{}"
+                },
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-c-6",
+                "task_id": "w157-task",
+                "front": "Q6",
+                "back": "A6",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "MissingModel"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-availability-failures",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-a-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-create-deck-failure-logged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-d-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-precheck-fallback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-p-1",
+                "task_id": "w157-task",
+                "front": "Q1",
+                "back": "A1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-p-2",
+                "task_id": "w157-task",
+                "front": "Q2",
+                "back": "A2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-p-3",
+                "task_id": "w157-task",
+                "front": "Qdup",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-p-4",
+                "task_id": "w157-task",
+                "front": "Q4",
+                "back": "A4",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-push-failures",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-f-1",
+                "task_id": "w157-task",
+                "front": "Q1",
+                "back": "A1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-f-2",
+                "task_id": "w157-task",
+                "front": "Q2",
+                "back": "A2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-f-3",
+                "task_id": "w157-task",
+                "front": "Q3",
+                "back": "A3",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-f-4",
+                "task_id": "w157-task",
+                "front": "Q4",
+                "back": "A4",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-f-5",
+                "task_id": "w157-task",
+                "front": "Q5",
+                "back": "A5",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.add-cards-template-missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-t-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": "w157-missing-template"
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": "w157-missing-template"
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-t-3",
+                "task_id": "w157-task",
+                "front": "Q3",
+                "back": "A3",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": "   "
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.offline-all-commands",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "X"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-o-1",
+                "task_id": "w157-task",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.xseed-receipt-writeback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w157-doc",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w157-r-1",
+                  "front": "R1",
+                  "back": "r1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "R1",
+                    "Back": "r1"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w157-r-2",
+                  "front": "R2",
+                  "back": "r2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "R2",
+                    "Back": "r2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w157-doc"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-r-1",
+                "task_id": "w157-task",
+                "front": "R1",
+                "back": "r1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-r-2",
+                "task_id": "w157-task",
+                "front": "R2",
+                "back": "r2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-r-missing",
+                "task_id": "w157-task",
+                "front": "R3",
+                "back": "r3",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w157-doc"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-r-1",
+                "task_id": "w157-task",
+                "front": "R1",
+                "back": "r1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "W157",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w157-doc"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.xseed-custom-template-create-model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W157 模板",
+              "description": "d",
+              "author": null,
+              "version": null,
+              "preview_front": "p",
+              "preview_back": "p",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "g",
+              "front_template": "{{Front}}",
+              "back_template": "{{Back}}",
+              "css_style": ".card{}",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "f"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "b"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-m-1",
+                "task_id": "w157-task",
+                "front": "M1",
+                "back": "m1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": "${0}"
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "get_anki_model_names",
+          "args": {}
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-m-2",
+                "task_id": "w157-task",
+                "front": "M2",
+                "back": "m2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": "${0}"
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.connect.xseed-settings-batch-retry",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "anki_connect_batch_size",
+            "value": "1"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "anki_connect_retry_times",
+            "value": "0"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-s-1",
+                "task_id": "w157-task",
+                "front": "S1",
+                "back": "s1",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-s-2",
+                "task_id": "w157-task",
+                "front": "S2",
+                "back": "s2",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              },
+              {
+                "id": "w157-s-3",
+                "task_id": "w157-task",
+                "front": "S3",
+                "back": "s3",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "anki_connect_batch_size",
+            "value": "0"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "anki_connect_retry_times",
+            "value": "x"
+          }
+        },
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w157-s-4",
+                "task_id": "w157-task",
+                "front": "S4",
+                "back": "s4",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

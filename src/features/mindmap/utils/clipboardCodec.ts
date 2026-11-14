@@ -24,6 +24,13 @@ import {
   sanitizeNodeImages,
   type ImageSanitizeBudget,
 } from './imageSanitize';
+import {
+  sanitizeCardNote,
+  sanitizeExcerptQuote,
+  sanitizeExcerptSlots,
+  sanitizeImageAssetId,
+  sanitizeNodeAnchors,
+} from './nodeAnchors';
 
 // ============================================================================
 // 数据契约
@@ -221,6 +228,18 @@ function sanitizeNode(
   // src 白名单 + 体积预算与 JSON 导入同一清洗口径，外来载荷不能借剪贴板绕过。
   const images = sanitizeNodeImages(source.images, imageBudget);
   if (images) node.images = images;
+  const anchors = sanitizeNodeAnchors(source.anchors);
+  if (anchors) node.anchors = anchors;
+  const excerptQuote = sanitizeExcerptQuote(source.excerptQuote);
+  if (excerptQuote) node.excerptQuote = excerptQuote;
+  const imageAssetId = sanitizeImageAssetId(source.imageAssetId);
+  if (imageAssetId) node.imageAssetId = imageAssetId;
+  const excerpts = sanitizeExcerptSlots(source.excerpts);
+  if (excerpts) node.excerpts = excerpts;
+  const cardNote = sanitizeCardNote(source.cardNote);
+  if (cardNote) node.cardNote = cardNote;
+  if (typeof source.isExpandedCard === 'boolean') node.isExpandedCard = source.isExpandedCard;
+  if (source.isFlashcard === true) node.isFlashcard = true;
   return node;
 }
 

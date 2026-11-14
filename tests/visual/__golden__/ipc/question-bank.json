@@ -1,0 +1,28 @@
+{
+  "scene": "question-bank",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:anki_generation_event",
+        "import_builtin_templates()",
+        "get_all_custom_templates()",
+        "get_default_template_id()",
+        "listen:tauri://close-requested",
+        "dstu_list(options{limit,sortBy,sortOrder,typeFilter},path)",
+        "dstu_watch(path)",
+        "listen:dstu:change",
+        "dstu_get(path)",
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "qbank_list_questions(request{exam_id,filters,page,page_size})",
+        "qbank_get_stats(examId)",
+        "listen:review://changed",
+        "get_exam_sheet_session_detail(request{session_id})",
+        "qbank_list_authoring_drafts(examId)",
+        "review_plan_get_stats(examId)"
+      ]
+    }
+  ]
+}

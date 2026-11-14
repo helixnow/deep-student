@@ -1,0 +1,71 @@
+{
+  "id": "/",
+  "name": "Deep Student",
+  "short_name": "DeepStudent",
+  "description": "AI 深度学习与文献研读工作台（WebUI + PWA）",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "orientation": "any",
+  "categories": ["education", "productivity", "books"],
+  "icons": [
+    {
+      "src": "/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "新建学习对话",
+      "short_name": "新建对话",
+      "url": "/?shortcut=chat",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "学习资源库",
+      "short_name": "资源库",
+      "url": "/?shortcut=library",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "闪卡与待办复习",
+      "short_name": "复习",
+      "url": "/?shortcut=review",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "text/markdown": [".md", ".markdown"],
+        "application/octet-stream": [".apkg"]
+      }
+    }
+  ]
+}

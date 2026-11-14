@@ -17,6 +17,7 @@
 import type { SkillDefinition, SkillTrustStatus } from './types';
 import { invoke } from '@tauri-apps/api/core';
 import { getSkillTrustStatus } from './packageMetadata';
+import { saveSkillUiSetting } from './skillSettingsMirror';
 
 const STORAGE_KEY = 'deep-student.skill-trust-overrides';
 
@@ -53,7 +54,10 @@ function readMap(): TrustOverrideMap {
 
 function writeMap(map: TrustOverrideMap): void {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  const serialized = JSON.stringify(map);
+  localStorage.setItem(STORAGE_KEY, serialized);
+  // 镜像到主库 settings；后端 `chat_v2_set_skill_trust` 仍是执行期信任边界的唯一权威。
+  saveSkillUiSetting('trust', serialized);
 }
 
 function normalizeEntry(value: StoredTrustValue | undefined): TrustOverrideEntry | null {

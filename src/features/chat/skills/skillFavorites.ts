@@ -8,8 +8,14 @@
  */
 
 import { PersistentSetManager } from './PersistentSetManager';
+import { saveSkillUiSetting } from './skillSettingsMirror';
 
 const manager = new PersistentSetManager('dstu-skill-favorites', 'SkillFavorites');
+
+// 收藏变化后镜像到主库 settings（与 enable/trust/bundles 一致）。
+manager.subscribe(() => {
+  saveSkillUiSetting('favorites', JSON.stringify(manager.getAll()));
+});
 
 /**
  * 技能收藏管理器（公共 API 保持不变）
@@ -35,4 +41,7 @@ export const skillFavorites = {
 
   /** 订阅变更 */
   subscribe: (listener: () => void) => manager.subscribe(listener),
+
+  /** settings 镜像覆盖 localStorage 后重新读取。 */
+  reload: () => manager.reload(),
 };

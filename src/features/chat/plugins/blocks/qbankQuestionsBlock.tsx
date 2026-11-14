@@ -14,12 +14,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  CaretDown,
+  CaretRight,
   CheckCircle,
-  CircleNotch,
+  ListChecks,
   WarningCircle,
 } from '@phosphor-icons/react';
 
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
+import { PulseDot } from '@/components/ui/PulseDot';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useQbankGenerationStore } from '@/stores/qbankGenerationStore';
@@ -31,6 +36,9 @@ import type {
 import { buildCreateParams } from '@/utils/qbankDraftToParams';
 import type { QuestionDocumentV2 } from '@/api/questionBankApi';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 
 // ============================================================================
 // 类型
@@ -102,6 +110,7 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // 每个任务只初始化一次勾选，避免轮询刷新覆盖用户操作
   const selectedInitRef = useRef<string | null>(null);
@@ -156,160 +165,236 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
     }
   }, [authoring, drafts, examId, importing, selected, t]);
 
-  // ----- 渲染：进行中 -----
-  if (status === 'queued' || status === 'running') {
-    return (
-      <div className="rounded-md border border-border p-3 text-sm">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <CircleNotch size={16} className="animate-spin text-primary" />
-          {t('exam_sheet:aiGeneration.generating')}
-        </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {t('exam_sheet:aiGeneration.backgroundHint')}
-        </p>
-      </div>
-    );
-  }
+  const isActive = status === 'queued' || status === 'running';
+  const isFailed = status === 'failed';
+  const isCancelled = status === 'cancelled';
+  const isCompleted = !isActive && !isFailed && !isCancelled;
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
 
-  // ----- 渲染：失败 -----
-  if (status === 'failed') {
-    return (
-      <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
-        <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
-        <div>{errorMessage || t('exam_sheet:aiGeneration.taskFailed', { error: '' })}</div>
-      </div>
-    );
-  }
+  const headerTitle = isActive
+    ? t('exam_sheet:aiGeneration.generating')
+    : isFailed
+      ? t('exam_sheet:aiGeneration.taskFailed', { error: '' }).trim()
+      : isCancelled
+        ? t('exam_sheet:aiGeneration.blockCancelled')
+        : t('exam_sheet:aiGeneration.blockTitle', { count: drafts.length });
 
-  // ----- 渲染：取消 -----
-  if (status === 'cancelled') {
-    return (
-      <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
-        {t('exam_sheet:aiGeneration.blockCancelled')}
-      </div>
-    );
-  }
-
-  // ----- 渲染：完成（可勾选 + 入库）-----
   return (
-    <div className="space-y-2 rounded-md border border-border p-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <CheckCircle size={16} className="text-primary" />
-        {t('exam_sheet:aiGeneration.blockTitle', { count: drafts.length })}
-      </div>
-
-      {rejectedCount > 0 && (
-        <div className="text-xs text-warning">
-          {t('exam_sheet:aiGeneration.rejectedSummary', { count: rejectedCount })}
-        </div>
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        isFailed ? 'border-destructive/30' : 'border-border/50'
       )}
-
-      {skipped.length > 0 && (
-        <div className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
-          {t('exam_sheet:aiGeneration.skippedReferences', { count: skipped.length })}
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            {skipped.map((ref, index) => (
-              <li key={index}>
-                {ref.name}：
-                {t(`exam_sheet:aiGeneration.skipReason.${ref.reason}`, ref.reason)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {usedReferenceCount > 0 && (
-        <div className="text-xs text-muted-foreground">
-          {t('exam_sheet:aiGeneration.usedReferences', { count: usedReferenceCount })}
-        </div>
-      )}
-
-      <div className="max-h-80 space-y-1.5 overflow-auto pr-1">
-        {(authoring.document?.materials || []).map(material=>(
-          <section key={material.local_id || material.id} className="border-l-2 border-border px-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
-        ))}
-        {drafts.map((draft, index) => (
-          <label
-            key={index}
-            className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 hover:bg-muted/30"
+    >
+      {/* 统一头部 */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        aria-expanded={isExpanded}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left',
+          'transition-colors hover:bg-muted/40 [@media(pointer:coarse)]:!min-h-11',
+          isExpanded && 'border-b border-border/40'
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isActive}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
           >
-            <input
-              type="checkbox"
-              checked={selected.has(index)}
-              onChange={() => toggleDraft(index)}
-              className="mt-1 h-4 w-4 flex-shrink-0 accent-primary"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="rounded bg-muted px-1.5 py-px text-2xs text-muted-foreground">
-                  {t(`exam_sheet:questionTypes.${draft.question_type}`, draft.question_type)}
+            <ListChecks size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+              {isActive ? (
+                <TextShimmer
+                  className="block truncate text-xs font-medium leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {headerTitle}
+                </TextShimmer>
+              ) : (
+                <span
+                  className={cn(
+                    'block truncate text-xs font-medium leading-4',
+                    isFailed ? 'text-destructive' : 'text-muted-foreground'
+                  )}
+                >
+                  {headerTitle}
                 </span>
-                {draft.difficulty && (
-                  <span className="rounded bg-muted px-1.5 py-px text-2xs text-muted-foreground">
-                    {t(
-                      `exam_sheet:questionBank.difficulty.${draft.difficulty}`,
-                      draft.difficulty,
-                    )}
-                  </span>
-                )}
-                {draft.tags?.slice(0, 3).map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded bg-primary/10 px-1.5 py-px text-2xs text-primary"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
-                {draft.content}
-              </div>
-              {draft.options && draft.options.length > 0 && (
-                <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                  {draft.options.map((opt) => (
-                    <div key={opt.key}>
-                      {opt.key}. {opt.content}
-                    </div>
-                  ))}
-                </div>
               )}
-              {draft.answer && (
-                <div className="mt-1 text-xs text-muted-foreground">
-                  <span className="font-medium">
-                    {t('exam_sheet:aiGeneration.answerLabel')}
-                  </span>
-                  {draft.answer}
-                </div>
-              )}
-            </div>
-          </label>
-        ))}
-      </div>
+            </ToolActivitySweep>
+            {isCompleted && (
+              <span className="truncate text-xs leading-4 text-muted-foreground/80 tabular-nums">
+                {t('exam_sheet:aiGeneration.selectedCount', {
+                  selected: selected.size,
+                  total: drafts.length,
+                })}
+              </span>
+            )}
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>
-          {t('exam_sheet:aiGeneration.selectedCount', {
-            selected: selected.size,
-            total: drafts.length,
-          })}
-        </span>
-        <div className="flex items-center gap-2">
-          {importedCount > 0 && (
-            <span className="text-primary">
-              {t('exam_sheet:aiGeneration.blockImported', { count: importedCount })}
+        <div className="flex shrink-0 items-center gap-2">
+          {!isActive && durationMs !== undefined && durationMs >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(durationMs)}
             </span>
           )}
-          <DsButton
-            variant="default"
-            size="sm"
-            disabled={selected.size === 0 || importing || !examId}
-            onClick={() => void handleImport()}
-          >
-            {importing && <CircleNotch size={14} className="mr-1 animate-spin" />}
-            {t('exam_sheet:aiGeneration.confirmImport', { count: selected.size })}
-          </DsButton>
+          {isActive && <PulseDot className="h-1.5 w-1.5 text-primary" />}
+          {isCompleted && <CheckCircle size={14} className="shrink-0 text-success" />}
+          {isFailed && <WarningCircle size={14} className="shrink-0 text-destructive" />}
+          {isExpanded ? (
+            <CaretDown size={14} className="shrink-0 text-muted-foreground" />
+          ) : (
+            <CaretRight size={14} className="shrink-0 text-muted-foreground" />
+          )}
         </div>
-      </div>
+      </button>
+
+      {/* 展开内容 */}
+      {isExpanded && (
+        <div className="space-y-2.5 p-3">
+          {isActive && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <PulseDot className="h-1.5 w-1.5 shrink-0 text-primary" />
+              <span>{t('exam_sheet:aiGeneration.backgroundHint')}</span>
+            </div>
+          )}
+
+          {isFailed && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
+              <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <div>{errorMessage || t('exam_sheet:aiGeneration.taskFailed', { error: '' })}</div>
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="text-xs text-muted-foreground">
+              {t('exam_sheet:aiGeneration.blockCancelled')}
+            </div>
+          )}
+
+          {isCompleted && (
+            <>
+              {rejectedCount > 0 && (
+                <div className="text-xs text-warning tabular-nums">
+                  {t('exam_sheet:aiGeneration.rejectedSummary', { count: rejectedCount })}
+                </div>
+              )}
+
+              {skipped.length > 0 && (
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
+                  {t('exam_sheet:aiGeneration.skippedReferences', { count: skipped.length })}
+                  <ul className="mt-1 list-inside list-disc space-y-0.5">
+                    {skipped.map((ref, index) => (
+                      <li key={index}>
+                        {ref.name}：
+                        {t(`exam_sheet:aiGeneration.skipReason.${ref.reason}`, ref.reason)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {usedReferenceCount > 0 && (
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  {t('exam_sheet:aiGeneration.usedReferences', { count: usedReferenceCount })}
+                </div>
+              )}
+
+              <div className="max-h-80 space-y-1.5 overflow-auto pr-1">
+                {(authoring.document?.materials || []).map(material => (
+                  <section key={material.local_id || material.id} className="border-l-2 border-border/50 px-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
+                ))}
+                {drafts.map((draft, index) => (
+                  <label
+                    key={index}
+                    className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border/50 p-2.5 hover:bg-muted/30 [@media(pointer:coarse)]:min-h-11"
+                  >
+                    <Checkbox
+                      checked={selected.has(index)}
+                      onCheckedChange={() => toggleDraft(index)}
+                      className="mt-0.5 flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                          {t(`exam_sheet:questionTypes.${draft.question_type}`, draft.question_type)}
+                        </span>
+                        {draft.difficulty && (
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                            {t(
+                              `exam_sheet:questionBank.difficulty.${draft.difficulty}`,
+                              draft.difficulty,
+                            )}
+                          </span>
+                        )}
+                        {draft.tags?.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs text-primary"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">
+                        {draft.content}
+                      </div>
+                      {draft.options && draft.options.length > 0 && (
+                        <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {draft.options.map((opt) => (
+                            <div key={opt.key}>
+                              {opt.key}. {opt.content}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {draft.answer && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          <span className="font-medium">
+                            {t('exam_sheet:aiGeneration.answerLabel')}
+                          </span>
+                          {draft.answer}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="tabular-nums">
+                  {t('exam_sheet:aiGeneration.selectedCount', {
+                    selected: selected.size,
+                    total: drafts.length,
+                  })}
+                </span>
+                <div className="flex items-center gap-2">
+                  {importedCount > 0 && (
+                    <span className="text-primary tabular-nums">
+                      {t('exam_sheet:aiGeneration.blockImported', { count: importedCount })}
+                    </span>
+                  )}
+                  <DsButton
+                    variant="default"
+                    size="sm"
+                    disabled={selected.size === 0 || importing || !examId}
+                    onClick={() => void handleImport()}
+                    className="[@media(pointer:coarse)]:!min-h-11"
+                  >
+                    {importing && <PulseDot className="mr-1.5 h-1.5 w-1.5 text-current" />}
+                    {t('exam_sheet:aiGeneration.confirmImport', { count: selected.size })}
+                  </DsButton>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 });

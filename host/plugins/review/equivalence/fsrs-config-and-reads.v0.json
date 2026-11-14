@@ -1,0 +1,155 @@
+{
+  "domain": "review",
+  "commands": ["save_anki_cards", "fsrs_enqueue_cards", "fsrs_get_scheduler_config", "fsrs_update_scheduler_config", "fsrs_get_due", "fsrs_get_stats", "fsrs_rate", "fsrs_get_review_statistics", "fsrs_get_memory_overview", "mastery_get_overview"],
+  "scenarios": [
+    {
+      "id": "review.config.defaults-partial-null-and-unknown",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learnAheadMinutes": 5, "newPerDay": 12, "reviewsPerDay": 123, "desiredRetention": 0.87, "leechThreshold": 4, "leechAction": "mark", "enableFuzz": false, "learningSteps": [2, 20, 60], "relearningSteps": [], "maximumInterval": 365, "dayRolloverHour": 0, "fsrsParams": [], "buryNewSiblings": false, "buryReviewSiblings": false, "reviewOrder": "retrievability", "newReviewOrder": "before", "maxAnswerSeconds": 120}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learnAheadMinutes": null, "newPerDay": null, "reviewsPerDay": null, "desiredRetention": null, "leechThreshold": null, "leechAction": null, "enableFuzz": null, "learningSteps": null, "relearningSteps": null, "maximumInterval": null, "dayRolloverHour": null, "fsrsParams": null, "buryNewSiblings": null, "buryReviewSiblings": null, "reviewOrder": null, "newReviewOrder": null, "maxAnswerSeconds": null}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"desiredRetention": 0.91, "unknownConfigField": "serde ignores input"}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.config.accepted-boundaries",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learnAheadMinutes": 0, "newPerDay": 0, "reviewsPerDay": 0, "leechThreshold": 0, "learningSteps": [], "relearningSteps": [], "maximumInterval": 1, "dayRolloverHour": 0, "maxAnswerSeconds": 1}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learnAheadMinutes": 60, "newPerDay": 4294967295, "reviewsPerDay": 4294967295, "leechThreshold": 4294967295, "learningSteps": [0.5, 525600], "relearningSteps": [525600], "maximumInterval": 36500, "dayRolloverHour": 23, "maxAnswerSeconds": 3600}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 4294967295}},
+        {"cmd": "fsrs_get_stats", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.config.reject-scalar-validation-branches",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learnAheadMinutes": 61}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"desiredRetention": 0}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"desiredRetention": 1}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"leechAction": "Suspend"}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"maximumInterval": 0}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"maximumInterval": 36501}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"dayRolloverHour": 24}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"reviewOrder": "invalid"}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"newReviewOrder": "invalid"}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"maxAnswerSeconds": 0}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"maxAnswerSeconds": 3601}}, "expect": "error"},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.config.reject-steps-and-parameters",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [0]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [-1]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [525601]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"relearningSteps": [0]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"relearningSteps": [-1]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"relearningSteps": [525601]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"relearningSteps": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [1, 2]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [1e39, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}}, "expect": "error"},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.config.legacy-parameter-lengths",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014, 1.8729]}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912]}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": []}}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.reads.empty-null-and-clamps",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_get_due", "args": {"limit": null}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 0}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 501}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_get_review_statistics", "args": {}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": null}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 0}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 7}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 730}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 4294967295}},
+        {"cmd": "fsrs_get_memory_overview", "args": {}},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": null}},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": 0}},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": 20}},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": 4294967295}},
+        {"cmd": "mastery_get_overview", "args": {}},
+        {"cmd": "mastery_get_overview", "args": {"limit": null}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 0}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 30}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 4294967295}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.due.quota-backlog-and-limits-with-cards",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "额度甲", "back": "甲"}, {"front": "额度乙", "back": "乙"}, {"front": "额度丙", "back": "丙"}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"newPerDay": 1, "reviewsPerDay": 0}}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 0}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 1}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 3, "durationMs": 0}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 500}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"newPerDay": 3}}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 1}},
+        {"cmd": "fsrs_get_due", "args": {"limit": 501}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 0}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.inputs.serde-boundaries",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "fsrs_get_due", "args": {"limit": -1}, "expect": "error"},
+        {"cmd": "fsrs_get_due", "args": {"limit": 4294967296}, "expect": "error"},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": -1}, "expect": "error"},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": -1}, "expect": "error"},
+        {"cmd": "mastery_get_overview", "args": {"limit": -1}, "expect": "error"},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "missing", "rating": -1}, "expect": "error"},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "missing", "rating": 256}, "expect": "error"},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "missing", "rating": 1.5}, "expect": "error"},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "missing", "rating": 3, "durationMs": 0.5}, "expect": "error"},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "missing", "rating": 3, "expectedLastReviewMs": 0.5}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"newPerDay": -1}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"enableFuzz": "false"}}, "expect": "error"},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [null]}}, "expect": "error"},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    }
+  ]
+}

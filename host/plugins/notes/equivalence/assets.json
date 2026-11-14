@@ -1,0 +1,624 @@
+{
+  "domain": "notes",
+  "commands": [
+    "dstu_create",
+    "dstu_delete",
+    "notes_assets_bulk_delete",
+    "notes_assets_index_scan",
+    "notes_assets_scan_orphans",
+    "notes_delete_asset",
+    "notes_history_current",
+    "notes_history_set_retention",
+    "notes_list_assets",
+    "notes_resolve_asset_path",
+    "notes_save_asset",
+    "notes_update"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.assets.save_list_resolve_delete_and_segment_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "资产笔记",
+              "content": "# 资产\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+            "defaultExt": "jpg"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "IyDotYTkuqfmlofmnKwK",
+            "defaultExt": "md"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "cmF3"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "  ",
+            "noteId": "${1.id}",
+            "base64Data": "Ymxhbmstc3ViamVjdA==",
+            "defaultExt": "txt"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_without_row",
+            "base64Data": "b3JwaGFu",
+            "defaultExt": "txt"
+          }
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_no_assets"
+          }
+        },
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_no_assets"
+          }
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "${2.relative_path}"
+          }
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "${2.absolute_path}"
+          }
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "notes_assets/_global/never/none.png"
+          }
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "../outside.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "/etc/hostname"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${3.relative_path}"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${3.relative_path}"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "notes_assets/_global/never/none.png"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "/notes_assets/_global/never/none.png"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "notes_assets/../x.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "@@not-base64@@",
+            "defaultExt": "md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "  ",
+            "base64Data": "eA==",
+            "defaultExt": "md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "a/b",
+            "base64Data": "eA==",
+            "defaultExt": "md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "..",
+            "base64Data": "eA==",
+            "defaultExt": "md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "C:",
+            "noteId": "${1.id}",
+            "base64Data": "eA==",
+            "defaultExt": "md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "eA==",
+            "defaultExt": "sub/md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": ".",
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": ".."
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.assets.reference_guard_orphans_and_bulk_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "资产引用",
+              "content": "# 引用\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+            "defaultExt": "png"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "b3JwaGFuLTE=",
+            "defaultExt": "md"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "b3JwaGFuLTI=",
+            "defaultExt": "md"
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "b3JwaGFuLTM=",
+            "defaultExt": "md"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "${2.relative_path}",
+              "expected_updated_at": "${6.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {}
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {
+            "subject": "subject_without_assets"
+          }
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {
+            "subject": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${2.relative_path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "${2.relative_path}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "${3.relative_path}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": []
+          }
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "notes_assets/_global/never/none.md"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "${4.relative_path}",
+              "../x.md"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              ""
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${2.relative_path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${5.relative_path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.assets.history_reference_keeps_asset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "资产历史引用",
+              "content": "# 历史\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "${1.id}",
+            "base64Data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+            "defaultExt": "png"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "${2.relative_path}",
+              "expected_updated_at": "${3.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 历史\n\n已移除图片\n",
+              "expected_updated_at": "${5.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_assets_scan_orphans",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "${2.relative_path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "${2.relative_path}"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

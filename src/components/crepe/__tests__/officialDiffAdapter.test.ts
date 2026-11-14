@@ -9,6 +9,10 @@ import { createUploadLifecycle } from '../uploadLifecycle';
 import type { EditorView } from '@milkdown/prose/view';
 import type { OfficialReviewDecision } from '@/features/notes/officialDiffContract';
 
+import { setupMilkdownTimers } from './milkdownTimers';
+
+setupMilkdownTimers();
+
 beforeAll(async () => { await i18next.init({ lng: 'zh-CN', resources: {} }); });
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });

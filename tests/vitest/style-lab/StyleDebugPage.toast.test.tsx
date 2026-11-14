@@ -11,7 +11,7 @@ describe('StyleDebugPage toast lab', () => {
 
     render(<StyleDebugPage />);
 
-    await user.click(screen.getByRole('button', { name: '组件对比' }));
+    await user.click(screen.getByRole('tab', { name: '组件对比' }));
     await user.click(screen.getByRole('button', { name: 'Toast' }));
 
     expect(screen.getByText('Toast')).toBeInTheDocument();

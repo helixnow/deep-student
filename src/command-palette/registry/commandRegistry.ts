@@ -15,6 +15,52 @@ import type {
 import { normalizeShortcut as normalizeShortcutUtil } from './shortcutUtils';
 import i18next from 'i18next';
 
+// ==================== 命令作用范围 ====================
+
+/**
+ * Where a command applies, as far as it is declared: its command views and, inside the Workbench, the focused app
+ * types. Shortcut conflict checks use it; `isEnabled` remains the runtime gate and must agree with `workbenchApps`.
+ * Kept in this module rather than its own: the registry is in the startup closure, which must not gain modules.
+ */
+export type CommandScope = Pick<Command, 'visibleInViews' | 'workbenchApps'>;
+
+const WORKBENCH_VIEW: CommandView = 'workbench';
+
+const viewsOf = (scope: CommandScope) => (scope.visibleInViews?.length ? scope.visibleInViews : null);
+const appsOf = (scope: CommandScope) => (scope.workbenchApps?.length ? scope.workbenchApps : null);
+
+/** Some view — and, when that view is the Workbench, some focused app — lies in both scopes. */
+export function commandScopesOverlap(a: CommandScope, b: CommandScope): boolean {
+  const aViews = viewsOf(a);
+  const bViews = viewsOf(b);
+  const shared = aViews && bViews ? aViews.filter((view) => bViews.includes(view)) : aViews ?? bViews;
+  if (!shared) return true;
+  if (shared.some((view) => view !== WORKBENCH_VIEW)) return true;
+  if (shared.length === 0) return false;
+  const aApps = appsOf(a);
+  const bApps = appsOf(b);
+  return !aApps || !bApps || aApps.some((app) => bApps.includes(app));
+}
+
+function scopeWithin(inner: CommandScope, outer: CommandScope): boolean {
+  const innerViews = viewsOf(inner);
+  const outerViews = viewsOf(outer);
+  if (outerViews && (!innerViews || innerViews.some((view) => !outerViews.includes(view)))) return false;
+  const outerApps = appsOf(outer);
+  if (!outerApps || (innerViews && !innerViews.includes(WORKBENCH_VIEW))) return true;
+  const innerApps = appsOf(inner);
+  return !!innerApps && innerApps.every((app) => outerApps.includes(app));
+}
+
+/**
+ * `winner` outranks `loser` and its scope is strictly narrower: a deliberate override, such as the notes quick
+ * switcher taking ⌘P from global search while the Notes app is focused. Any other overlap either leaves `loser` dead
+ * where it is visible or settles the shortcut by id.
+ */
+export function isScopedOverride(winner: Command, loser: Command): boolean {
+  return (winner.priority ?? 0) > (loser.priority ?? 0) && scopeWithin(winner, loser) && !scopeWithin(loser, winner);
+}
+
 // ==================== 搜索算法 ====================
 
 /**
@@ -505,18 +551,11 @@ class CommandRegistry implements ICommandRegistry {
   }
 
   private hasMeaningfulShortcutConflict(command: Command, existingCommands: Command[]): boolean {
-    return existingCommands.some((existing) => this.haveViewOverlap(existing, command));
-  }
-
-  private haveViewOverlap(a: Command, b: Command): boolean {
-    const aViews = a.visibleInViews;
-    const bViews = b.visibleInViews;
-
-    if (!aViews || aViews.length === 0 || !bViews || bViews.length === 0) {
-      return true;
-    }
-
-    return aViews.some((view) => bViews.includes(view));
+    return existingCommands.some((existing) => {
+      if (!commandScopesOverlap(existing, command)) return false;
+      const winner = this.pickPreferredCommand([existing, command]);
+      return !isScopedOverride(winner, winner === command ? existing : command);
+    });
   }
 
   /**

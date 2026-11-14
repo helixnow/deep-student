@@ -174,6 +174,9 @@ async function runNav(
         /* 无 session / 命令未就绪时仍继续导航，本地强制 user */
       }
     }
+    // Stop/reset/close may run while takeOver is awaiting its RPC. Do not
+    // dispatch the abandoned navigation (discarding its reply is too late).
+    if (generation !== snapshotGeneration) return false;
     const snapshot = await action();
     if (generation !== snapshotGeneration) return false;
     if (isBrowserSessionClosed(snapshot.sessionId)) {

@@ -14,10 +14,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Warning, ShieldWarning } from '@phosphor-icons/react';
+import { Warning } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { GroupTitle } from './settingsTabPrimitives';
 
 export function McpDangerZoneSection() {
   const { t } = useTranslation(['settings', 'common']);
@@ -81,41 +82,33 @@ export function McpDangerZoneSection() {
   }, [applyValue, pendingValue]);
 
   return (
-    <div
-      className="rounded-2xl border-2 border-destructive/40 bg-destructive/5 p-4"
-      data-testid="mcp-danger-zone"
-    >
-      <div className="flex items-start gap-3">
-        <ShieldWarning className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" weight="fill" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-destructive mb-1">
-            {t('settings:mcp_danger.title', '危险区：MCP 危险模式')}
+    <section className="min-w-0" data-testid="mcp-danger-zone">
+      <GroupTitle
+        title={t('settings:mcp_danger.title', '危险区：MCP 危险模式')}
+        description={t(
+          'settings:mcp_danger.description',
+          '默认情况下，MCP stdio 启动必须经过批准配置门（command / args / env / cwd / framing 必须与已保存的服务器条目完全一致）。开启"危险模式"后，任何网页或插件里的 JavaScript 都能调用 mcp_stdio_start 在你电脑上启动任意进程，等价于 PowerShell 的 Bypass 策略。仅在排障时短期开启，用毕请立即关闭。',
+        )}
+      />
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={enabled}
+              onCheckedChange={handleToggle}
+              disabled={loading}
+              aria-label={t('settings:mcp_danger.unapproved_toggle', '允许未批准的 MCP stdio 启动')}
+            />
+            <span className="text-sm text-foreground font-medium">
+              {t('settings:mcp_danger.unapproved_toggle', '允许未批准的 MCP stdio 启动')}
+            </span>
           </div>
-          <div className="text-xs text-muted-foreground leading-relaxed mb-3">
-            {t(
-              'settings:mcp_danger.description',
-              '默认情况下，MCP stdio 启动必须经过批准配置门（command / args / env / cwd / framing 必须与已保存的服务器条目完全一致）。开启"危险模式"后，任何网页或插件里的 JavaScript 都能调用 mcp_stdio_start 在你电脑上启动任意进程，等价于 PowerShell 的 Bypass 策略。仅在排障时短期开启，用毕请立即关闭。',
-            )}
-          </div>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={enabled}
-                onCheckedChange={handleToggle}
-                disabled={loading}
-                aria-label={t('settings:mcp_danger.unapproved_toggle', '允许未批准的 MCP stdio 启动')}
-              />
-              <span className="text-sm text-foreground font-medium">
-                {t('settings:mcp_danger.unapproved_toggle', '允许未批准的 MCP stdio 启动')}
-              </span>
+          {enabled && (
+            <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
+              <Warning className="w-3.5 h-3.5" weight="fill" />
+              {t('settings:mcp_danger.unapproved_active_warning', '当前已开启：任何 JS 都能启动任意进程')}
             </div>
-            {enabled && (
-              <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
-                <Warning className="w-3.5 h-3.5" weight="fill" />
-                {t('settings:mcp_danger.unapproved_active_warning', '当前已开启：任何 JS 都能启动任意进程')}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
@@ -144,7 +137,7 @@ export function McpDangerZoneSection() {
         confirmVariant={pendingValue ? 'danger' : 'default'}
         onConfirm={handleConfirm}
       />
-    </div>
+    </section>
   );
 }
 

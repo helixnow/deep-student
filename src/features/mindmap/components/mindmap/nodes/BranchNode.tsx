@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { Plus, Trash, DotsThree } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { DsButton } from '@/components/ui/DsButton';
@@ -18,6 +18,7 @@ import {
   parseNodeDecorations,
 } from '../../../utils/nodeDecorations';
 import { selectNodeImages } from '../../../utils/nodeImages';
+import { selectNodeExcerptMeta } from '../../../utils/nodeAnchors';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 import './nodes.css';
 
@@ -81,6 +82,13 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const decorations = parseNodeDecorations(decorationKey);
   // 内嵌图片：同样经索引直接读 store（数组引用稳定，无图不触发重渲染）
   const images = useMindMapStore(state => selectNodeImages(state.document.root, data.nodeId));
+  // 摘录出处 / 原文：同一索引模式（无摘录节点恒为 null，不触发重渲染）
+  const excerpt = useMindMapStore(state => selectNodeExcerptMeta(state.document.root, data.nodeId));
+  const removeNodeAnchor = useMindMapStore(state => state.removeNodeAnchor);
+  const removeNodeExcerptSlot = useMindMapStore(state => state.removeNodeExcerptSlot);
+  const setNodeCardNote = useMindMapStore(state => state.setNodeCardNote);
+  const toggleNodeExpandedCard = useMindMapStore(state => state.toggleNodeExpandedCard);
+  const toggleNodeFlashcard = useMindMapStore(state => state.toggleNodeFlashcard);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const isEditing = editingNodeId === data.nodeId;
@@ -233,6 +241,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   // 二级及以下使用下划线风格。
   const isUnderlineNode = data.level >= 2;
   const branchColor = data.branchColor;
+  const hasCustomBg = Boolean(data.style?.bgColor && data.style.bgColor !== 'transparent');
   
   // 自定义样式（来自 data.style）优先级高于主题样式
   // ★ 修复：剔除 undefined 字段——直接展开会把主题样式同名键覆盖为 undefined，
@@ -246,9 +255,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   });
 
   // 合并主题样式和自定义样式
-  // ★ 修复：正确应用全局主题的所有属性
+  // ★ 修复「框内黄补丁 Bug」：当用户设置 data.style?.bgColor 时，直接微染整个节点卡片外壳；
+  //   Level 2+ 枝叶节点仅在显式设置 bgColor 时呈现 6px 圆角轻量微染胶囊，未设置时保持纯净透明排版流
   const themeStyle: React.CSSProperties = isUnderlineNode ? {
-    // 下划线节点忽略大部分主题背景样式
+    background: hasCustomBg ? data.style!.bgColor : 'transparent',
     color: nodeTheme?.foreground || 'var(--mm-text)',
     fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : `${branchMetrics.fontSize}px`,
     // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
@@ -257,22 +267,28 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     ...customStyle,
     border: 'none',
     boxShadow: 'none',
-    padding: '2px 4px', // 紧凑一点
-    // 如果有彩虹分支色，覆盖底边颜色强制声明内联 borderBottom，以避免部分导出引擎丢失 CSS 中的简写和 !important
-    borderBottom: `1.5px solid ${branchColor || 'var(--mm-border)'}`,
+    borderRadius: hasCustomBg ? '6px' : '0px',
+    padding: hasCustomBg ? '3px 8px 4px 8px' : '2px 4px',
+    borderBottom: hasCustomBg
+      ? `1.5px solid color-mix(in srgb, ${data.style!.bgColor} 65%, var(--mm-text) 22%)`
+      : `1.5px solid ${branchColor || 'var(--mm-border)'}`,
   } : {
+    background: hasCustomBg ? data.style!.bgColor : (nodeTheme?.background || 'var(--mm-bg-elevated)'),
     color: nodeTheme?.foreground || 'var(--mm-text)',
-    border: nodeTheme?.border || '1px solid var(--mm-border)',
-    borderRadius: nodeTheme?.borderRadius ? `${nodeTheme.borderRadius}px` : '4px',
+    border: hasCustomBg
+      ? `1px solid color-mix(in srgb, ${data.style!.bgColor} 70%, var(--mm-text) 18%)`
+      : (nodeTheme?.border || '1px solid var(--mm-border)'),
+    borderRadius: nodeTheme?.borderRadius ? `${nodeTheme.borderRadius}px` : '8px',
     fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : `${branchMetrics.fontSize}px`,
+    fontWeight: nodeTheme?.fontWeight || 500,
     // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
     lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
-    padding: nodeTheme?.padding || '6px 12px',
-    boxShadow: nodeTheme?.shadow,
+    padding: nodeTheme?.padding || '7px 14px',
+    ...(nodeTheme?.shadow ? { boxShadow: nodeTheme.shadow } : {}),
     // 自定义样式优先级更高
     ...customStyle,
     // 如果有彩虹分支色，且是 Level 1，覆盖边框色
-    ...(branchColor && data.level === 1 ? { borderColor: branchColor } : {}),
+    ...(branchColor && data.level === 1 && !hasCustomBg ? { borderColor: branchColor } : {}),
   };
 
   // 下划线节点：Target Handle 和 Source Handle 需各自定位到底部对应侧（锚点贴在下划线两端）
@@ -333,6 +349,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         data.completed && "mm-completed"
       )}
       data-node-chrome={isUnderlineNode ? 'underline' : 'box'}
+      data-has-bg={hasCustomBg ? 'true' : undefined}
       style={{
         ...themeStyle,
         ...(isUnderlineNode && branchColor
@@ -386,13 +403,12 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         style={targetHandleStyle}
       />
 
-      <div className="flex items-center">
+      <div className="flex w-full min-w-0 items-center">
         <NodeContent
           text={data.label}
           note={data.note}
           refs={data.refs}
           images={images}
-          bgColor={data.style?.bgColor || (nodeTheme?.background || 'var(--mm-bg-elevated)')}
           icon={data.style?.icon}
           isCompleted={data.completed}
           isEditing={isEditing}
@@ -401,6 +417,13 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           revealedIndices={revealedBlanks[data.nodeId]}
           reciteMode={reciteMode}
           decorations={decorations}
+          excerpt={excerpt}
+          isSelected={selected}
+          onRemoveAnchor={isEmbed ? undefined : (anchorUri) => removeNodeAnchor(data.nodeId, anchorUri)}
+          onRemoveExcerptSlot={isEmbed ? undefined : (slotId) => removeNodeExcerptSlot(data.nodeId, slotId)}
+          onCardNoteChange={isEmbed ? undefined : (cardNote) => setNodeCardNote(data.nodeId, cardNote)}
+          onToggleExpandedCard={isEmbed ? undefined : () => toggleNodeExpandedCard(data.nodeId)}
+          onToggleFlashcard={isEmbed ? undefined : () => toggleNodeFlashcard(data.nodeId)}
           showCheckbox={data.style?.showCheckbox}
           onToggleCompleted={() => updateNode(data.nodeId, { completed: !data.completed })}
           onEmptyCommit={handleEmptyCommit}
@@ -442,19 +465,20 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       </div>
 
       {/* Action Buttons (Right side) - hidden in recite mode.
-          ★ embed（只读预览）同样隐藏：hover 出的加号/菜单/删除会误写全局 store */}
+          ★ embed（只读预览）同样隐藏：hover 出的加号/菜单/删除会误写全局 store
+          ★ 克制化收敛：非选中悬停仅轻显单个「+」按钮，避免掠过画布时到处闪烁三个方块与刺眼红垃圾桶；
+            仅当节点被选中（selected）时才展开更多菜单与删除入口 */}
       {!reciteMode && !isEmbed && (
       <div
         className={cn(
           "mm-node-actions nodrag nopan",
-          // 与 RootNode 一致：选中或 hover 均可见（编辑态收起）
           isEditing
             ? "invisible pointer-events-none"
             : selected
               ? "visible pointer-events-auto"
               : "invisible pointer-events-none group-hover:visible group-hover:pointer-events-auto"
         )}
-        style={{ left: '100%', marginLeft: '8px' }}
+        style={{ left: '100%', marginLeft: '6px' }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <DsButton variant="ghost"
@@ -465,23 +489,26 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         >
           <Plus className="w-3.5 h-3.5" />
         </DsButton>
-        {/* 触屏下弱化侧向浮动操作（只保留加号）：菜单/删除走底部工具条 */}
-        <DsButton variant="ghost"
-          onClick={handleOpenMenu}
-          className="mm-action-btn mm-action-btn--menu"
-          aria-label={t('node.openMenu')}
-          title={t('node.moreActions')}
-        >
-          <DotsThree className="w-3.5 h-3.5" />
-        </DsButton>
-        <DsButton variant="ghost"
-          onClick={handleDelete}
-          className="mm-action-btn mm-action-btn--delete hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-          aria-label={t('actions.delete')}
-          title={t('node.deleteShortcut')}
-        >
-          <Trash className="w-3.5 h-3.5" />
-        </DsButton>
+        {selected && (
+          <>
+            <DsButton variant="ghost"
+              onClick={handleOpenMenu}
+              className="mm-action-btn mm-action-btn--menu"
+              aria-label={t('node.openMenu')}
+              title={t('node.moreActions')}
+            >
+              <DotsThree className="w-3.5 h-3.5" />
+            </DsButton>
+            <DsButton variant="ghost"
+              onClick={handleDelete}
+              className="mm-action-btn mm-action-btn--delete hover:text-[hsl(var(--destructive))]"
+              aria-label={t('actions.delete')}
+              title={t('node.deleteShortcut')}
+            >
+              <Trash className="w-3.5 h-3.5" />
+            </DsButton>
+          </>
+        )}
       </div>
       )}
 

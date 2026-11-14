@@ -1,0 +1,77 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "notes_export_docx",
+    "textbooks_add",
+    "vfs_get_file_blob_path"
+  ],
+  "scenarios": [
+    {
+      "id": "docs.boundaries.ipc_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_export_docx",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": "not-an-array"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              1,
+              2
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [],
+            "folderId": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

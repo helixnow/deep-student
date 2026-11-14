@@ -9,10 +9,9 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
-import { Wrench, HardDrives, WarningCircle, Lock, Gear, ArrowClockwise } from '@phosphor-icons/react';
+import { Wrench, HardDrives, WarningCircle, Lock, Gear } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer, BUILTIN_NAMESPACE } from '@/mcp/builtinMcpServer';
@@ -54,11 +53,14 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
   // 本地状态
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // 🔧 防止循环更新的标记
   const hasRestoredRef = useRef(false);
   const lastSyncedKeyRef = useRef<string>('');
+
+  useEffect(() => {
+    void reloadAvailability().catch(console.error);
+  }, [reloadAvailability]);
 
   // 从 Store 恢复选择状态（仅在首次 ready 时执行一次）
   useEffect(() => {
@@ -134,14 +136,6 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
     [ready, isStreaming, selectedServerSet, selectedMcpServers, setSelectedMcpServers]
   );
 
-  const handleRefresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      await reloadAvailability();
-    } finally {
-      setLoading(false);
-    }
-  }, [reloadAvailability]);
 
   // 提取服务器显示名称（去除 mcp_ 前缀和时间戳后缀）
   const getServerDisplayName = (server: { id: string; name: string }) => {
@@ -254,25 +248,6 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
       </ComposerPanel.Row>
     );
   };
-
-  const headerActions = (
-    <DsButton
-      variant="ghost"
-      size="icon"
-      iconOnly
-      onClick={handleRefresh}
-      disabled={loading}
-      aria-label={t('common:actions.refresh', '刷新')}
-      title={t('common:actions.refresh', '刷新')}
-      className={cn(
-        '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-        loading && 'animate-spin'
-      )}
-    >
-      <ArrowClockwise size={16} />
-    </DsButton>
-  );
-
   return (
     <ComposerPanel.Root fillHeight className="overflow-hidden">
       {/* 📱 移动端也渲染 Header：提供可见的关闭按钮（契约：面板须可见关闭 + 返回键），与 SkillSelector 对齐 */}
@@ -280,7 +255,6 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
         icon={Wrench}
         title={t('analysis:input_bar.mcp.title')}
         count={selectedMcpServers.length}
-        actions={headerActions}
         onClose={onClose}
         closeAriaLabel={t('common:actions.cancel')}
       />

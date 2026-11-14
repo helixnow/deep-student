@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { ArrowClockwise, ArrowSquareOut, ListChecks, Plus, SidebarSimple } from '@phosphor-icons/react';
+import { ArrowSquareOut, ListChecks, Plus, SidebarSimple } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeader } from '@/components/layout';
@@ -167,17 +167,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     onMenuClick: closeMobileSandbox,
     rightActions: (
       <>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-          onClick={() => refreshSandboxSession(sandboxOwnerKey)}
-          aria-label={t('workbench:sandbox.refresh', '刷新')}
-          title={t('workbench:sandbox.refresh', '刷新')}
-        >
-          <ArrowClockwise size={20} />
-        </DsButton>
         <DsButton
           variant="ghost"
           size="icon"

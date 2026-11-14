@@ -1,0 +1,25 @@
+{
+  "scene": "productivity",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "todo_get_active_summary()",
+        "todo_list_today(includeCompleted)",
+        "listen:tauri://close-requested",
+        "todo_counts_snapshot()",
+        "todo_trash_counts()",
+        "fsrs_get_stats()",
+        "review_plan_get_stats(examId)",
+        "dstu_list(options{limit,offset,typeFilter},path)",
+        "pomodoro_today_stats()",
+        "todo_ensure_inbox(title)",
+        "listen:todo://changed",
+        "todo_list_lists()",
+        "get_setting(key)",
+        "save_setting(key,value)"
+      ]
+    }
+  ]
+}

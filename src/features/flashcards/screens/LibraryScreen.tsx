@@ -6,13 +6,13 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowClockwise,
   CaretDown,
   CaretLeft,
   CaretRight,
   DotsThree,
   DownloadSimple,
   FloppyDisk,
+  ImageSquare,
   MagnifyingGlass,
   Pause,
   Play,
@@ -55,6 +55,7 @@ import {
 import { buildDeckTree, flattenDeckTree } from '../library/deckTree';
 import '../library/library.css';
 import { exportLibraryApkg } from '../library/exportLibrary';
+import { openImageOcclusionBuilder } from '../occlusion/ImageOcclusionBuilderModal';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -485,6 +486,11 @@ export const LibraryScreen: React.FC = () => {
   const closeComposer = useCallback(() => {
     if (!creating) setComposerOpen(false);
   }, [creating]);
+  const handleOpenOcclusionBuilder = useCallback(() => {
+    openImageOcclusionBuilder({
+      defaultDeckName: deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : undefined,
+    });
+  }, [deckFilter]);
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(composerOpen ? 'library.create.new' : 'library.title'),
     subtitle: composerOpen ? undefined : loading ? t('library.loading') : totalLabel,
@@ -502,13 +508,13 @@ export const LibraryScreen: React.FC = () => {
           <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('common:more')}><DotsThree size={22} /></DsButton>
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
+          <AppMenuItem icon={<ImageSquare size={18} />} onClick={handleOpenOcclusionBuilder} data-testid="fc-lib-new-occlusion-mobile">{t('occlusion.newCardButton')}</AppMenuItem>
           <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
           <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()} data-testid="fc-lib-export-apkg">{exportLabel}</AppMenuItem>
-          <AppMenuItem icon={<ArrowClockwise size={18} />} disabled={loading} onClick={() => void refresh()}>{t('library.refresh')}</AppMenuItem>
         </AppMenuContent>
       </AppMenu>
     </>,
-  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, importing, handleImportApkg, refresh, exporting, handleExportApkg, exportLabel]);
+  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, exporting, handleExportApkg, exportLabel]);
 
   // A phone composer is a subpage of the library: keep its draft/list state here,
   // while the host owns the title, back and save action.
@@ -578,6 +584,19 @@ export const LibraryScreen: React.FC = () => {
         type="button"
         variant="default"
         iconOnly={isSmallScreen}
+        aria-label={translate('occlusion.newCardButton')}
+        onClick={handleOpenOcclusionBuilder}
+        title={translate('occlusion.newCardButton')}
+        className="fc-lib-create-cta text-sm"
+        data-testid="fc-lib-new-occlusion"
+      >
+        <ImageSquare size={18} />
+        {!isSmallScreen && translate('occlusion.newCardButton')}
+      </DsButton>
+      <DsButton
+        type="button"
+        variant="default"
+        iconOnly={isSmallScreen}
         aria-label={importing ? translate('library.import.running') : translate('library.import.apkg')}
         disabled={importing}
         onClick={handleImportApkg}
@@ -610,26 +629,11 @@ export const LibraryScreen: React.FC = () => {
           <h2 className="wb-fc-title">
             {t('library.title')}
           </h2>
-          <p className="wb-fc-subtitle">
+          <p className="wb-fc-subtitle font-mono tabular-nums">
             {loading
               ? t('library.loading')
               : totalLabel}
           </p>
-        </div>
-        <div className="fc-lib-header-actions">
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly={isSmallScreen}
-          aria-label={t('library.refresh')}
-          disabled={loading}
-          onClick={() => void refresh()}
-          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
-        >
-          <ArrowClockwise size={15} />
-          {!isSmallScreen && t('library.refresh')}
-        </DsButton>
         </div>
       </header>}
 
@@ -654,6 +658,7 @@ export const LibraryScreen: React.FC = () => {
         {!isSmallScreen && <DsButton type="button" variant="default" aria-label={t('library.search')} onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
           {t('library.search')}
         </DsButton>}
+        {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
         {isSmallScreen && (
           <DsButton
             variant="ghost"
@@ -669,8 +674,6 @@ export const LibraryScreen: React.FC = () => {
           </DsButton>
         )}
       </div>
-
-      {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
 
       {composerOpen ? (
         <div className="fc-lib-composer">
@@ -723,7 +726,7 @@ export const LibraryScreen: React.FC = () => {
               >
                 {translate(`library.filter.${option}`)}
                 {option !== 'all' && count > 0 ? (
-                  <span className="fc-lib-chip-count">{count}</span>
+                  <span className="fc-lib-chip-count font-mono tabular-nums">{count}</span>
                 ) : null}
               </button>
             );
@@ -798,7 +801,7 @@ export const LibraryScreen: React.FC = () => {
           ) : null}
         </div>
         {visibleItems.length !== items.length ? (
-          <span className="fc-lib-result-count">
+          <span className="fc-lib-result-count font-mono tabular-nums">
             {translate('library.filteredCount', {
               shown: visibleItems.length,
               total: items.length,
@@ -816,7 +819,7 @@ export const LibraryScreen: React.FC = () => {
         role="toolbar"
         aria-label={translate('library.bulkLabel')}
       >
-          <span className="fc-lib-bulkbar-count">
+          <span className="fc-lib-bulkbar-count font-mono tabular-nums">
             {translate('library.selectedCount', { count: selectedCards.length })}
           </span>
           {reviewTargets.length > 0 ? (
@@ -1021,7 +1024,7 @@ export const LibraryScreen: React.FC = () => {
                   <span className="fc-lib-queue-title">
                     {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
                   </span>
-                  <span className="fc-lib-queue-count">{inboxItems.length}</span>
+                  <span className="fc-lib-queue-count font-mono tabular-nums">{inboxItems.length}</span>
                   <span className="fc-lib-queue-hint">
                     {translate('library.queue.inboxHint', {
                       defaultValue: '尚未进入复习计划，不会出现在到期队列',
@@ -1062,9 +1065,9 @@ export const LibraryScreen: React.FC = () => {
                     <span className="fc-lib-queue-title">
                       {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
                     </span>
-                    <span className="fc-lib-queue-count">{scheduledItems.length}</span>
+                    <span className="fc-lib-queue-count font-mono tabular-nums">{scheduledItems.length}</span>
                     {scheduledDueCount > 0 ? (
-                      <span className="fc-lib-queue-hint" data-tone="due">
+                      <span className="fc-lib-queue-hint font-mono tabular-nums" data-tone="due">
                         {translate('library.queue.dueCount', {
                           count: scheduledDueCount,
                           defaultValue: '{{count}} 张已到期',
@@ -1083,7 +1086,7 @@ export const LibraryScreen: React.FC = () => {
       </ListContainer>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>{translate('library.page', { page, pages: pageCount })}</span>
+        <span className="font-mono tabular-nums">{translate('library.page', { page, pages: pageCount })}</span>
         <div className="flex items-center gap-1">
           <DsButton
             type="button"

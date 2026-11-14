@@ -1,0 +1,607 @@
+<body .light-theme>
+  <div data-demo-app="chat" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .bg-background.flex.h-full.overflow-hidden.w-full>
+        <div .flex-1.h-full.min-w-0>
+          <div .bg-background.h-full.min-h-0.min-w-0.overflow-hidden.w-full data-wb-chat-session-window="demo-pdf-deepread">
+            <div .h-full.min-h-0.overflow-hidden.relative.w-full.wb-chat-surface data-sandbox-owner-key="sandbox:chat:demo-pdf-deepread" data-wb-chat-active="true" data-wb-chat-session="demo-pdf-deepread">
+              <div .bg-[color:var(--shell-workspace-panel)].chat-v2.flex.flex-col.h-full.min-h-0.overflow-hidden.relative>
+                <div .chat-thread-enter.flex-1.min-h-0.overflow-hidden.relative>
+                  <div .h-full.relative>
+                    <div .sr-only aria-atomic="true" aria-live="polite" role="status" />
+                    <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                      <div .h-full.max-h-[inherit].min-h-0.min-w-0.overscroll-contain.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                        <div aria-live="polite" aria-relevant="additions" role="log">
+                          <div data-agent-entity="chat:msg_<id>_13awfy_0" data-chat-message-id="msg_<id>_13awfy_0">
+                            <div .group.md:px-8.message.pt-6.px-4.py-4.relative.user>
+                              <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                                <div .message-content.message-selectable-area.min-w-0>
+                                  <div .chat-message-user.flex.flex-col.items-end.space-y-2>
+                                    <div .user-message-bubble>
+                                      <div .user-message-bubble__content>
+                                        <div .block-renderer>
+                                          <div .chat-message-body.chat-message-body--markdown>
+                                            <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                              <div .streaming-blocks>
+                                                <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                  <div .markdown-content>
+                                                    <p>
+                                                      "请精读上传的《机器学习系统》第 3 章，标出原文页码，整理章节导图和挖空卡，再准备三道带参考思路的自测题"
+                                  <div .flex.justify-end.mt-2>
+                                    <div .flex.flex-col.gap-2.items-end.justify-end>
+                                      <div .flex.flex-wrap.gap-2.justify-end>
+                                        <button .bg-background.border.border-border/40.cursor-pointer.flex.flex-col.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-primary/40.group.h-16.hover:bg-[var(--interactive-hover)].items-center.justify-center.overflow-hidden.relative.rounded-xl.shadow-sm.shrink-0.text-left.transition-colors.w-16 aria-label="机器学习系统（第 3 章）·数据并行训练.pdf" title="机器学习系统（第 3 章）·数据并行训练.pdf" type="button">
+                                          <div .drop-shadow-sm.duration-200.group-hover:scale-110.mt-1.shrink-0.transform.transition-transform>
+                                            <svg .shrink-0 aria-hidden="true" viewBox="0 0 48 48" />
+                                          <span .font-medium.mt-0.5.px-1.text-2xs.text-center.text-foreground/80.truncate.w-full>
+                                            "机器学习系统（第 3 章）·数据并行训练.pdf"
+                                  <div .mt-3>
+                                    <div .flex.gap-1.5.items-center.justify-end>
+                                      <div .flex.gap-1.items-center.min-w-0>
+                                        <div .flex.gap-0.5.items-center>
+                                          <div .flex.gap-0.5.items-center.md:group-focus-within:opacity-100.md:group-focus-within:overflow-visible.md:group-focus-within:pointer-events-auto.md:group-focus-within:w-auto.md:group-hover:opacity-100.md:group-hover:overflow-visible.md:group-hover:pointer-events-auto.md:group-hover:w-auto.md:opacity-0.md:overflow-hidden.md:pointer-events-none.md:w-0.transition-opacity>
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="编辑" title="编辑" type="button">
+                                              <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                            <div .app-menu-root.inline-flex.relative>
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@2" title="更多" type="button">
+                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                            <span .t-icon-swap data-state="a">
+                                              <span .t-icon data-icon="a">
+                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                              <span .t-icon data-icon="b">
+                                                <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                        <span .flex.items-center.ml-1.shrink-0.text-[11px].text-muted-foreground/50.whitespace-nowrap title="2026/3/2 09:30:<ss>">
+                                          "09:30"
+                                      <div .flex.flex-shrink-0.gap-2.items-center />
+                          <div data-agent-entity="chat:msg_<id>_qc5tzc_1" data-chat-message-id="msg_<id>_qc5tzc_1">
+                            <div .assistant.bg-background.group.md:px-8.message.px-4.py-4.relative>
+                              <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                                <div .message-content.message-selectable-area.min-w-0>
+                                  <div .space-y-2>
+                                    <div .activity-timeline>
+                                      <div .activity-timeline__node.flex.gap-1.5>
+                                        <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                          <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                            <svg .text-primary viewBox="0 0 256 256" />
+                                        <div .flex-1.min-w-0>
+                                          <div .flex.items-center.max-w-full.pb-0.5.thinking-summary-row.w-full>
+                                            <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-thinking-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].cursor-pointer.disabled:cursor-default.disabled:cursor-not-allowed.disabled:hover:!bg-transparent.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.focus-visible:text-foreground.font-medium.gap-2.group.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-muted-foreground.text-ui.thinking-summary-trigger.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-full.whitespace-nowrap aria-controls="@3" aria-expanded="false" type="button">
+                                              <span .activity-timeline-summary>
+                                                "已用时 <n> 秒"
+                                              <span .flex-shrink-0.group-hover:text-foreground/70.inline-flex.items-center.justify-center.text-muted-foreground/50 aria-hidden="true">
+                                                <svg viewBox="0 0 256 256" />
+                                      <div .activity-timeline__node.flex.gap-1.5>
+                                        <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                          <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                            <span .tool-activity-sweep>
+                                              <svg .text-muted-foreground viewBox="0 0 256 256" />
+                                        <div .flex-1.min-w-0>
+                                          <div .flex.flex-col.gap-1>
+                                            <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-tool-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-default.disabled:cursor-not-allowed.disabled:hover:text-muted-foreground.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].max-w-full.min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-fit.whitespace-nowrap aria-controls="@4" aria-expanded="false" type="button">
+                                              <span .activity-timeline-tool-name.min-w-0.tool-activity-sweep>
+                                                <span .activity-timeline-tool-name.block.text-muted-foreground.truncate>
+                                                  "统一搜索"
+                                              <svg .flex-shrink-0.text-success viewBox="0 0 256 256" />
+                                              <span .activity-timeline-status.text-success>
+                                                "执行完成"
+                                              <span .activity-timeline-status.text-muted-foreground/70>
+                                                "<n>ms"
+                                    <div .block-renderer>
+                                      <div .chat-message-body.chat-message-body--markdown>
+                                        <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                          <div .streaming-blocks>
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  "这一章可以沿着三个问题来读："
+                                                  <strong>
+                                                    "训练数据怎样分配、梯度怎样汇合、同步时间怎样影响训练效率"
+                                                  "。"
+                                            <div .stream-block data-active="false" data-block-type="heading" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <h3>
+                                                  "沿着页码理解章节"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  <strong>
+                                                    "数据与模型副本"
+                                                  "：mini-batch 分配给多个 worker，各自在模型副本上计算梯度。教材用参数服务器说明梯度聚合与参数更新的过程。"
+                                                  <span .pdf-ref-badge-placeholder data-pdf-page="45" data-pdf-ref="true" data-pdf-source="file_demo_mlsys">
+                                                    "第45页"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  <strong>
+                                                    "同步等待"
+                                                  "：同步 SGD 需要各 worker 完成当前步骤，计算较慢的节点会拉长等待时间。分析加速效果时，应同时观察计算时间与通信时间。"
+                                                  <span .pdf-ref-badge-placeholder data-pdf-page="47" data-pdf-ref="true" data-pdf-source="file_demo_mlsys">
+                                                    "第47页"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  <strong>
+                                                    "通信优化"
+                                                  "：教材介绍了梯度压缩等思路。阅读时可以结合通信量、吞吐量与收敛情况，理解每种方法的适用条件。"
+                                                  <span .pdf-ref-badge-placeholder data-pdf-page="52" data-pdf-ref="true" data-pdf-source="file_demo_mlsys">
+                                                    "第52页"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  "下面的导图把基本范式、同步开销与优化方向连接起来。你可以缩放画布、拖动查看各个分支。"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <div .my-3>
+                                                  <div .my-3.w-full>
+                                                    <div .border.border-border/50.group.mindmap-container.overflow-hidden.relative.rounded-lg>
+                                                      <div .h-full.relative.w-full>
+                                                        <div .light.react-flow data-testid="rf__wrapper" role="application">
+                                                          <div .react-flow__renderer>
+                                                            <div .draggable.react-flow__pane>
+                                                              <div .react-flow__container.react-flow__viewport.xyflow__viewport>
+                                                                <div .react-flow__edges>
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                  <svg />
+                                                                <div .react-flow__edgelabel-renderer />
+                                                                <div .react-flow__nodes>
+                                                                  <div .react-flow__node.react-flow__node-rootNode aria-describedby="@5" aria-roledescription="node" data-id="root" data-testid="rf__node-root" role="group" tabindex="0">
+                                                                    <div .flex.group.items-center.justify-center.mm-root-node.relative>
+                                                                      <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                        <div .flex.gap-1.items-center.relative>
+                                                                          <div .flex-1.min-w-0.relative>
+                                                                            <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                              <span .mm-blankable-text-segment>
+                                                                                "数据并行训练"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handleid="left" data-handlepos="left" data-id="1-root-left-source" data-nodeid="root" />
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handleid="right" data-handlepos="right" data-id="1-root-right-source" data-nodeid="root" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n3" data-testid="rf__node-n3" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-right data-node-chrome="box">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-n3-null-target" data-nodeid="n3" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "优化方向"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-n3-null-source" data-nodeid="n3" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n3-1" data-testid="rf__node-n3-1" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-n3-1-null-target" data-nodeid="n3-1" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "梯度压缩（量化 / 稀疏化）"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-n3-1-null-source" data-nodeid="n3-1" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n3-2" data-testid="rf__node-n3-2" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-n3-2-null-target" data-nodeid="n3-2" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "计算与通信重叠"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-n3-2-null-source" data-nodeid="n3-2" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n3-3" data-testid="rf__node-n3-3" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-n3-3-null-target" data-nodeid="n3-3" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "异步 SGD（陈旧梯度）"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-n3-3-null-source" data-nodeid="n3-3" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n1" data-testid="rf__node-n1" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-left data-node-chrome="box">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n1-null-target" data-nodeid="n1" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "基本范式"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n1-null-source" data-nodeid="n1" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n1-1" data-testid="rf__node-n1-1" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n1-1-null-target" data-nodeid="n1-1" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "mini-batch 切分到 K 个 worker"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n1-1-null-source" data-nodeid="n1-1" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n1-2" data-testid="rf__node-n1-2" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n1-2-null-target" data-nodeid="n1-2" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "参数服务器 / AllReduce 聚合梯度"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n1-2-null-source" data-nodeid="n1-2" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n1-3" data-testid="rf__node-n1-3" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n1-3-null-target" data-nodeid="n1-3" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "更新值广播回各 worker"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n1-3-null-source" data-nodeid="n1-3" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n2" data-testid="rf__node-n2" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-left data-node-chrome="box">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n2-null-target" data-nodeid="n2" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "同步的代价"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n2-null-source" data-nodeid="n2" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n2-1" data-testid="rf__node-n2-1" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n2-1-null-target" data-nodeid="n2-1" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "straggler 效应"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n2-1-null-source" data-nodeid="n2-1" />
+                                                                  <div .react-flow__node.react-flow__node-branchNode aria-describedby="@5" aria-roledescription="node" data-id="n2-2" data-testid="rf__node-n2-2" role="group" tabindex="0">
+                                                                    <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-n2-2-null-target" data-nodeid="n2-2" />
+                                                                      <div .flex.items-center>
+                                                                        <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                                                          <div .flex.gap-1.items-center.relative>
+                                                                            <div .flex-1.min-w-0.relative>
+                                                                              <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                                                                <span .mm-blankable-text-segment>
+                                                                                  "加速比偏离线性"
+                                                                      <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-n2-2-null-source" data-nodeid="n2-2" />
+                                                                <div .react-flow__viewport-portal />
+                                                          <div id="@5">
+                                                            "Press enter or space to select a node. You can then use the arrow keys to move the node around. Press delete to remove i…"
+                                                          <div id="@6">
+                                                            "Press enter or space to select an edge. You can then press delete to remove it or escape to cancel."
+                                                          <div aria-atomic="true" aria-live="assertive" id="@7" />
+                                                        <div .absolute.bottom-2.flex.gap-1.left-2>
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/80.border.border-[color:var(--button-plain-border)].border-border/50.cursor-pointer.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-background.hover:border-border.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-1.5.px-[var(--button-padding-x)].rounded-[var(--button-radius)].rounded-md.select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-all.ui-press-coarse.whitespace-nowrap aria-label="切换为单侧布局" type="button">
+                                                            <svg .h-3.5.text-primary.w-3.5 viewBox="0 0 256 256" />
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/80.border.border-[color:var(--button-plain-border)].border-border/50.cursor-pointer.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-background.hover:border-border.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-1.5.px-[var(--button-padding-x)].rounded-[var(--button-radius)].rounded-md.select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-all.ui-press-coarse.whitespace-nowrap aria-label="放大" type="button">
+                                                            <svg viewBox="0 0 256 256" />
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/80.border.border-[color:var(--button-plain-border)].border-border/50.cursor-pointer.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-background.hover:border-border.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-1.5.px-[var(--button-padding-x)].rounded-[var(--button-radius)].rounded-md.select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-all.ui-press-coarse.whitespace-nowrap aria-label="缩小" type="button">
+                                                            <svg viewBox="0 0 256 256" />
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/80.border.border-[color:var(--button-plain-border)].border-border/50.cursor-pointer.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-background.hover:border-border.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-1.5.px-[var(--button-padding-x)].rounded-[var(--button-radius)].rounded-md.select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-all.ui-press-coarse.whitespace-nowrap aria-label="回中" type="button">
+                                                            <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                                      <div .absolute.bg-gradient-to-b.from-background/80.left-0.pointer-events-none.px-3.py-1.5.right-0.to-transparent.top-0>
+                                                        <span .font-medium.text-foreground/80.text-sm.truncate>
+                                                          "第 3 章 · 数据并行训练"
+                                                        <span .ml-1.5.text-muted-foreground/60.text-xs>
+                                                          "12 节点"
+                                                      <div .absolute.right-2.top-2>
+                                                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/80.border.border-[color:var(--button-plain-border)].border-border/50.cursor-pointer.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-background.hover:border-border.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-1.5.px-[var(--button-padding-x)].rounded-[var(--button-radius)].rounded-md.select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-all.ui-press-coarse.whitespace-nowrap aria-label="打开" type="button">
+                                                          <svg viewBox="0 0 256 256" />
+                                                      <div .absolute.bg-gradient-to-t.bottom-0.from-[var(--mm-bg)].h-8.left-0.pointer-events-none.right-0.to-transparent />
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  "再用三张挖空卡回忆关键概念。"
+                                    <div .block-renderer>
+                                      <div .chat-v2-anki-cards-block>
+                                        <div>
+                                          <div .chat-card3d-compact>
+                                            <div .card-3d-preview-container.card-3d-preview-flat>
+                                              <div .card-3d-flat-list>
+                                                <div .card-3d-flat-item role="button" tabindex="0" title="翻转卡片">
+                                                  <iframe title="card-preview" />
+                                                <div .card-3d-flat-item role="button" tabindex="0" title="翻转卡片">
+                                                  <iframe title="card-preview" />
+                                                <div .card-3d-flat-item role="button" tabindex="0" title="翻转卡片">
+                                                  <iframe title="card-preview" />
+                                          <div .flex.gap-2.items-center.justify-between.min-w-0.mt-2>
+                                            <div .min-w-0.text-muted-foreground.text-xs.truncate>
+                                              "共 3 张卡片"
+                                            <button .!min-h-10.!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                              "点击编辑"
+                                              "→"
+                                        <div .chatanki-bottom-actions>
+                                          <div .bg-success/5.border.border-success/25.flex.flex-wrap.gap-x-2.5.gap-y-1.items-center.mt-2.pl-3.pr-1.5.py-1.5.rounded-lg.ui-rise-in data-testid="chatanki-completion-summary">
+                                            <svg .flex-shrink-0.text-success viewBox="0 0 256 256" />
+                                            <span .font-medium.text-foreground.text-xs>
+                                              "已生成 3 张卡片"
+                                            <span .text-muted-foreground.text-xs>
+                                              "用时 <n> 秒"
+                                            <span .flex.flex-shrink-0.gap-1.items-center.ml-auto>
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                <svg viewBox="0 0 256 256" />
+                                                "任务中心"
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-busy="false" type="button">
+                                                <svg viewBox="0 0 256 256" />
+                                                "导出 APKG"
+                                          <section .bg-muted/10.border.border-border/50.mt-2.overflow-hidden.px-3.py-2.rounded-lg aria-busy="false" aria-live="polite" data-testid="chatanki-progress">
+                                            <div .flex.flex-col.gap-2.sm:flex-row.sm:items-center.sm:justify-between>
+                                              <div .flex.gap-1.items-center.min-w-0.overflow-x-auto.scrollbar-none.sm:gap-2>
+                                                <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                  <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-routing">
+                                                    <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                  <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                    "路由"
+                                                <div .bg-success/60.flex-shrink-0.h-px.mx-0.5.sm:mx-2.sm:w-6.w-3 aria-hidden="true" />
+                                                <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                  <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-generating">
+                                                    <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                  <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                    "生成"
+                                                <div .bg-success/60.flex-shrink-0.h-px.mx-0.5.sm:mx-2.sm:w-6.w-3 aria-hidden="true" />
+                                                <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                  <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-completed">
+                                                    <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                  <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                    "完成"
+                                              <div .flex.flex-shrink-0.gap-2.items-center>
+                                                <div .bg-muted/10.bg-warning/10.border-warning/40.focus:outline-none.focus:ring-2.focus:ring-offset-2.focus:ring-offset-background.focus:ring-ring.font-medium.inline-flex.items-center.max-w-[180px].px-1.5.px-2.py-0.5.rounded.rounded-full.sm:max-w-[220px].text-muted-foreground.text-warning.text-xs.transition-colors.truncate.whitespace-nowrap data-shad-badge data-testid="chatanki-progress-anki-connect">
+                                                  "AnkiConnect"
+                                                  ":"
+                                                  "未连接"
+                                                <button .!h-10.!w-10.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="刷新 AnkiConnect 状态" title="刷新 AnkiConnect 状态" type="button">
+                                                  <svg .h-4.text-muted-foreground.w-4 viewBox="0 0 256 256" />
+                                                <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs data-testid="chatanki-progress-percent">
+                                                  "100"
+                                                  "%"
+                                                <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.5.after:absolute.after:content-[''].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="true" aria-label="收起详情" title="收起详情" type="button">
+                                                  <svg .duration-200.h-3.5.rotate-180.text-muted-foreground.transition-transform.w-3.5 viewBox="0 0 256 256" />
+                                            <div .mt-2>
+                                              <div .[&>div]:duration-500.[&>div]:ease-out.bg-muted/50.h-1.5.overflow-hidden.relative.rounded-full.w-full aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" role="progressbar">
+                                                <div .bar.bg-primary.h-full.motion-reduce:transition-none.transition-[width] />
+                                            <div .flex.flex-wrap.gap-1.5.items-center.mt-2.sm:gap-2.text-muted-foreground.text-xs>
+                                              <span data-testid="chatanki-progress-metrics">
+                                                "卡片：3"
+                                          <div .border-border/50.border-t.gap-2.grid.grid-cols-2.mt-3.pt-3.sm:flex.sm:flex-wrap>
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                              "编辑"
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                              "加入卡片库"
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap disabled title="卡片生成完成并保存、取得真实 ID 后才能复习这批卡片" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                              "复习这批"
+                                            <div .inline-flex.relative>
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].max-w-[180px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" aria-label="牌组" title="牌组" type="button">
+                                                <svg viewBox="0 0 256 256" />
+                                                <span .truncate>
+                                                  "机器学习系统 · 第 3 章"
+                                            <div .app-menu-root.inline-flex.relative>
+                                              <button .!h-10.!w-10.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.justify-self-end.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多卡片操作" id="@8" title="更多卡片操作" type="button">
+                                                <svg viewBox="0 0 256 256" />
+                                    <div .block-renderer>
+                                      <div .chat-message-body.chat-message-body--markdown>
+                                        <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                          <div .streaming-blocks>
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  "三张挖空卡已生成，牌组名称预填为"
+                                                  <strong>
+                                                    "「机器学习系统 · 第 3 章」"
+                                                  "。翻面检查内容后，可以通过「加入卡片库」收录。"
+                                            <div .stream-block data-active="false" data-block-type="heading" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <h3>
+                                                  "读完后，用三个问题检查理解"
+                                            <div .stream-block data-active="false" data-block-type="list" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <ol>
+                                                  <li>
+                                                    "采用参数服务器时，worker 的梯度经过哪些步骤参与参数更新？"
+                                                  <li>
+                                                    "一个 worker 明显较慢时，同步 SGD 的每轮训练时间会怎样变化？"
+                                                  <li>
+                                                    "梯度压缩减少了传输量，评估训练效果时还需要记录哪些指标？"
+                                            <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                              <div .markdown-content>
+                                                <p>
+                                                  <strong>
+                                                    "参考思路"
+                                                  "：第一题沿着计算、聚合、更新、分发描述数据流；第二题结合最慢节点与同步等待解释；第三题同时观察通信耗时、吞吐量与收敛情况。你可以回到第 45、47、52 页核对自己的回答。"
+                                  <div .mt-3>
+                                    <div .collapsed.text-left.unified-source-panel data-testid="unified-source-panel">
+                                      <div .usp-header>
+                                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-header-left.whitespace-nowrap aria-controls="@9" aria-expanded="false" data-testid="btn-toggle-source-panel" type="button">
+                                          <svg .panel-header-icon viewBox="0 0 256 256" />
+                                          <span .usp-header-title>
+                                            "3 个结果"
+                                          <svg .usp-header-arrow viewBox="0 0 256 256" />
+                                      <div .-translate-y-1.duration-300.ease-in-out.grid.grid-rows-[0fr].motion-reduce:duration-0.motion-reduce:transition-none.opacity-0.pointer-events-none.transition-all.usp-collapse-wrapper.w-full aria-hidden="true">
+                                        <div .min-h-0.overflow-hidden>
+                                          <div .usp-container aria-hidden="true" aria-label="3 个结果" id="@9" role="region">
+                                            <div .relative.usp-body>
+                                              <div .usp-category-pills role="tablist">
+                                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-category-pill.whitespace-nowrap aria-pressed="true" data-testid="source-category-rag" type="button">
+                                                  <span .usp-pill-icon>
+                                                    <svg viewBox="0 0 256 256" />
+                                                  <span .usp-pill-label>
+                                                    "知识库"
+                                                  <span .usp-pill-count>
+                                                    "3"
+                                              <div .relative.usp-sources-wrapper>
+                                                <div .h-full.min-h-0.min-w-0.py-1.relative.w-full data-native-scrollbars="false" data-orientation="horizontal" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="horizontal" data-slot="scroll-area">
+                                                  <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                                                    <div .usp-carousel role="list">
+                                                      <div .flex-shrink-0.group.usp-card-in.usp-item-card.w-56 aria-controls="@10" aria-expanded="false" role="button" tabindex="0">
+                                                        <div .flex.gap-2.items-center.justify-between.mb-1.5>
+                                                          <div .flex.gap-2.items-center.overflow-hidden>
+                                                            <span .usp-item-badge>
+                                                              "1"
+                                                            <span .shrink-0.usp-card-icon>
+                                                              <svg viewBox="0 0 256 256" />
+                                                            <span .font-medium.text-sm.truncate.usp-card-title title="机器学习系统.pdf · 第 3 章">
+                                                              "机器学习系统.pdf · 第 3 章"
+                                                          <span .usp-item-score data-tier="high">
+                                                            <i .usp-score-dot aria-hidden="true" />
+                                                            "93"
+                                                            "%"
+                                                        <div .line-clamp-2.mb-1.5.min-h-8.text-muted-foreground.text-xs>
+                                                          "……数据并行将 mini-batch 切分到 K 个 worker，各自在完整模型副本上计算梯度，由参数服务器（Parameter Server）聚合后再广播更新值……"
+                                                        <div .border-border/50.border-t.flex.gap-2.items-center.justify-between.mt-auto.pt-1.5>
+                                                          <span .truncate.usp-card-meta>
+                                                            "知识库"
+                                                          <button .!h-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                            <svg viewBox="0 0 256 256" />
+                                                            "在知识库中打开"
+                                                      <div .flex-shrink-0.group.usp-card-in.usp-item-card.w-56 aria-controls="@10" aria-expanded="false" role="button" tabindex="0">
+                                                        <div .flex.gap-2.items-center.justify-between.mb-1.5>
+                                                          <div .flex.gap-2.items-center.overflow-hidden>
+                                                            <span .usp-item-badge>
+                                                              "2"
+                                                            <span .shrink-0.usp-card-icon>
+                                                              <svg viewBox="0 0 256 256" />
+                                                            <span .font-medium.text-sm.truncate.usp-card-title title="机器学习系统.pdf · 第 3 章">
+                                                              "机器学习系统.pdf · 第 3 章"
+                                                          <span .usp-item-score data-tier="high">
+                                                            <i .usp-score-dot aria-hidden="true" />
+                                                            "90"
+                                                            "%"
+                                                        <div .line-clamp-2.mb-1.5.min-h-8.text-muted-foreground.text-xs>
+                                                          "……同步随机梯度下降要求所有 worker 等待最慢的一步，straggler 效应使加速比随 worker 数增加而显著偏离线性……"
+                                                        <div .border-border/50.border-t.flex.gap-2.items-center.justify-between.mt-auto.pt-1.5>
+                                                          <span .truncate.usp-card-meta>
+                                                            "知识库"
+                                                          <button .!h-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                            <svg viewBox="0 0 256 256" />
+                                                            "在知识库中打开"
+                                                      <div .flex-shrink-0.group.usp-card-in.usp-item-card.w-56 aria-controls="@10" aria-expanded="false" role="button" tabindex="0">
+                                                        <div .flex.gap-2.items-center.justify-between.mb-1.5>
+                                                          <div .flex.gap-2.items-center.overflow-hidden>
+                                                            <span .usp-item-badge>
+                                                              "3"
+                                                            <span .shrink-0.usp-card-icon>
+                                                              <svg viewBox="0 0 256 256" />
+                                                            <span .font-medium.text-sm.truncate.usp-card-title title="机器学习系统.pdf · 第 3 章">
+                                                              "机器学习系统.pdf · 第 3 章"
+                                                          <span .usp-item-score data-tier="high">
+                                                            <i .usp-score-dot aria-hidden="true" />
+                                                            "84"
+                                                            "%"
+                                                        <div .line-clamp-2.mb-1.5.min-h-8.text-muted-foreground.text-xs>
+                                                          "……在通信受限场景下，梯度压缩（量化 / 稀疏化）与流水线并行是降低同步开销的两条主要路径……"
+                                                        <div .border-border/50.border-t.flex.gap-2.items-center.justify-between.mt-auto.pt-1.5>
+                                                          <span .truncate.usp-card-meta>
+                                                            "知识库"
+                                                          <button .!h-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                            <svg viewBox="0 0 256 256" />
+                                                            "在知识库中打开"
+                                                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                                    <div .os-scrollbar-track>
+                                                      <div .os-scrollbar-handle />
+                                                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                                    <div .os-scrollbar-track>
+                                                      <div .os-scrollbar-handle />
+                                  <div .mt-3>
+                                    <div .flex.gap-1.5.items-center.justify-between>
+                                      <div .flex.gap-1.items-center.min-w-0>
+                                        <button .!h-auto.!px-1.5.!py-0.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!px-3.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mr-1.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-[11px].text-muted-foreground.text-muted-foreground/70.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap title="点击选择模型重试" type="button">
+                                          "deepseek-v4"
+                                        <div .flex.gap-0.5.items-center>
+                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                            <span .t-icon-swap data-state="a">
+                                              <span .t-icon data-icon="a">
+                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                              <span .t-icon data-icon="b">
+                                                <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                          <div .flex.gap-0.5.items-center.transition-opacity>
+                                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="重试" title="重试" type="button">
+                                              <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                            <div .app-menu-root.inline-flex.relative>
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@11" title="更多" type="button">
+                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                        <span .flex.items-center.ml-1.shrink-0.text-[11px].text-muted-foreground/50.whitespace-nowrap title="2026/3/2 09:30:<ss>">
+                                          "09:30"
+                                      <div .flex.flex-shrink-0.gap-2.items-center />
+                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                        <div .os-scrollbar-track>
+                          <div .os-scrollbar-handle />
+                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                        <div .os-scrollbar-track>
+                          <div .os-scrollbar-handle />
+                    <div .absolute.bottom-2.inset-x-0.md:bottom-3.md:px-8.pointer-events-none.px-4>
+                      <div .max-w-thread.mx-auto.overflow-visible.pointer-events-none.w-full data-slot="thread-content-shell">
+                        <div .ml-auto.t-panel-slide.w-fit aria-hidden="false" data-open="true">
+                          <button .active:bg-[color:var(--button-utility-active)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[color:var(--button-utility-surface)].border.border-[color:var(--button-utility-border)].cursor-pointer.duration-150.flex.focus-visible:ring-2.focus-visible:ring-primary/30.focus:outline-none.h-10.hover:bg-[color:var(--button-utility-hover)].hover:border-[color:var(--button-utility-border)].hover:text-[color:var(--button-utility-foreground)].items-center.justify-center.ml-auto.pointer-events-auto.relative.rounded-full.text-[color:var(--button-utility-foreground)].transition-colors.w-10 aria-label="回到底部" data-slot="message-list-scroll-to-bottom" tabindex="0" title="回到底部" type="button">
+                            <svg viewBox="0 0 256 256" />
+                <div .flex-shrink-0.md:px-8.pb-0.px-4.w-full>
+                  <div .max-w-[var(--chat-thread-max-w)].mx-auto>
+                    <div .bg-transparent.duration-200.ease-out.flex.gap-2.h-7.hover:bg-[color:var(--interactive-hover)].items-center.px-2.5.rounded-[var(--radius-shell-control)].transition-all.w-fit>
+                      <button .!bg-transparent.!border-none.!font-medium.!gap-1.5.!h-auto.!p-0.5.!shadow-none.!text-[color:var(--text-secondary)].!text-xs.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-x-2.[@media(pointer:coarse)]:after:-inset-y-3.5.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:!text-[color:var(--text-primary)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].relative.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" type="button">
+                        <svg .text-[color:hsl(var(--primary))] viewBox="0 0 256 256" />
+                        <span .max-w-[180px].truncate>
+                          "产物 1"
+                        <svg .text-[color:var(--text-muted)] viewBox="0 0 256 256" />
+                <div .chat-composer-motion-frame.chat-composer-motion-frame--docked>
+                  <div .w-full>
+                    <div .md:px-8.px-4.w-full>
+                      <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell" />
+                    <div .duration-500.ease-out.flex-shrink-0.isolate.md:pb-4.md:px-8.px-4.relative.transition-[padding,background-color].unified-input-docked.w-full.z-[100] data-testid="input-bar-v2-root">
+                      <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                        <div .bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))].border.border-[color:var(--input-shell-border)].duration-150.ease-out.focus-within:shadow-[var(--shadow-shell-panel)].p-3.pl-4.relative.rounded-[var(--radius-shell-toolbar)].shadow-[var(--shadow-shell-soft)].transition-[background-color,border-color,box-shadow].z-[200] data-composer-panel-anchor="true">
+                          <div .mb-2.relative>
+                            <div .overflow-y-hidden.relative.w-full>
+                              <textarea .[@media(pointer:coarse)]:text-[16px].bg-transparent.border-0.focus:ring-0.leading-relaxed.outline-none.overflow-hidden.placeholder:text-muted-foreground/70.py-1.resize-none.text-foreground.text-md.w-full aria-label="请输入问题..." data-testid="input-bar-v2-textarea" placeholder="请输入问题..." />
+                            <div .-z-50.[@media(pointer:coarse)]:text-[16px].absolute.break-words.invisible.leading-relaxed.left-0.overflow-hidden.text-md.top-0.whitespace-pre-wrap aria-hidden="true">
+                              "​"
+                          <div .flex.gap-2.items-center.justify-between>
+                            <div .flex.flex-1.gap-1.5.items-center.min-w-0.overflow-x-auto.pr-2.scrollbar-none>
+                              <div .flex.gap-1.items-center>
+                                <div .app-menu-root.inline-flex.relative>
+                                  <span .app-menu-trigger.inline-flex.rounded-[var(--radius-shell-control)] aria-expanded="false" aria-haspopup="menu" id="@12">
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[color:var(--button-utility-active)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:opacity-60.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-9.h-[var(--touch-target-size)].hover:bg-[color:var(--button-utility-hover)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-[color:var(--button-utility-foreground)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-9.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="添加与会话选项" data-testid="btn-toggle-attachments" type="button">
+                                      <svg .duration-[var(--dropdown-close-dur,150ms)].transition-transform viewBox="0 0 256 256" />
+                            <div .flex.flex-shrink-0.gap-2.items-center>
+                              <span .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].font-semibold.h-8.inline-flex.items-center.leading-none.max-w-[8rem].min-w-0.px-1.relative.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-primary)].text-ui data-testid="thinking-runtime-control">
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].app-menu-trigger.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].gap-1.h-7.inline-flex.items-center.min-w-0.outline-none.px-1.rounded-md.text-inherit.transition-colors aria-expanded="false" aria-haspopup="menu" aria-label="选择推理深度" data-testid="thinking-runtime-menu-trigger" id="@13" title="模型: DeepSeek / deepseek-v4 · 推理: 高" type="button">
+                                    <div .opacity-90.shrink-0.text-[color:var(--text-primary)]>
+                                      <svg viewBox="0 0 24 24" />
+                                    <span .inline-block.opacity-70.relative.text-[color:var(--text-muted)].text-left.whitespace-nowrap data-testid="thinking-runtime-state-label">
+                                      <span .inline-block.t-resize.whitespace-nowrap>
+                                        <span .t-text-swap>
+                                          "高"
+                                      <span .absolute.invisible.left-0.pointer-events-none.top-0.whitespace-nowrap aria-hidden="true">
+                                        "高"
+                                    <svg .opacity-55.shrink-0 viewBox="0 0 256 256" />
+                              <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].font-medium.gap-2.h-8.hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].inline-flex.items-center.motion-reduce:transition-none.px-2.5.rounded-full.text-[color:var(--button-utility-foreground)].text-sm.transition-colors aria-label="语音输入" data-phase="idle" title="开始语音输入 · ⌘⇧space" type="button">
+                                <svg viewBox="0 0 256 256" />
+                              <span .inline-flex.relative>
+                                <button .!bg-muted.!border-transparent.!rounded-full.!text-muted-foreground.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-[var(--touch-target-size)].[@media(pointer:coarse)]:!w-[var(--touch-target-size)].active:!bg-muted/70.border.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-11.h-[var(--button-icon-size)].hover:!bg-muted/80.inline-flex.items-center.justify-center.leading-none.md:h-[var(--button-icon-size)].md:w-[var(--button-icon-size)].motion-reduce:transition-none.outline-none.ring-offset-background.rounded-[var(--button-radius)].select-none.shrink-0.text-ui.tracking-[0.01em].transition-[background-color,border-color,color,box-shadow].w-11.w-[var(--button-icon-size)].whitespace-nowrap aria-label="发送消息" data-testid="btn-send" disabled type="button">
+                                  <svg viewBox="0 0 256 256" />
+                      <div>
+                        <input .hidden type="file" />
+                        <input .hidden type="file" />
+  <div id="@14" />

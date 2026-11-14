@@ -6,6 +6,8 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
+import { isTauriRuntime } from '@/utils/shared';
 
 /** 缩放适配模式：custom = 使用 defaultScale 数值 */
 export type PdfFitMode = 'custom' | 'fitWidth' | 'fitPage' | 'actualSize';
@@ -63,9 +65,9 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   enableTextLayerByDefault: true, // 默认可选择/复制文本（虚拟化下仅可见页渲染文本层）
   textLayerRange: 2,
 
-  // 批注层
-  enableAnnotationLayerByDefault: false, // 默认关闭
-  annotationLayerRange: 0,
+  // 批注层（承载论文内部引用 [12] / Fig. 3 / 目录超链接与外部 DOI 链接，虚拟化下仅当前页 ±2 页挂载）
+  enableAnnotationLayerByDefault: true,
+  annotationLayerRange: 2,
 
   // 缩略图
   thumbnailWidth: 100,
@@ -90,6 +92,45 @@ const PDF_SETTING_CONSTRAINTS: Record<string, [number, number]> = {
   thumbnailOverscan: [1, 10],
   defaultScale: [0.5, 3.0],
 };
+
+/** localStorage 主源键（zustand persist 的 name） */
+const PDF_SETTINGS_STORAGE_KEY = 'pdf-settings';
+
+/**
+ * SQLite `settings` 中的 PDF 设置副本。
+ * localStorage 是运行时权威源；副本用于 origin 变更 / WebView 缓存清理后的回填，
+ * 也保证 PDF 偏好随备份一起恢复。
+ */
+const PDF_SETTINGS_SETTING_KEY = 'pdf.settings';
+
+/** 校验并裁剪外部读入的 PDF 设置（备份/SQLite 副本可能来自旧版本） */
+function sanitizePdfSettings(partial: Partial<PdfSettings> | null | undefined): PdfSettings {
+  const merged: PdfSettings = { ...DEFAULT_PDF_SETTINGS, ...(partial ?? {}) };
+  for (const [key, range] of Object.entries(PDF_SETTING_CONSTRAINTS)) {
+    const value = (merged as unknown as Record<string, unknown>)[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      (merged as unknown as Record<string, number>)[key] = Math.max(range[0], Math.min(range[1], value));
+    } else {
+      (merged as unknown as Record<string, unknown>)[key] = (DEFAULT_PDF_SETTINGS as unknown as Record<string, unknown>)[key];
+    }
+  }
+  if (merged.defaultFitMode !== 'custom' && merged.defaultFitMode !== 'fitWidth'
+    && merged.defaultFitMode !== 'fitPage' && merged.defaultFitMode !== 'actualSize') {
+    merged.defaultFitMode = DEFAULT_PDF_SETTINGS.defaultFitMode;
+  }
+  if (merged.defaultViewMode !== 'single' && merged.defaultViewMode !== 'dual') {
+    merged.defaultViewMode = DEFAULT_PDF_SETTINGS.defaultViewMode;
+  }
+  return merged;
+}
+
+/** 镜像当前设置到 SQLite settings（失败只告警，不影响本地持久化） */
+function persistPdfSettingsToSqlite(settings: PdfSettings): void {
+  if (!isTauriRuntime) return;
+  void saveSetting(PDF_SETTINGS_SETTING_KEY, JSON.stringify({ settings })).catch((error: unknown) => {
+    console.warn('[pdfSettingsStore] 镜像 PDF 设置到 settings 失败:', error);
+  });
+}
 
 interface PdfSettingsStore {
   settings: PdfSettings;
@@ -140,6 +181,8 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
           set((state) => ({
             settings: { ...state.settings, [key]: validated },
           }));
+          // ★ BUG-8: localStorage 之外再镜像 SQLite settings
+          persistPdfSettingsToSqlite(get().settings);
         },
 
         updateSettings: (partial) => {
@@ -157,10 +200,12 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
           set((state) => ({
             settings: { ...state.settings, ...validated },
           }));
+          persistPdfSettingsToSqlite(get().settings);
         },
 
         resetSettings: () => {
           set({ settings: { ...DEFAULT_PDF_SETTINGS } });
+          persistPdfSettingsToSqlite(get().settings);
         },
 
         getRenderDpr: (isScrolling) => {
@@ -174,9 +219,9 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
       }),
       {
         name: 'pdf-settings',
-        version: 2,
+        version: 3,
         partialize: (state) => ({ settings: state.settings }),
-        // v1 → v2：把仍处于旧默认值的字段升级为新默认值（视为用户未主动修改过），
+        // v1 → v2 → v3：把仍处于旧默认值的字段升级为新默认值（视为用户未主动修改过），
         // 并补齐新字段。显式改过的自定义值保持不动。
         // 注意：persist 的 merge 阶段会用 DEFAULT_PDF_SETTINGS 浅合并补齐缺失字段。
         migrate: (persisted: unknown, version: number): { settings: PdfSettings } => {
@@ -184,16 +229,20 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
           if (!state?.settings) {
             return { settings: { ...DEFAULT_PDF_SETTINGS } };
           }
+          const s = state.settings as Record<string, unknown>;
+          const upgradeDefault = (key: string, oldDefault: unknown, newDefault: unknown) => {
+            if (s[key] === oldDefault) s[key] = newDefault;
+          };
           if (version < 2) {
-            const s = state.settings as Record<string, unknown>;
-            const upgradeDefault = (key: string, oldDefault: unknown, newDefault: unknown) => {
-              if (s[key] === oldDefault) s[key] = newDefault;
-            };
             upgradeDefault('maxDevicePixelRatio', 1.5, 2.0);
             upgradeDefault('enableTextLayerByDefault', false, true);
             upgradeDefault('textLayerRange', 1, 2);
             upgradeDefault('enableScrollDprDowngrade', true, false);
             if (s.defaultFitMode === undefined) s.defaultFitMode = 'custom';
+          }
+          if (version < 3) {
+            upgradeDefault('enableAnnotationLayerByDefault', false, true);
+            upgradeDefault('annotationLayerRange', 0, 2);
           }
           return { settings: { ...DEFAULT_PDF_SETTINGS, ...state.settings } };
         },
@@ -201,6 +250,38 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
     )
   )
 );
+
+// ===== SQLite settings 回填（BUG-8）=====
+// localStorage（zustand persist）是权威源：本地已有快照时绝不覆盖；
+// 仅在 localStorage 整块丢失（origin 变更 / WebView 缓存清理）时用 SQLite 副本恢复。
+let pdfSettingsHydrationStarted = false;
+
+function hydratePdfSettingsFromSqlite(): void {
+  if (!isTauriRuntime || pdfSettingsHydrationStarted) return;
+  pdfSettingsHydrationStarted = true;
+  void getSetting(PDF_SETTINGS_SETTING_KEY)
+    .then((raw) => {
+      if (!raw) return;
+      try {
+        if (localStorage.getItem(PDF_SETTINGS_STORAGE_KEY) !== null) return;
+      } catch {
+        // localStorage 不可访问时不阻止内存恢复
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const settings = sanitizePdfSettings((parsed as { settings?: Partial<PdfSettings> } | null)?.settings);
+      usePdfSettingsStore.setState({ settings });
+    })
+    .catch((error: unknown) => {
+      console.warn('[pdfSettingsStore] 从 settings 回填 PDF 设置失败:', error);
+    });
+}
+
+hydratePdfSettingsFromSqlite();
 
 /** 便捷 Hook：直接获取设置对象 */
 export const usePdfSettings = () => usePdfSettingsStore((s) => s.settings);

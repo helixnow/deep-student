@@ -14,13 +14,15 @@ export interface ViewLayerRendererProps {
   extraClass?: string;
   extraStyle?: React.CSSProperties;
   errorBoundaryName?: string;
+  /** Invalidate this view's failed lazy component before resetting its error boundary. */
+  onRetry?: () => void;
   /** Keep the view visible as a non-interactive backdrop while settings is open. */
   isBackdrop?: boolean;
   /** Skip the enter animation once (legacy; prefer paired enter/exit). */
   suppressEnterAnimation?: boolean;
   /**
    * 移动端层切换方向：1 = 前进（新层右入/旧层左出），-1 = 返回（镜像）。
-   * 仅 <768px 的 mobile-shell-content-* 关键帧区分方向；桌面纵向淡入淡出忽略此值。
+   * 移动端按方向成对进出；桌面端的内容始终从右侧淡入。
    */
   navDirection?: 1 | -1;
 }
@@ -33,6 +35,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   extraClass,
   extraStyle,
   errorBoundaryName,
+  onRetry,
   isBackdrop = false,
   suppressEnterAnimation = false,
   navDirection = 1,
@@ -69,7 +72,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
     <ErrorBoundary
       name={errorBoundaryName}
       fallback={(error, _componentStack, reset) => (
-        <ViewErrorFallback error={error} onRetry={reset} viewName={errorBoundaryName} />
+        <ViewErrorFallback error={error} onRetry={() => { onRetry?.(); reset(); }} viewName={errorBoundaryName} />
       )}
     >
       {children}
@@ -115,6 +118,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   if (prev.isBackdrop !== next.isBackdrop) return false;
   if (prev.suppressEnterAnimation !== next.suppressEnterAnimation) return false;
   if (prev.navDirection !== next.navDirection) return false;
+  if (prev.onRetry !== next.onRetry) return false;
 
   const prevVisited = prev.visitedViews.has(prev.view);
   const nextVisited = next.visitedViews.has(next.view);

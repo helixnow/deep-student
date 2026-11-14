@@ -30,20 +30,20 @@ const parseCsp = (csp: string): Map<string, string[]> =>
       .map(([name, ...sources]) => [name, sources] as [string, string[]]),
   );
 
-const confFiles = readdirSync(resolve(process.cwd(), 'src-tauri')).filter((name) =>
+const confFiles = readdirSync(resolve(process.cwd(), 'resources/app')).filter((name) =>
   /^tauri(\.[a-z]+)?\.conf\.json$/.test(name),
 );
 
 describe('CSP inline style attribute contract', () => {
   it('base config allows style attributes independently of style-src hashes', () => {
-    const conf = JSON.parse(readText('src-tauri/tauri.conf.json'));
+    const conf = JSON.parse(readText('resources/app/tauri.conf.json'));
     const csp = parseCsp(conf.app.security.csp);
     expect(csp.get('style-src-attr')).toContain("'unsafe-inline'");
     expect(csp.get('style-src-elem')).toEqual(expect.arrayContaining(["'self'", "'unsafe-inline'"]));
   });
 
   it.each(confFiles)('%s does not override CSP without style-src-attr', (file) => {
-    const conf = JSON.parse(readText(`src-tauri/${file}`));
+    const conf = JSON.parse(readText(`resources/app/${file}`));
     const csp: unknown = conf.app?.security?.csp;
     if (typeof csp !== 'string') return;
     const parsed = parseCsp(csp);

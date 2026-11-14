@@ -14,9 +14,14 @@ import type {
   BlankRange,
   VfsMindMap,
   MindMapViewType,
+  ExcerptIntakeMode,
 } from '../types';
 import type { SearchOptions } from '../utils/searchFilter';
 import type { ReciteReviewItem, ReciteSessionLog } from '../utils/reciteStats';
+import type { ExcerptDragPayload, SemanticAnchor } from '@/ui-kernel/contracts/interop';
+import type { ExcerptInsertContext, IngestExcerptOptions } from '../utils/excerptIngest';
+
+export type { ExcerptInsertContext, IngestExcerptOptions } from '../utils/excerptIngest';
 
 /** 大纲 / 导图双模视口状态（内存态，切视图时保留） */
 export interface MindMapViewports {
@@ -377,6 +382,59 @@ export interface MindMapStoreState {
   // 节点资源引用
   addNodeRef: (nodeId: string, ref: MindMapNodeRef) => void;
   removeNodeRef: (nodeId: string, sourceId: string) => void;
+
+  // ==========================================================================
+  // 摘录入图与汇聚中枢（MarginNote 5 式学习流，W08 + C7 §3）
+  // ==========================================================================
+
+  /** 划选即入图开关（会话级 UI 偏好，不进 history/draft/持久化） */
+  autoExcerptEnabled: boolean;
+  setAutoExcerptEnabled: (enabled: boolean) => void;
+  /** 摘录入图策略：直挂节点 ('direct') | 先入待整理池 ('staging') */
+  excerptIntakeMode: ExcerptIntakeMode;
+  setExcerptIntakeMode: (mode: ExcerptIntakeMode) => void;
+  /** 待整理池侧边栏是否展开（会话级 UI 状态） */
+  stagingTrayOpen: boolean;
+  setStagingTrayOpen: (open: boolean) => void;
+  /** 上次摘录入图的父节点与新节点（瞬态），供划选即入图确定性落点回退 */
+  lastExcerptContext: ExcerptInsertContext | null;
+  /**
+   * 摘录入图后的视口跟随请求（瞬态）：画布仅在新节点超出视口安全边距时平移，
+   * 已在可视区内则镜头不动。
+   */
+  excerptRevealRequest: { nodeId: string; nonce: number } | null;
+  /**
+   * 把一条摘录写入导图（单个 undo 步）。返回新建或合并的节点 id；无法放置时返回 null。
+   */
+  ingestExcerpt: (payload: ExcerptDragPayload, options: IngestExcerptOptions) => string | null;
+  /** 划选即入图：按入图策略及选中态分流至目标节点或待整理池（单个 undo 步） */
+  ingestAutoExcerpt: (payload: ExcerptDragPayload) => string | null;
+  /** 把一条摘录暂存进文档级待整理池（单个 undo 步） */
+  stageExcerpt: (payload: ExcerptDragPayload) => string | null;
+  /**
+   * 将待整理池中的暂存卡片归入导图（拖拽上树或点击「归入选中节点」共用，单个原子 undo 步）。
+   * 缺省 options 时归入当前聚焦/选中节点（无选中时归入专注根或根）。
+   */
+  commitStagingExcerpt: (stagingId: string, options?: IngestExcerptOptions) => string | null;
+  /** 从待整理池移除单条暂存摘录（单个 undo 步） */
+  removeStagingExcerpt: (stagingId: string) => void;
+  /** 清空待整理池全部条目（单个 undo 步） */
+  clearStagingExcerpts: () => void;
+  appendNodeAnchor: (nodeId: string, anchor: SemanticAnchor) => void;
+  removeNodeAnchor: (nodeId: string, anchorUri: string) => void;
+  /** 移除复合卡片单个摘录槽并同步清理无引用的锚点（单个 undo 步） */
+  removeNodeExcerptSlot: (nodeId: string, slotId: string) => void;
+  /** 更新复合卡片个人理解批注（cardNote） */
+  setNodeCardNote: (nodeId: string, cardNote: string | undefined) => void;
+  /** 切换复合卡片内容展开态 */
+  toggleNodeExpandedCard: (nodeId: string, expanded?: boolean) => void;
+  /** 切换节点一键投影为 FSRS 闪卡（`card_mm_${mapId}_${nodeId}`） */
+  toggleNodeFlashcard: (nodeId: string, enabled?: boolean) => boolean;
+
+  // 归纳总结大括号 `}`
+  addSummaryBrace: (nodeIds?: readonly string[], label?: string) => string | null;
+  updateSummaryBrace: (id: string, label: string) => void;
+  removeSummaryBrace: (id: string) => void;
 
   // 跨分支关联线
   addAssociation: (source: string, target: string, label?: string) => string | null;

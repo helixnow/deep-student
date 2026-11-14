@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -25,7 +26,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import {
   Table,
@@ -97,7 +97,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
   const { t } = useTranslation('llm_usage');
   
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -143,6 +143,8 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
       setRefreshing(false);
     }
   }, [timeRange, t]);
+
+  useRefreshOnReturn(() => loadData(true));
 
   useEffect(() => {
     loadData();
@@ -190,7 +192,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <p className="text-destructive">{error}</p>
         <DsButton onClick={() => loadData()} className="[@media(pointer:coarse)]:!min-h-11">
           <ArrowsClockwise size={16} className="mr-2" />
-          {t('actions.refresh')}
+          {t('common:actions.retry')}
         </DsButton>
       </div>
     );
@@ -241,16 +243,6 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
               </DsButton>
             ))}
           </div>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={() => loadData(true)}
-            disabled={refreshing}
-            className="[@media(pointer:coarse)]:!min-h-11"
-          >
-            <ArrowsClockwise size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            {t('actions.refresh')}
-          </DsButton>
         </div>
       </div>
 

@@ -72,6 +72,12 @@ const GROUP_DOT_CLASS: Record<GroupId, string> = {
   highlights: 'bg-emerald-500',
 };
 
+const GROUP_LEFT_BORDER_CLASS: Record<GroupId, string> = {
+  errors: 'border-l-destructive/75',
+  suggestions: 'border-l-amber-500/75',
+  highlights: 'border-l-emerald-500/75',
+};
+
 interface IndexedMarker {
   marker: StreamingMarker;
   /** markers 数组的原始下标（跨代理身份契约） */
@@ -128,20 +134,24 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
     case 'replace':
       return (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-red-500/80 line-through">{marker.oldText}</span>
-          <ArrowRight size={16} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-          <span className="text-amber-700 dark:text-amber-400 font-medium">{marker.newText}</span>
+          <span className="text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.oldText}</span>
+          <ArrowRight size={15} className="text-muted-foreground/40 shrink-0 mt-0.5" />
+          <span className="text-amber-700 dark:text-amber-400 font-medium bg-amber-500/[0.07] px-1 rounded-sm">{marker.newText}</span>
           {marker.newText && (
             <InlineCopyButton text={marker.newText} label={copyLabel} copiedLabel={copiedLabel} />
           )}
         </div>
       );
     case 'del':
-      return <div className="text-sm text-red-500/80 line-through">{marker.content}</div>;
+      return (
+        <div className="text-sm">
+          <span className="text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.content}</span>
+        </div>
+      );
     case 'ins':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-amber-700 dark:text-amber-400">{marker.content}</span>
+          <span className="text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1 rounded-sm">{marker.content}</span>
           <InlineCopyButton text={marker.content} label={copyLabel} copiedLabel={copiedLabel} />
         </div>
       );
@@ -153,7 +163,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
               'underline decoration-wavy underline-offset-4',
               isSuggestionErr(marker)
                 ? 'text-amber-700 dark:text-amber-400 decoration-amber-400/60'
-                : 'text-red-500/80 decoration-red-400/50'
+                : 'text-destructive/85 decoration-destructive/50'
             )}
           >
             {marker.content}
@@ -169,7 +179,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
     case 'good':
       return (
         <div className="text-sm">
-          <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-sm px-0.5">
+          <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-500/[0.07] rounded-sm px-1">
             {marker.content}
           </span>
         </div>
@@ -309,17 +319,18 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                     }
                   }}
                   className={cn(
-                    'rounded-xl border bg-card/50 overflow-hidden scroll-mt-12',
+                    'rounded-r-xl rounded-l-sm border-y border-r border-l-2 bg-foreground/[0.015] overflow-hidden scroll-mt-12',
+                    GROUP_LEFT_BORDER_CLASS[group],
                     'transition-[box-shadow,border-color,background-color] duration-150 motion-reduce:transition-none',
                     isActive
-                      ? 'ring-1 ring-primary bg-primary/5 border-primary/30'
-                      : 'border-border/40',
-                    onMarkerSelect && !isActive && 'cursor-pointer hover:border-border/70',
+                      ? 'ring-1 ring-primary/40 bg-primary/[0.05] border-y-primary/30 border-r-primary/30'
+                      : 'border-y-border/35 border-r-border/35',
+                    onMarkerSelect && !isActive && 'cursor-pointer hover:bg-foreground/[0.03] hover:border-y-border/60 hover:border-r-border/60',
                     onMarkerSelect && isActive && 'cursor-pointer'
                   )}
                 >
                   {/* 卡片头部：序号 + 分类标签 */}
-                  <div className="flex items-center gap-2 px-4 py-2 border-b border-border/20 bg-muted/10">
+                  <div className="flex items-center gap-2 px-4 pt-2.5 pb-1.5">
                     <span className="text-xs text-muted-foreground/50 font-mono tabular-nums w-5">
                       {number}
                     </span>
@@ -345,12 +356,12 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                   </div>
 
                   {/* 卡片内容 */}
-                  <div className="px-4 py-3 space-y-2">
+                  <div className="px-4 pb-3 pt-1 space-y-2">
                     <MarkerContent marker={marker} />
 
                     {/* 详细解释 */}
                     {(marker.explanation || marker.reason || marker.comment) && (
-                      <div className="text-xs text-muted-foreground/70 leading-relaxed bg-muted/20 rounded px-3 py-2 mt-1">
+                      <div className="text-xs text-muted-foreground/75 leading-relaxed pt-1.5 border-t border-border/25">
                         {marker.explanation || marker.reason || marker.comment}
                       </div>
                     )}

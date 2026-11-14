@@ -9,11 +9,19 @@
 
 import { linkSchema } from '@milkdown/kit/preset/commonmark';
 
+import { DS_ANCHOR_SCHEME } from '@/ui-kernel/contracts/interop';
 import { NOTE_HREF_PROTOCOL } from './mention/types';
 import { PDF_REF_HREF_PROTOCOL } from './pdfRef/protocol';
 import { MEDIA_REF_HREF_PROTOCOL } from './mediaRef/protocol';
 
-const INTERNAL_LINK_PROTOCOLS = [PDF_REF_HREF_PROTOCOL, NOTE_HREF_PROTOCOL, MEDIA_REF_HREF_PROTOCOL];
+export const INTERNAL_LINK_SCHEMES = [
+  PDF_REF_HREF_PROTOCOL,
+  NOTE_HREF_PROTOCOL,
+  MEDIA_REF_HREF_PROTOCOL,
+  DS_ANCHOR_SCHEME,
+] as const;
+
+const INTERNAL_LINK_PROTOCOLS = INTERNAL_LINK_SCHEMES;
 
 export function isInternalLinkHref(href: unknown): href is string {
   if (typeof href !== 'string') return false;

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  ArrowClockwise,
   CaretDown,
   CaretRight,
   CircleNotch,
@@ -1257,18 +1256,6 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           </div>
         )}
         <div className="notes-backlinks-panel-actions">
-          {resolvedTab === 'links' && (
-            <button
-              type="button"
-              className="notes-backlinks-panel-icon-button"
-              disabled={loadState.status === 'loading' || !canShowLinks}
-              onClick={refresh}
-              aria-label={t('notesWorkspace.backlinks.refresh')}
-              title={t('notesWorkspace.backlinks.refresh')}
-            >
-              <ArrowClockwise size={15} aria-hidden="true" />
-            </button>
-          )}
           <button
             type="button"
             className="notes-backlinks-panel-icon-button"

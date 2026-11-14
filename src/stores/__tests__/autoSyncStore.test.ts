@@ -23,6 +23,7 @@ vi.mock('@/api/dataGovernance', () => ({
 }));
 
 import {
+  classifyAutoSyncSkip,
   createAutoSyncScheduler,
   performAutoSyncOnce,
   useAutoSyncStore,
@@ -339,6 +340,46 @@ describe('performAutoSyncOnce', () => {
 
     await expect(performAutoSyncOnce()).resolves.toBe('failure');
     expect(useGlobalSyncStore.getState().isSyncing).toBe(false);
+  });
+
+  it('classifies the cross-process data-governance lock as skipped_busy, not failure', async () => {
+    mockLoadConfig.mockResolvedValue(webdavConfig);
+    mockCredentialStatus.mockResolvedValue(allCredentialsConfigured);
+    mockDetectPruneGap.mockResolvedValue({ has_gap: false } as never);
+    // backup-common 的跨进程锁（acquireProcessOperationLockAt）拒绝文案
+    mockRunSync.mockRejectedValue(
+      new Error(
+        '另一个客户端进程正在执行数据治理操作（holder={"operation_id":"sync-1","kind":"sync"}）: 锁文件已存在',
+      ),
+    );
+
+    await expect(performAutoSyncOnce()).resolves.toBe('skipped_busy');
+    // 跳过也要释放全局锁，不能把本进程的同步入口锁死
+    expect(useGlobalSyncStore.getState().isSyncing).toBe(false);
+  });
+
+  it('classifies the cross-process lock reported inside a sync result as skipped_busy', async () => {
+    mockLoadConfig.mockResolvedValue(webdavConfig);
+    mockCredentialStatus.mockResolvedValue(allCredentialsConfigured);
+    mockDetectPruneGap.mockResolvedValue({ has_gap: false } as never);
+    mockRunSync.mockResolvedValue({
+      success: false,
+      error_message: '另一个客户端进程正在执行数据治理操作: 锁文件已存在',
+    } as never);
+
+    await expect(performAutoSyncOnce()).resolves.toBe('skipped_busy');
+    expect(useGlobalSyncStore.getState().isSyncing).toBe(false);
+  });
+});
+
+describe('classifyAutoSyncSkip', () => {
+  it('maps the cross-process data-governance lock text to skipped_busy', () => {
+    expect(classifyAutoSyncSkip('另一个客户端进程正在执行数据治理操作: 锁文件已存在')).toBe('skipped_busy');
+    // 已有两类互斥文案保持原分类
+    expect(classifyAutoSyncSkip('另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。')).toBe('skipped_busy');
+    expect(classifyAutoSyncSkip('已有数据治理操作正在运行')).toBe('skipped_busy');
+    // 无法识别的一律返回 null（照旧计失败）
+    expect(classifyAutoSyncSkip('WebDAV 401 Unauthorized')).toBeNull();
   });
 });
 

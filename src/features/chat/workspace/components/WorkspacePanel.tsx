@@ -11,6 +11,7 @@
  * （DesktopSecondaryPanelMode）作为新模式，并与 AgentTaskPanel 收敛为一套入口。
  * 在此之前请勿在新代码中引用本组件。
  */
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -50,7 +51,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   // 🆕 2026-01-20: 展开的 Worker ID（用于内联预览）
   const [expandedWorkerId, setExpandedWorkerId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [, setIsRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
   // 🆕 2026-01-20: 处理 Agent 卡片点击（跳转到会话）
@@ -125,6 +126,8 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
     ],
     [handleOnline, handleOffline]
   );
+
+  useRefreshOnReturn(() => handleRefresh({ silent: true }), Boolean(workspace?.id) && !isLoading);
 
   // 🔧 P21 修复：按 workspaceId 过滤 agents / messages
   // （hooks 必须在 loading/error/empty 的 early return 之前）
@@ -244,20 +247,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 {t('chatV2:workspace.offlineTag')}
               </span>
             )}
-            <DsButton
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
-              onClick={() => handleRefresh()}
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? (
-                <CircleNotch size={12} className="mr-1 animate-spin" />
-              ) : (
-                <ArrowClockwise size={12} className="mr-1" />
-              )}
-              {t('chatV2:workspace.refresh')}
-            </DsButton>
           </div>
         </div>
         {/* 🆕 Worker 聚合状态行 */}

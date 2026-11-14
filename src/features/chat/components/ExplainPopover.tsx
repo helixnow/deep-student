@@ -17,10 +17,11 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise } from '@phosphor-icons/react';
+import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise, NotePencil } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { MarkdownRenderer } from './renderers/MarkdownRenderer';
@@ -28,6 +29,15 @@ import { MarkdownRenderer } from './renderers/MarkdownRenderer';
 // ============================================================================
 // 类型
 // ============================================================================
+
+export type AcademicExplainLens = 'intuition' | 'formula' | 'critique' | 'prereq';
+
+const ACADEMIC_LENSES: readonly AcademicExplainLens[] = [
+  'intuition',
+  'formula',
+  'critique',
+  'prereq',
+];
 
 export interface ExplainPopoverProps {
   /** 要解释的原文 */
@@ -38,6 +48,14 @@ export interface ExplainPopoverProps {
   onClose: () => void;
   /** 添加到聊天输入框回调（不发送） */
   onAddToInput?: (text: string) => void;
+  /** 是否启用学术论文精读四视角（通俗直觉 / 公式拆解 / 方法审视 / 先修背景） */
+  academicMode?: boolean;
+  /** 选区前文（用于学术符号/术语消歧） */
+  contextBefore?: string;
+  /** 选区后文 */
+  contextAfter?: string;
+  /** 一键将解读结果存入 PDF 批注笔记 */
+  onSaveToAnnotation?: (text: string) => void;
 }
 
 // ============================================================================
@@ -60,10 +78,16 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
   isVisible,
   onClose,
   onAddToInput,
+  academicMode = false,
+  contextBefore = '',
+  contextAfter = '',
+  onSaveToAnnotation,
 }) => {
   const { t } = useTranslation(['chatV2']);
   const rootRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [activeLens, setActiveLens] = useState<AcademicExplainLens>('intuition');
   const [isLoading, setIsLoading] = useState(false);
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -72,15 +96,36 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
   // 用 requestId 防止"关闭→重开"或重试时的旧响应竞态
   const requestIdRef = useRef(0);
+  // 同一次选区内多视角切换缓存，避免来回点击重复请求 LLM
+  const lensCacheRef = useRef<Map<string, string>>(new Map());
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pinnedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    if (pinnedTimerRef.current) clearTimeout(pinnedTimerRef.current);
   }, []);
 
-  // ===== 解释请求（带 requestId 防竞态） =====
+  // 原文切换时重置结果与视角缓存，并默认回到「通俗直觉」视角
+  useEffect(() => {
+    requestIdRef.current++;
+    lensCacheRef.current.clear();
+    setActiveLens('intuition');
+    setExplanation('');
+    setError(null);
+    setIsLoading(false);
+    setPinned(false);
+  }, [sourceText]);
+
+  // ===== 解释请求（带 requestId 防竞态 + 学术视角缓存） =====
 
   useEffect(() => {
     if (!isVisible || !sourceText) return;
+    const cacheKey = academicMode ? `${sourceText}::${activeLens}` : sourceText;
+    const cached = lensCacheRef.current.get(cacheKey);
+    if (cached && !explanation && !isLoading && !error) {
+      setExplanation(cached);
+      return;
+    }
     // 已有结果 / 正在加载 / 已出错（等待重试）时不重复发起
     if (explanation || isLoading || error) return;
 
@@ -89,7 +134,22 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     setError(null);
 
     // 通过 i18n 生成 prompt，使回答语言跟随界面语言
-    const prompt = t('explainPopover.prompt', { text: sourceText });
+    let prompt: string;
+    if (academicMode) {
+      const hasContext = Boolean(contextBefore.trim() || contextAfter.trim());
+      const context = hasContext
+        ? t('explainPopover.academicPrompts.contextBlock', {
+            before: contextBefore.trim().slice(-200),
+            after: contextAfter.trim().slice(0, 200),
+          })
+        : '';
+      prompt = t(`explainPopover.academicPrompts.${activeLens}`, {
+        text: sourceText,
+        context,
+      });
+    } else {
+      prompt = t('explainPopover.prompt', { text: sourceText });
+    }
 
     invoke<{ assistant_message: string; input_tokens: number; output_tokens: number }>(
       'call_llm_for_boundary',
@@ -97,6 +157,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     )
       .then((result) => {
         if (requestIdRef.current !== reqId) return; // 旧请求被新一轮替代，丢弃
+        lensCacheRef.current.set(cacheKey, result.assistant_message);
         setExplanation(result.assistant_message);
       })
       .catch((err) => {
@@ -106,16 +167,29 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       .finally(() => {
         if (requestIdRef.current === reqId) setIsLoading(false);
       });
-  }, [isVisible, sourceText, explanation, isLoading, error, t]);
+  }, [
+    isVisible,
+    sourceText,
+    academicMode,
+    activeLens,
+    contextBefore,
+    contextAfter,
+    explanation,
+    isLoading,
+    error,
+    t,
+  ]);
 
   // 关闭时重置（同时让所有 in-flight 失效）
   useEffect(() => {
     if (!isVisible) {
       requestIdRef.current++;
+      lensCacheRef.current.clear();
       setExplanation('');
       setError(null);
       setIsLoading(false);
       setCopied(false);
+      setPinned(false);
       setCollapsed(false);
     }
   }, [isVisible]);
@@ -153,13 +227,37 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     onClose();
   }, [explanation, onAddToInput, onClose]);
 
+  const handleSaveToAnnotation = useCallback(() => {
+    if (!explanation || !onSaveToAnnotation) return;
+    onSaveToAnnotation(explanation);
+    setPinned(true);
+    if (pinnedTimerRef.current) clearTimeout(pinnedTimerRef.current);
+    pinnedTimerRef.current = setTimeout(() => setPinned(false), 1500);
+  }, [explanation, onSaveToAnnotation]);
+
+  const handleSelectLens = useCallback(
+    (lens: AcademicExplainLens) => {
+      if (lens === activeLens) return;
+      requestIdRef.current++;
+      setActiveLens(lens);
+      const cached = lensCacheRef.current.get(`${sourceText}::${lens}`);
+      setExplanation(cached ?? '');
+      setError(null);
+      setIsLoading(false);
+      setPinned(false);
+    },
+    [activeLens, sourceText],
+  );
+
   const handleRetry = useCallback(() => {
     // 让在途请求作废，并重置状态触发自动重发
+    const cacheKey = academicMode ? `${sourceText}::${activeLens}` : sourceText;
+    lensCacheRef.current.delete(cacheKey);
     requestIdRef.current++;
     setExplanation('');
     setError(null);
     setIsLoading(false);
-  }, []);
+  }, [academicMode, sourceText, activeLens]);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => !prev);
@@ -223,6 +321,35 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       {/* 正文（可折叠） */}
       <div className="chat-collapse" data-open={collapsed ? 'false' : 'true'}>
         <div className={cn(collapsed && 'pointer-events-none')} aria-hidden={collapsed}>
+          {academicMode && (
+            <div
+              role="tablist"
+              aria-label={t('explainPopover.lensAriaLabel')}
+              className="flex items-center gap-1 px-3 py-1.5 border-t border-border/35 overflow-x-auto"
+            >
+              {ACADEMIC_LENSES.map((lens) => {
+                const selected = activeLens === lens;
+                return (
+                  <DsButton
+                    key={lens}
+                    variant="ghost"
+                    size="sm"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => handleSelectLens(lens)}
+                    className={cn(
+                      '!h-6 !px-2 text-xs whitespace-nowrap rounded-md',
+                      selected
+                        ? 'bg-primary/12 text-primary font-medium'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {t(`explainPopover.lenses.${lens}`)}
+                  </DsButton>
+                );
+              })}
+            </div>
+          )}
           <div className="px-3 py-2.5 min-h-[48px] border-t border-border/30">
             {error ? (
               <div className="flex items-center gap-2">
@@ -254,7 +381,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
           {/* 底部操作栏 */}
           {explanation && !isLoading && (
-            <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
+            <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5 flex-wrap">
               <ActionButton
                 onClick={handleCopy}
                 icon={
@@ -266,6 +393,23 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 }
                 label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
               />
+              {onSaveToAnnotation && (
+                <ActionButton
+                  onClick={handleSaveToAnnotation}
+                  icon={
+                    <IconSwap
+                      active={pinned}
+                      a={<NotePencil size={13} />}
+                      b={<Check size={13} className="text-success" />}
+                    />
+                  }
+                  label={
+                    pinned
+                      ? t('explainPopover.savedToAnnotation')
+                      : t('explainPopover.saveToAnnotation')
+                  }
+                />
+              )}
               {onAddToInput && (
                 <ActionButton
                   onClick={handleAddToInput}

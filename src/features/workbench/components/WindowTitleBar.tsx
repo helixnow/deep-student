@@ -413,6 +413,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
     : immersive
       ? t('a11y.immersiveExit')
       : t('a11y.immersiveEnter');
+  const seamlessChat = appTypeId === 'chat' || appTypeId === 'chat-session';
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
   // todo/skills 工具栏整体 portal 进窗口标题栏（应用名已由菜单栏承接，居中标题冗余）；
   // 题目集/翻译/作文只放资源列表开关，保留居中标题
@@ -423,7 +424,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
     || appTypeId === 'exam'
     || appTypeId === 'translation'
     || appTypeId === 'essay';
-  const suppressCenteredTitle = hostsAppTabs || appTypeId === 'todo' || appTypeId === 'skills';
+  const suppressCenteredTitle = seamlessChat || hostsAppTabs || appTypeId === 'todo' || appTypeId === 'skills';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
 
@@ -435,6 +436,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       }`}
       style={{ height: TITLEBAR_HEIGHT, touchAction: 'none' }}
       data-wb-titlebar
+      data-wb-title-seamless={seamlessChat ? '' : undefined}
       data-wb-title-draggable=""
       title={barTooltip}
       data-wb-app-tabs={appTypeId === 'notes' ? 'notes' : appTypeId === 'files' ? 'files' : undefined}

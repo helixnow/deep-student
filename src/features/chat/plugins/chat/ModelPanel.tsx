@@ -25,6 +25,13 @@ import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
+import {
+  invalidateModelConfigSnapshot,
+  loadModelConfigSnapshot,
+} from '../../utils/modelConfigSnapshot';
+import { ModelListCacheStore } from '../../utils/modelListCacheAndResume';
+
+export const sharedModelListCache = new ModelListCacheStore();
 
 // ============================================================================
 // 类型
@@ -99,14 +106,24 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         setLoading(true);
         isInitialLoad.current = false;
       }
-      const configs = await invoke<ModelConfig[]>('get_api_configurations');
+      const snapshot = await loadModelConfigSnapshot<ModelConfig, VendorConfigSlim>();
       if (seq !== loadSeqRef.current) return;
+      const configs = snapshot.configs;
       const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
+      const idsByVendor = new Map<string, string[]>();
+      for (const m of chatModels) {
+        const vKey = m.vendorId || '__default__';
+        const list = idsByVendor.get(vKey) ?? [];
+        list.push(m.model || m.id);
+        idsByVendor.set(vKey, list);
+      }
+      for (const [vKey, ids] of idsByVendor) {
+        sharedModelListCache.write(`vendor://${vKey}`, ids);
+      }
 
-      try {
-        const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
-        if (seq !== loadSeqRef.current) return;
+      {
+        const vendorConfigs = snapshot.vendorConfigs;
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
@@ -124,20 +141,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         });
         setVendorOrderMap(orderMap);
         setVendorNameMap(nameMap);
-      } catch {
-        if (seq === loadSeqRef.current) {
-          setVendorOrderMap(new Map());
-          setVendorNameMap(new Map());
-        }
       }
 
-      try {
-        const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
-        if (seq !== loadSeqRef.current) return;
-        setDefaultModelId(assignments?.['model2_config_id'] || null);
-      } catch {
-        if (seq === loadSeqRef.current) setDefaultModelId(null);
-      }
+      if (seq !== loadSeqRef.current) return;
+      setDefaultModelId(snapshot.assignments?.['model2_config_id'] || null);
     } catch (error: unknown) {
       console.error('[ModelPanel] Failed to load models:', error);
       if (seq === loadSeqRef.current) setModels([]);
@@ -151,7 +158,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   }, [loadModels]);
 
   useEffect(() => {
-    const reload = () => { void loadModels(); };
+    const reload = () => {
+      invalidateModelConfigSnapshot();
+      void loadModels();
+    };
     try {
       window.addEventListener('api_configurations_changed', reload as EventListener);
       window.addEventListener('model_assignments_changed', reload as EventListener);
@@ -264,6 +274,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         model2_config_id: selectedModelId,
       };
       await invoke<void>('save_model_assignments', { assignments: newAssignments });
+      invalidateModelConfigSnapshot();
       try {
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('model_assignments_changed'));

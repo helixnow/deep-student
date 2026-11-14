@@ -107,7 +107,9 @@ export async function executeRetryVariant(
       if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
         options.modelId = trimmedOverride;
         options.model2OverrideId = trimmedOverride;
+        await host.ensureModelMetadataReady(trimmedOverride);
         host.applyRuntimeThinkingCapability(options);
+        host.applyRuntimeContextBudget(options);
       }
     }
 

@@ -1,0 +1,87 @@
+{
+  "domain": "backup",
+  "commands": [
+    "get_startup_recovery_status",
+    "list_startup_recovery_incidents",
+    "get_data_space_info",
+    "data_governance_get_backup_list",
+    "data_governance_verify_backup",
+    "data_governance_check_disk_space_for_restore",
+    "data_governance_auto_verify_latest_backup",
+    "data_governance_delete_backup",
+    "data_governance_list_backup_jobs",
+    "retry_startup_recovery_preflight"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.inventory.seeded.backups_path_is_file",
+      "seed": "l21-backups-path-is-file",
+      "steps": [
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_auto_verify_latest_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "retry_startup_recovery_preflight",
+          "args": {}
+        },
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

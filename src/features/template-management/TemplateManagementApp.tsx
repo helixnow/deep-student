@@ -14,12 +14,13 @@
  * - 删除改为卡片内联二次确认（内置模板如实提示"删除后保持停用、不会随升级恢复"）；
  * - 浏览态 ⇄ 编辑态页内平滑切换（尊重 prefers-reduced-motion）。
  */
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass, FileText, Plus, Warning, X,
   Gear, Upload, Download,
-  ArrowClockwise, ArrowLeft, BookOpen, Code, Database,
+  ArrowLeft, BookOpen, Code, Database,
 } from '@phosphor-icons/react';
 import type { CustomAnkiTemplate, TemplateExportResponse } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
@@ -280,6 +281,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       setIsLoading(false);
     }
   }, [t]);
+
+  useRefreshOnReturn(loadTemplates);
 
   const loadDefaultTemplateId = useCallback(async () => {
     try {
@@ -816,11 +819,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 <Plus size={14} />
               </DsButton>
             </CommonTooltip>
-            <CommonTooltip content={t('refresh')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7">
-                <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
-              </DsButton>
-            </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
               <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7">
                 <Download size={14} />
@@ -1063,20 +1061,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   );
   const mobileDrawerContent = (
     <div className="min-h-0 space-y-0.5 pb-1 pt-1 text-foreground">
-      {/* 工具行：刷新 / 搜索 / 新建 —— 与学习资源抽屉同构 */}
+      {/* 工具行：搜索 / 新建 —— 与学习资源抽屉同构 */}
       <div className="mb-2 flex items-center gap-1.5 px-1">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={loadTemplates}
-          disabled={isLoading}
-          className="shrink-0"
-          title={t('refresh')}
-          aria-label={t('refresh')}
-        >
-          <ArrowClockwise size={18} className={cn(isLoading && 'animate-spin')} />
-        </DsButton>
         <div className="group relative min-w-0 flex-1">
           <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={16} />
           <ShadInput

@@ -1,6 +1,7 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { NotesLearningViewTabs, useNotesLearningView } from '../NotesLearningViewTabs';
 import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
 import type { DstuNode } from '@/dstu';
@@ -42,5 +43,19 @@ describe('Finder notes learning views', () => {
     view.unmount();
     render(<Host notes={notes} onOpen={onOpen} />);
     expect(screen.getByRole('tab', { name: '近期复习' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('follows the registered app event, still accepts the bare CustomEvent and ignores unknown views', () => {
+    render(<Host notes={[]} onOpen={vi.fn()} />);
+    act(() => dispatchAppEvent(APP_EVENTS.LEARNING_HUB_NOTES_LEARNING_VIEW, { view: 'review' }));
+    expect(screen.getByRole('tab', { name: '近期复习' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => { window.dispatchEvent(new CustomEvent('learningHub:notes-learning-view', { detail: { view: 'status' } })); });
+    expect(screen.getByRole('tab', { name: '掌握状态' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => { window.dispatchEvent(new CustomEvent('learningHub:notes-learning-view', { detail: { view: 'tree' } })); });
+    act(() => { window.dispatchEvent(new CustomEvent('learningHub:notes-learning-view')); });
+    expect(screen.getByRole('tab', { name: '掌握状态' })).toHaveAttribute('aria-selected', 'true');
+    expect(localStorage.getItem('learningHub.notesLearningView')).toBe('status');
   });
 });

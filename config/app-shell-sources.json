@@ -22,7 +22,13 @@
     "src/app/hooks/useDesktopTitlebarInteractions.ts",
     "src/app/hooks/useClassicToWorkbenchHandoff.ts",
     "src/app/hooks/useShellViewChrome.tsx",
-    "src/app/hooks/useViewLayerContents.tsx",
-    "src/app/hooks/useDesktopWindowMaximizeToggle.ts"
+    "src/app/shell/useViewLayer.tsx",
+    "src/app/hooks/useDesktopWindowMaximizeToggle.ts",
+    "src/app/shell/useDesktopSidebarLayout.ts",
+    "src/app/shell/useChatHeaderSession.ts",
+    "src/app/shell/AppShellChrome.tsx",
+    "src/app/workbench/lazyDesktop.ts",
+    "src/app/shell/useAppViewState.ts",
+    "src/app/shell/useAppNavigation.ts"
   ]
 }

@@ -34,7 +34,7 @@ const SkillsAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange }) 
       data-wb-sys-app="skills"
     >
       <Suspense fallback={<WbSysSkeleton variant="list" />}>
-        <WbSysFade>
+        <WbSysFade className="h-full min-h-0">
           <SkillsManagementPage
             className="h-full"
             workbenchWindowId={windowId}

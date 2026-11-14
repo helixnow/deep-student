@@ -186,7 +186,8 @@ function extractSourceIdFromPath(path: string): string {
   // [FIX-D003] Use non-backtracking regex to prevent ReDoS
   // Original: /^(note|tb|fld|exam|tr|essay|img|att|retrieval)_[a-zA-Z0-9_-]+$/
   // Optimized: limit repetition count to avoid catastrophic backtracking
-  const validSourceIdPattern = /^(note|tb|fld|exam|tr|essay|img|att|retrieval)_[a-zA-Z0-9_-]{1,120}$/;
+  // RUST-FIX(RF-W09-dstu-resource-file-source-id-prefix): the Tauri frontend omitted res_/file_, logging every imported resource as malformed
+  const validSourceIdPattern = /^(note|tb|fld|exam|tr|essay|img|att|retrieval|res|file)_[a-zA-Z0-9_-]{1,120}$/;
 
   if (validSourceIdPattern.test(lastPart)) {
     return lastPart;
@@ -890,11 +891,9 @@ export async function restoreMany(paths: string[]): Promise<Result<number>> {
 export async function moveMany(paths: string[], destFolder: string): Promise<Result<number>> {
   try {
     // 1. 执行批量移动（先操作后端）
-    // ★ F1 修复：Tauri v2 默认按 camelCase 匹配参数，仅传 snake_case 会导致
-    // "缺少必填参数"错误。与 settingsApi 等处一致，snake + camel 双传兼容。
+    // Tauri v2 / host kernel 只按契约 camelCase 键取参数，snake_case 键会被忽略。
     const result = await invoke<number>('dstu_move_many', {
       paths,
-      dest_folder: destFolder,
       destFolder,
     });
 
@@ -926,10 +925,8 @@ export async function searchInFolder(
   options?: DstuListOptions
 ): Promise<Result<DstuNode[]>> {
   try {
-    // ★ F1 修复：Tauri v2 默认按 camelCase 匹配参数，仅传 snake_case 时
-    // folder_id 会被静默解析为 None → "文件夹内搜索"退化为全库搜索。双传兼容。
+    // 只传契约键 folderId：snake_case folder_id 会被静默忽略，"文件夹内搜索"退化为全库搜索。
     const result = await invoke<DstuNode[]>('dstu_search_in_folder', {
-      folder_id: folderId,
       folderId,
       query,
       options,

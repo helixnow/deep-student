@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { createOfficialUiTestKernel } from '@/ui-plugins/testing/render';
+import { consumerEvidence } from '@/ui-plugins/official/shell/__tests__/consumerEvidence';
 
 const appSource = readAppShellSource();
 const shellCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf8');
@@ -34,11 +36,19 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).not.toContain('isDesktopFullscreen');
   });
 
-  it('keeps sidebar toggle and history nav reachable in settings/todo while collapsed', () => {
+  it('keeps sidebar toggle and history nav reachable in settings/todo while collapsed', async () => {
     // 回归：对话页收起侧栏 → 后退进入设置页，壳侧栏（含其返回入口）随全局收起状态隐藏，
     // 若标题栏也无条件隐藏开关与前进/后退，页面将没有任何出口。
-    expect(appSource).toContain("const shouldShowDesktopSidebarToggle = currentView !== 'settings' || leftPanelCollapsed;");
-    expect(appSource).toContain('const shouldShowDesktopHeaderNavControls = !isShellSidebarView || leftPanelCollapsed;');
+    const kernel = await createOfficialUiTestKernel();
+    try {
+      const consumer = consumerEvidence();
+      const entries = kernel.slots.list('views');
+      expect(consumer.chrome('settings', entries, false)).toMatchObject({ sidebarToggle: false, headerNav: false });
+      expect(consumer.chrome('todo', entries, false)).toMatchObject({ sidebarToggle: true, headerNav: false });
+      for (const view of ['settings', 'todo']) {
+        expect(consumer.chrome(view, entries, true)).toMatchObject({ sidebarToggle: true, headerNav: true });
+      }
+    } finally { await kernel.dispose(); }
   });
 
   it('keeps macOS custom chrome in the native titlebar row', () => {

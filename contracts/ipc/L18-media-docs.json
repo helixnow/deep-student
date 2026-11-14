@@ -1,0 +1,6137 @@
+{
+  "lane": "L18-media-docs",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "add_ocr_engine",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 447,
+        "fn": "add_ocr_engine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "configId",
+          "rustName": "config_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "model",
+          "rustName": "model",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "name",
+          "rustName": "name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "engineType",
+          "rustName": "engine_type",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cancel_pdf_ocr_session",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 787,
+        "fn": "cancel_pdf_ocr_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "compress_image",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/cmd/media.rs",
+        "line": 54,
+        "fn": "compress_image"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sourcePath",
+          "rustName": "source_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "bytesBase64",
+          "rustName": "bytes_base64",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "maxEdge",
+          "rustName": "max_edge",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "quality",
+          "rustName": "quality",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u8",
+                "minimum": 0,
+                "maximum": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "outputMode",
+          "rustName": "output_mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/CompressImageResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "convert_heic_to_jpeg",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/heic_decoder.rs",
+        "line": 78,
+        "fn": "convert_heic_to_jpeg"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "request"
+        }
+      ],
+      "result": {
+        "x-rust": "tauri::ipc::Response",
+        "x-binary": true,
+        "description": "InvokeResponseBody：Raw 字节时前端收到 ArrayBuffer"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_available_ocr_models",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 154,
+        "fn": "get_available_ocr_models"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/AvailableOcrModelResponse"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_image_as_base64",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 8493,
+        "fn": "get_image_as_base64"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_ocr_engine_type",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 56,
+        "fn": "get_ocr_engine_type"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_ocr_engines",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 38,
+        "fn": "get_ocr_engines"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/OcrEngineInfoResponse"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_ocr_prompt_template",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 137,
+        "fn": "get_ocr_prompt_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "engineType",
+          "rustName": "engine_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "mode",
+          "rustName": "mode",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_ocr_thinking_enabled",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 70,
+        "fn": "get_ocr_thinking_enabled"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_pdf_ocr_temp_dir",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 875,
+        "fn": "get_pdf_ocr_temp_dir"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_recent_document_tasks",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7062,
+        "fn": "get_recent_document_tasks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/DocumentTask"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "handout_cancel",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/handout.rs",
+        "line": 129,
+        "fn": "handout_cancel"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "requestId",
+          "rustName": "request_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "handout_llm_complete",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/handout.rs",
+        "line": 74,
+        "fn": "handout_llm_complete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "prompt",
+          "rustName": "prompt",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "jsonMode",
+          "rustName": "json_mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "requestId",
+          "rustName": "request_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "handout_release",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/handout.rs",
+        "line": 135,
+        "fn": "handout_release"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "requestId",
+          "rustName": "request_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "handout_vlm_caption",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/handout.rs",
+        "line": 96,
+        "fn": "handout_vlm_caption"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "prompt",
+          "rustName": "prompt",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "imageBase64",
+          "rustName": "image_base64",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "mime",
+          "rustName": "mime",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "requestId",
+          "rustName": "request_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "infer_ocr_engine_from_model",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 106,
+        "fn": "infer_ocr_engine_from_model"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "model",
+          "rustName": "model",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "init_pdf_ocr_session",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 727,
+        "fn": "init_pdf_ocr_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "pdfName",
+          "rustName": "pdf_name",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "pdfBase64",
+          "rustName": "pdf_base64",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "totalPages",
+          "rustName": "total_pages",
+          "schema": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "media_bilibili_auth_status",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+        "line": 461,
+        "fn": "media_bilibili_auth_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BiliAccountStatus"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_bridge_approve",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+        "line": 523,
+        "fn": "media_bilibili_bridge_approve"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "connectionId",
+          "rustName": "connection_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "media_bilibili_bridge_disconnect",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+        "line": 529,
+        "fn": "media_bilibili_bridge_disconnect"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "media_bilibili_bridge_pair",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+        "line": 509,
+        "fn": "media_bilibili_bridge_pair"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PairingView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "media_bilibili_cancel",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/session.rs",
+        "line": 440,
+        "fn": "media_bilibili_cancel"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_create",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili.rs",
+        "line": 1212,
+        "fn": "media_bilibili_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "page",
+          "rustName": "page",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "lan",
+          "rustName": "lan",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BiliCreateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_import_subtitle",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili.rs",
+        "line": 1311,
+        "fn": "media_bilibili_import_subtitle"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "page",
+          "rustName": "page",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "lan",
+          "rustName": "lan",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_link_get",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili.rs",
+        "line": 1353,
+        "fn": "media_bilibili_link_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BiliLinkDescriptor"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_login_qr_poll",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+        "line": 500,
+        "fn": "media_bilibili_login_qr_poll"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "qrcodeKey",
+          "rustName": "qrcode_key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BiliLoginPoll"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_login_qr_start",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+        "line": 488,
+        "fn": "media_bilibili_login_qr_start"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/BiliLoginQr"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_logout",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+        "line": 529,
+        "fn": "media_bilibili_logout"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_probe",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili.rs",
+        "line": 1172,
+        "fn": "media_bilibili_probe"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "page",
+          "rustName": "page",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BiliProbeView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_stream_quality",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_stream.rs",
+        "line": 512,
+        "fn": "media_bilibili_stream_quality"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "fileId",
+          "rustName": "file_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "qn",
+          "rustName": "qn",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "epoch",
+          "rustName": "epoch",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "attempt",
+          "rustName": "attempt",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StreamQualityView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_bilibili_transport_configure",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+        "line": 494,
+        "fn": "media_bilibili_transport_configure"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "#/$defs/TransportSettings__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "media_bilibili_transport_status",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+        "line": 485,
+        "fn": "media_bilibili_transport_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TransportView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_chapters",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/media/ledger.rs",
+        "line": 19,
+        "fn": "media_chapters"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MediaChapter"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_checkpoints",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/media/ledger.rs",
+        "line": 11,
+        "fn": "media_checkpoints"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MediaCheckpoint"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_library_list",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/library.rs",
+        "line": 410,
+        "fn": "media_library_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MediaLibraryItem"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_progress_get",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 533,
+        "fn": "media_progress_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/MediaProgressRow"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_progress_set",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 544,
+        "fn": "media_progress_set"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "positionMs",
+          "rustName": "position_ms",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "durationMs",
+          "rustName": "duration_ms",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "watchedDeltaMs",
+          "rustName": "watched_delta_ms",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "finished",
+          "rustName": "finished",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MediaProgressRow"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_related_notes",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/library.rs",
+        "line": 440,
+        "fn": "media_related_notes"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MediaRelatedNote"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_study_ledger",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/media/ledger.rs",
+        "line": 27,
+        "fn": "media_study_ledger"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceIds",
+          "rustName": "resource_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "includeCardIds",
+          "rustName": "include_card_ids",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MediaStudyLedger"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcribe_cancel",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 366,
+        "fn": "media_transcribe_cancel"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptStatusView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcribe_estimate",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/media/commands.rs",
+        "line": 19,
+        "fn": "media_transcribe_estimate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscribeEstimate"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcribe_start",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/media/commands.rs",
+        "line": 28,
+        "fn": "media_transcribe_start"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptStatusView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcript_export",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 504,
+        "fn": "media_transcript_export"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "format",
+          "rustName": "format",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "dest",
+          "rustName": "dest",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptExportResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcript_get",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 382,
+        "fn": "media_transcript_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_transcript_import",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-media/src/media/commands.rs",
+        "line": 422,
+        "fn": "media_transcript_import"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranscriptView"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_export_docx",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/handout.rs",
+        "line": 146,
+        "fn": "notes_export_docx"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "spec",
+          "rustName": "spec",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "parse_document_from_base64",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4121,
+        "fn": "parse_document_from_base64"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "fileName",
+          "rustName": "file_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "base64Content",
+          "rustName": "base64_content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "parse_document_from_path",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4093,
+        "fn": "parse_document_from_path"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "filePath",
+          "rustName": "file_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "pause_pdf_ocr_session",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 802,
+        "fn": "pause_pdf_ocr_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "pin_images",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 356,
+        "fn": "pin_images"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "tempId",
+          "rustName": "temp_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "images",
+          "rustName": "images",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "process_pdf_ocr",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 774,
+        "fn": "process_pdf_ocr"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/PdfOcrRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PdfOcrResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "remove_ocr_engine",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 527,
+        "fn": "remove_ocr_engine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "configId",
+          "rustName": "config_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "resume_pdf_ocr_session",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 814,
+        "fn": "resume_pdf_ocr_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "save_available_ocr_models",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 356,
+        "fn": "save_available_ocr_models"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "models",
+          "rustName": "models",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SaveOcrModelRequest"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_pdf_to_temp",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 891,
+        "fn": "save_pdf_to_temp"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "pdfBase64",
+          "rustName": "pdf_base64",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "fileName",
+          "rustName": "file_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_ocr_engine_type",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 88,
+        "fn": "set_ocr_engine_type"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "engineType",
+          "rustName": "engine_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_ocr_thinking_enabled",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 76,
+        "fn": "set_ocr_thinking_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skip_pdf_ocr_page",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 829,
+        "fn": "skip_pdf_ocr_page"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "pageIndex",
+          "rustName": "page_index",
+          "schema": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "start_pdf_ocr_backend",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 846,
+        "fn": "start_pdf_ocr_backend"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "pdfPath",
+          "rustName": "pdf_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "pdfName",
+          "rustName": "pdf_name",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "renderDpi",
+          "rustName": "render_dpi",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "test_ocr_engine",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 612,
+        "fn": "test_ocr_engine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/OcrTestRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/OcrTestResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_pdfium_status",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "crates/dstu-docs/src/pdfium_utils.rs",
+        "line": 192,
+        "fn": "test_pdfium_status"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "x-key-order": "unspecified"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "textbooks_add",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/textbooks.rs",
+        "line": 114,
+        "fn": "textbooks_add"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sources",
+          "rustName": "sources",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "folderId",
+          "rustName": "folder_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::pdf_processing_service::PdfProcessingService>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Textbook"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "textbooks_relink",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/textbooks.rs",
+        "line": 700,
+        "fn": "textbooks_relink"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "newPath",
+          "rustName": "new_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/Textbook"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "textbooks_update_bookmarks",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/textbooks.rs",
+        "line": 821,
+        "fn": "textbooks_update_bookmarks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "bookmarks",
+          "rustName": "bookmarks",
+          "schema": {
+            "type": "array",
+            "items": {
+              "x-rust": "serde_json::Value"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "tts_check_available",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/tts.rs",
+        "line": 25,
+        "fn": "tts_check_available"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "tts_deepseek",
+      "lane": "L18-media-docs",
+      "source": "host/plugins/media/src/register-voice.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "text",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "voiceId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "tts_speak",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/tts.rs",
+        "line": 59,
+        "fn": "tts_speak"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "text",
+          "rustName": "text",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "lang",
+          "rustName": "lang",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "rate",
+          "rustName": "rate",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number",
+                "x-float": "f32"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "volume",
+          "rustName": "volume",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number",
+                "x-float": "f32"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "tts_stop",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/tts.rs",
+        "line": 93,
+        "fn": "tts_stop"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "unpin_images",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 384,
+        "fn": "unpin_images"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "tempId",
+          "rustName": "temp_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "update_ocr_engine_priority",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 403,
+        "fn": "update_ocr_engine_priority"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "engineList",
+          "rustName": "engine_list",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/UpdateOcrPriorityItem"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "upload_pdf_ocr_page",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 747,
+        "fn": "upload_pdf_ocr_page"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "page",
+          "rustName": "page",
+          "schema": {
+            "$ref": "#/$defs/PdfOcrPageInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "validate_ocr_model",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/ocr.rs",
+        "line": 113,
+        "fn": "validate_ocr_model"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "model",
+          "rustName": "model",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "engineType",
+          "rustName": "engine_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/ValidateOcrModelResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "vfs_get_file_blob_path",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/cmd/textbooks.rs",
+        "line": 785,
+        "fn": "vfs_get_file_blob_path"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "voice_input_transcribe",
+      "lane": "L18-media-docs",
+      "rust": {
+        "file": "src/voice_input.rs",
+        "line": 21,
+        "fn": "voice_input_transcribe"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/VoiceInputTranscribeRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/VoiceInputTranscribeResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "dstu:change",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "_shared.json#/$defs/DstuWatchEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-vfs/src/dstu/handler_utils/node_converters.rs",
+          "line": 140,
+          "fn": "emit_watch_event",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/textbooks.rs",
+          "line": 76,
+          "fn": "emit_textbook_watch_event",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "dstu:change:{}",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "_shared.json#/$defs/DstuWatchEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-vfs/src/dstu/handler_utils/node_converters.rs",
+          "line": 131,
+          "fn": "emit_watch_event",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/textbooks.rs",
+          "line": 70,
+          "fn": "emit_textbook_watch_event",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "media_bilibili_playback_error",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          },
+          "qn": {
+            "type": "integer",
+            "x-int": "u32",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "epoch": {
+            "type": "integer",
+            "x-int": "u32",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "attempt": {
+            "type": "integer",
+            "x-int": "u32",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileId",
+          "qn",
+          "epoch",
+          "attempt",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-media/src/media/bilibili_stream.rs",
+          "line": 835,
+          "fn": "handle",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "pdf-annotations:changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "textbook_id": {
+                "type": "string"
+              },
+              "resource_path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "textbook_id",
+              "resource_path",
+              "kind",
+              "action",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "textbook_id": {
+                "type": "string"
+              },
+              "resource_path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "textbook_id",
+              "resource_path",
+              "kind",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+          "line": 3858,
+          "fn": "dstu_set_metadata",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/textbook_pdf_executor.rs",
+          "line": 1040,
+          "fn": "emit_annotations_changed",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "pdf_ocr_progress",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "page_index": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "attempt": {
+                "type": "integer",
+                "x-int": "i32",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              },
+              "max_attempts": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "backoff_ms": {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              "hint": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "session_id",
+              "page_index",
+              "attempt",
+              "max_attempts",
+              "backoff_ms",
+              "hint"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "page_index": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "completed": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "cached": {
+                "type": "boolean"
+              },
+              "page_result": {
+                "type": "object",
+                "properties": {
+                  "page_index": {
+                    "type": "integer",
+                    "x-int": "usize",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "height": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "blocks": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/PdfOcrTextBlock"
+                    }
+                  }
+                },
+                "required": [
+                  "page_index",
+                  "width",
+                  "height",
+                  "blocks"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "session_id",
+              "page_index",
+              "completed",
+              "total",
+              "cached",
+              "page_result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "page_index": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "session_id",
+              "page_index",
+              "error"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "page_index": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "rendered": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "session_id",
+              "page_index",
+              "rendered",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "total_pages": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "session_id",
+              "total_pages"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 388,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 414,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 440,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 463,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 486,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 499,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 640,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 701,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 729,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 751,
+          "fn": "run_backend_worker",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 1165,
+          "fn": "emit_progress",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vision/src/pdf_ocr_service.rs",
+          "line": 1169,
+          "fn": "emit_error",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "textbook-import-progress",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/TextbookImportProgress"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/textbooks.rs",
+          "line": 156,
+          "fn": "textbooks_add",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/textbooks.rs",
+          "line": 452,
+          "fn": "textbooks_add",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AvailableOcrModelResponse": {
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "engineType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "isFree": {
+          "type": "boolean"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsGrounding": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "priority": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "configId",
+        "model",
+        "engineType",
+        "name",
+        "isFree",
+        "description",
+        "supportsGrounding",
+        "enabled",
+        "priority"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::ocr::AvailableOcrModelResponse"
+    },
+    "BiliAccountStatus": {
+      "type": "object",
+      "properties": {
+        "loggedIn": {
+          "type": "boolean"
+        },
+        "mid": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "uname": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "face": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vip": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "expired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "loggedIn",
+        "mid",
+        "uname",
+        "face",
+        "vip",
+        "verified",
+        "expired"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_auth::BiliAccountStatus"
+    },
+    "BiliCreateResult": {
+      "type": "object",
+      "properties": {
+        "fileId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "segments": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "lan": {
+          "type": "string"
+        },
+        "lanDoc": {
+          "type": "string"
+        },
+        "ai": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fileId",
+        "name",
+        "created",
+        "segments",
+        "lan",
+        "lanDoc",
+        "ai"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili::BiliCreateResult"
+    },
+    "BiliError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "attemptId": {
+          "type": "string"
+        },
+        "route": {
+          "$ref": "#/$defs/Route"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "httpStatus": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "businessCode": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "requestId",
+        "attemptId",
+        "route",
+        "retryable",
+        "httpStatus",
+        "businessCode"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::types::BiliError"
+    },
+    "BiliLinkDescriptor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "bvid": {
+          "type": "string"
+        },
+        "aid": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "cid": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "page": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "pageCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "title": {
+          "type": "string"
+        },
+        "part": {
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "durationMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "bvid",
+        "aid",
+        "cid",
+        "page",
+        "pageCount",
+        "title",
+        "part",
+        "owner",
+        "cover",
+        "durationMs",
+        "url"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili::BiliLinkDescriptor"
+    },
+    "BiliLoginPoll": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BiliAccountStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "state",
+        "status"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_auth::BiliLoginPoll"
+    },
+    "BiliLoginQr": {
+      "type": "object",
+      "properties": {
+        "qrcodeKey": {
+          "type": "string"
+        },
+        "qrPng": {
+          "type": "string"
+        },
+        "expiresInSecs": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "qrcodeKey",
+        "qrPng",
+        "expiresInSecs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_auth::BiliLoginQr"
+    },
+    "BiliPage": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "cid": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "part": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "page",
+        "cid",
+        "part",
+        "durationMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili::BiliPage"
+    },
+    "BiliProbeView": {
+      "type": "object",
+      "properties": {
+        "bvid": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "durationMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BiliPage"
+          }
+        },
+        "page": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BiliSubtitleTrack"
+          }
+        },
+        "defaultLan": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "url": {
+          "type": "string"
+        },
+        "existingId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "subtitleState": {
+          "type": "string"
+        },
+        "subtitleError": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "route": {
+          "$ref": "#/$defs/Route"
+        }
+      },
+      "required": [
+        "bvid",
+        "title",
+        "owner",
+        "cover",
+        "durationMs",
+        "pages",
+        "page",
+        "tracks",
+        "defaultLan",
+        "url",
+        "existingId",
+        "subtitleState",
+        "subtitleError",
+        "route"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili::BiliProbeView"
+    },
+    "BiliSubtitleTrack": {
+      "type": "object",
+      "properties": {
+        "lan": {
+          "type": "string"
+        },
+        "lanDoc": {
+          "type": "string"
+        },
+        "ai": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lan",
+        "lanDoc",
+        "ai"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili::BiliSubtitleTrack"
+    },
+    "BridgeAccount": {
+      "type": "object",
+      "properties": {
+        "loggedIn": {
+          "type": "boolean"
+        },
+        "mid": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "uname": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "loggedIn",
+        "mid",
+        "uname"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::bridge::BridgeAccount"
+    },
+    "BridgeStatus": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "connectionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "scriptVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "parsing": {
+          "type": "boolean"
+        },
+        "media": {
+          "type": "boolean"
+        },
+        "account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BridgeAccount"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "generation": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "lastError": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BiliError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "state",
+        "connectionId",
+        "scriptVersion",
+        "parsing",
+        "media",
+        "account",
+        "generation",
+        "lastError"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::bridge::BridgeStatus"
+    },
+    "CompressImageResult": {
+      "type": "object",
+      "properties": {
+        "bytesBase64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "filePath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "width": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "height": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "originalWidth": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "originalHeight": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "originalSize": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "compressedSize": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "format": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytesBase64",
+        "filePath",
+        "width",
+        "height",
+        "originalWidth",
+        "originalHeight",
+        "originalSize",
+        "compressedSize",
+        "format"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::cmd::media::CompressImageResult"
+    },
+    "MediaChapter": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "title",
+        "seconds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::ledger::MediaChapter"
+    },
+    "MediaCheckpoint": {
+      "type": "object",
+      "properties": {
+        "questionId": {
+          "type": "string"
+        },
+        "examId": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "content": {
+          "type": "string"
+        },
+        "questionType": {
+          "type": "string"
+        },
+        "optionsJson": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "attemptCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "isCorrect": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "questionId",
+        "examId",
+        "seconds",
+        "content",
+        "questionType",
+        "optionsJson",
+        "answer",
+        "explanation",
+        "attemptCount",
+        "isCorrect"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::ledger::MediaCheckpoint"
+    },
+    "MediaLibraryItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "name": {
+          "type": "string"
+        },
+        "folderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "folderName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "folderPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "isLink": {
+          "type": "boolean"
+        },
+        "coverUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "createdAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "transcript": {
+          "$ref": "#/$defs/MediaLibraryTranscript"
+        },
+        "progress": {
+          "$ref": "#/$defs/MediaLibraryProgress"
+        },
+        "lastWatchedAt": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "handoutCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "lastActivityAt": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "id",
+        "resourceId",
+        "name",
+        "folderId",
+        "folderName",
+        "folderPath",
+        "size",
+        "mimeType",
+        "kind",
+        "isLink",
+        "coverUrl",
+        "createdAt",
+        "updatedAt",
+        "durationMs",
+        "transcript",
+        "progress",
+        "lastWatchedAt",
+        "handoutCount",
+        "lastActivityAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::library::MediaLibraryItem"
+    },
+    "MediaLibraryProgress": {
+      "type": "object",
+      "properties": {
+        "lastPositionMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "watchedMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "finished": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lastPositionMs",
+        "watchedMs",
+        "finished"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::library::MediaLibraryProgress"
+    },
+    "MediaLibraryTranscript": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "completedSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "totalSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "failedSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "status",
+        "completedSegments",
+        "totalSegments",
+        "failedSegments",
+        "source"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::library::MediaLibraryTranscript"
+    },
+    "MediaProgressRow": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "lastPositionMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "watchedMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "finished": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "resourceId",
+        "lastPositionMs",
+        "durationMs",
+        "watchedMs",
+        "finished",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::media_transcript_repo::MediaProgressRow"
+    },
+    "MediaRelatedNote": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::library::MediaRelatedNote"
+    },
+    "MediaStudyLedger": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "cardCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "cardsDue": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "cardsNew": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "cardIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "questionCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "questionsAttempted": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "attemptTotal": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "correctTotal": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "questionsWrong": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "examIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "resourceId",
+        "cardCount",
+        "cardsDue",
+        "cardsNew",
+        "cardIds",
+        "questionCount",
+        "questionsAttempted",
+        "attemptTotal",
+        "correctTotal",
+        "questionsWrong",
+        "examIds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::ledger::MediaStudyLedger"
+    },
+    "OcrEngineInfoResponse": {
+      "type": "object",
+      "properties": {
+        "engineType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "recommendedModel": {
+          "type": "string"
+        },
+        "supportsGrounding": {
+          "type": "boolean"
+        },
+        "isFree": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "engineType",
+        "name",
+        "description",
+        "recommendedModel",
+        "supportsGrounding",
+        "isFree"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::ocr::OcrEngineInfoResponse"
+    },
+    "OcrTestRegion": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "x-float": "f64"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "text",
+        "bbox",
+        "label"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::ocr::OcrTestRegion"
+    },
+    "OcrTestRequest": {
+      "type": "object",
+      "properties": {
+        "imageBase64": {
+          "type": "string"
+        },
+        "engineType": {
+          "type": "string"
+        },
+        "configId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "imageBase64",
+        "engineType"
+      ],
+      "x-rust": "deep_student_lib::cmd::ocr::OcrTestRequest"
+    },
+    "OcrTestResponse": {
+      "type": "object",
+      "properties": {
+        "engineType": {
+          "type": "string"
+        },
+        "engineName": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OcrTestRegion"
+          }
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "engineType",
+        "engineName",
+        "text",
+        "regions",
+        "elapsedMs",
+        "success",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::ocr::OcrTestResponse"
+    },
+    "PairingView": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "scriptUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "scriptUrl"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::bridge_server::PairingView"
+    },
+    "PdfOcrPageInput": {
+      "type": "object",
+      "properties": {
+        "page_index": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "image_base64": {
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "page_index",
+        "image_base64"
+      ],
+      "x-rust": "dstu_core::models::PdfOcrPageInput"
+    },
+    "PdfOcrPageResult": {
+      "type": "object",
+      "properties": {
+        "page_index": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "height": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PdfOcrTextBlock"
+          }
+        }
+      },
+      "required": [
+        "page_index",
+        "width",
+        "height",
+        "blocks"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::PdfOcrPageResult"
+    },
+    "PdfOcrRequest": {
+      "type": "object",
+      "properties": {
+        "pdf_base64": {
+          "type": "string"
+        },
+        "pdf_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PdfOcrPageInput"
+          }
+        }
+      },
+      "required": [
+        "pdf_base64",
+        "pages"
+      ],
+      "x-rust": "dstu_core::models::PdfOcrRequest"
+    },
+    "PdfOcrResult": {
+      "type": "object",
+      "properties": {
+        "temp_id": {
+          "type": "string"
+        },
+        "source_pdf_path": {
+          "type": "string"
+        },
+        "pdfstream_url": {
+          "type": "string"
+        },
+        "page_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PdfOcrPageResult"
+          }
+        }
+      },
+      "required": [
+        "temp_id",
+        "source_pdf_path",
+        "pdfstream_url",
+        "page_results"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::PdfOcrResult"
+    },
+    "PdfOcrTextBlock": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "bbox": {
+          "$ref": "_shared.json#/$defs/ExamCardBBox"
+        }
+      },
+      "required": [
+        "text",
+        "bbox"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::PdfOcrTextBlock"
+    },
+    "QualityOption": {
+      "type": "object",
+      "properties": {
+        "qn": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "qn",
+        "label"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_stream::QualityOption"
+    },
+    "RequestDiagnostic": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "attemptId": {
+          "type": "string"
+        },
+        "route": {
+          "$ref": "#/$defs/Route"
+        },
+        "stage": {
+          "$ref": "#/$defs/RequestKind"
+        },
+        "host": {
+          "type": "string"
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "bytes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "requestId",
+        "attemptId",
+        "route",
+        "stage",
+        "host",
+        "elapsedMs",
+        "status",
+        "errorCode",
+        "bytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::session::RequestDiagnostic"
+    },
+    "RequestKind": {
+      "type": "string",
+      "enum": [
+        "short_link",
+        "api",
+        "subtitle",
+        "media",
+        "passport",
+        "cover"
+      ],
+      "x-rust": "dstu_media::media::bilibili_transport::types::RequestKind"
+    },
+    "Route": {
+      "type": "string",
+      "enum": [
+        "native",
+        "browser_bridge",
+        "proxy"
+      ],
+      "x-rust": "dstu_media::media::bilibili_transport::types::Route"
+    },
+    "RouteMode": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "native",
+        "browser_bridge",
+        "proxy"
+      ],
+      "x-rust": "dstu_media::media::bilibili_transport::types::RouteMode"
+    },
+    "RouteMode__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "auto",
+            "native",
+            "browser_bridge",
+            "proxy"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "auto": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "auto"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "native": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "native"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "browser_bridge": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "browser_bridge"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "proxy": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "proxy"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_media::media::bilibili_transport::types::RouteMode"
+    },
+    "SaveOcrModelRequest": {
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "engineType": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "isFree": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "configId",
+        "model",
+        "engineType",
+        "name"
+      ],
+      "x-rust": "deep_student_lib::cmd::ocr::SaveOcrModelRequest"
+    },
+    "StreamQualityView": {
+      "type": "object",
+      "properties": {
+        "requested": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "current": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityOption"
+          }
+        },
+        "streamUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "requested",
+        "current",
+        "options"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_stream::StreamQualityView"
+    },
+    "Textbook": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags_json": {
+          "type": "string"
+        },
+        "favorite": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "last_opened_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "last_page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "bookmarks_json": {
+          "type": "string"
+        },
+        "cover_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "origin_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "status": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256",
+        "file_name",
+        "file_path",
+        "size",
+        "page_count",
+        "tags_json",
+        "favorite",
+        "last_opened_at",
+        "last_page",
+        "bookmarks_json",
+        "cover_key",
+        "origin_json",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::textbooks_db::Textbook"
+    },
+    "TextbookImportProgress": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "current_page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "total_pages": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "progress": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "file_name",
+        "stage",
+        "current_page",
+        "total_pages",
+        "progress",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::textbooks::TextbookImportProgress"
+    },
+    "TranscribeEstimate": {
+      "type": "object",
+      "properties": {
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "plannedSegments": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "asrModel": {
+          "type": "string"
+        },
+        "asrConfigured": {
+          "type": "boolean"
+        },
+        "exact": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "durationMs",
+        "plannedSegments",
+        "asrModel",
+        "asrConfigured",
+        "exact"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscribeEstimate"
+    },
+    "TranscriptExportResult": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "format",
+        "segments",
+        "bytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscriptExportResult"
+    },
+    "TranscriptProgressView": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "percent": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "completedSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "totalSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "failedSegments": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "planVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "stage",
+        "percent",
+        "completedSegments",
+        "totalSegments",
+        "failedSegments",
+        "durationMs",
+        "source",
+        "planVersion",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscriptProgressView"
+    },
+    "TranscriptSegmentView": {
+      "type": "object",
+      "properties": {
+        "idx": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "startMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "endMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "text": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "idx",
+        "startMs",
+        "endMs",
+        "text",
+        "status"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscriptSegmentView"
+    },
+    "TranscriptStatusView": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "progress": {
+          "$ref": "#/$defs/TranscriptProgressView"
+        }
+      },
+      "required": [
+        "resourceId",
+        "mediaType",
+        "status",
+        "progress"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscriptStatusView"
+    },
+    "TranscriptView": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptSegmentView"
+          }
+        },
+        "progress": {
+          "$ref": "#/$defs/TranscriptProgressView"
+        }
+      },
+      "required": [
+        "resourceId",
+        "mediaType",
+        "status",
+        "segments",
+        "progress"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::commands::TranscriptView"
+    },
+    "TransportSettings": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/RouteMode"
+        },
+        "proxyUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "proxyInAuto": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "proxyUrl",
+        "proxyInAuto"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::session::TransportSettings"
+    },
+    "TransportSettings__De": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/RouteMode__De"
+        },
+        "proxyUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "proxyInAuto": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "proxyInAuto"
+      ],
+      "x-rust": "dstu_media::media::bilibili_transport::session::TransportSettings"
+    },
+    "TransportView": {
+      "type": "object",
+      "properties": {
+        "settings": {
+          "$ref": "#/$defs/TransportSettings"
+        },
+        "bridge": {
+          "$ref": "#/$defs/BridgeStatus"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequestDiagnostic"
+          }
+        }
+      },
+      "required": [
+        "settings",
+        "bridge",
+        "diagnostics"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::media::bilibili_transport::bridge_server::TransportView"
+    },
+    "UpdateOcrPriorityItem": {
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "configId",
+        "enabled"
+      ],
+      "x-rust": "deep_student_lib::cmd::ocr::UpdateOcrPriorityItem"
+    },
+    "ValidateOcrModelResponse": {
+      "type": "object",
+      "properties": {
+        "isValid": {
+          "type": "boolean"
+        },
+        "recommendedModel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "isValid",
+        "recommendedModel"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::ocr::ValidateOcrModelResponse"
+    },
+    "VoiceInputTranscribeRequest": {
+      "type": "object",
+      "properties": {
+        "audioBase64": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "providerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "configId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "audioBase64",
+        "mimeType"
+      ],
+      "x-rust": "dstu_media::voice_input::VoiceInputTranscribeRequest"
+    },
+    "VoiceInputTranscribeResponse": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "language",
+        "durationMs",
+        "providerId",
+        "model"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_media::voice_input::VoiceInputTranscribeResponse"
+    }
+  }
+}

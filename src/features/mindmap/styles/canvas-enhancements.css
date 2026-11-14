@@ -104,17 +104,19 @@
    ============================================ */
 
 .mindmap-container .react-flow__edge.mm-edge-ancestor-path .react-flow__edge-path {
-  stroke: var(--mm-primary);
+  stroke: var(--mm-edge-active, var(--mm-primary));
   stroke-width: 2.25px;
-  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+  opacity: 1;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease, opacity 0.15s ease;
 }
 
 /* 悬停路径：主色与主题边色混合（弱一档），扫视时看清「这条枝属于谁」，
    不与焦点祖先链争抢视觉权重 */
 .mindmap-container .react-flow__edge.mm-edge-hover-path .react-flow__edge-path {
-  stroke: color-mix(in srgb, var(--mm-primary) 60%, var(--mm-edge));
-  stroke-width: 2px;
-  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+  stroke: color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 65%, var(--mm-edge));
+  stroke-width: 1.95px;
+  opacity: 0.96;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease, opacity 0.15s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -11,13 +11,17 @@ const state = vi.hoisted(() => ({
   readonly: false,
   templateProps: null as NotesTemplatePanelProps | null,
   aiReviewOverrides: {} as Partial<ReturnType<typeof import('./aiReview').useAIReview>>,
+  autoFocusTitle: [] as boolean[],
+  deferReady: false,
+  fireReady: null as (() => void) | null,
 }));
 vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
-  NotesEditorHeader: ({ charCount }: NotesEditorHeaderProps) => (
-    <><span data-testid="full-count">{charCount}</span></>
-  ),
+  NotesEditorHeader: ({ charCount, autoFocusTitle }: NotesEditorHeaderProps) => {
+    state.autoFocusTitle.push(Boolean(autoFocusTitle));
+    return <><span data-testid="full-count">{charCount}</span></>;
+  },
 }));
 vi.mock('@/features/notes/components/NotesTemplatePanel', () => ({
   NotesTemplatePanel: (props: NotesTemplatePanelProps) => {
@@ -52,7 +56,7 @@ vi.mock('@/components/crepe', () => ({
     latest.current = { onChange, onDocumentChange, readonly };
     state.readonly = readonly;
     React.useEffect(() => {
-      onReady({
+      const ready = () => onReady({
         getMarkdown: () => content.current,
         setMarkdown: (markdown: string) => {
           content.current = markdown;
@@ -62,6 +66,8 @@ vi.mock('@/components/crepe', () => ({
         isReadonly: () => latest.current.readonly,
         getCrepe: () => null, focus: vi.fn(),
       });
+      if (state.deferReady) state.fireReady = ready;
+      else ready();
     }, [onReady]);
     return <textarea aria-label="test note editor" readOnly={readonly} defaultValue={defaultValue}
       onChange={(event) => {
@@ -98,6 +104,9 @@ beforeEach(() => {
   state.readonly = false;
   state.templateProps = null;
   state.aiReviewOverrides = {};
+  state.autoFocusTitle = [];
+  state.deferReady = false;
+  state.fireReady = null;
   storeAIReviewSession(aiReviewSessionKey('host-note'), null);
   fullDocumentRecoveryStore().clear();
   clearPendingNotesFindQueriesForTests();
@@ -365,5 +374,25 @@ describe('notes host reliability wiring', () => {
     rerender(<NotesCrepeEditor {...props} />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: i18n.t('common:retry') })).not.toBeInTheDocument();
+  });
+});
+
+// Rust 版：新建笔记先聚焦标题，约 80ms 后正文编辑器就绪又把焦点抢走，用户紧接着打字会落进正文。
+describe('RF-W09-new-note-title-focus: new note title focus waits for the body editor', () => {
+  it('asks the header to focus the title only after the body editor is ready', async () => {
+    state.deferReady = true;
+    render(<NotesCrepeEditor noteId="host-note" initialContent="" />);
+    await waitFor(() => expect(state.fireReady).not.toBeNull());
+    expect(state.autoFocusTitle.length).toBeGreaterThan(0);
+    expect(state.autoFocusTitle).not.toContain(true);
+
+    act(() => state.fireReady?.());
+    await waitFor(() => expect(state.autoFocusTitle.at(-1)).toBe(true));
+  });
+
+  it('does not ask for title focus when the note already has content', async () => {
+    render(<NotesCrepeEditor noteId="host-note" initialContent="Body" />);
+    await waitFor(() => expect(screen.getByTestId('full-count')).toBeInTheDocument());
+    expect(state.autoFocusTitle).not.toContain(true);
   });
 });

@@ -1,0 +1,883 @@
+{
+  "note": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.note",
+      "icon": "FileText",
+      "order": 10,
+      "preview": "markdown",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "FileText",
+      "color": "text-blue-500",
+      "previewType": "markdown",
+      "skeleton": "text",
+      "previewLabelKey": "workbench:files.preview.type.note",
+      "dragGlyph": "N",
+      "xmlTag": "note_item",
+      "vfsType": "note",
+      "mime": "text/markdown",
+      "chatIconToken": "FileText",
+      "refIconToken": "NoteIcon",
+      "editorIconToken": "FileText",
+      "chatOpenEvent": "navigateToNote",
+      "trashType": "notes",
+      "multimodalSourceType": "file"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.note",
+        "icon": "FileText",
+        "color": "text-blue-500"
+      },
+      "previewType": "markdown",
+      "sourceDb": "notes",
+      "appTypeId": "notes",
+      "skeleton": "text",
+      "filesPreviewLabel": "workbench:files.preview.type.note",
+      "glyph": "N",
+      "xmlTag": "note_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "note",
+      "referenceTypeId": "note"
+    }
+  },
+  "textbook": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.textbook",
+      "icon": null,
+      "order": 20,
+      "preview": "pdf",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "BookOpen",
+      "color": "text-orange-500",
+      "previewType": "pdf",
+      "skeleton": "pdf",
+      "previewLabelKey": "workbench:files.preview.type.textbook",
+      "dragGlyph": "T",
+      "xmlTag": "textbook_item",
+      "vfsType": "textbook",
+      "mime": "application/pdf",
+      "chatIconToken": "BookOpen",
+      "refIconToken": "TextbookIcon",
+      "editorIconToken": "BookOpen",
+      "chatOpenEvent": null,
+      "trashType": "textbooks",
+      "multimodalSourceType": "textbook"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.textbook",
+        "icon": "BookOpen",
+        "color": "text-orange-500"
+      },
+      "previewType": "pdf",
+      "sourceDb": "textbooks",
+      "appTypeId": "file-preview",
+      "skeleton": "pdf",
+      "filesPreviewLabel": "workbench:files.preview.type.textbook",
+      "glyph": "T",
+      "xmlTag": "textbook_item",
+      "multimodalSourceType": "textbook",
+      "referenceResourceType": "textbook",
+      "referenceTypeId": "textbook"
+    }
+  },
+  "exam": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.exam",
+      "icon": "Clipboard",
+      "order": 30,
+      "preview": "exam",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "ClipboardList",
+      "color": "text-green-500",
+      "previewType": "exam",
+      "skeleton": "pdf",
+      "previewLabelKey": "workbench:files.preview.type.exam",
+      "dragGlyph": "E",
+      "xmlTag": "exam_item",
+      "vfsType": "exam",
+      "mime": "application/json",
+      "chatIconToken": "ClipboardText",
+      "refIconToken": "ExamIcon",
+      "editorIconToken": "ClipboardText",
+      "chatOpenEvent": "navigateToExamSheet",
+      "trashType": "exams",
+      "multimodalSourceType": "exam"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.exam",
+        "icon": "ClipboardList",
+        "color": "text-green-500"
+      },
+      "previewType": "exam",
+      "sourceDb": "exam_sessions",
+      "appTypeId": "exam",
+      "skeleton": "pdf",
+      "filesPreviewLabel": "workbench:files.preview.type.exam",
+      "glyph": "E",
+      "xmlTag": "exam_item",
+      "multimodalSourceType": "exam",
+      "referenceResourceType": "exam",
+      "referenceTypeId": "exam"
+    }
+  },
+  "translation": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.translation",
+      "icon": null,
+      "order": 40,
+      "preview": "markdown",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "Languages",
+      "color": "text-purple-500",
+      "previewType": "markdown",
+      "skeleton": "text",
+      "previewLabelKey": "workbench:files.preview.type.translation",
+      "dragGlyph": "L",
+      "xmlTag": "translation_item",
+      "vfsType": "translation",
+      "mime": "text/markdown",
+      "chatIconToken": "FileText",
+      "refIconToken": "TranslationIcon",
+      "editorIconToken": "Translate",
+      "chatOpenEvent": "navigateToTranslation",
+      "trashType": "translations",
+      "multimodalSourceType": "file"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.translation",
+        "icon": "Languages",
+        "color": "text-purple-500"
+      },
+      "previewType": "markdown",
+      "sourceDb": "translations",
+      "appTypeId": "translation",
+      "skeleton": "text",
+      "filesPreviewLabel": "workbench:files.preview.type.translation",
+      "glyph": "L",
+      "xmlTag": "translation_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "translation",
+      "referenceTypeId": "translation"
+    }
+  },
+  "essay": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.essay",
+      "icon": "Pencil",
+      "order": 50,
+      "preview": "markdown",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "PenTool",
+      "color": "text-pink-500",
+      "previewType": "markdown",
+      "skeleton": "text",
+      "previewLabelKey": "workbench:files.preview.type.essay",
+      "dragGlyph": "A",
+      "xmlTag": "essay_item",
+      "vfsType": "essay",
+      "mime": "text/markdown",
+      "chatIconToken": "FileText",
+      "refIconToken": "EssayIcon",
+      "editorIconToken": "PenNib",
+      "chatOpenEvent": "navigateToEssay",
+      "trashType": "essays",
+      "multimodalSourceType": "file"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.essay",
+        "icon": "PenTool",
+        "color": "text-pink-500"
+      },
+      "previewType": "markdown",
+      "sourceDb": "essays",
+      "appTypeId": "essay",
+      "skeleton": "text",
+      "filesPreviewLabel": "workbench:files.preview.type.essay",
+      "glyph": "A",
+      "xmlTag": "essay_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "essay",
+      "referenceTypeId": "essay"
+    }
+  },
+  "image": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.image",
+      "icon": null,
+      "order": 60,
+      "preview": "image",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "Image",
+      "color": "text-cyan-500",
+      "previewType": "image",
+      "skeleton": "image",
+      "previewLabelKey": "workbench:files.preview.type.image",
+      "dragGlyph": "I",
+      "xmlTag": "resource_item",
+      "vfsType": "image",
+      "mime": "image/png",
+      "chatIconToken": "Image",
+      "refIconToken": "GenericFileIcon",
+      "editorIconToken": "Image",
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": "image"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.image",
+        "icon": "Image",
+        "color": "text-cyan-500"
+      },
+      "previewType": "image",
+      "sourceDb": "attachments",
+      "appTypeId": "file-preview",
+      "skeleton": "image",
+      "filesPreviewLabel": "workbench:files.preview.type.image",
+      "glyph": "I",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "image",
+      "referenceResourceType": "image",
+      "referenceTypeId": "image"
+    }
+  },
+  "file": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.file",
+      "icon": "FileText",
+      "order": 70,
+      "preview": "none",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "File",
+      "color": "text-gray-500",
+      "previewType": "none",
+      "skeleton": "generic",
+      "previewLabelKey": "workbench:files.preview.type.file",
+      "dragGlyph": "F",
+      "xmlTag": "resource_item",
+      "vfsType": "file",
+      "mime": "application/octet-stream",
+      "chatIconToken": "File",
+      "refIconToken": "GenericFileIcon",
+      "editorIconToken": "File",
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": "file"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.file",
+        "icon": "File",
+        "color": "text-gray-500"
+      },
+      "previewType": "none",
+      "sourceDb": "attachments",
+      "appTypeId": "file-preview",
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.file",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "mindmap": {
+    "contract": {
+      "present": true,
+      "labelKey": "learningHub:resourceType.mindmap",
+      "icon": null,
+      "order": 80,
+      "preview": "mindmap",
+      "operations": [
+        "open",
+        "preview",
+        "rename",
+        "move",
+        "delete",
+        "copy",
+        "favorite",
+        "add-to-chat",
+        "add-to-desktop"
+      ]
+    },
+    "supported": {
+      "open": true,
+      "preview": true,
+      "rename": true,
+      "move": true,
+      "delete": true,
+      "copy": true,
+      "favorite": true,
+      "add-to-chat": true,
+      "add-to-desktop": true
+    },
+    "ui": {
+      "iconToken": "Workflow",
+      "color": "text-indigo-500",
+      "previewType": "mindmap",
+      "skeleton": "mindmap",
+      "previewLabelKey": "workbench:files.preview.type.mindmap",
+      "dragGlyph": "M",
+      "xmlTag": "resource_item",
+      "vfsType": "mindmap",
+      "mime": "application/json",
+      "chatIconToken": "FileText",
+      "refIconToken": "MindmapIcon",
+      "editorIconToken": "Brain",
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": "file"
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.mindmap",
+        "icon": "Workflow",
+        "color": "text-indigo-500"
+      },
+      "previewType": "mindmap",
+      "sourceDb": "mindmaps",
+      "appTypeId": "notes",
+      "skeleton": "mindmap",
+      "filesPreviewLabel": "workbench:files.preview.type.mindmap",
+      "glyph": "M",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "all": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": {
+        "labelKey": "learningHub:resourceType.all",
+        "icon": "LayoutGrid",
+        "color": "text-muted-foreground"
+      },
+      "previewType": "none",
+      "sourceDb": "notes",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "folder": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "none",
+      "sourceDb": "notes",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.folder",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "retrieval": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "none",
+      "sourceDb": "notes",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "acme.flashcard": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "none",
+      "sourceDb": "notes",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "none",
+      "sourceDb": "notes",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "__proto__": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "<non-string>",
+      "sourceDb": "<non-string>",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  },
+  "constructor": {
+    "contract": {
+      "present": false,
+      "labelKey": null,
+      "icon": null,
+      "order": null,
+      "preview": null,
+      "operations": []
+    },
+    "supported": {
+      "open": false,
+      "preview": false,
+      "rename": false,
+      "move": false,
+      "delete": false,
+      "copy": false,
+      "favorite": false,
+      "add-to-chat": false,
+      "add-to-desktop": false
+    },
+    "ui": {
+      "iconToken": null,
+      "color": null,
+      "previewType": null,
+      "skeleton": null,
+      "previewLabelKey": null,
+      "dragGlyph": null,
+      "xmlTag": null,
+      "vfsType": null,
+      "mime": null,
+      "chatIconToken": null,
+      "refIconToken": null,
+      "editorIconToken": null,
+      "chatOpenEvent": null,
+      "trashType": null,
+      "multimodalSourceType": null
+    },
+    "legacy": {
+      "config": null,
+      "previewType": "<non-string>",
+      "sourceDb": "<non-string>",
+      "appTypeId": null,
+      "skeleton": "generic",
+      "filesPreviewLabel": "workbench:files.preview.type.generic",
+      "glyph": "F",
+      "xmlTag": "resource_item",
+      "multimodalSourceType": "file",
+      "referenceResourceType": "file",
+      "referenceTypeId": "file"
+    }
+  }
+}

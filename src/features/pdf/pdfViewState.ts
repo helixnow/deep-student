@@ -39,6 +39,8 @@ export interface PdfViewState {
   viewMode?: 'single' | 'dual';
   /** 双页模式下封面（第 1 页）单独成页 */
   coverOffset?: boolean;
+  /** 紧凑裁白边（裁剪论文四周冗余页边距，放大有效版心） */
+  trimMargins?: boolean;
 }
 
 const STORAGE_PREFIX = 'pdf-viewstate:';
@@ -71,6 +73,9 @@ export function normalizePdfViewState(raw: unknown): PdfViewState {
   }
   if (typeof value.coverOffset === 'boolean') {
     state.coverOffset = value.coverOffset;
+  }
+  if (typeof value.trimMargins === 'boolean') {
+    state.trimMargins = value.trimMargins;
   }
   return state;
 }
@@ -130,6 +135,7 @@ export function resolvePdfViewStateOnSwitch(
     scale: persisted.scale ?? defaults.scale,
     viewMode: persisted.viewMode ?? defaults.viewMode,
     coverOffset: persisted.coverOffset ?? defaults.coverOffset ?? false,
+    trimMargins: persisted.trimMargins ?? defaults.trimMargins ?? false,
   };
 }
 

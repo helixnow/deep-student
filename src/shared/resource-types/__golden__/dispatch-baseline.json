@@ -1,0 +1,158 @@
+{
+  "src/command-palette/CommandPalette.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/demo/app/data/library/backend.ts": {
+    "switch": 0,
+    "map": 2
+  },
+  "src/dstu/types/folder.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/dstu/types/path.ts": {
+    "switch": 0,
+    "map": 2
+  },
+  "src/features/chat/components/ContextRefsDisplay.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/chat/components/groups/GroupEditorDialog.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/chat/components/input-bar/ContextRefChips.tsx": {
+    "switch": 3,
+    "map": 0
+  },
+  "src/features/chat/components/panels/MultimodalSourceCard.tsx": {
+    "switch": 2,
+    "map": 0
+  },
+  "src/features/chat/context/definitions/folder.ts": {
+    "switch": 1,
+    "map": 1
+  },
+  "src/features/chat/context/definitions/index.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/chat/context/definitions/selection.ts": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/chat/pages/ChatV2Page.tsx": {
+    "switch": 2,
+    "map": 0
+  },
+  "src/features/learning-hub/LearningHubPage.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/apps/UnifiedAppPanel.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/learning-hub/components/TabBar.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/components/finder/DesktopView.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/components/finder/FinderFileItem.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/components/finder/FinderQuickLook.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/components/finder/shortcutIcons.ts": {
+    "switch": 0,
+    "map": 2
+  },
+  "src/features/learning-hub/hooks/useVfsContextInject.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/icons/ResourceIcons.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/learningHubContracts.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/sidebar/SidebarContentArea.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/sidebar/SidebarContextMenu.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/learning-hub/sidebar/contextMenuHandlers.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/sidebar/useSidebarChatActions.ts": {
+    "switch": 0,
+    "map": 2
+  },
+  "src/features/learning-hub/types.ts": {
+    "switch": 0,
+    "map": 8
+  },
+  "src/features/learning-hub/useReferenceToChat.ts": {
+    "switch": 2,
+    "map": 1
+  },
+  "src/features/learning-hub/utils/searchHonesty.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/learning-hub/views/IndexStatusView.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/workbench/apps/content/ContentSkeleton.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/workbench/apps/content/typeMap.ts": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/workbench/apps/files/useFilesHoverPreview.tsx": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/workbench/apps/files/useResourceDragOut.ts": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/features/workbench/components/DesktopShortcuts.tsx": {
+    "switch": 0,
+    "map": 3
+  },
+  "src/features/workbench/components/WorkbenchAppIcon.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/features/workbench/icons/appIcons.tsx": {
+    "switch": 0,
+    "map": 1
+  },
+  "src/services/multimodalRagService.ts": {
+    "switch": 1,
+    "map": 0
+  },
+  "src/ui-plugins/official/content/menu.ts": {
+    "switch": 1,
+    "map": 0
+  }
+}

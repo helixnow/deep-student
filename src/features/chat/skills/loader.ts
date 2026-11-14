@@ -17,9 +17,12 @@ import type { SkillDefinition, SkillLocation, SkillLoadConfig, SkillPackageFile 
 import { DEFAULT_SKILL_LOAD_CONFIG } from './types';
 import { classifySkillPackageFile, enrichSkillPackageMetadata, getSkillPackageRoot } from './packageMetadata';
 import { applyTrustOverride } from './skillTrustStorage';
+import { hydrateSkillUiSettings } from './skillSettingsMirror';
+import { skillFavorites } from './skillFavorites';
 import { applyEnableOverride } from './skillEnableStorage';
 import { refreshRequiresGates } from './requiresGating';
 import { getBuiltinSkills } from './builtin';
+import { restoreHostSkillSummaries } from './hostResources';
 import {
   getAllBuiltinSkillCustomizations,
   applyCustomizationToSkill,
@@ -164,7 +167,6 @@ async function loadSkillsFromDirectory(
   dirPath: string,
   location: SkillLocation
 ): Promise<{ skills: SkillDefinition[]; errors: number }> {
-  const skills: SkillDefinition[] = [];
   let errors = 0;
 
   try {
@@ -179,8 +181,9 @@ async function loadSkillsFromDirectory(
       dirPath
     );
 
-    // 遍历每个子目录
-    for (const entry of entries) {
+    // 每个 skill 目录独立：SKILL.md 读取 + 包文件索引并发发出。
+    // 串行时 N 个 skill 就是 2N 次往返（公网 RTT 150–250ms 下 N=10 要几秒）。
+    const loaded = await Promise.all(entries.map(async (entry) => {
       const skillFilePath = `${entry.path}/${SKILL_FILE_NAME}`;
 
       try {
@@ -197,33 +200,31 @@ async function loadSkillsFromDirectory(
           location
         );
 
-        if (parseResult.success && parseResult.skill) {
-          const packageFiles = await loadPackageFiles(entry.path);
-          const skill = applyEnableOverride(applyTrustOverride(
-            enrichSkillPackageMetadata(parseResult.skill, packageFiles),
-          ));
-          skills.push(skill);
-          console.log(
-            LOG_PREFIX,
-            `已加载 skill: ${parseResult.skill.name} (${entry.name})`
-          );
-
-          // 输出警告
-          if (parseResult.warnings && parseResult.warnings.length > 0) {
-            console.warn(
-              LOG_PREFIX,
-              `${entry.name} 警告:`,
-              parseResult.warnings.join('; ')
-            );
-          }
-        } else {
-          errors++;
+        if (!parseResult.success || !parseResult.skill) {
           console.warn(
             LOG_PREFIX,
             `解析 skill 失败: ${entry.name}`,
             parseResult.error
           );
+          return { name: entry.name, skill: null, warnings: null as string[] | null, failed: true };
         }
+
+        const packageFiles = await loadPackageFiles(entry.path);
+        const skill = applyEnableOverride(applyTrustOverride(
+          enrichSkillPackageMetadata(parseResult.skill, packageFiles),
+        ));
+        console.log(
+          LOG_PREFIX,
+          `已加载 skill: ${parseResult.skill.name} (${entry.name})`
+        );
+        return {
+          name: entry.name,
+          skill,
+          warnings: parseResult.warnings && parseResult.warnings.length > 0
+            ? parseResult.warnings
+            : null,
+          failed: false,
+        };
       } catch (readError: unknown) {
         // SKILL.md 不存在，跳过此目录
         // 这是正常情况，不需要记录错误
@@ -231,7 +232,21 @@ async function loadSkillsFromDirectory(
           LOG_PREFIX,
           `目录 ${entry.name} 无 SKILL.md，跳过`
         );
+        return { name: entry.name, skill: null, warnings: null, failed: false };
       }
+    }));
+
+    const skills: SkillDefinition[] = [];
+    for (const result of loaded) {
+      if (result.failed) errors++;
+      if (result.warnings) {
+        console.warn(
+          LOG_PREFIX,
+          `${result.name} 警告:`,
+          result.warnings.join('; ')
+        );
+      }
+      if (result.skill) skills.push(result.skill);
     }
 
     return { skills, errors };
@@ -271,6 +286,15 @@ export async function loadSkillsFromFileSystem(
   const stats = { total: 0, builtin: 0, global: 0, project: 0, errors: 0 };
 
   console.log(LOG_PREFIX, 'Loading skills...');
+
+  // 0. 把 localStorage 里的四个技能 UI 状态与主库 settings 对齐（后端有值优先，后端为空时上送本地值）。
+  //    失败只告警：localStorage 仍是渲染期的同步读源。
+  try {
+    await hydrateSkillUiSettings();
+    skillFavorites.reload();
+  } catch (error: unknown) {
+    console.warn(LOG_PREFIX, 'Failed to hydrate skill UI settings from backend:', error);
+  }
 
   // 1. 加载内置 skills（最低优先级）
   // ★ P0-07 修复：检查 loadBuiltin 配置
@@ -314,66 +338,72 @@ export async function loadSkillsFromFileSystem(
     console.log(LOG_PREFIX, 'loadBuiltin=false, skipping builtin skills load');
   }
 
-  // 2. 加载全局 skills
-  if (mergedConfig.globalPath) {
-    try {
-      const globalResult = await loadSkillsFromDirectory(
-        mergedConfig.globalPath,
-        'global'
-      );
-      const globalSkills = globalResult.skills;
-      stats.errors += globalResult.errors;
+  restoreHostSkillSummaries();
 
-      for (const skill of globalSkills) {
-        skillRegistry.register(applyEnableOverride(applyTrustOverride(skill)));
-        stats.global++;
-      }
+  // 2. 加载全局 skills 与 3. 项目 skills（最高优先级）并行发起：
+  //    两者只通过 skillRegistry 的注册顺序体现优先级（先全局后项目），
+  //    IPC 本身互不依赖，串行时公网下要多付一整段往返。
+  const globalLoadPromise = (async () => {
+    if (!mergedConfig.globalPath) return null;
+    try {
+      return await loadSkillsFromDirectory(mergedConfig.globalPath, 'global');
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'Failed to load global skills:', error);
-      stats.errors++;
+      return 'failed' as const;
+    }
+  })();
+
+  const projectLoadPromise = (async () => {
+    const defaultProjectRootDir = !mergedConfig.projectRootDir
+      ? await resolveDefaultProjectRootDir()
+      : null;
+    const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
+    if (effectiveProjectRootDir === undefined) return [];
+
+    const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
+    if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
+      dirsToScan.push(mergedConfig.projectPath);
+    }
+
+    const projectPaths = dirsToScan.map((relDir) => (
+      effectiveProjectRootDir
+      && !relDir.startsWith('/')
+      && !relDir.startsWith('~')
+        ? `${effectiveProjectRootDir}/${relDir}`
+        : relDir
+    ));
+    // 目录扫描并发：每个目录一次 list + 每个 skill 两次往返，串行会线性叠加。
+    // 结果仍按 dirsToScan 顺序注册，保持「后者覆盖前者」的优先级语义。
+    return Promise.all(projectPaths.map((path) => loadSkillsFromDirectory(path, 'project')));
+  })().catch((error: unknown) => {
+    console.error(LOG_PREFIX, 'Failed to load project skills:', error);
+    return 'failed' as const;
+  });
+
+  const [globalResult, projectResults] = await Promise.all([
+    globalLoadPromise,
+    projectLoadPromise,
+  ]);
+
+  if (globalResult === 'failed') {
+    stats.errors++;
+  } else if (globalResult) {
+    stats.errors += globalResult.errors;
+    for (const skill of globalResult.skills) {
+      skillRegistry.register(applyEnableOverride(applyTrustOverride(skill)));
+      stats.global++;
     }
   }
 
-  // 3. 加载项目 skills（最高优先级；兼容 Agent Skills 标准目录）
-  {
-    try {
-      const defaultProjectRootDir = !mergedConfig.projectRootDir
-        ? await resolveDefaultProjectRootDir()
-        : null;
-      const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
-
-      if (effectiveProjectRootDir !== undefined) {
-        const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
-        if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
-          dirsToScan.push(mergedConfig.projectPath);
-        }
-
-        for (const relDir of dirsToScan) {
-          let projectSkillsPath = relDir;
-          if (
-            effectiveProjectRootDir
-            && !projectSkillsPath.startsWith('/')
-            && !projectSkillsPath.startsWith('~')
-          ) {
-            projectSkillsPath = `${effectiveProjectRootDir}/${relDir}`;
-          }
-
-          const projectResult = await loadSkillsFromDirectory(
-            projectSkillsPath,
-            'project',
-          );
-          const projectSkills = projectResult.skills;
-          stats.errors += projectResult.errors;
-
-          for (const skill of projectSkills) {
-            skillRegistry.register(skill);
-            stats.project++;
-          }
-        }
+  if (projectResults === 'failed') {
+    stats.errors++;
+  } else {
+    for (const projectResult of projectResults) {
+      stats.errors += projectResult.errors;
+      for (const skill of projectResult.skills) {
+        skillRegistry.register(skill);
+        stats.project++;
       }
-    } catch (error: unknown) {
-      console.error(LOG_PREFIX, 'Failed to load project skills:', error);
-      stats.errors++;
     }
   }
 

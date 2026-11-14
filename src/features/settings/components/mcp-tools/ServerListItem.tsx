@@ -225,7 +225,7 @@ export function ServerListItem({
             )}
             {/* 工具数量 */}
             <div className="text-right">
-              <div className="text-sm font-medium text-foreground">{cachedToolCount}</div>
+              <div className="text-sm font-medium tabular-nums text-foreground">{cachedToolCount}</div>
               <div className="text-2xs text-muted-foreground">{t('settings:mcp_server_list.tools')}</div>
             </div>
 

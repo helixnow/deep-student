@@ -1,0 +1,442 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_market_search",
+    "skill_market_skill_detail",
+    "skill_market_verify",
+    "skill_market_download_and_scan",
+    "skill_tap_catalog",
+    "skill_tap_install",
+    "skill_check_updates",
+    "skill_update_from_source",
+    "skill_list_directories",
+    "save_setting"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.unreachable.market_search",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_search",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "   ",
+            "limit": null,
+            "nonSuspiciousOnly": false,
+            "sort": "downloads"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 0,
+            "nonSuspiciousOnly": true,
+            "sort": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": " pdf ",
+            "limit": 100,
+            "nonSuspiciousOnly": true,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "中文 技能&x=1",
+            "limit": 24,
+            "nonSuspiciousOnly": null,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "Invalid",
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.unreachable.market_detail_verify",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "sonoscli"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "  sonoscli  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "Invalid-slug"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "sonoscli",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "sonoscli",
+            "version": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0+build/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "Invalid",
+            "version": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.unreachable.market_download_and_scan",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "   ",
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "/tmp/x.zip",
+            "declaredRiskLevel": "low"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.unreachable.tap",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/anthropics/skills"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "  https://www.github.com/anthropics/skills.git/  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/main"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/main",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/main",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/main",
+            "subdir": "",
+            "overwrite": true,
+            "dryRun": false,
+            "expectedPackageSha256": "bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.unreachable.update_sources",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-net-tap",
+            "value": "{\"sourceKind\":\"tap\",\"sourceDetail\":\"https://codeload.github.com/anthropics/skills/zip/refs/heads/main#skills/pdf\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"riskLevel\":\"low\",\"installedAt\":\"2026-11-06T00:00:00+00:00\",\"sessionId\":\"skills_management\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-net-mkt",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"skill_market:sonoscli@1.0.0\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"riskLevel\":\"low\",\"installedAt\":\"2026-11-06T00:00:00+00:00\",\"sessionId\":\"skills_management\",\"marketSlug\":\"sonoscli\",\"marketVersion\":\"1.0.0\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-net-mkt-detail",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"skill_market:sonoscli@1.0.0\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-net-url",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"https://github.com/anthropics/skills/archive/refs/heads/main.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"riskLevel\":\"low\"}"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-net-tap"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-net-mkt"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-net-mkt-detail"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-net-url"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-net-tap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": " w0-net-mkt "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-net-mkt-detail"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-net-url"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

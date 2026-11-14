@@ -21,7 +21,6 @@ import {
   Copy,
   Trash,
   Play,
-  ArrowClockwise,
   CheckCircle,
   WarningCircle,
   Clock,
@@ -37,6 +36,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { sessionManager } from '../../features/chat/core/session/sessionManager';
 import { adapterManager } from '../../features/chat/adapters/AdapterManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { createPanelFeed } from '../panelFeed';
 
 // =============================================================================
 // 类型定义
@@ -77,6 +77,7 @@ interface DiagnosticResult {
 // =============================================================================
 
 const flowLogs: FlowLogEntry[] = [];
+const flowLogAdded = createPanelFeed<FlowLogEntry>();
 let logId = 0;
 
 function addFlowLog(
@@ -102,7 +103,7 @@ function addFlowLog(
   console.log(`${icon} [SubagentFlow][${phase}] ${action}`, data);
   
   // 触发 UI 更新事件
-  window.dispatchEvent(new CustomEvent('subagent-flow-log', { detail: entry }));
+  flowLogAdded.publish(entry);
 }
 
 // 暴露到全局供其他模块调用
@@ -145,7 +146,7 @@ function injectMonitoring() {
 // 主组件
 // =============================================================================
 
-export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginProps) {
+export function SubagentMessageFlowDebugPlugin({ visible, isActive }: DebugPanelPluginProps) {
   const [logs, setLogs] = useState<FlowLogEntry[]>([]);
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -155,13 +156,9 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
   const logsEndRef = useRef<HTMLDivElement>(null);
   
   // 监听日志更新
-  useEffect(() => {
-    const handler = (e: CustomEvent<FlowLogEntry>) => {
-      setLogs(prev => [...prev, e.detail].slice(-200));
-    };
-    window.addEventListener('subagent-flow-log', handler as EventListener);
-    return () => window.removeEventListener('subagent-flow-log', handler as EventListener);
-  }, []);
+  useEffect(() => flowLogAdded.subscribe((entry) => {
+    setLogs(prev => [...prev, entry].slice(-200));
+  }), []);
   
   // 自动滚动到底部
   useEffect(() => {
@@ -196,8 +193,14 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
     }
     
     setAdapterStates(states);
-    addFlowLog('Diagnostic', 'adapter_states_refreshed', { count: states.length });
   }, []);
+
+  useEffect(() => {
+    if (!visible || !isActive) return;
+    refreshAdapterStates();
+    const timer = window.setInterval(refreshAdapterStates, 2000);
+    return () => window.clearInterval(timer);
+  }, [visible, isActive, refreshAdapterStates]);
   
   // 运行诊断（提前定义）
   const runDiagnostic = useCallback((sessionId: string) => {
@@ -388,10 +391,6 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
                   启动监控
                 </>
               )}
-            </Button>
-            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={refreshAdapterStates}>
-              <ArrowClockwise size={12} className="mr-1" />
-              刷新状态
             </Button>
             <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={copyLogs}>
               <Copy size={12} className="mr-1" />

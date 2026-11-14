@@ -84,20 +84,10 @@ const legacyCommandChecks = [
     pattern: "invoke\\([^\\n]*['\"]import_backup_archive['\"]",
     message: 'legacy import_backup_archive invoke detected',
   },
-  {
-    pattern:
-      'pub\\s+async\\s+fn\\s+(auto_backup|export_backup_archive(_with_options)?|import_backup_archive(_with_options)?|prepare_for_backup_restore|cancel_backup_restore_preparation)\\b',
-    message: 'legacy backup tauri command function still exists',
-  },
-  {
-    pattern:
-      'crate::backup::(auto_backup|export_backup_archive(_with_options)?|import_backup_archive(_with_options)?|prepare_for_backup_restore|cancel_backup_restore_preparation)',
-    message: 'legacy backup command still registered in lib.rs',
-  },
 ];
 
 for (const check of legacyCommandChecks) {
-  const out = grepSearch(check.pattern, ['src', 'src-tauri/src', 'src-tauri/crates']);
+  const out = grepSearch(check.pattern, 'src');
   ensure(!out, check.message);
 }
 

@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowClockwise,
@@ -14,6 +15,8 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { GroupTitle } from '@/components/settings/settingsTabPrimitives';
+import { useComponentReasonText } from '@/components/system-status/useComponentReasonText';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/types/dataGovernance';
@@ -140,6 +143,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
   onDebugExit,
 }) => {
   const { t } = useTranslation(['data', 'common']);
+  const reasonText = useComponentReasonText();
   // 移动端没有可打开的文件管理器入口（后端也会拒绝），只保留导出 ZIP 取数据。
   const canOpenIncidentFolder = !isMobilePlatform();
   const [status, setStatus] = useState<StartupRecoveryStatus | null>(initialStatus);
@@ -156,7 +160,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
   const [recoveryAction, setRecoveryAction] = useState<string | null>(null);
   const [recoveryActionError, setRecoveryActionError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (previousIncidentId?: string) => {
     setLoading(true);
     setLoadError(null);
     try {
@@ -172,16 +176,27 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
         ?? maintenance?.component_health?.components?.filter((entry) => entry.status !== 'healthy')
         ?? [],
       );
-        const recommended = next.incident?.candidates.find(
-          (candidate) => candidate.recommended && candidate.selectable,
-        );
-      setSelected(recommended?.id ?? null);
+      const incident = next.incident;
+      const recommended = incident?.candidates.find(
+        (candidate) => candidate.recommended && candidate.selectable,
+      );
+      setSelected((current) =>
+        incident?.id === previousIncidentId &&
+        incident?.candidates.some((candidate) => candidate.id === current && candidate.selectable)
+          ? current
+          : recommended?.id ?? null,
+      );
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoading(false);
     }
   }, [mode]);
+
+  useRefreshOnReturn(
+    () => refresh(status?.incident?.id),
+    !debugPreview && !loading && !confirming && !resolving && !retryingPreflight && !recoveryAction,
+  );
 
   useEffect(() => {
     if (initialStatus) {
@@ -282,7 +297,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
           {t('data:recovery.scan_failed')}
         </div>
         <p className="mt-2 break-words text-sm text-muted-foreground">{loadError}</p>
-        <DsButton className="mt-4 [@media(pointer:coarse)]:!min-h-11" variant="secondary" size="sm" onClick={() => void refresh()}>
+        <DsButton className="mt-4 [@media(pointer:coarse)]:!min-h-11" variant="secondary" size="sm" onClick={() => void refresh(status?.incident?.id)}>
           <ArrowClockwise size={15} className="mr-1.5" />
           {t('common:actions.retry')}
         </DsButton>
@@ -320,15 +335,11 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                   </span>
                 </div>
                 <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
-                  {issue.reason || t('data:recovery.component_unknown_reason')}
+                  {reasonText(issue.reason) ?? t('data:recovery.component_unknown_reason')}
                 </p>
               </div>
             ))}
           </div>
-          <DsButton className="[@media(pointer:coarse)]:!min-h-11" variant="secondary" onClick={() => void refresh()}>
-            <ArrowClockwise size={15} className="mr-1.5" />
-            {t('common:actions.refresh')}
-          </DsButton>
         </div>
       );
     }
@@ -352,14 +363,12 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
         </div>
 
         {history.length > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">
-              {t('data:recovery.history_title')}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('data:recovery.history_description')}
-            </p>
-            <div className="mt-3 space-y-2">
+          <section className="min-w-0">
+            <GroupTitle
+              title={t('data:recovery.history_title')}
+              description={t('data:recovery.history_description')}
+            />
+            <div className="space-y-2 rounded-2xl bg-muted p-4">
               {history.map((item) => item && (
                 <div
                   key={item.id}
@@ -418,7 +427,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
           {recoveryActionError && (
             <p className="break-words text-sm text-destructive">{recoveryActionError}</p>
@@ -505,14 +514,10 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
         </TabsList>
 
         <TabsContent value="choose" className="space-y-5">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">
-              {t('data:recovery.choose_title')}
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              {t('data:recovery.choose_description')}
-            </p>
-          </div>
+          <GroupTitle
+            title={t('data:recovery.choose_title')}
+            description={t('data:recovery.choose_description')}
+          />
 
           <div className="grid gap-3 lg:grid-cols-3">
             {incident.candidates.map((candidate) => (

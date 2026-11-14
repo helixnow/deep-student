@@ -77,6 +77,21 @@ describe('nextRepeatOccurrence', () => {
     ).toBe('2027-06-10');
   });
 
+  it('monthly byMonthDay 同月匹配，跨月遵守 interval 并收敛月末', () => {
+    const rule = { freq: 'monthly' as const, interval: 2, byMonthDay: [1, 15, 31] };
+    expect(nextRepeatOccurrence(rule, '2026-02-01', '2026-02-01')).toBe('2026-02-15');
+    expect(nextRepeatOccurrence(rule, '2026-02-15', '2026-02-01')).toBe('2026-02-28');
+    expect(nextRepeatOccurrence(rule, '2026-02-28', '2026-02-01')).toBe('2026-04-01');
+    expect(nextRepeatOccurrence(rule, '2026-02-01', '2026-04-14')).toBe('2026-04-15');
+  });
+
+  it('until 包含当天，超过结束日期返回 null', () => {
+    const rule = { freq: 'daily' as const, interval: 1, until: '2026-06-11' };
+    expect(nextRepeatOccurrence(rule, '2026-06-10', '2026-06-01')).toBe('2026-06-11');
+    expect(nextRepeatOccurrence(rule, '2026-06-11', '2026-06-01')).toBeNull();
+    expect(nextRepeatOccurrence(rule, '2026-06-01', '2026-06-12')).toBeNull();
+  });
+
   it('weekdays 跳过周末', () => {
     // 2026-06-12 是周五 → 下一个工作日是周一 06-15
     expect(

@@ -1,0 +1,1759 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_create_practice",
+    "qbank_save_practice",
+    "qbank_get_practice",
+    "qbank_list_practices",
+    "qbank_submit_practice",
+    "qbank_delete_practice",
+    "qbank_grade_practice_manually",
+    "qbank_retry_practice_grading",
+    "qbank_resume_practice_grading"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.practice.create_sequential_start_index",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-顺序",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪些是质数？",
+              "question_type": "multiple_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "2"
+                },
+                {
+                  "key": "B",
+                  "content": "3"
+                },
+                {
+                  "key": "C",
+                  "content": "4"
+                },
+                {
+                  "key": "D",
+                  "content": "5"
+                }
+              ],
+              "answer": "AB",
+              "explanation": "2 与 3 都是质数。",
+              "difficulty": "medium",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_seq",
+              "scope_id": "${0.id}",
+              "title": "顺序练习",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}",
+                "${3.id}"
+              ],
+              "start_question_id": "${2.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_seq",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_timed_duration_deadline",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-限时",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_timed",
+              "scope_id": "${0.id}",
+              "title": "限时练习",
+              "mode": "timed",
+              "question_ids": [
+                "${1.id}"
+              ],
+              "duration_seconds": 1800
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_timed",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_idempotent_same_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-幂等",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_once",
+              "scope_id": "${0.id}",
+              "title": "第一次创建",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_once",
+              "scope_id": "${0.id}",
+              "title": "第二次创建（应被忽略）",
+              "mode": "random",
+              "question_ids": [
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_once",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_dedupes_ids_and_truncates_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-去重",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_dedupe",
+              "scope_id": "${0.id}",
+              "title": "这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题这是一段用于验证练习标题截断行为的超长中文标题",
+              "mode": "random",
+              "question_ids": [
+                "${1.id}",
+                "${1.id}",
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_dedupe",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.save_marked_index_and_elapsed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-保存",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_save",
+              "scope_id": "${0.id}",
+              "title": "保存草稿",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_save",
+              "revision": 1,
+              "answers": {},
+              "marked_ids": [
+                "${1.id}"
+              ],
+              "current_index": 1,
+              "elapsed_seconds": 45
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_save",
+              "revision": 2,
+              "answers": {},
+              "marked_ids": [],
+              "current_index": 0,
+              "elapsed_seconds": 90
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_save",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.submit_unanswered_all_results",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-交卷",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_submit",
+              "scope_id": "${0.id}",
+              "title": "未作答交卷",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_submit",
+              "revision": 1,
+              "answers": {},
+              "marked_ids": [
+                "${2.id}"
+              ],
+              "current_index": 1,
+              "elapsed_seconds": 30
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_submit",
+            "revision": 2
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_submit",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.submit_replay_is_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-重放",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_replay",
+              "scope_id": "${0.id}",
+              "title": "重复交卷",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_replay",
+            "revision": 1
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_replay",
+            "revision": 1
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_replay",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.list_practices_paging_and_scopes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-分页",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_page_1",
+              "scope_id": "${0.id}",
+              "title": "分页一",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_page_2",
+              "scope_id": "${0.id}",
+              "title": "分页二",
+              "mode": "by_tag",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_page_3",
+              "scope_id": "${0.id}",
+              "title": "分页三",
+              "mode": "review_first",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false,
+            "offset": 2
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false,
+            "offset": 5
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false,
+            "offset": null
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.delete_draft_and_attempt",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-删除",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_draft_delete",
+              "scope_id": "${0.id}",
+              "title": "待删草稿",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_attempt_delete",
+              "scope_id": "${0.id}",
+              "title": "待删记录",
+              "mode": "group",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_attempt_delete",
+              "revision": 1,
+              "answers": {},
+              "marked_ids": [],
+              "current_index": 0,
+              "elapsed_seconds": 5
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_attempt_delete",
+            "revision": 2
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_delete_practice",
+          "args": {
+            "id": "practice_draft_delete",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_delete_practice",
+          "args": {
+            "id": "practice_attempt_delete",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_delete_practice",
+          "args": {
+            "id": "practice_never_existed",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.resume_grading_empty_database",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_resume_practice_grading",
+          "args": {}
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "practice-missing-scope",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "practice-missing-scope",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.resume_grading_with_timed_draft",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-恢复",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_resume",
+              "scope_id": "${0.id}",
+              "title": "恢复限时练习",
+              "mode": "timed",
+              "question_ids": [
+                "${1.id}"
+              ],
+              "duration_seconds": 1800
+            }
+          }
+        },
+        {
+          "cmd": "qbank_resume_practice_grading",
+          "args": {}
+        },
+        {
+          "cmd": "qbank_resume_practice_grading",
+          "args": {}
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_resume",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_from_attempt_restart",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-重练",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_first",
+              "scope_id": "${0.id}",
+              "title": "首次练习",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_first",
+            "revision": 1
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_restart",
+              "scope_id": "${0.id}",
+              "title": "再练一次",
+              "mode": "sequential",
+              "question_ids": [],
+              "attempt_id": "${4.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_restart",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.list_attempts_two_records_order",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-多次交卷",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_attempt_a1",
+              "scope_id": "${0.id}",
+              "title": "第一次交卷",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_attempt_a1",
+            "revision": 1
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_attempt_a2",
+              "scope_id": "${0.id}",
+              "title": "第二次交卷",
+              "mode": "review_only",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_attempt_a2",
+            "revision": 1
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_attempt_a1",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_mistake_redo_cross_exam_scope",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "错题重做-题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "错题重做-题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_mistake_redo",
+              "scope_id": "__mistake_redo__",
+              "title": "错题重做",
+              "mode": "mistake_redo",
+              "question_ids": [
+                "${2.id}",
+                "${3.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_mistake_redo",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "__mistake_redo__",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.create_zero_duration_and_unknown_start_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-零时长",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_zero_duration",
+              "scope_id": "${0.id}",
+              "title": "限时练习（未设定时长）",
+              "mode": "timed",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ],
+              "duration_seconds": 0,
+              "start_question_id": "q_not_in_this_practice"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_zero_duration",
+            "submitted": false
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

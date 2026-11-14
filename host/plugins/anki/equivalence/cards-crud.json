@@ -1,0 +1,1836 @@
+{
+  "domain": "anki",
+  "commands": [
+    "save_anki_cards",
+    "update_anki_card",
+    "delete_anki_card",
+    "get_document_cards",
+    "list_anki_library_cards",
+    "get_anki_library_card_content",
+    "get_anki_stats",
+    "create_custom_template",
+    "count_custom_template_references",
+    "delete_custom_template",
+    "import_builtin_templates",
+    "get_all_custom_templates",
+    "export_template"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.cards.save-read-update-delete-with-custom-template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 卡片模板",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-1",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${1}",
+              "cards": [
+                {
+                  "id": "w0-card-1",
+                  "front": "什么是 ACID？",
+                  "back": "原子性、一致性、隔离性、持久性",
+                  "text": null,
+                  "tags": [
+                    "db",
+                    "事务"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是 ACID？",
+                    "Back": "原子性、一致性、隔离性、持久性"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-card-2",
+                  "front": "什么是 MVCC？",
+                  "back": "多版本并发控制",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是 MVCC？",
+                    "Back": "多版本并发控制"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W0::数据库",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-1"
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 1,
+              "pageSize": 12,
+              "includeDecks": true
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-card-1"
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-card-1",
+              "task_id": "${2.taskId}",
+              "front": "什么是 ACID（改）？",
+              "back": "四个性质",
+              "text": null,
+              "tags": [
+                "db"
+              ],
+              "images": [],
+              "extra_fields": {
+                "Front": "什么是 ACID（改）？",
+                "Back": "四个性质",
+                "_content_provenance": "client-forged"
+              },
+              "template_id": "${1}",
+              "is_error_card": false,
+              "error_content": null,
+              "created_at": "${3.0.created_at}",
+              "updated_at": "${3.0.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-card-1"
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w0-card-2"
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-1"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-1"
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.builtin-template-referenced-delete-deactivates",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-lab",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "design-lab",
+              "cards": [
+                {
+                  "id": "w0-lab-1",
+                  "front": "Q1",
+                  "back": "A1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Question": "Q1",
+                    "correct": "A"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-lab-2",
+                  "front": "Q2",
+                  "back": "A2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "Q2",
+                    "Back": "A2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-lab"
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "templateId": "design-lab"
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.save-validation-and-dedup-branches",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [],
+              "options": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-dup",
+                  "front": "a",
+                  "back": "b",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "a",
+                    "Back": "b"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": " w0-dup ",
+                  "front": "c",
+                  "back": "d",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "c",
+                    "Back": "d"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c1",
+                  "front": "甲",
+                  "back": "乙",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "甲",
+                    "Back": "乙"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-c2",
+                  "front": "丙",
+                  "back": "丁",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "丙",
+                    "Back": "丁"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c1",
+                  "front": "甲改",
+                  "back": "乙改",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "甲改",
+                    "Back": "乙改"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c3",
+                  "front": "戊",
+                  "back": "己",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "戊",
+                    "Back": "己"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-c2",
+                  "front": "丙改",
+                  "back": "丁改",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "丙改",
+                    "Back": "丁改"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c9",
+                  "front": "戊",
+                  "back": "己",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "戊",
+                    "Back": "己"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-b",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c1",
+                  "front": "他文档",
+                  "back": "内容",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "他文档",
+                    "Back": "内容"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-b"
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-c3",
+              "task_id": "${4.taskId}",
+              "front": "戊",
+              "back": "己",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": true,
+              "error_content": "诊断",
+              "created_at": "",
+              "updated_at": ""
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-c3",
+                  "front": "戊",
+                  "back": "己",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "戊",
+                    "Back": "己"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "anki_synthetic_7",
+                  "front": "临时一",
+                  "back": "答",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "临时一",
+                    "Back": "答"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "chat-batch-1",
+                  "front": "临时二",
+                  "back": "答",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "临时二",
+                    "Back": "答"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "",
+                  "front": "临时三",
+                  "back": "答",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "临时三",
+                    "Back": "答"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": null,
+                  "front": "临时四",
+                  "back": "答",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "临时四",
+                    "Back": "答"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-a"
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.save-document-id-fallbacks-and-defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "  ",
+              "business_session_id": "w0-sess-1",
+              "message_stable_id": null,
+              "block_id": "w0-block-1",
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-f1",
+                  "front": "block",
+                  "back": "1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "block",
+                    "Back": "1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-block-1"
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": null,
+              "business_session_id": null,
+              "message_stable_id": "w0-msg-1",
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-f2",
+                  "front": "msg",
+                  "back": "2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "msg",
+                    "Back": "2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-msg-1"
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": null,
+              "business_session_id": "w0-sess-2",
+              "message_stable_id": null,
+              "block_id": "w0-block-1",
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-f3",
+                  "front": "block2",
+                  "back": "3",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "block2",
+                    "Back": "3"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-f3"
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": null,
+              "business_session_id": "w0-sess-3",
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-f4",
+                  "fields": {
+                    "Front": "仅字段正面",
+                    "Back": "仅字段背面",
+                    "Extra": "x"
+                  }
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-f4"
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-defaults",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-f5"
+                },
+                {
+                  "id": "w0-f6",
+                  "fields": {
+                    "Text": "{{c1::填空}}"
+                  }
+                }
+              ],
+              "options": {
+                "deck_name": "",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-defaults"
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "includeDecks": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.update-validation-and-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-u",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-u1",
+                  "front": "正",
+                  "back": "反",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "正",
+                    "Back": "反"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-u2",
+                  "front": "正二",
+                  "back": "反二",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "正二",
+                    "Back": "反二"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "  ",
+              "back": "反",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "正",
+              "back": "",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": "{{c0::零号}}",
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": "{{c1::  }}",
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": "{{c1::未闭合",
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": "{{c2::答案::提示}}",
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {
+                " TEXT ": "{{c1::大小写字段}}"
+              },
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "前 {{c1::正面里的填空}}",
+              "back": "",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "task_id": "${0.taskId}",
+              "front": "",
+              "back": "",
+              "text": "{{c1::{{c2::嵌套}}}}",
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-no-such-card",
+              "task_id": "${0.taskId}",
+              "front": "正",
+              "back": "反",
+              "text": null,
+              "tags": [],
+              "images": [],
+              "extra_fields": {},
+              "template_id": null,
+              "is_error_card": false,
+              "error_content": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "front": "无 id",
+              "back": "默认随机 id"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u2",
+              "front": "正二改",
+              "back": "反二改",
+              "tags": [
+                "t"
+              ],
+              "fields": {
+                "Front": "正二改",
+                "Back": "反二改"
+              },
+              "extra_fields": {
+                "messageStableId": null
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u2",
+              "front": "正二改",
+              "back": "反二改",
+              "tags": [
+                "t"
+              ],
+              "fields": {
+                "Front": "正二改",
+                "Back": "反二改"
+              },
+              "extra_fields": {
+                "messageStableId": "w0-msg"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w0-u2"
+          }
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u2",
+              "front": "删后",
+              "back": "更新"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-u1",
+              "front": "正",
+              "back": "反",
+              "tags": "not-array"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-u"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.delete-and-content-edge-ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "   "
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w0-never-existed"
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-never-existed"
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-d",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-d1",
+                  "front": "删",
+                  "back": "我",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "删",
+                    "Back": "我"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": " w0-d1 "
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w0-d1"
+          }
+        },
+        {
+          "cmd": "get_anki_library_card_content",
+          "args": {
+            "cardId": "w0-d1"
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w0-d1"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w0-doc-d"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "document_id": "w0-doc-d"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.cards.library-list-filters-and-pagination",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 列表模板",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-l1",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${0}",
+              "cards": [
+                {
+                  "id": "w0-l1",
+                  "front": "Alpha 100%",
+                  "back": "百分号",
+                  "text": null,
+                  "tags": [
+                    "under_score"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "Alpha 100%",
+                    "Back": "百分号"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-l2",
+                  "front": "beta",
+                  "back": "下划线 a_b",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "beta",
+                    "Back": "下划线 a_b"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w0-l3",
+                  "front": "Gamma",
+                  "back": "普通",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "Gamma",
+                    "Back": "普通"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W0",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-l2",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-l4",
+                  "front": "delta",
+                  "back": "子牌组",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "delta",
+                    "Back": "子牌组"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W0::子",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-l3",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-l5",
+                  "front": "epsilon",
+                  "back": "近似前缀",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "epsilon",
+                    "Back": "近似前缀"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W0x",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-l4",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-l6",
+                  "front": "zeta",
+                  "back": "无牌组",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "zeta",
+                    "Back": "无牌组"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {}
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 0,
+              "pageSize": 0
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 2,
+              "pageSize": 2
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 99,
+              "pageSize": 500
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": null,
+              "pageSize": null,
+              "templateId": null,
+              "search": null,
+              "status": null,
+              "sort": null,
+              "sortDesc": null,
+              "deck": null,
+              "includeDecks": null
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "templateId": "${0}"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "templateId": "   "
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "search": "%"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "search": "_"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "search": " 普通 "
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "search": "under_score"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "status": "notEnqueued"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "status": "new"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "status": "due"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "status": "bogus"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sort": "front"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sort": "front",
+              "sortDesc": true
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sort": "created",
+              "sortDesc": false
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sort": "due",
+              "sortDesc": true
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sort": "unknown"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "deck": "W0"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "deck": " W0::子 "
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "deck": ""
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "deck": "w0"
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 1,
+              "pageSize": 1,
+              "includeDecks": true
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "includeDecks": false
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": -1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "pageSize": 4294967296
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "sortDesc": "yes"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

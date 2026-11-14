@@ -332,6 +332,7 @@ export function useImagePreviewsFromRefs(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedRefs, setLoadedRefs] = useState<ContextRef[] | null>(null);
+  const [loadedImageRefs, setLoadedImageRefs] = useState<ContextRef[] | null>(null);
 
   // 提取图片类型的引用
   const imageRefs = useMemo(() => {
@@ -350,6 +351,7 @@ export function useImagePreviewsFromRefs(
       setIsLoading(false);
       setError(null);
       setLoadedRefs(requestedRefs);
+      setLoadedImageRefs(imageRefs);
       return;
     }
 
@@ -410,18 +412,20 @@ export function useImagePreviewsFromRefs(
       setError(partialError);
       setIsLoading(false);
       setLoadedRefs(requestedRefs);
+      setLoadedImageRefs(imageRefs);
     });
 
     return () => {
       isMounted = false;
       releasePreviewEntries(held);
     };
-  }, [requestedRefs, previewsByRef]);
+  }, [requestedRefs, previewsByRef, imageRefs]);
 
   return {
-    imagePreviews,
+    // 新快照不能展示上一条消息的附件；同一快照展开更多时保留已加载的缩略图。
+    imagePreviews: loadedImageRefs === imageRefs ? imagePreviews : [],
     isLoading: requestedRefs.length > 0 && (isLoading || loadedRefs !== requestedRefs),
-    error,
+    error: loadedImageRefs === imageRefs ? error : null,
     unloadedImageCount: imageRefs.length - requestedRefs.length,
   };
 }

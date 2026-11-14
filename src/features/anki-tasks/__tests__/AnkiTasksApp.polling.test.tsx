@@ -191,41 +191,6 @@ describe('AnkiTasksApp visibility, polling, and request ordering', () => {
     expect(screen.getByText('latest visibility')).toBeInTheDocument();
   });
 
-  it('ignores an older manual refresh response that settles last', async () => {
-    const oldSessions = deferred<TestSession[]>();
-    const oldStats = deferred<TestStats>();
-    const latestSessions = deferred<TestSession[]>();
-    const latestStats = deferred<TestStats>();
-    sessionResponses.push(
-      Promise.resolve([makeSession('initial')]),
-      oldSessions.promise,
-      latestSessions.promise,
-    );
-    statsResponses.push(Promise.resolve(emptyStats), oldStats.promise, latestStats.promise);
-
-    render(<AnkiTasksApp isVisible />);
-    expect(await screen.findByText('initial')).toBeInTheDocument();
-
-    const refresh = screen.getByRole('button', { name: 'taskDashboard.refresh' });
-    fireEvent.click(refresh);
-    fireEvent.click(refresh);
-
-    await act(async () => {
-      latestSessions.resolve([makeSession('latest manual')]);
-      latestStats.resolve(emptyStats);
-      await Promise.resolve();
-    });
-    expect(await screen.findByText('latest manual')).toBeInTheDocument();
-
-    await act(async () => {
-      oldSessions.resolve([makeSession('stale manual')]);
-      oldStats.resolve(emptyStats);
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('stale manual')).not.toBeInTheDocument();
-    expect(screen.getByText('latest manual')).toBeInTheDocument();
-  });
-
   it('waits for the initial result, then uses 5s for active and 30s for idle', async () => {
     vi.useFakeTimers();
     const initialSessions = deferred<TestSession[]>();

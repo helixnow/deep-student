@@ -1,0 +1,1263 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "chat_v2_record_skill_activation",
+    "chat_v2_list_skill_candidates",
+    "chat_v2_replay_skill_candidate",
+    "chat_v2_promote_skill_candidate",
+    "chat_v2_rollback_skill_candidate",
+    "skill_create",
+    "skill_delete",
+    "skill_list_directories",
+    "skill_read_file"
+  ],
+  "scenarios": [
+    {
+      "id": "skill_candidates.activation.record_basic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-alpha",
+            "sessionId": "sess_w0c_1"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-alpha",
+            "sessionId": "sess_w0c_1"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-alpha",
+            "sessionId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-alpha"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-beta",
+            "sessionId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-beta",
+            "sessionId": "  sess_w0c_pad  "
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-beta",
+            "sessionId": "sess_w0c_2"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.activation.skill_id_trim_and_length",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "  w0c-trim  ",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "\tw0c-tab\n",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": " \t\r\n ",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa   ",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技技",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀abc",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa",
+            "sessionId": "sess_w0c_len"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+            "sessionId": "sess_w0c_len"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-sess-long",
+            "sessionId": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.activation.unicode_whitespace_trim",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "　w0c-ideo　",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-nel",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "﻿w0c-bom﻿",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": " w0c-nbsp ",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "​w0c-zwsp​",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "﻿",
+            "sessionId": "sess_w0c_ws"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "　  ",
+            "sessionId": "sess_w0c_ws"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.activation.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "sessionId": "sess_w0c_shape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": null,
+            "sessionId": "sess_w0c_shape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": 7,
+            "sessionId": "sess_w0c_shape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": [
+              "w0c-arr"
+            ],
+            "sessionId": "sess_w0c_shape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": {
+              "id": "w0c-obj"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skill_id": "w0c-snake",
+            "sessionId": "sess_w0c_shape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-shape",
+            "sessionId": 9
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-shape",
+            "sessionId": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-shape",
+            "session_id": "sess_w0c_snake"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-shape",
+            "sessionId": "sess_w0c_shape",
+            "kind": "tool_load",
+            "loads": 5,
+            "runId": "run_w0c"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.activation.unknown_and_deleted_skill",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0c-real",
+            "content": "---\nname: w0c-user\ndescription: equivalence seed\n---\n# User skill\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-real",
+            "sessionId": "sess_w0c_del"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-never-existed",
+            "sessionId": "sess_w0c_del"
+          }
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0c-real"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "w0c-real",
+            "sessionId": "sess_w0c_del"
+          }
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0c-real"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": null,
+            "limit": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.list.empty_store_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "   "
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "screened"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "replaying"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "passed"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "failed"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "published"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "rolled_back"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "pending"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "validated"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "drifted"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "promoted"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "  passed\t"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 500
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 501
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 4294967295
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "promoted",
+            "limit": 4294967295
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new",
+            "unknownKey": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.list.invalid_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "NEW"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "rolled-back"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "rolledback"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "unknown"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "  bogus  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new,passed"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "Pending"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": [
+              "new"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": "10"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "limit": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "bogus",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "new",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "bogus",
+            "limit": 10
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.replay.invalid_and_unknown_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": [
+              "cand_x"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidate_id": "cand_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": " \t\n "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "cand_00000000-0000-0000-0000-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "  cand_w0c-unknown  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-unknown"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.promote.invalid_and_unknown_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-before-base"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0c-user-skill",
+            "content": "---\nname: w0c-user\ndescription: equivalence seed\n---\n# User skill\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": [
+              "cand_x"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidate_id": "cand_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": " \t\n "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "cand_00000000-0000-0000-0000-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "  cand_w0c-unknown  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-unknown"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0c-user-skill/SKILL.md"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.rollback.invalid_and_unknown_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-before-base"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0c-user-skill",
+            "content": "---\nname: w0c-user\ndescription: equivalence seed\n---\n# User skill\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": [
+              "cand_x"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidate_id": "cand_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": " \t\n "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候候"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "cand_00000000-0000-0000-0000-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "  cand_w0c-unknown  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-unknown"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/.archive"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0c-user-skill/SKILL.md"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skill_candidates.cross_id_namespaces",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_record_skill_activation",
+          "args": {
+            "skillId": "cand_w0c-looks-like-candidate",
+            "sessionId": "sess_w0c_x"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "learned-workflow-000000000000",
+            "content": "---\nname: w0c-user\ndescription: equivalence seed\n---\n# User skill\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "cand_w0c-looks-like-candidate"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_promote_skill_candidate",
+          "args": {
+            "candidateId": "learned-workflow-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_rollback_skill_candidate",
+          "args": {
+            "candidateId": "learned-workflow-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_replay_skill_candidate",
+          "args": {
+            "candidateId": "sess_w0c_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/learned-workflow-000000000000/SKILL.md"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_skill_candidates",
+          "args": {
+            "status": "pending"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

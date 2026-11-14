@@ -238,11 +238,13 @@ describe('长标题溢出', () => {
     }
   });
 
-  it('chat exposes a titlebar control slot without replacing its centered title', () => {
-    const { container } = renderBar({ appTypeId: 'chat', title: '新对话' });
+  it.each(['chat', 'chat-session'])('%s keeps the window controls without a visible centered title', (appTypeId) => {
+    const { container } = renderBar({ appTypeId, title: '新对话' });
 
-    expect(container.querySelector('[data-wb-titlebar-slot]')).not.toBeNull();
-    expect(container.querySelector('[data-wb-window-title]')?.textContent).toBe('新对话');
+    expect(container.querySelector('[data-wb-title-draggable]')).toHaveAttribute('data-wb-title-seamless');
+    expect(container.querySelector('.wb-traffic-close')).toBeInTheDocument();
+    expect(container.querySelector('[data-wb-window-title]')).toBeNull();
+    expect(Boolean(container.querySelector('[data-wb-titlebar-slot]'))).toBe(appTypeId === 'chat');
   });
 
   it.each(['exam', 'translation', 'essay'])(

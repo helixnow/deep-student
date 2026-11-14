@@ -108,7 +108,7 @@ for kw in ["RAG 评估指标", "retrieval augmented generation evaluation"]:
 待办与题库：user_todo_list_lists / user_todo_list_items / user_todo_get_summary / user_todo_search / user_todo_list_trash / qbank_list / qbank_list_questions / qbank_get_question / qbank_get_stats / qbank_get_next_question；
 学习与复习统计：learning_overview / pomodoro_today_stats / pomodoro_daily_stats / review_get_due / review_stats；
 系统观测：settings_get / model_assignments_get / llm_usage_query / backup_status / backup_job_status / sync_status / index_status。
-受控写：workspace_artifact_write / todo_init / todo_update / todo_add / workspace_send。
+受控写：workspace_artifact_write / todo_init / todo_update / todo_add。
 （全部可加或省略 \`builtin-\` 前缀。每次写仍重新过中央审批；其他写工具、shell、connector、子代理、tool_pack、ptc_run 一律拒绝。）
 
 ## 限制

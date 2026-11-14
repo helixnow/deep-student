@@ -5,12 +5,16 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
-import { GraduationCap, CircleNotch, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react';
+import { GraduationCap } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
+import {
+  RetrievalBlockShell,
+  RetrievalErrorNotice,
+  RetrievalQueryRow,
+} from './components/RetrievalBlockShell';
 import { convertBackendSources, type BackendSourceInfo } from './components/types';
 
 /**
@@ -60,8 +64,13 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
   // 状态判断
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
+  const isActive = isPending || isRunning;
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
 
   // 搜索来源标签
   const sourceLabel = useMemo(() => {
@@ -80,7 +89,8 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
 
   // 统计信息
   const statsText = useMemo(() => {
-    if (!isSuccess || sources.length === 0) return null;
+    if (!isSuccess) return null;
+    if (sources.length === 0) return t('blocks.academicSearch.noResults');
     if (totalResults > sources.length) {
       return t('blocks.academicSearch.stats', {
         shown: sources.length,
@@ -97,124 +107,48 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
     return (input.query as string) || null;
   }, [block.toolInput]);
 
+  const statusText = isActive
+    ? t('blocks.academicSearch.searching')
+    : isError
+      ? t('blocks.academicSearch.error')
+      : statsText;
+
+  const hasBody = Boolean(query) || isError || (isSuccess && sources.length > 0);
+
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
-      )}
-    >
-      {/* 头部 */}
-      <div
-        className={cn(
-          'flex items-center gap-2 px-3 py-2',
-          'border-b border-border/30'
-        )}
-      >
-        {/* 图标 */}
-        <div
-          className={cn(
-            'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-primary/10',
-            'dark:bg-primary/20'
-          )}
-        >
-          <GraduationCap size={16} className="text-primary" />
-        </div>
-
-        {/* 标题 */}
-        <span className="font-medium text-sm text-foreground">
-          {t('blocks.academicSearch.title')}
-        </span>
-
-        {/* 搜索来源标签 */}
-        {sourceLabel && isSuccess && (
-          <span
-            className={cn(
-              'px-2 py-0.5 rounded-full',
-              'bg-primary/10 text-primary text-xs',
-              'dark:bg-primary/20'
-            )}
-          >
+    <RetrievalBlockShell
+      icon={GraduationCap}
+      title={t('blocks.academicSearch.title')}
+      statusText={statusText}
+      badge={
+        sourceLabel && isSuccess ? (
+          <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
             {sourceLabel}
           </span>
-        )}
-
-        {/* 状态指示器 */}
-        {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <CircleNotch size={12} className="animate-spin" />
-            <span>{t('blocks.academicSearch.searching')}</span>
-          </span>
-        )}
-
-        {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
-            <WarningCircle size={12} />
-            <span>{t('blocks.academicSearch.error')}</span>
-          </span>
-        )}
-
-        {isSuccess && statsText && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {statsText}
-          </span>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className="p-3">
-        {/* 查询信息 */}
-        {query && (
-          <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-            <MagnifyingGlass size={16} />
-            <span className="truncate" title={query}>
-              {query}
-            </span>
-          </div>
-        )}
-
-        {/* 加载状态 */}
-        {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" />
-              <span className="text-sm">{t('blocks.academicSearch.loading')}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 错误状态 */}
-        {isError && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <WarningCircle size={20} />
-              <span className="text-sm">
-                {block.error || t('blocks.academicSearch.errorMessage')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* 成功状态：来源列表 */}
-        {isSuccess && sources.length > 0 && (
-          <SourceList
-            sources={sources}
-            maxVisible={3}
-            defaultExpanded={false}
-          />
-        )}
-
-        {/* 成功但无结果 */}
-        {isSuccess && sources.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <span className="text-sm">{t('blocks.academicSearch.noResults')}</span>
-          </div>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+      isActive={!!isActive}
+      isError={isError}
+      isSuccess={isSuccess}
+      durationMs={durationMs}
+      collapsible={hasBody}
+      isExpanded={isExpanded}
+      onToggleExpand={() => setIsExpanded((prev) => !prev)}
+    >
+      {hasBody ? (
+        <>
+          {query && <RetrievalQueryRow query={query} />}
+          {isError && (
+            <RetrievalErrorNotice
+              message={block.error || t('blocks.academicSearch.errorMessage')}
+            />
+          )}
+          {isSuccess && sources.length > 0 && (
+            <SourceList sources={sources} maxVisible={3} defaultExpanded={false} />
+          )}
+        </>
+      ) : null}
+    </RetrievalBlockShell>
   );
 });
 

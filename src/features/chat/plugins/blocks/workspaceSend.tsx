@@ -14,8 +14,11 @@
 
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, PaperPlaneTilt, WarningCircle } from '@phosphor-icons/react';
+import { PaperPlaneTilt, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { WorkspaceMessageTypeChip } from './workspaceInjection';
 
@@ -85,42 +88,59 @@ const WorkspaceSendBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     [content, isLongContent, isExpanded]
   );
 
+  const headerText = isFailed
+    ? t('workspaceSend.failed', { target: targetLabel })
+    : t('workspaceSend.delivered', { target: targetLabel });
+
   return (
     <div
       className={cn(
-        'rounded-md border px-3 py-2 my-1',
-        isFailed
-          ? 'bg-destructive/5 border-destructive/30'
-          : 'bg-muted/20 border-border/50'
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80 px-3 py-2.5 my-1',
+        isFailed ? 'border-destructive/30' : 'border-border/50'
       )}
     >
-      {/* 头部：图标 + 投递说明 + 消息类型徽标 */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {isFailed ? (
-          <WarningCircle size={14} className="text-destructive flex-shrink-0" />
-        ) : (
-          <PaperPlaneTilt size={14} className="text-muted-foreground flex-shrink-0" />
-        )}
-        <span
-          className={cn(
-            'text-xs font-medium',
-            isFailed ? 'text-destructive' : 'text-muted-foreground'
-          )}
-          title={targetSessionId}
+      {/* 头部：图标徽标 + 投递说明 + 消息类型徽标 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <ToolActivitySweep
+          active={isRunning}
+          className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
         >
-          {isFailed
-            ? t('workspaceSend.failed', { target: targetLabel })
-            : t('workspaceSend.delivered', { target: targetLabel })}
-        </span>
+          {isFailed ? (
+            <WarningCircle size={16} className="text-destructive" />
+          ) : (
+            <PaperPlaneTilt size={16} className="text-muted-foreground" />
+          )}
+        </ToolActivitySweep>
+        <ToolActivitySweep active={isRunning} className="min-w-0 max-w-full leading-4">
+          {isRunning ? (
+            <TextShimmer
+              className="text-xs font-medium leading-4 text-muted-foreground"
+              duration={1.5}
+              spread={3}
+            >
+              {headerText}
+            </TextShimmer>
+          ) : (
+            <span
+              className={cn(
+                'text-xs font-medium leading-4',
+                isFailed ? 'text-destructive' : 'text-muted-foreground'
+              )}
+              title={targetSessionId}
+            >
+              {headerText}
+            </span>
+          )}
+        </ToolActivitySweep>
         <WorkspaceMessageTypeChip type={messageType} />
         {isRunning && (
-          <CircleNotch size={12} className="text-muted-foreground animate-spin flex-shrink-0" />
+          <PulseDot className="w-1.5 h-1.5 text-primary ml-auto flex-shrink-0" />
         )}
       </div>
 
       {/* 内容摘要：前 160 字符，可展开全文 */}
       {content && (
-        <div className="mt-1.5 text-xs text-foreground/80 whitespace-pre-wrap break-words">
+        <div className="mt-2 text-xs text-foreground/80 whitespace-pre-wrap break-words">
           {displayContent}
         </div>
       )}
@@ -129,7 +149,7 @@ const WorkspaceSendBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-1 text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:min-h-11"
+          className="mt-1 inline-flex items-center text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:!min-h-11"
         >
           {isExpanded ? t('workspaceSend.showLess') : t('workspaceSend.showMore')}
         </button>

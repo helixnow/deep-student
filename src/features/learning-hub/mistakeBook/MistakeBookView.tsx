@@ -4,9 +4,10 @@
  * 展开看我的答案与正确答案，可回题目集重做、问 AI、生成同类题；顶部直达「到期错题复习」，
  * 勾选一批（不勾就是当前列出的）可当一套题重做。
  */
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, ArrowCounterClockwise, ArrowSquareOut, CaretDown, Lightning } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, ArrowSquareOut, CaretDown, Lightning } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -183,6 +184,8 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
     void load();
   }, [load]);
 
+  useRefreshOnReturn(load);
+
   // 做题不发全局事件：回到应用时重读，在题目集里重做答对的题就会移出
   useEventRegistry([{
     target: 'document',
@@ -262,8 +265,48 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
 
   return (
     <div className="mb" data-testid="mistake-book">
+      {/* 顶栏减层：微指标摘要 + 题目集/排序筛选 + 批量与到期复习动作合并为单行横向控制轨 */}
       <div className="mb-head">
-        <p className="mb-summary">{loading && items.length === 0 ? t('learningHub:mistakeBook.loading') : summary}</p>
+        <p className="mb-summary font-mono tabular-nums">
+          {loading && items.length === 0 ? t('learningHub:mistakeBook.loading') : summary}
+        </p>
+
+        {allTotal > 0 ? (
+          <div className="mb-filters">
+            {exams.length > 1 || examId !== null ? (
+              <span className="mb-select-wrap">
+                <select
+                  className="mb-select"
+                  aria-label={t('learningHub:mistakeBook.examFilter')}
+                  value={examId ?? EXAM_FILTER_ALL}
+                  onChange={(event) => {
+                    setExpandedId(null);
+                    setExamId(event.target.value === EXAM_FILTER_ALL ? null : event.target.value);
+                  }}
+                >
+                  <option value={EXAM_FILTER_ALL}>{`${t('learningHub:mistakeBook.allExams')} (${allTotal})`}</option>
+                  {exams.map((exam) => (
+                    <option key={exam.examId} value={exam.examId}>
+                      {`${exam.examName || t('learningHub:mistakeBook.untitledExam')} (${exam.count})`}
+                    </option>
+                  ))}
+                </select>
+                <CaretDown size={10} className="mb-select-caret" aria-hidden="true" />
+              </span>
+            ) : null}
+            <SegmentedControl<MistakeSort>
+              ariaLabel={t('learningHub:mistakeBook.sortLabel')}
+              size="compact"
+              value={sort}
+              onValueChange={setSort}
+              options={[
+                { value: 'recent', label: t('learningHub:mistakeBook.sort.recent') },
+                { value: 'errors', label: t('learningHub:mistakeBook.sort.errors') },
+              ]}
+            />
+          </div>
+        ) : null}
+
         <div className="mb-head-actions">
           {selectedIds.size > 0 ? (
             <DsButton variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
@@ -282,55 +325,8 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
             <Lightning size={14} aria-hidden="true" />
             {t('learningHub:mistakeBook.reviewDue')}
           </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            disabled={loading}
-            aria-label={t('learningHub:mistakeBook.refresh')}
-            title={t('learningHub:mistakeBook.refresh')}
-            onClick={() => void load()}
-          >
-            <ArrowClockwise size={14} />
-          </DsButton>
         </div>
       </div>
-
-      {allTotal > 0 ? (
-        <div className="mb-filters">
-          {exams.length > 1 || examId !== null ? (
-            <span className="mb-select-wrap">
-              <select
-                className="mb-select"
-                aria-label={t('learningHub:mistakeBook.examFilter')}
-                value={examId ?? EXAM_FILTER_ALL}
-                onChange={(event) => {
-                  setExpandedId(null);
-                  setExamId(event.target.value === EXAM_FILTER_ALL ? null : event.target.value);
-                }}
-              >
-                <option value={EXAM_FILTER_ALL}>{`${t('learningHub:mistakeBook.allExams')} (${allTotal})`}</option>
-                {exams.map((exam) => (
-                  <option key={exam.examId} value={exam.examId}>
-                    {`${exam.examName || t('learningHub:mistakeBook.untitledExam')} (${exam.count})`}
-                  </option>
-                ))}
-              </select>
-              <CaretDown size={10} className="mb-select-caret" aria-hidden="true" />
-            </span>
-          ) : null}
-          <SegmentedControl<MistakeSort>
-            ariaLabel={t('learningHub:mistakeBook.sortLabel')}
-            size="compact"
-            value={sort}
-            onValueChange={setSort}
-            options={[
-              { value: 'recent', label: t('learningHub:mistakeBook.sort.recent') },
-              { value: 'errors', label: t('learningHub:mistakeBook.sort.errors') },
-            ]}
-          />
-        </div>
-      ) : null}
 
       <div className="mb-body">
         {loading && items.length === 0 ? null : error ? (

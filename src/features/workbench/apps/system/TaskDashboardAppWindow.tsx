@@ -62,7 +62,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
         })}
       />
       <Suspense fallback={<WbSysSkeleton variant="dashboard" />}>
-        <WbSysFade>
+        <WbSysFade className="h-full min-h-0">
           <AnkiTasksApp
             workbenchWindowId={windowId}
             isVisible={isVisible}

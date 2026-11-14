@@ -1,0 +1,4 @@
+.out/
+results/
+test-results/
+playwright-report/

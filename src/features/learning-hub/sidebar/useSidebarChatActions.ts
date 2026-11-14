@@ -38,17 +38,12 @@ export function useSidebarReferenceToChat({
       return false;
     }
 
+    // Keep the pre-refactor map semantics; changing inherited-key behaviour is
+    // a separate behaviour change, not part of the switch migration.
     const typeMap: Record<string, VfsResourceType> = {
-      note: 'note',
-      textbook: 'textbook',
-      exam: 'exam',
-      translation: 'translation',
-      essay: 'essay',
-      image: 'image',
-      file: 'file',
-      mindmap: 'mindmap',
+      note: 'note', textbook: 'textbook', exam: 'exam', translation: 'translation',
+      essay: 'essay', image: 'image', file: 'file', mindmap: 'mindmap',
     };
-
     let sourceId: string | null = null;
     let sourceType: VfsResourceType | null = null;
     let name = '';
@@ -182,16 +177,9 @@ export async function batchAddSelectionToChat({
 
         // 映射 DstuNodeType 到 VfsResourceType
         const typeMap: Record<string, VfsResourceType> = {
-          note: 'note',
-          textbook: 'textbook',
-          exam: 'exam',
-          translation: 'translation',
-          essay: 'essay',
-          image: 'image',
-          file: 'file',
-          mindmap: 'mindmap',
+          note: 'note', textbook: 'textbook', exam: 'exam', translation: 'translation',
+          essay: 'essay', image: 'image', file: 'file', mindmap: 'mindmap',
         };
-
         const sourceType = typeMap[item.type];
         if (!sourceType) {
           return { id, ok: false, error: t('error.unsupportedResourceType', { type: item.type }) };

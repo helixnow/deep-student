@@ -1,0 +1,1052 @@
+{
+  "domain": "log",
+  "commands": [
+    "log_debug_message",
+    "report_frontend_log",
+    "tauri_lab_frontend_log",
+    "write_debug_logs"
+  ],
+  "scenarios": [
+    {
+      "id": "log.debug_message.basic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "message": "wallpaper diagnostics: ok"
+          }
+        },
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "message": ""
+          }
+        },
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "message": "多行\n消息 🔍 \u0000 end"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.debug_message.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "log_debug_message",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "message": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "message": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "log_debug_message",
+          "args": {
+            "msg": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.full_payload",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "ERROR",
+              "kind": "CAUGHT_ERROR",
+              "message": "TypeError: x is undefined",
+              "stack": "TypeError: x is undefined\n    at App (http://localhost:1422/src/App.tsx:10:5)",
+              "component": "App",
+              "route": "/settings",
+              "url": "http://localhost:1422/index.html?tab=general#/settings",
+              "line": 10,
+              "column": 5,
+              "user_agent": "Mozilla/5.0 (X11; Linux x86_64)",
+              "extra": {
+                "name": "TypeError",
+                "message": "x is undefined"
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.minimal_and_nulls",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "only message"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": null,
+              "kind": null,
+              "message": "nulls",
+              "stack": null,
+              "component": null,
+              "route": null,
+              "url": null,
+              "line": null,
+              "column": null,
+              "user_agent": null,
+              "extra": null
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "unknown fields ignored",
+              "userAgent": "camel",
+              "severity": "high"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.levels",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "debug",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "Info",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "WARN",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "warning",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "trace",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "fatal",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "",
+              "message": "l"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "level": "ınfo",
+              "message": "l"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.url_and_redaction",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "url",
+              "url": "http://localhost:1422/a?token=abc#frag"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "url",
+              "url": "http://localhost:1422/a#x?y"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "url",
+              "url": "?only-query"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "Authorization: Bearer abcdefghijklmnop",
+              "stack": "api_key=abcdefgh"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.extra_bounds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "depth",
+              "extra": {
+                "child": {
+                  "child": {
+                    "child": {
+                      "child": {
+                        "child": {
+                          "child": "leaf"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "wide",
+              "extra": {
+                "k00": 0,
+                "k01": 1,
+                "k02": 2,
+                "k03": 3,
+                "k04": 4,
+                "k05": 5,
+                "k06": 6,
+                "k07": 7,
+                "k08": 8,
+                "k09": 9,
+                "k10": 10,
+                "k11": 11,
+                "k12": 12,
+                "k13": 13,
+                "k14": 14,
+                "k15": 15,
+                "k16": 16,
+                "k17": 17,
+                "k18": 18,
+                "k19": 19,
+                "k20": 20,
+                "k21": 21,
+                "k22": 22,
+                "k23": 23,
+                "k24": 24,
+                "k25": 25,
+                "k26": 26,
+                "k27": 27,
+                "k28": 28,
+                "k29": 29,
+                "k30": 30,
+                "k31": 31,
+                "k32": 32,
+                "k33": 33,
+                "k34": 34,
+                "k35": 35,
+                "k36": 36,
+                "k37": 37,
+                "k38": 38,
+                "k39": 39,
+                "k40": 40
+              }
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "array",
+              "extra": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "string",
+              "extra": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "scalar",
+              "extra": 1.5
+            }
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "redact",
+              "extra": {
+                "password": "hunter2hunter2",
+                "nested": {
+                  "api_key": "abcdefgh"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.report_frontend.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "report_frontend_log",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "x",
+              "line": -1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "x",
+              "line": 4294967296
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "x",
+              "column": 1.5
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "x",
+              "level": 3
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "x",
+              "stack": 7
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": "message"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.tauri_lab.no_env_noop",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "error",
+            "message": "boom",
+            "stack": "at x"
+          }
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "warn",
+            "message": "w"
+          }
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "info",
+            "message": "i",
+            "stack": null
+          }
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "other",
+            "message": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.tauri_lab.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "warn"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "message": "m"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": null,
+            "message": "m"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "tauri_lab_frontend_log",
+          "args": {
+            "level": "warn",
+            "message": "m",
+            "stack": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.write_debug_logs.full_entry",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "ERROR",
+                "module": "CHAT",
+                "operation": "STREAM_ERROR",
+                "data": {
+                  "message": "x",
+                  "items": [
+                    1,
+                    2
+                  ]
+                },
+                "context": {
+                  "userId": "u1",
+                  "sessionId": "s1",
+                  "mistakeId": "m1",
+                  "streamId": "st1",
+                  "businessId": "b1"
+                },
+                "stackTrace": "Error\n    at f"
+              }
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.write_debug_logs.empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.write_debug_logs.levels_and_optionals",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "DEBUG",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              },
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              },
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "WARN",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              },
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "ERROR",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              },
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "TRACE",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": {
+                  "WARN": null
+                },
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": null,
+                "context": null,
+                "stackTrace": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": "plain",
+                "context": {}
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                },
+                "context": {
+                  "userId": null,
+                  "extraField": 1
+                },
+                "extra": true
+              }
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.write_debug_logs.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "write_debug_logs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "info",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "FATAL",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "level": "INFO",
+                "module": "M",
+                "operation": "O",
+                "data": 1
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "t",
+                "level": "INFO",
+                "operation": "O",
+                "data": 1
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "t",
+                "level": "INFO",
+                "module": "M",
+                "data": 1
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "t",
+                "level": "INFO",
+                "module": "M",
+                "operation": "O"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": 1,
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                },
+                "context": "ctx"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                },
+                "stackTrace": 1
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              },
+              "not-an-entry"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": {
+                  "WARN": 1
+                },
+                "module": "TEST",
+                "operation": "OP",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

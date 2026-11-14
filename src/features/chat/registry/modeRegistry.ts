@@ -213,3 +213,39 @@ class ModeRegistry extends Registry<ModePlugin> {
  * 模式注册表单例
  */
 export const modeRegistry = new ModeRegistry();
+
+export interface ResolvedSessionFeatureFlags {
+  ragEnabled: boolean;
+  memoryEnabled: boolean;
+  webSearchEnabled: boolean;
+  ankiEnabled: boolean;
+}
+
+/**
+ * 解析当前会话的有效功能开关：优先读会话显式覆写（features Map），
+ * 未覆写时回退当前模式插件声明的默认启用工具（与 buildSendOptions 保持一致）。
+ */
+export function resolveSessionFeatureFlags(
+  state: Pick<ChatStore, 'mode' | 'features'> & Partial<ChatStore>,
+  onGetEnabledToolsError?: (error: unknown) => void,
+): ResolvedSessionFeatureFlags {
+  const modePlugin = modeRegistry.getResolved(state.mode);
+  let modeEnabledTools: string[] = [];
+  if (modePlugin?.getEnabledTools) {
+    try {
+      modeEnabledTools = modePlugin.getEnabledTools(state as ChatStore);
+    } catch (error) {
+      onGetEnabledToolsError?.(error);
+    }
+  } else if (modePlugin?.config.enabledTools) {
+    modeEnabledTools = modePlugin.config.enabledTools;
+  }
+
+  const features = state.features instanceof Map ? state.features : undefined;
+  return {
+    ragEnabled: features?.get('rag') ?? modeEnabledTools.includes('rag'),
+    memoryEnabled: features?.get('userMemory') ?? modeEnabledTools.includes('memory'),
+    webSearchEnabled: features?.get('webSearch') ?? modeEnabledTools.includes('web_search'),
+    ankiEnabled: features?.get('anki') ?? modeEnabledTools.includes('anki'),
+  };
+}

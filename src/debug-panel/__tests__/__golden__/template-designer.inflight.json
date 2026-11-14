@@ -1,0 +1,834 @@
+{
+  "t+6s": {
+    "counter": "日志 18/18",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:fork]",
+          "→ template_fork [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-run"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:list]",
+          "→ template_list [call]",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:validate]",
+          "→ template_validate [preparing]",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:preview]",
+          "→ template_preview [preparing]",
+          "block=blk-untracke"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-err"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:list]",
+          "← template_list | status=ok",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:validate]",
+          "← template_validate | status=ok",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[error]",
+          "[tool:get]",
+          "✗ template_get FAILED: boom"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=ok",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:06.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 审批等待超时 6s",
+          "block=approval_cal"
+        ]
+      }
+    ]
+  },
+  "t+21s": {
+    "counter": "日志 20/20",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:fork]",
+          "→ template_fork [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-run"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:list]",
+          "→ template_list [call]",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:validate]",
+          "→ template_validate [preparing]",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:preview]",
+          "→ template_preview [preparing]",
+          "block=blk-untracke"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-err"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:list]",
+          "← template_list | status=ok",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:validate]",
+          "← template_validate | status=ok",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[error]",
+          "[tool:get]",
+          "✗ template_get FAILED: boom"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=ok",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:06.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 审批等待超时 6s",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:create]",
+          "⚠️ template_create preparing 超时 21s（疑似未进入 tool_call）",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 审批等待超时 21s",
+          "block=approval_cal"
+        ]
+      }
+    ]
+  },
+  "t+61s": {
+    "counter": "日志 22/22",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:fork]",
+          "→ template_fork [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-run"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:list]",
+          "→ template_list [call]",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:validate]",
+          "→ template_validate [preparing]",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:preview]",
+          "→ template_preview [preparing]",
+          "block=blk-untracke"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-err"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:list]",
+          "← template_list | status=ok",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:validate]",
+          "← template_validate | status=ok",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[error]",
+          "[tool:get]",
+          "✗ template_get FAILED: boom"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=ok",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:06.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 审批等待超时 6s",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:create]",
+          "⚠️ template_create preparing 超时 21s（疑似未进入 tool_call）",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 审批等待超时 21s",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:01:01.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 执行超时 61s（疑似缺少 end/error）",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:01:01.000",
+          "[warn]",
+          "[tool:get]",
+          "⚠️ template_get 执行超时 61s（疑似缺少 end/error）",
+          "block=blk-run"
+        ]
+      }
+    ]
+  },
+  "t+120s": {
+    "counter": "日志 22/22",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:fork]",
+          "→ template_fork [preparing]",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 进入审批，等待用户确认",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-run"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:list]",
+          "→ template_list [call]",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:validate]",
+          "→ template_validate [preparing]",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:preview]",
+          "→ template_preview [preparing]",
+          "block=blk-untracke"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-err"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:list]",
+          "← template_list | status=ok",
+          "block=blk-ended"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:validate]",
+          "← template_validate | status=ok",
+          "block=blk-by-block"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[error]",
+          "[tool:get]",
+          "✗ template_get FAILED: boom"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:01.000",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=ok",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:06.000",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ template_delete 审批等待超时 6s",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:create]",
+          "⚠️ template_create preparing 超时 21s（疑似未进入 tool_call）",
+          "block=blk-prep"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:21.000",
+          "[warn]",
+          "[tool:update]",
+          "⚠️ template_update 审批等待超时 21s",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:01:01.000",
+          "[warn]",
+          "[tool:fork]",
+          "⚠️ template_fork 执行超时 61s（疑似缺少 end/error）",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:01:01.000",
+          "[warn]",
+          "[tool:get]",
+          "⚠️ template_get 执行超时 61s（疑似缺少 end/error）",
+          "block=blk-run"
+        ]
+      }
+    ]
+  }
+}

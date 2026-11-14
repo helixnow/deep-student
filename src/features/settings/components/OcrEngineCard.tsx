@@ -9,17 +9,19 @@
  * - 引擎故障时自动熔断到下一个
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { CaretUp, CaretDown, X } from '@phosphor-icons/react';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Switch } from '@/components/ui/shad/Switch';
+import { excludeOpenCodeGo } from '@/utils/opencodeGo';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { OcrEngineTestPanel } from './OcrEngineTestPanel';
 import { cn } from '@/lib/utils';
-import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
+import { GroupTitle } from './settingsTabPrimitives';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import type { ApiConfig } from '@/types';
 
@@ -57,6 +59,20 @@ interface OcrEngineCardProps {
   apiConfigs: ApiConfig[];
   toUnifiedModelInfo: (apis: ApiConfig[]) => UnifiedModelInfo[];
   getAllEnabledApis: (currentId?: string) => ApiConfig[];
+}
+
+/**
+ * OCR 引擎候选：已启用、多模态、尚未添加为引擎的模型配置。
+ *
+ * OpenCode Go 只允许用于 Agent 对话（`src/utils/opencodeGo.ts` 的规则），
+ * 因此不能出现在 OCR 引擎候选里；后端也会拒绝这类调用，放进候选只会让用户白点。
+ */
+export function filterOcrEngineCandidateApis(
+  apis: readonly ApiConfig[],
+  engines: readonly { configId: string }[],
+): ApiConfig[] {
+  const added = new Set(engines.map((engine) => engine.configId));
+  return excludeOpenCodeGo(apis).filter((config) => config.isMultimodal && !added.has(config.id));
 }
 
 export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConfigs, toUnifiedModelInfo, getAllEnabledApis }) => {
@@ -97,6 +113,8 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
       setThinkingEnabled(enabled);
     } catch { /* 默认关闭 */ }
   }, []);
+
+  useRefreshOnReturn(loadEngines, !loading);
 
   useEffect(() => {
     const load = async () => {
@@ -182,11 +200,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
   }, [loadEngines, t]);
 
   const multimodalModels = useMemo(() => {
-    const allApis = getAllEnabledApis();
-    const multimodal = allApis.filter(
-      (c) => c.isMultimodal && !engines.some((e) => e.configId === c.id)
-    );
-    return toUnifiedModelInfo(multimodal);
+    return toUnifiedModelInfo(filterOcrEngineCandidateApis(getAllEnabledApis(), engines));
   }, [getAllEnabledApis, toUnifiedModelInfo, engines]);
 
   const handleAddEngineById = useCallback(async (modelId: string) => {
@@ -211,40 +225,18 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
     }
   }, [apiConfigs, loadEngines, t]);
 
-  const handleRefresh = useCallback(async () => {
-    setLoading(true);
-    await loadEngines();
-    setLoading(false);
-    showGlobalNotification('success', t('settings:ocr.refreshed'));
-  }, [loadEngines, t]);
 
   const enabledCount = engines.filter((e) => e.enabled).length;
   const firstEnabledIndex = engines.findIndex((e) => e.enabled);
 
   return (
-    <div className={cn("text-left overflow-hidden min-w-0", className)}>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <SiliconFlowLogo className="h-4 inline-block opacity-70" />
-            {t('settings:cards.exam_sheet_ocr_title')}
-          </h3>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5"
-            title={t('common:refresh')}
-          >
-            {t('common:refresh')}
-          </DsButton>
-        </div>
+    <section className={cn("text-left overflow-hidden min-w-0", className)}>
+      <GroupTitle
+        title={t('settings:cards.exam_sheet_ocr_title')}
+        description={t('settings:ocr.priority_desc')}
+      />
 
-        <p className="text-xs text-muted-foreground/70 leading-relaxed px-1">
-          {t('settings:ocr.priority_desc')}
-        </p>
-
+      <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4 flex flex-col gap-2">
         <div className="space-y-px">
           {loading ? (
             <div className="flex items-center justify-center py-6">
@@ -453,7 +445,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           await handleRemoveEngine(id);
         }}
       />
-    </div>
+    </section>
   );
 };
 

@@ -1,0 +1,2208 @@
+{
+  "domain": "notes",
+  "commands": [
+    "notes_editor_begin",
+    "notes_editor_finish",
+    "notes_editor_flush",
+    "notes_editor_freeze_ack",
+    "notes_editor_heartbeat",
+    "notes_editor_lease_status",
+    "notes_editor_refresh_ack",
+    "notes_editor_register",
+    "notes_editor_release",
+    "notes_editor_unregister"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.lease.single_editor.full_lifecycle_commit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "租约单编辑器",
+              "content": "# 租约\n\n原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-single",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 租约\n\n租约内提交\n",
+              "expected_updated_at": "${8.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            },
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "updatedAt": "${9.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "cancel": false
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.two_editors.barrier_fence_owner_and_refresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "租约双编辑器",
+              "content": "共享原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-two",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "绕过租约写入\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "未就绪写入\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            },
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            },
+            "cancel": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "租约内提交\n",
+              "expected_updated_at": "${13.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            },
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "cancel": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "updatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "updatedAt": "${14.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            },
+            "updatedAt": "${14.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "cancel": false
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${4.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.freeze_ack.divergent_stale_phase_shape_and_mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "冻结确认",
+              "content": "冻结原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-divergent",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "分歧草稿\n",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "取消后写入\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-stale",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${11.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${11.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-phase",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}",
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}",
+              "extra": 1
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "nel_missing"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${14.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "冻结确认B",
+              "content": "B原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${26.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${26.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-mismatch",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${28.participant_id}",
+              "token": "${29.token}"
+            },
+            "draft": {
+              "markdown": "${27.content_md}",
+              "expected_updated_at": "${27.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${26.path}"
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${28.participant_id}",
+              "token": "${29.token}"
+            },
+            "draft": {
+              "markdown": "${27.content_md}",
+              "expected_updated_at": "${27.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${29.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${4.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${28.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.begin.validation_idempotency_conflict_and_owner",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "开始A",
+              "content": "A\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "开始B",
+              "content": "B\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "nep_missing",
+            "operationId": "note-op-x",
+            "noteIds": [
+              "${1.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-empty",
+            "noteIds": []
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "   ",
+            "noteIds": [
+              "${1.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-owner-outside",
+            "noteIds": [
+              "${2.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-missing",
+            "noteIds": [
+              "note_missing"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-a",
+            "noteIds": [
+              "${1.id}",
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-a",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-a",
+            "noteIds": [
+              "${1.id}",
+              "${2.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${4.participant_id}",
+            "operationId": "note-op-b-conflict",
+            "noteIds": [
+              "${1.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${4.participant_id}",
+            "operationId": "note-op-b",
+            "noteIds": [
+              "${2.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${4.participant_id}",
+            "operationId": "note-op-a",
+            "noteIds": [
+              "${1.id}"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-nokey"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "nel_missing"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${10.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${4.participant_id}",
+              "token": "${14.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${4.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.participant.register_heartbeat_unregister_branches",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "参与者",
+              "content": "p\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "参与者已删",
+              "content": "d\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "note_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "${7.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "nep_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "nep_missing"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${7.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${7.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "${7.participant_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.late_registration_reopens_barrier",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迟到注册",
+              "content": "迟到原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-late",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${4.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_heartbeat",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "迟到期间写入\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            },
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${8.participant_id}",
+              "token": "${4.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${8.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.unregister_cancels_whole_lease",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "注销取消",
+              "content": "注销原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-unreg",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${4.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${5.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${5.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "注销后写入\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-owner-unreg",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_lease_status",
+          "args": {
+            "token": "${11.token}"
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${11.token}"
+            },
+            "cancel": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.flush.scope_unopened_note_and_lease_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "刷新A",
+              "content": "A原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "刷新B未打开",
+              "content": "B原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "刷新C范围外",
+              "content": "C原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${5.participant_id}",
+            "operationId": "note-op-scope",
+            "noteIds": [
+              "${1.id}",
+              "${2.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "draft": {
+              "markdown": "${4.content_md}",
+              "expected_updated_at": "${4.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "noteId": "${2.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "noteId": "${3.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": null
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "nel_missing"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "${6.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "updatedAt": "${11.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${5.participant_id}",
+              "token": "${6.token}"
+            },
+            "cancel": false
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${5.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.flush_then_restore_current_under_fence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "租约恢复",
+              "content": "# 恢复\n\n第一版\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 恢复\n\n第二版\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${6.participant_id}",
+            "operationId": "note-op-restore",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${5.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${5.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            },
+            "draft": {
+              "markdown": "# 恢复\n\n未保存草稿\n",
+              "expected_updated_at": "${5.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${5.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${5.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${13.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            },
+            "updatedAt": "${15.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${6.participant_id}",
+              "token": "${7.token}"
+            },
+            "cancel": false
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${6.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.lease.finish_refresh_release.phase_branches",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "阶段",
+              "content": "阶段原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${3.participant_id}",
+            "operationId": "note-op-phase-branches",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "updatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "draft": {
+              "markdown": "${2.content_md}",
+              "expected_updated_at": "${2.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "updatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "nel_missing"
+            },
+            "cancel": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": "true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "${4.token}"
+            },
+            "updatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "cancel": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_refresh_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            },
+            "updatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_finish",
+          "args": {
+            "lease": {
+              "participant_id": "${3.participant_id}",
+              "token": "${4.token}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${3.participant_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

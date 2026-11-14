@@ -27,6 +27,35 @@ export interface ResearchBriefingActionLabels {
   exportIntent?: string;
 }
 
+export interface CopyReportActionLabels {
+  copyReport: string;
+}
+
+/**
+ * 兜底 copy-report handler：用于无 research-report 块的通用摘要/简报场景，
+ * 复用统一 Markdown 导出格式化结果写入剪贴板。
+ */
+export function createCopyReportFallbackActionHandlers(
+  intent: GenerativeUIIntent,
+  labels: CopyReportActionLabels,
+  getReportBody: () => string | null | undefined,
+  markdownLabels?: Partial<IntentExportMarkdownLabels>,
+): Record<string, GenerativeActionDefinition> {
+  return {
+    'copy-report': {
+      id: 'copy-report',
+      label: labels.copyReport,
+      riskLevel: 'low',
+      handler: async () => {
+        const reportBody = getReportBody()?.trim();
+        const text = reportBody || buildIntentExportMarkdown(intent, markdownLabels).trim();
+        if (!text) return;
+        await copyTextToClipboard(text);
+      },
+    },
+  };
+}
+
 export function createResearchBriefingActionHandlers(
   callbacks: ResearchBriefingActionCallbacks,
   labels: ResearchBriefingActionLabels,

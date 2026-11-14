@@ -1,0 +1,30 @@
+{
+ "note": "Runner bindings that WAVE0 v0 cannot express. Keyed by scenario id; llm = X5 llm-service script bound to ${llm.baseUrl}. See README.md (WP-231).",
+ "scripts": {
+  "success.answer": "X5 builtin (host/e2e/streaming/wave0/llm-service.ts:63): content 固定+回答, finish=stop, [DONE].",
+  "error.http-500": "X5 builtin (host/e2e/streaming/wave0/llm-service.ts:73): HTTP 500 with fixed JSON body before any stream byte."
+ },
+ "scenarios": {
+  "handout.llm.success_answer": {
+   "llm": "success.answer"
+  },
+  "handout.llm.upstream_500": {
+   "llm": "error.http-500"
+  },
+  "handout.vlm_caption.success_answer": {
+   "llm": "success.answer"
+  },
+  "handout.vlm_caption.upstream_500": {
+   "llm": "error.http-500"
+  },
+  "voice.transcribe.success_answer": {
+   "llm": "success.answer"
+  },
+  "voice.transcribe.upstream_500": {
+   "llm": "error.http-500"
+  },
+  "media.transcribe.start_cancel_scripted_asr": {
+   "llm": "success.answer"
+  }
+ }
+}

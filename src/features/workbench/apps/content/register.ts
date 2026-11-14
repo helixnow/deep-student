@@ -39,7 +39,7 @@ import {
   type QbankFocusEventDetail,
 } from '../../agent/drivers/qbankDriver';
 import { getNoteEditor } from '../../agent/drivers/noteDriver';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { createContentApp, type CreateContentAppOptions } from './createContentApp';
 import { requestContentCloseConfirmation } from './ContentCloseConfirmation';
@@ -693,5 +693,5 @@ for (const def of CONTENT_APP_DEFINITIONS) {
 }
 
 for (const def of CONTENT_APP_DEFINITIONS) {
-  appRegistry.register(def);
+  contributeWorkbenchApp(def);
 }

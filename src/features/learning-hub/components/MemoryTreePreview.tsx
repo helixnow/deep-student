@@ -6,6 +6,8 @@
  * 点击节点可导航到对应文件夹。
  */
 
+import { registerMemoryDomainRefresh } from '../views/memoryDomainRefresh';
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -211,7 +213,10 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     }
   }, [t]);
 
-  useEffect(() => { loadTree(); }, [loadTree]);
+  useRefreshOnReturn(loadTree, !isLoading);
+
+  useEffect(() => { void loadTree(); }, [loadTree]);
+  useEffect(() => registerMemoryDomainRefresh(loadTree, () => {}), [loadTree]);
 
   // 仅首次加载显示整屏 spinner；刷新时保留已有树内容，避免内容跳动
   if (isLoading && !treeData) {
@@ -258,9 +263,6 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('memory.aria.refresh')}>
-          <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
-        </DsButton>
       </div>
 
       {/* Tree */}

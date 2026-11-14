@@ -152,6 +152,9 @@
     "errorRenderingCard": "Error rendering card",
     "noCardsToPreview": "No cards to preview",
     "flipCard": "Flip card",
+    "pause": "Pause",
+    "play": "Play",
+    "goToCard": "Go to card {{index}}",
     "instructions": "← → or A/D: Navigate • F: Flip • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last"
   },
   "copy": "Copy",
@@ -2952,6 +2955,15 @@
     "cached": "Cached"
   },
   "debug_panel": {
+    "title": "Analysis Panel",
+    "llm_playground": "LLM Playground",
+    "llm_playground_hint": "LLM output simulation playground",
+    "devtools_hint": "Open/close WebView DevTools (F12)",
+    "ui_lab_on": "UI Lab On",
+    "ui_lab_off": "UI Lab Off",
+    "ui_lab_on_hint": "Style debugging enabled, click to disable",
+    "ui_lab_off_hint": "Style debugging disabled, click to enable",
+    "resize_hint": "Drag to resize",
     "open": "Open debug panel",
     "open_unified": "Open unified debug panel",
     "close": "Close debug panel",
@@ -3980,6 +3992,7 @@
   },
   "question_bank": {
     "source_images": "Original imported images",
+    "source_image_page_alt": "Page {{page}}",
     "crop_hint": "Drag on the image to select an area, then click \"Crop and add\" to attach it to the question",
     "no_source_images": "This exam has no original imported images",
     "crop_selected": "Crop area selected",
@@ -4016,6 +4029,11 @@
     }
   },
   "update": {
+    "pluginImpactTitle": "Check plugins before updating",
+    "pluginImpactIncompatible": "These plugins declare no support for v{{version}} and may be inactive after updating: {{plugins}}.",
+    "pluginImpactUnchecked": "Compatibility could not be checked for these plugins: {{plugins}}.",
+    "pluginImpactUnavailable": "Plugin settings could not be read to check compatibility.",
+    "pluginImpactContinue": "Continue updating? Your plugin source, settings, and data will be kept.",
     "notifyMessage": "New version v{{version}} available",
     "notifyAction": "Update now",
     "readyMessage": "Update downloaded. Restart the app to apply.",

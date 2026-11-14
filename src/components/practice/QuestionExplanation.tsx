@@ -118,12 +118,12 @@ export function QuestionExplanation({
       )}
       <GradingDiagnosticsView diagnostics={ai.state.diagnostics} />
       {expanded && (
-        <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="space-y-3 border-l-2 border-border/65 pl-3.5 text-sm leading-relaxed text-foreground/85">
           {canonical?.trim() && <MarkdownRenderer content={canonical} />}
           {showFeedback && (
             <div className="space-y-2">
               {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
-              {canonical?.trim() && <h4 className="text-sm font-medium text-info">{t('editor.aiAnalysis')}</h4>}
+              {canonical?.trim() && <h4 className="text-xs font-medium text-muted-foreground">{t('editor.aiAnalysis')}</h4>}
               <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
               {allowExplanationWrite && onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
                 <AiExplanationWriteButton
@@ -139,8 +139,8 @@ export function QuestionExplanation({
             </div>
           )}
           {savedDraft && !ai.state.feedback && (
-            <details className="space-y-2 border-t pt-2">
-              <summary className="cursor-pointer text-warning">{t('batch.feedbackDraft')}</summary>
+            <details className="space-y-2 border-t border-border/40 pt-2">
+              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">{t('batch.feedbackDraft')}</summary>
               {savedDraft.feedback && <MarkdownRenderer content={toExplanationText(savedDraft.feedback)} />}
               <GradingDiagnosticsView diagnostics={savedDraft.diagnostics} />
             </details>

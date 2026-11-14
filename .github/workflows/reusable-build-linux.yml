@@ -1,13 +1,4 @@
-# Linux 构建（reusable）
-#
-# release.yml / rebuild-release.yml / hotfix-linux-release.yml 共用的
-# 唯一 Linux 构建实现。调用方需 `secrets: inherit`。
-#
-# fail-closed：updater 签名密钥及密码缺失时立即
-# 失败 —— 否则会静默产出没有 .sig 的 AppImage, 到 publish 阶段才炸。
-# Tauri v2 的 createUpdaterArtifacts=true 使用 AppImage 本体作为 updater
-# 产物；v1Compatible 才会生成 AppImage.tar.gz。这里兼容两种格式。
-
+# Linux Electron release build (x64 AppImage + deb + minisign)
 name: Build Linux (reusable)
 
 on:
@@ -17,21 +8,16 @@ on:
         default: false
         type: boolean
       source_sha:
-        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        description: 'Immutable 40-char source commit SHA'
         required: false
         type: string
         default: ''
       tag_name:
-        description: '构建的 Git ref（tag 或历史热修预检解析出的完整 SHA）'
+        description: 'Release tag (e.g. v0.20.0)'
         required: true
         type: string
-      artifact_name:
-        description: '上传的 artifact 名称'
-        required: false
-        type: string
-        default: linux-x86_64
       frontend_dist_artifact:
-        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端（hotfix-linux-release.yml 走此回退路径）'
+        description: 'Prebuilt frontend dist artifact name; builds locally when empty'
         required: false
         type: string
         default: ''
@@ -40,64 +26,37 @@ permissions:
   contents: read
   actions: read
 
-env:
-  # 固定工具版本（升级需显式改这里）
-  SENTRY_CLI_VERSION: '2.58.6'
-
 jobs:
   build:
-    # Keep the Linux ABI/image family consistent with CI and archive consumers.
     runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
-    timeout-minutes: 180
+    timeout-minutes: 90
     env:
       RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
       RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
       RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
       GH_TOKEN: ${{ github.token }}
-      RUSTFLAGS: -C link-arg=-fuse-ld=lld
-      SCCACHE_IDLE_TIMEOUT: '0'
-      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       NODE_OPTIONS: '--max-old-space-size=4096'
-      SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
-      CARGO_PROFILE_RELEASE_LTO: 'false'
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
-      CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
-      # Keep linker/compiler memory below the hosted runner limit during the
-      # full release rebuild. The Android release uses the same cap.
-      CARGO_BUILD_JOBS: '2'
-      # sccache（GHA cache 后端）与 rust-cache 叠加：rust-cache 负责 registry/
-      # git 依赖与 target 目录整体缓存，sccache 按编译单元缓存 rustc 输出，
-      # 依赖版本或 profile 变化导致 rust-cache miss 时仍可大量命中。
-      SCCACHE_GHA_ENABLED: 'true'
-      RUSTC_WRAPPER: sccache
+      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
+      ELECTRON_CUSTOM_DIR: '{{ version }}'
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     steps:
-      # ── updater 签名密钥预检（fail-closed, 在任何耗时步骤之前）──
-      - name: Preflight — require updater signing key (fail-closed)
+      - name: Preflight — require updater signing secrets (fail-closed)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          MISSING=""
-          for VAR in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
-            if [ -z "${!VAR}" ]; then
-              MISSING="${MISSING} ${VAR}"
-            fi
-          done
-          if [ -n "$MISSING" ]; then
-            echo "::error::Linux release build refuses to run without updater signing secrets (fail-closed)."
-            echo "::error::Missing secrets:${MISSING}"
-            echo "::error::Without them the AppImage updater archive would have no valid .sig and the release would be rejected at publish."
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            echo "::error::Linux release build missing TAURI_SIGNING_PRIVATE_KEY or TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
             exit 1
           fi
-          echo "✅ Updater signing secrets present"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || inputs.tag_name }}
 
       - name: Checkout release tooling from workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-tooling
@@ -105,18 +64,10 @@ jobs:
             scripts/ci
             .github/actions
 
-      - name: Free disk space for Linux release
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-
-      - name: Verify and prepare Linux release resources
-        run: bash .release-tooling/scripts/ci/prepare-linux-release.sh
-
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: 22
+          node-version: '24'
           cache: npm
 
       - name: Verify pinned release source before installing dependencies
@@ -124,83 +75,31 @@ jobs:
         shell: bash
         run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
-      # Install through dpkg; cached file snapshots previously omitted gdk .pc files.
-      - name: Install Linux dependencies through dpkg
-        run: bash .release-tooling/scripts/ci/install-linux-deps.sh rpm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: '1.98.1'
-          targets: x86_64-unknown-linux-gnu
-
-      # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
-      # sccache 二进制不存在时 cargo 会直接报错。
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        continue-on-error: true
-
-      - name: Check optional compiler cache
-        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: './src-tauri -> target'
-          shared-key: release-linux-x86_64
-          cache-on-failure: true
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfuse2
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      # Legacy standalone recovery keeps its existing metadata refresh behavior.
-      # A pinned normal release must never silently mutate the candidate lockfile.
-      - name: Verify locked release dependency graph
-        if: ${{ inputs.source_sha != '' }}
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx @electron/rebuild -f -w better-sqlite3
+
+      - name: Install Electron binary
         shell: bash
         run: |
-          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
-          node .release-tooling/scripts/ci/release-contracts.mjs source
-
-      - name: Refresh release lock metadata and third-party notices
-        if: ${{ inputs.source_sha == '' }}
-        run: |
-          (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
-          npm run licenses:generate
-
-      - name: Install Sentry CLI (pinned)
-        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
-        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
-
-      - name: Print build tool manifest
-        run: |
-          echo "=== Linux build tool manifest ==="
-          echo "node            : $(node --version)"
-          echo "npm             : $(npm --version)"
-          echo "rustc           : $(rustc --version)"
-          echo "cargo           : $(cargo --version)"
-          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
-          echo "sccache         : $(sccache --version) (RUSTC_WRAPPER, GHA cache backend)"
-          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
-          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / sccache-action v0.0.11 / setup-protoc v3.0.0 / rust-cache v2.9.1 / cache-apt-pkgs v1.6.3 / upload-artifact v7.0.1 (all SHA-pinned)"
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then exit 0; fi
+            echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
+            sleep 15
+          done
+          exit 1
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      # ── WI-4: 预构建前端 dist（可选）──
-      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
-      # artifact 分发；传入名称时这里下载复用, tauri build 用 --config 把
-      # beforeBuildCommand 置空跳过重复的 npm run build（其 Sentry 前端
-      # sourcemap 上传也已随之收敛到 build-frontend）。留空时保持原行为。
       - name: Download prebuilt frontend dist
         if: ${{ inputs.frontend_dist_artifact != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.frontend_dist_artifact }}
           path: dist
@@ -208,203 +107,66 @@ jobs:
       - name: Verify prebuilt frontend dist
         if: ${{ inputs.frontend_dist_artifact != '' }}
         run: |
-          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
-          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist missing index.html"; exit 1; }
+          echo "Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
 
-      # 2026-08-06: Linux 此前完全没有打包 libpdfium.so，PDF 预览/文本提取/OCR
-      # 在 Linux 上一直不可用（老问题，随本次 OCR/pdfium 修复一并补齐）。
-      # 与 macOS/Windows 一致：构建前下载 x64 pdfium 放入 resources。
       - name: Verify prebuilt frontend identity and contents
         if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
         shell: bash
         run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
 
-      - name: Prepare target-specific pdfium
-        run: |
-          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
-          else
-            bash scripts/download-pdfium.sh linux-x64
-          fi
-          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+      - name: Build frontend locally (fallback)
+        if: ${{ inputs.frontend_dist_artifact == '' }}
+        run: npm run build
 
-      - name: Compile or recover native executable
+      - name: Package Linux Electron app
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          # 仅回退路径（frontend_dist_artifact 为空, beforeBuildCommand 在本
-          # job 内跑 vite build）时生效；预构建 dist 路径下 vite 不运行,
-          # sourcemap 上传由 reusable-build-frontend.yml 完成。
-          SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
-          bash .release-tooling/scripts/ci/with-resource-monitor.sh node .release-tooling/scripts/ci/native-build.mjs compile x86_64-unknown-linux-gnu
+          for attempt in 1 2 3; do
+            if node electron/scripts/package.mjs --linux --x64; then exit 0; fi
+            echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
 
-      - name: Preserve compilation before packaging
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: native-x86_64-unknown-linux-gnu
-          path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/deep-student*
-            src-tauri/target/x86_64-unknown-linux-gnu/release/native-build.json
-          retention-days: 30
-          overwrite: true
-          if-no-files-found: error
+      - name: Verify fuses and asar integrity
+        run: node electron/scripts/verify-fuses.mjs --linux
 
-      - name: Bundle with bounded retry (no Rust compilation)
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
-        run: node .release-tooling/scripts/ci/native-build.mjs bundle x86_64-unknown-linux-gnu deb,rpm,appimage
-
-      # issue #481: linuxdeploy bundles Ubuntu 22.04's libwayland-*, and the
-      # generated AppRun puts $APPDIR/usr/lib on LD_LIBRARY_PATH, so the HOST's
-      # Mesa resolves libEGL_mesa against the stale bundled wayland and dies on
-      # "undefined symbol: wl_fixes_interface". WebKitWebProcess then aborts with
-      # EGL_BAD_PARAMETER and the window stays blank. Repack the AppImage without
-      # those libraries, then re-sign because repacking changes the bytes.
-      # 与 macOS/Windows 不同，Linux 的 updater 产物就是 AppImage 本体，签名
-      # 必须对应最终字节，因此先删旧 .sig 再签。
-      # squashfs-tools（mksquashfs/unsquashfs）由 install-linux-deps.sh 统一安装。
-      - name: Unbundle bundled wayland libraries from AppImage
+      - name: Sign updater AppImage with minisign
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-          images=("$BUNDLE_DIR"/*.AppImage)
-          if (( ${#images[@]} == 0 )); then
-            echo "::error::No AppImage produced under $BUNDLE_DIR"
+          APPIMAGE=$(find release -maxdepth 1 -name '*_x86_64.AppImage' ! -name '*.sig' | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::No *_x86_64.AppImage found under release/"
+            ls -la release/ || true
             exit 1
           fi
-          for image in "${images[@]}"; do
-            bash .release-tooling/scripts/ci/patch-appimage-wayland.sh "$image"
-            rm -f "$image.sig"
-            npx --no-install tauri signer sign "$image"
-            test -s "$image.sig" || { echo "::error::Missing updater signature for $image"; exit 1; }
-            # publish 只检查 .sig 存在/长度；这里先挡掉损坏的 base64，
-            # 避免坏签名随 release 发出去才被发现。
-            tr -d '\r\n' < "$image.sig" | base64 -d >/dev/null 2>&1 || {
-              echo "::error::Updater signature for $image is not valid base64"
-              exit 1
-            }
-          done
+          node .release-tooling/scripts/ci/sign-updater.mjs "$APPIMAGE"
+          test -s "${APPIMAGE}.sig"
 
-      # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
-      # 失败时也能拿到命中率（恰是最需要缓存诊断的场景），结果同时写入
-      # 日志与 job summary。macOS/Windows 的 reusable-build-* 同结构。
-      - name: Show sccache stats
-        if: always()
-        run: |
-          STATS="$(sccache --show-stats 2>&1 || echo 'sccache unavailable')"
-          echo "$STATS"
-          {
-            echo "## sccache stats (release linux-x86_64)"
-            echo ""
-            echo '```'
-            echo "$STATS"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload native symbols to Sentry
-        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: bash scripts/upload-sentry-symbols.sh "src-tauri/target/x86_64-unknown-linux-gnu/release"
-
-      - name: Rename updater artifacts with arch suffix
-        run: |
-          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-
-          # Tauri v2: AppImage 本体就是 updater 产物，签名文件为
-          # <app>.AppImage.sig。文件名可改，签名仍对应文件内容。
-          for f in "$BUNDLE_DIR"/*.AppImage; do
-            [ -f "$f" ] || continue
-            BASE=$(basename "$f" .AppImage | tr ' ' '.')
-            TARGET="$BUNDLE_DIR/${BASE}_x86_64.AppImage"
-            if [ "$f" != "$TARGET" ]; then
-              mv "$f" "$TARGET"
-              [ -f "$f.sig" ] && mv "$f.sig" "$TARGET.sig"
-            fi
-          done
-
-          # Tauri v1Compatible: updater archive + signature.
-          for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
-            [ -f "$f" ] || continue
-            BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
-            mv "$f" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz"
-            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz.sig"
-          done
-          echo "📦 Linux bundle artifacts:"
-          ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
-
-      # issue #481 的独立防线：publish 只检查 .sig 存在/base64/长度，不校验
-      # 内容；这里在重命名后的最终上传产物上再解包一次，确认包内确实没有
-      # libwayland-*（patch 脚本内部校验的是中间产物，这里校验真正上传的文件）。
-      - name: Verify final AppImage keeps wayland libraries unbundled
+      - name: Verify updater AppImage, signature, and deb exist
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-          images=("$BUNDLE_DIR"/*_x86_64.AppImage)
-          if (( ${#images[@]} != 1 )); then
-            echo "::error::Expected exactly one final AppImage, got ${#images[@]}"
-            ls -la "$BUNDLE_DIR"
+          APPIMAGE_COUNT=$(find release -maxdepth 1 -name '*.AppImage' ! -name '*.sig' | wc -l | tr -d ' ')
+          SIG_COUNT=$(find release -maxdepth 1 -name '*.AppImage.sig' | wc -l | tr -d ' ')
+          DEB_COUNT=$(find release -maxdepth 1 -name '*.deb' | wc -l | tr -d ' ')
+          if [ "$APPIMAGE_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ] || [ "$DEB_COUNT" -ne 1 ]; then
+            echo "::error::Expected 1 .AppImage, 1 .sig, 1 .deb; got ${APPIMAGE_COUNT}/${SIG_COUNT}/${DEB_COUNT}"
+            ls -la release/ || true
             exit 1
           fi
-          # v1Compatible 的 updater 产物是 AppImage.tar.gz；当前 createUpdaterArtifacts
-          # 走 Tauri v2（AppImage 本体），若将来切回 v1，归档里的 AppImage 同样
-          # 需要打补丁，否则会静默发布带旧 libwayland 的包 —— 此处 fail-closed。
-          archives=("$BUNDLE_DIR"/*_x86_64.AppImage.tar.gz)
-          if (( ${#archives[@]} > 0 )); then
-            echo "::error::v1Compatible AppImage updater archive is not wayland-patched; handle it before enabling"
-            printf '  %s\n' "${archives[@]}"
-            exit 1
-          fi
-          image="$(readlink -f "${images[0]}")"
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"' EXIT
-          (cd "$work" && "$image" --appimage-extract >/dev/null)
-          appdir="$work/squashfs-root"
-          test -x "$appdir/AppRun" || { echo "::error::AppRun missing from final AppImage"; exit 1; }
-          survivors="$(find "$appdir" \( -type f -o -type l \) -name 'libwayland-*.so*' -print -quit)"
-          if [ -n "$survivors" ]; then
-            echo "::error::Bundled wayland libraries survived into the final AppImage:"
-            find "$appdir" \( -type f -o -type l \) -name 'libwayland-*.so*'
-            exit 1
-          fi
-          echo "✅ Final AppImage has no bundled libwayland-*"
 
-      # ── 更新器签名产物存在性校验（publish 前置防线）──
-      - name: Verify updater artifact and signature exist
+      - name: Stage Linux release deliverables
         run: |
-          set -euo pipefail
-          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-          V2_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage' ! -name '*.sig' | wc -l | tr -d ' ')
-          V2_SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.sig' | wc -l | tr -d ' ')
-          V1_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
-          V1_SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz.sig' | wc -l | tr -d ' ')
-          V2_OK=$([ "$V2_COUNT" -eq 1 ] && [ "$V2_SIG_COUNT" -eq 1 ] && echo 1 || echo 0)
-          V1_OK=$([ "$V1_COUNT" -eq 1 ] && [ "$V1_SIG_COUNT" -eq 1 ] && echo 1 || echo 0)
-          if [ "$V2_OK" -ne 1 ] && [ "$V1_OK" -ne 1 ]; then
-            echo "::error::Expected Tauri v2 AppImage + .sig or v1Compatible tarball + .sig; got v2 ${V2_COUNT}/${V2_SIG_COUNT}, v1 ${V1_COUNT}/${V1_SIG_COUNT}"
-            ls -la "$BUNDLE_DIR" || true
-            exit 1
-          fi
-          echo "✅ Updater artifact + signature present"
+          mkdir -p linux-output
+          cp release/*.AppImage linux-output/
+          cp release/*.AppImage.sig linux-output/
+          cp release/*.deb linux-output/
 
       - name: Record locally built frontend identity
         if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
@@ -416,7 +178,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TARGET: x86_64-unknown-linux-gnu
-          RELEASE_ARTIFACT_DIR: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
+          RELEASE_ARTIFACT_DIR: linux-output
         run: >-
           node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
           --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
@@ -424,7 +186,7 @@ jobs:
 
       - name: Upload release asset provenance
         if: ${{ inputs.source_sha != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-provenance-x86_64-unknown-linux-gnu
           path: ${{ runner.temp }}/release-provenance.json
@@ -432,31 +194,16 @@ jobs:
           overwrite: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           if-no-files-found: error
           overwrite: true
-          name: ${{ inputs.artifact_name }}
+          name: linux-x86_64
           retention-days: 30
           compression-level: 0
-          path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
+          path: linux-output/*
 
       - uses: ./.release-tooling/.github/actions/release-checkpoint
-        if: inputs.source_sha != '' && inputs.artifact_name == 'linux-x86_64'
+        if: inputs.source_sha != ''
         with:
           stage: linux
-
-      - name: Upload in-build resource diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: resource-diagnostics-x86_64-unknown-linux-gnu
-          path: ${{ runner.temp }}/release-resource-metrics.log
-          if-no-files-found: ignore
-          overwrite: true

@@ -1,0 +1,509 @@
+{
+  "domain": "storage",
+  "commands": [
+    "get_startup_recovery_status",
+    "retry_startup_recovery_preflight",
+    "list_startup_recovery_incidents",
+    "resolve_startup_recovery",
+    "open_startup_recovery_incident_folder",
+    "export_startup_recovery_incident",
+    "export_startup_recovery_report"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.recovery.status.fresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.retry_preflight.fresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "retry_startup_recovery_preflight",
+          "args": {}
+        },
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.resolve.no_incident",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "legacy"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "slotA"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "slotB"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.resolve.invalid_candidate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "slotC"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "Legacy"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": " slotA"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.resolve.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidate_id": "legacy"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.open_folder.invalid_or_missing_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": "."
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": ".."
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": "20261106T000000000000Z-00000000-0000-0000-0000-000000000000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.open_folder.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": 7
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_incident.invalid_or_missing_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "",
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "..",
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "x/y",
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "missing-incident",
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "missing-incident",
+            "destination": "content://com.example/recovery.zip"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_incident.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "missing-incident"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": null,
+            "destination": "/dev/null"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.dev_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "/dev/null"
+          }
+        },
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.into_isolated_slot_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "${0.slot_d_dir}"
+          }
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "${0.slot_d_dir}"
+          }
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.destination_is_directory",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "clear_test_slots",
+          "args": {}
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "${1.slot_c_dir}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.parent_not_directory",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "/dev/null/wp236/report.json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.virtual_uri",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "content://com.example.wp236/report.json"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "content%3A%2F%2Fcom.example.wp236%2Freport.json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.export_report.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

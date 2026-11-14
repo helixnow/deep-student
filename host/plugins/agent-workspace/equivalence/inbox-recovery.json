@@ -1,0 +1,30 @@
+{
+  "domain": "agent-workspace",
+  "commands": ["workspace_list_agents", "workspace_list_messages", "workspace_send_message"],
+  "scenarios": [
+    {
+      "id": "agent_workspace.inbox.historical_read_twice",
+      "seed": "historical-wp013-v1",
+      "steps": [
+        { "cmd": "workspace_list_agents", "args": { "sessionId": "creator_old", "workspaceId": "ws_old" } },
+        { "cmd": "workspace_list_messages", "args": { "sessionId": "creator_old", "workspaceId": "ws_old", "limit": 10 } },
+        { "cmd": "workspace_list_agents", "args": { "sessionId": "creator_old", "workspaceId": "ws_old" } },
+        { "cmd": "workspace_list_messages", "args": { "sessionId": "creator_old", "workspaceId": "ws_old", "limit": 10 } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.inbox.route_after_historical_load",
+      "seed": "historical-wp013-v1",
+      "steps": [
+        { "cmd": "workspace_list_agents", "args": { "sessionId": "creator_old", "workspaceId": "ws_old" } },
+        { "cmd": "workspace_send_message", "args": { "sessionId": "creator_old", "request": { "workspace_id": "ws_old", "content": "恢复后的新任务📚", "target_session_id": "worker_old", "message_type": "task" } } },
+        { "cmd": "workspace_list_agents", "args": { "sessionId": "creator_old", "workspaceId": "ws_old" } },
+        { "cmd": "workspace_list_messages", "args": { "sessionId": "creator_old", "workspaceId": "ws_old", "limit": 10 } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

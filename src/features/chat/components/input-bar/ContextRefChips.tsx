@@ -41,48 +41,29 @@ export interface ContextRefChipsProps {
 /**
  * 根据类型 ID 获取对应的图标组件
  */
-const getTypeIcon = (typeId: string): React.ElementType => {
-  switch (typeId) {
-    case 'note':
-      return FileText;
-    case 'textbook':
-      return BookOpen;
-    case 'exam':
-      return ClipboardText;
-    case 'essay':
-      return PencilSimple;
-    case 'translation':
-      return Translate;
-    case 'folder':
-      return Folder;
-    case 'skill':
-    case 'skill_instruction':
-      return Lightning;
-    case 'selection':
-      return Quotes;
-    default:
-      return FileText;
-  }
+const TYPE_ICONS: Readonly<Record<string, React.ElementType>> = {
+  note: FileText,
+  textbook: BookOpen,
+  exam: ClipboardText,
+  essay: PencilSimple,
+  translation: Translate,
+  folder: Folder,
+  skill: Lightning,
+  skill_instruction: Lightning,
+  selection: Quotes,
 };
+
+export const getTypeIcon = (typeId: string): React.ElementType =>
+  Object.hasOwn(TYPE_ICONS, typeId) ? TYPE_ICONS[typeId] : FileText;
+
+/** 在 `chatV2:contextRef.type.*` 有译文的类型（其余原样显示 typeId）。 */
+const TRANSLATED_TYPE_IDS = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'folder', 'skill', 'selection']);
 
 /**
  * 根据类型 ID 获取翻译键
  */
-const getTypeLabelKey = (typeId: string): string => {
-  switch (typeId) {
-    case 'note':
-    case 'textbook':
-    case 'exam':
-    case 'essay':
-    case 'translation':
-    case 'folder':
-    case 'skill':
-    case 'selection':
-      return `chatV2:contextRef.type.${typeId}`;
-    default:
-      return typeId;
-  }
-};
+export const getTypeLabelKey = (typeId: string): string =>
+  TRANSLATED_TYPE_IDS.has(typeId) ? `chatV2:contextRef.type.${typeId}` : typeId;
 
 // ============================================================================
 // 显示语义（P2 梳理）
@@ -109,32 +90,23 @@ function isVisualizedElsewhere(typeId: string): boolean {
   return ATTACHMENT_VISUALIZED_TYPES.has(typeId) || SKILL_VISUALIZED_TYPES.has(typeId);
 }
 
+const TYPE_COLORS: Readonly<Record<string, string>> = {
+  note: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  textbook: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  exam: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  essay: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  translation: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+  folder: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  selection: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  skill: 'bg-primary/20 text-primary',
+  skill_instruction: 'bg-primary/20 text-primary',
+};
+
 /**
  * 根据类型 ID 获取 Chip 颜色样式
  */
-const getTypeColorClass = (typeId: string): string => {
-  switch (typeId) {
-    case 'note':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
-    case 'textbook':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
-    case 'exam':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300';
-    case 'essay':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
-    case 'translation':
-      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300';
-    case 'folder':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
-    case 'selection':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300';
-    case 'skill':
-    case 'skill_instruction':
-      return 'bg-primary/20 text-primary';
-    default:
-      return 'bg-muted text-foreground';
-  }
-};
+export const getTypeColorClass = (typeId: string): string =>
+  Object.hasOwn(TYPE_COLORS, typeId) ? TYPE_COLORS[typeId] : 'bg-muted text-foreground';
 
 // ============================================================================
 // 主组件

@@ -70,6 +70,41 @@ describe('QuestionMaterialView', () => {
     expect(screen.getByLabelText('编辑共享材料')).toHaveValue('我的新版本');
   });
 
+  // Rust and Host both reject qbank_update_material with a plain AppError object;
+  // `String(err)` turned it into "[object Object]", so the conflict hint never showed.
+  it('RF-W09-material-conflict-apperror-message: an AppError CONFLICT rejection shows the version-conflict hint', async () => {
+    invokeMock.mockRejectedValue({
+      error_type: 'Validation',
+      message: 'CONFLICT: 材料版本已变化或材料不存在',
+      details: null,
+    });
+
+    render(<QuestionMaterialView materials={[material]} mode="edit" />);
+    fireEvent.click(screen.getByRole('button', { name: /编辑材料/ }));
+    fireEvent.change(screen.getByLabelText('编辑共享材料'), {
+      target: { value: '我的新版本' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('材料已被其他修改更新，请重新载入后再保存（你的草稿仍在）。');
+    expect(alert).not.toHaveTextContent('[object Object]');
+    expect(screen.getByLabelText('编辑共享材料')).toHaveValue('我的新版本');
+  });
+
+  it('RF-W09-material-conflict-apperror-message: other AppError rejections show the backend message', async () => {
+    invokeMock.mockRejectedValue({ error_type: 'Database', message: '数据库已锁定', details: null });
+
+    render(<QuestionMaterialView materials={[material]} mode="edit" />);
+    fireEvent.click(screen.getByRole('button', { name: /编辑材料/ }));
+    fireEvent.change(screen.getByLabelText('编辑共享材料'), {
+      target: { value: '我的新版本' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('数据库已锁定');
+  });
+
   it('never discards unsaved edits when the parent refreshes a newer material version', () => {
     const { rerender } = render(<QuestionMaterialView materials={[material]} mode="edit" />);
     fireEvent.click(screen.getByRole('button', { name: /编辑材料/ }));

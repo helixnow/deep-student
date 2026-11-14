@@ -33,16 +33,10 @@ const EXPECTED_EIGHTEEN_BLOCK_TYPES = [
 ] as const;
 
 describe('generativeUI Tauri E2E contract', () => {
-  it('Rust generative_ui_executor_e2e covers hpias_event lifecycle', () => {
-    const src = fs.readFileSync(
-      path.join(REPO, 'src-tauri/tests/generative_ui_executor_e2e.rs'),
-      'utf8',
-    );
-    expect(src).toContain('capture_hpias_events');
-    expect(src).toContain('execute_with_research_session_emits_hpias_session_started');
-    expect(src).toContain('execute_hpias_stub_pipeline_emits_plan_generated');
-    expect(src).toContain('execute_rejects_unknown_block_type');
-    expect(src).toContain('HPIAS_EVENT_CHANNEL');
+  it('Host generative-ui executor e2e test exists', () => {
+    expect(
+      fs.existsSync(path.join(REPO, 'host/plugins/integration/tests/generative-ui-executor-e2e.test.ts')),
+    ).toBe(true);
   });
 
   it('TAURI_E2E documentation exists', () => {

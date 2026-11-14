@@ -36,6 +36,7 @@ import {
   requiresStructuredMarkdownInsertion,
   remapInsertPos,
   resolveNoteAnchorPos,
+  shouldUseSuggestionMode,
   splitMarkdownIntoSegments,
   splitTextIntoBatches,
   unregisterNoteEditor,
@@ -241,6 +242,26 @@ describe('resolveNoteAnchorPos', () => {
 });
 
 describe('computeDestructiveMarkdown', () => {
+  it('rejects missing/non-text note_set content without deleting the document; explicit empty text still clears', () => {
+    for (const payload of [{}, { content: null }, { content: 42 }]) {
+      expect(computeDestructiveMarkdown('Keep me', { kind: 'note_set', payload })).toMatchObject({
+        content: 'Keep me', error: expect.any(String),
+      });
+    }
+    expect(computeDestructiveMarkdown('Keep me', { kind: 'note_set', payload: { content: '' } })).toEqual({ content: '' });
+  });
+
+  it('distinguishes whitespace-only content from populated notes without treating markdown structure as empty', () => {
+    expect(shouldUseSuggestionMode('whitespace-note', undefined, ' \t\r\n\n')).toBe(false);
+    for (const markdown of ['# Title', '![image](asset.png)', '<!-- annotation -->', '0', ' \n正文\n ']) {
+      expect(shouldUseSuggestionMode('populated-note', undefined, markdown)).toBe(true);
+    }
+  });
+
+  it('rejects malformed replacement payloads instead of coercing or throwing', () => {
+    expect(computeDestructiveMarkdown('Keep me', { kind: 'note_replace', payload: { search: 42, replace: [] } }))
+      .toMatchObject({ content: 'Keep me', error: expect.any(String) });
+  });
   it('note_set 整篇替换', () => {
     expect(
       computeDestructiveMarkdown('old', {
@@ -533,9 +554,81 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.flushPendingSave).not.toHaveBeenCalled();
   });
 
-  it('clean + note_set → 直写 setMarkdown + frontend 回执 + 账本可还原', async () => {
+  it('非空 clean + note_set / note_replace → 一律走视觉审阅建议流，绝不静默覆盖原文', async () => {
     const api = makeEditorApi({ markdown: 'old' });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    expect(shouldUseSuggestionMode(NOTE_ID, api as unknown as CrepeEditorApi)).toBe(true);
+
+    const events: CustomEvent[] = [];
+    const handler = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener('canvas:ai-edit-request', handler);
+
+    const setReceipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_set',
+        destructive: true,
+        label: '整篇设置',
+        payload: { content: 'brand new' },
+      },
+    ]);
+
+    const replaceReceipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_replace',
+        destructive: true,
+        label: '替换正文',
+        payload: { search: 'old', replace: 'updated' },
+      },
+    ]);
+
+    window.removeEventListener('canvas:ai-edit-request', handler);
+
+    expect(events).toHaveLength(2);
+    expect(setReceipt.mode).toBe('suggestion');
+    expect(setReceipt.suggestionPending).toBe(true);
+    expect(replaceReceipt.mode).toBe('suggestion');
+    expect(replaceReceipt.suggestionPending).toBe(true);
+    expect(api.getMarkdown()).toBe('old');
+    expect(api.flushPendingSave).not.toHaveBeenCalled();
+  });
+
+  it('非空 clean + note_replace 预校验失败（零命中）→ 直接返回 failed 且不派发无效建议面板', async () => {
+    const api = makeEditorApi({ markdown: 'old content' });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const run = makeRun();
+
+    const events: CustomEvent[] = [];
+    const handler = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener('canvas:ai-edit-request', handler);
+
+    const receipt = await noteDriver.apply(run, [
+      {
+        kind: 'note_replace',
+        destructive: true,
+        label: '零命中替换',
+        payload: { search: 'nonexistent', replace: 'updated' },
+      },
+    ]);
+
+    window.removeEventListener('canvas:ai-edit-request', handler);
+
+    expect(receipt.status).toBe('failed');
+    expect(receipt.suggestionPending).toBeFalsy();
+    expect(events).toHaveLength(0);
+    expect(run.reportProgress).toHaveBeenCalledWith(
+      1,
+      1,
+      'forms:note_driver.replacement_not_found',
+      NOTE_ID,
+    );
+  });
+
+  it('空白 clean 笔记首次 note_set → 直写 setMarkdown + frontend 回执 + 账本可还原', async () => {
+    const api = makeEditorApi({ markdown: '' });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    expect(shouldUseSuggestionMode(NOTE_ID, api as unknown as CrepeEditorApi)).toBe(false);
+
     const record = vi.fn();
     const run = makeRun({ ledger: { record } });
 
@@ -547,7 +640,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
       {
         kind: 'note_set',
         destructive: true,
-        label: '整篇设置',
+        label: '首次整篇填充',
         payload: { content: 'brand new' },
       },
     ]);
@@ -563,7 +656,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(record).toHaveBeenCalledTimes(1);
     const invert = record.mock.calls[0]![1] as () => Promise<void>;
     await invert();
-    expect(api.getMarkdown()).toBe('old');
+    expect(api.getMarkdown()).toBe('');
     expect(api.flushPendingSave).toHaveBeenCalledTimes(2);
   });
 
@@ -681,8 +774,8 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     unregisterNoteEditor(NOTE_ID, hotApi as unknown as CrepeEditorApi, 'win-hot');
   });
 
-  it('ACR 4.0：clean 破坏类直改后调用 agentFlashChange 做变更区域演出', async () => {
-    const api = makeEditorApi({ markdown: 'old body' });
+  it('ACR 4.0：空白 clean 笔记首次直改后调用 agentFlashChange 做变更区域演出', async () => {
+    const api = makeEditorApi({ markdown: '' });
     const flashCalls: Array<[string, string]> = [];
     (api as unknown as { agentFlashChange: (p: string, n: string) => boolean }).agentFlashChange =
       (previous: string, next: string) => {
@@ -701,11 +794,11 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     ]);
 
     expect(receipt.status).toBe('completed');
-    expect(flashCalls).toEqual([['old body', 'brand new body']]);
+    expect(flashCalls).toEqual([['', 'brand new body']]);
   });
 
-  it('ACR 4.0：编辑器未实现 agentFlashChange 时直改路径不受影响', async () => {
-    const api = makeEditorApi({ markdown: 'old' });
+  it('ACR 4.0：编辑器未实现 agentFlashChange 时空白笔记直改路径不受影响', async () => {
+    const api = makeEditorApi({ markdown: '' });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     const receipt = await noteDriver.apply(makeRun(), [
       {
@@ -790,10 +883,9 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.getFullMarkdown()).toContain('hidden-602');
   });
 
-  it('全文写入与撤销都使用共享快照 API，不读取旧全文字符串', async () => {
+  it('全文写入、预校验与撤销都使用共享快照 API，不读取旧全文字符串', async () => {
     let markdown = 'UNSAVED prefix\nHIDDEN tail';
     let revision = 1;
-    const original = markdown;
     const replaceFullDocument = vi.fn(async (next: string, baseline: { noteId: string; revision: number; markdown: string }) => {
       expect(baseline).toEqual({ noteId: NOTE_ID, revision, markdown });
       markdown = next;
@@ -806,16 +898,31 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
       replaceFullDocument,
     };
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
-    const record = vi.fn();
-    const receipt = await noteDriver.apply(makeRun({ ledger: { record } }), [{
+
+    // 1) 非空笔记 note_replace 预校验读取 getFullDocument（命中 HIDDEN tail 并进入建议流）
+    const suggestionReceipt = await noteDriver.apply(makeRun(), [{
       kind: 'note_replace', destructive: true, label: '替换隐藏尾部',
       payload: { search: 'HIDDEN tail', replace: 'changed tail' },
     }]);
-    expect(receipt.status).toBe('completed');
+    expect(suggestionReceipt.status).toBe('completed');
+    expect(suggestionReceipt.mode).toBe('suggestion');
+    expect(suggestionReceipt.suggestionPending).toBe(true);
+    expect(replaceFullDocument).not.toHaveBeenCalled();
+
+    // 2) 空白快照首次 note_set 直写与撤销均通过 getFullDocument / replaceFullDocument
+    markdown = '';
+    revision = 2;
+    const record = vi.fn();
+    const directReceipt = await noteDriver.apply(makeRun({ ledger: { record } }), [{
+      kind: 'note_set', destructive: true, label: '初始化长笔记快照',
+      payload: { content: 'UNSAVED prefix\nchanged tail' },
+    }]);
+    expect(directReceipt.status).toBe('completed');
+    expect(directReceipt.mode).toBe('frontend');
     expect(markdown).toBe('UNSAVED prefix\nchanged tail');
     expect(replaceFullDocument).toHaveBeenCalledTimes(1);
     await (record.mock.calls[0][1] as () => Promise<void>)();
-    expect(markdown).toBe(original);
+    expect(markdown).toBe('');
     expect(replaceFullDocument).toHaveBeenCalledTimes(2);
   });
 
@@ -885,8 +992,8 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.getFullMarkdown()).toBe(full);
   });
 
-  it('用户在 Agent 写入后继续编辑时，inverse 以 OCC 冲突拒绝且不覆盖用户内容', async () => {
-    const api = makeEditorApi({ markdown: 'before' });
+  it('用户在 Agent 首次写入后继续编辑时，inverse 以 OCC 冲突拒绝且不覆盖用户内容', async () => {
+    const api = makeEditorApi({ markdown: '' });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     const record = vi.fn();
     const receipt = await noteDriver.apply(makeRun({ ledger: { record } }), [{
@@ -904,7 +1011,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
   });
 
   it('inverse 保存失败后保留幂等状态，重试只保存而不再次修改正文', async () => {
-    const api = makeEditorApi({ markdown: 'before' });
+    const api = makeEditorApi({ markdown: '' });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     const record = vi.fn();
     await noteDriver.apply(makeRun({ ledger: { record } }), [{
@@ -917,9 +1024,9 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     api.failNextSave(new Error('disk unavailable'));
 
     await expect(inverse()).rejects.toThrow('disk unavailable');
-    expect(api.getMarkdown()).toBe('before');
+    expect(api.getMarkdown()).toBe('');
     await expect(inverse()).resolves.toBeUndefined();
-    expect(api.getMarkdown()).toBe('before');
+    expect(api.getMarkdown()).toBe('');
   });
 
   it('按 windowId 精确选择同资源编辑器', async () => {

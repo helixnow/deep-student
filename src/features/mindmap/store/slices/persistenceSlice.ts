@@ -9,6 +9,8 @@ import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import type { MindMapConflictSnapshot } from '../mindmapStoreTypes';
 import { normalizeStyleId } from '../mindmapStoreHelpers';
 import { removeDraftFromStorage } from '../mindmapDraftStorage';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
+import { reconcileMindMapProjectedFlashcards } from '../../interop/mindmapCardProjection';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
 
 export const createPersistenceSlice: MindMapSliceCreator<
@@ -104,6 +106,10 @@ export const createPersistenceSlice: MindMapSliceCreator<
             state.isDirty = false;
           }
         });
+
+        // 出处反向链接与闪卡投影：按已保存文档对账（无内核 / IPC 时静默跳过，永不影响保存结果）
+        syncMindMapAnchorEdges(savingMindmapId, document.root, { styleId: savingStyleId });
+        reconcileMindMapProjectedFlashcards(savingMindmapId, document.root);
 
         // 保存成功：重置自动重试计数
         rt.saveRetryCount = 0;

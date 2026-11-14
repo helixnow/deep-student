@@ -194,6 +194,7 @@ const TEST_SCENARIOS: TestScenario[] = [
 // ============================================================================
 
 export const IntegrationTest: React.FC = () => {
+  // RUST-FIX(RF-W09-chat-dev-integration-test-copy-localized): Rust 已有 chatV2:dev.integrationTest.* 词条，但运行测试按钮、测试日志、验收清单仍写死中文
   const { t } = useTranslation('chatV2');
   const { isSmallScreen } = useBreakpoint();
 
@@ -425,7 +426,7 @@ export const IntegrationTest: React.FC = () => {
                     {isRunningTests ? (
                       <CircleNotch size={12} className="animate-spin" />
                     ) : (
-                      '运行测试'
+                      t('dev.integrationTest.runTests')
                     )}
                   </button>
                 </div>
@@ -473,7 +474,7 @@ export const IntegrationTest: React.FC = () => {
               {testLogs.length > 0 && (
                 <div className="border-t border-border">
                   <div className="px-3 py-1.5 bg-muted/30 text-xs text-muted-foreground">
-                    测试日志
+                    {t('dev.integrationTest.testLogs')}
                   </div>
                   <CustomScrollArea
                     fullHeight={false}
@@ -495,20 +496,20 @@ export const IntegrationTest: React.FC = () => {
               <div className="px-3 py-2 bg-muted/50 border-b border-border">
                 <span className="font-medium text-sm flex items-center gap-2">
                   <Info size={16} />
-                  验收清单
+                  {t('dev.integrationTest.acceptanceChecklist')}
                 </span>
               </div>
               <div className="p-3 space-y-2 text-xs">
-                <CheckItem label="发送消息流程完整" checked={messageOrder.length > 0 || true} />
-                <CheckItem label="流式渲染正常" />
-                <CheckItem label="停止生成正常" />
-                <CheckItem label="守卫机制生效" checked={!canSend !== canAbort} />
-                <CheckItem label="Anki 卡片生成和编辑正常" />
-                <CheckItem label="来源面板显示正常" />
-                <CheckItem label="OCR 分析模式正常" />
-                <CheckItem label="无 TypeScript 错误" checked />
-                <CheckItem label="无旧架构代码残留" checked />
-                <CheckItem label="暗色模式全部正常" />
+                <CheckItem label={t('dev.integrationTest.checklist.sendMessage')} checked={messageOrder.length > 0 || true} />
+                <CheckItem label={t('dev.integrationTest.checklist.streamingRender')} />
+                <CheckItem label={t('dev.integrationTest.checklist.stopGeneration')} />
+                <CheckItem label={t('dev.integrationTest.checklist.guardsWork')} checked={!canSend !== canAbort} />
+                <CheckItem label={t('dev.integrationTest.checklist.ankiCards')} />
+                <CheckItem label={t('dev.integrationTest.checklist.sourcePanel')} />
+                <CheckItem label={t('dev.integrationTest.checklist.ocrAnalysis')} />
+                <CheckItem label={t('dev.integrationTest.checklist.noTsErrors')} checked />
+                <CheckItem label={t('dev.integrationTest.checklist.noLegacyCode')} checked />
+                <CheckItem label={t('dev.integrationTest.checklist.darkMode')} />
               </div>
             </div>
           </div>

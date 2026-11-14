@@ -2,7 +2,7 @@
  * 会话标签管理 Hook
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface TagInfo {
@@ -38,6 +38,17 @@ export function useSessionTags(): UseSessionTagsReturn {
   const [tagsBySession, setTagsBySession] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(false);
   const [selectedFilterTags, setSelectedFilterTags] = useState<Set<string>>(new Set());
+  // 同步镜像：会话列表每次变化（新建/删除/改序）都会重跑 loadTagsForSessions，
+  // 已取过的会话不应再走一次 IPC——公网 RTT 150–250ms 下这是纯等待。
+  // 标签只经本 hook 的 addTag/removeTag 改动，镜像同时在这些函数里更新。
+  const tagsBySessionRef = useRef<Map<string, string[]>>(tagsBySession);
+  const applyTagsBySession = useCallback((updater: (prev: Map<string, string[]>) => Map<string, string[]>) => {
+    setTagsBySession((prev) => {
+      const next = updater(prev);
+      tagsBySessionRef.current = next;
+      return next;
+    });
+  }, []);
 
   const loadAllTags = useCallback(async () => {
     try {
@@ -49,16 +60,22 @@ export function useSessionTags(): UseSessionTagsReturn {
   }, []);
 
   const loadTagsForSessions = useCallback(async (sessionIds: string[]) => {
-    if (sessionIds.length === 0) return;
+    const known = tagsBySessionRef.current;
+    const missing = sessionIds.filter((id) => !known.has(id));
+    if (missing.length === 0) return;
     try {
       setLoading(true);
       const data = await invoke<Record<string, string[]>>('chat_v2_get_tags_batch', {
-        sessionIds,
+        sessionIds: missing,
       });
-      setTagsBySession((prev) => {
+      applyTagsBySession((prev) => {
         const next = new Map(prev);
         for (const [sid, tags] of Object.entries(data || {})) {
           next.set(sid, tags);
+        }
+        // 后端未返回的会话按「无标签」落位，避免每次列表变化都重问一遍
+        for (const sid of missing) {
+          if (!next.has(sid)) next.set(sid, []);
         }
         return next;
       });
@@ -67,14 +84,14 @@ export function useSessionTags(): UseSessionTagsReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyTagsBySession]);
 
   const addTag = useCallback(async (sessionId: string, tag: string) => {
     const trimmed = tag.trim();
     if (!trimmed) return;
     try {
       await invoke('chat_v2_add_tag', { sessionId, tag: trimmed });
-      setTagsBySession((prev) => {
+      applyTagsBySession((prev) => {
         const next = new Map(prev);
         const existing = next.get(sessionId) || [];
         if (!existing.includes(trimmed)) {
@@ -86,12 +103,12 @@ export function useSessionTags(): UseSessionTagsReturn {
     } catch (err) {
       console.error('[useSessionTags] Failed to add tag:', err);
     }
-  }, [loadAllTags]);
+  }, [applyTagsBySession, loadAllTags]);
 
   const removeTag = useCallback(async (sessionId: string, tag: string) => {
     try {
       await invoke('chat_v2_remove_tag', { sessionId, tag });
-      setTagsBySession((prev) => {
+      applyTagsBySession((prev) => {
         const next = new Map(prev);
         const existing = next.get(sessionId) || [];
         next.set(sessionId, existing.filter((t) => t !== tag));
@@ -101,7 +118,7 @@ export function useSessionTags(): UseSessionTagsReturn {
     } catch (err) {
       console.error('[useSessionTags] Failed to remove tag:', err);
     }
-  }, [loadAllTags]);
+  }, [applyTagsBySession, loadAllTags]);
 
   const toggleFilterTag = useCallback((tag: string) => {
     setSelectedFilterTags((prev) => {

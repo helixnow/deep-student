@@ -1,0 +1,2319 @@
+{
+  "domain": "sync-providers.cloud",
+  "commands": [
+    "cloud_config_publish",
+    "cloud_storage_check_connection",
+    "cloud_storage_put",
+    "cloud_storage_get",
+    "cloud_storage_stat",
+    "cloud_storage_exists",
+    "cloud_storage_list",
+    "cloud_storage_delete"
+  ],
+  "scenarios": [
+    {
+      "id": "cloud.webdav.roundtrip",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt",
+            "data": [
+              99,
+              104,
+              97,
+              114,
+              108,
+              105,
+              101
+            ]
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.missing",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "nowhere"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.retry_then_success",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "webdav",
+            "method": "PUT",
+            "pathIncludes": "retry.txt",
+            "respond": {
+              "status": 503,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          },
+          {
+            "service": "webdav",
+            "method": "GET",
+            "pathIncludes": "a.txt",
+            "respond": "reset"
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/retry.txt",
+            "data": [
+              97,
+              103,
+              97,
+              105,
+              110
+            ]
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/retry.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.retry_exhausted",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "webdav",
+            "method": "GET",
+            "pathIncludes": "a.txt",
+            "times": 3,
+            "respond": {
+              "status": 500,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.server_error",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "webdav",
+            "method": "PUT",
+            "pathIncludes": "full.txt",
+            "respond": {
+              "status": 507
+            }
+          },
+          {
+            "service": "webdav",
+            "method": "PROPFIND",
+            "respond": {
+              "status": 403
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/full.txt",
+            "data": [
+              120
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.rate_limited",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "webdav",
+            "method": "GET",
+            "pathIncludes": "b.txt",
+            "respond": {
+              "status": 429,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.auth_denied",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wrong-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/x.txt",
+            "data": [
+              120
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.unpublished",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.roundtrip",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt",
+            "data": [
+              99,
+              104,
+              97,
+              114,
+              108,
+              105,
+              101
+            ]
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/new/c.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs/"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs/"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.missing",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "nowhere/"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/missing.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.list_paged",
+      "seed": "empty",
+      "cloud": {
+        "seed": "s3-paged"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "paged/"
+          }
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "paged/p1"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.retry_then_success",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "s3",
+            "method": "PUT",
+            "pathIncludes": "retry.txt",
+            "respond": {
+              "status": 503,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          },
+          {
+            "service": "s3",
+            "method": "GET",
+            "pathIncludes": "a.txt",
+            "respond": "reset"
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/retry.txt",
+            "data": [
+              97,
+              103,
+              97,
+              105,
+              110
+            ]
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/retry.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.retry_exhausted",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "s3",
+            "method": "GET",
+            "pathIncludes": "a.txt",
+            "times": 3,
+            "respond": {
+              "status": 500,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.server_error",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "s3",
+            "method": "PUT",
+            "pathIncludes": "full.txt",
+            "respond": {
+              "status": 507
+            }
+          },
+          {
+            "service": "s3",
+            "method": "GET",
+            "respond": {
+              "status": 403
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/full.txt",
+            "data": [
+              120
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_list",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "prefix": "docs/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.auth_denied",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WRONGACCESSKEY",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_put",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/x.txt",
+            "data": [
+              120
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.unpublished",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_storage_check_connection",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_get",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.object_errors",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "webdav",
+            "method": "DELETE",
+            "pathIncludes": "a.txt",
+            "respond": {
+              "status": 403
+            }
+          },
+          {
+            "service": "webdav",
+            "method": "PROPFIND",
+            "pathIncludes": "a.txt",
+            "respond": {
+              "status": 403
+            }
+          },
+          {
+            "service": "webdav",
+            "method": "PROPFIND",
+            "pathIncludes": "b.txt",
+            "respond": {
+              "status": 403
+            }
+          },
+          {
+            "service": "webdav",
+            "method": "DELETE",
+            "pathIncludes": "b.txt",
+            "times": 3,
+            "respond": {
+              "status": 500,
+              "headers": {
+                "Retry-After": "0"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.object_errors",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic",
+        "faults": [
+          {
+            "service": "s3",
+            "method": "DELETE",
+            "pathIncludes": "a.txt",
+            "respond": {
+              "status": 403
+            }
+          },
+          {
+            "service": "s3",
+            "method": "HEAD",
+            "pathIncludes": "a.txt",
+            "respond": {
+              "status": 403
+            }
+          },
+          {
+            "service": "s3",
+            "method": "HEAD",
+            "pathIncludes": "b.txt",
+            "respond": {
+              "status": 403
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/b.txt"
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.object_auth_denied",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wrong-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.object_auth_denied",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WRONGACCESSKEY",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.webdav.object_unpublished",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user",
+                "password": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "cloud.s3.object_unpublished",
+      "seed": "empty",
+      "cloud": {
+        "seed": "basic"
+      },
+      "steps": [
+        {
+          "cmd": "cloud_storage_delete",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_stat",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_storage_exists",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": ""
+              },
+              "root": "wave0"
+            },
+            "key": "docs/a.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

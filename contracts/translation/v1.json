@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dstu:translation:v1",
+  "definitions": {
+    "TranslationRequest": {
+      "type": "object", "required": ["text", "src_lang", "tgt_lang", "session_id"],
+      "properties": {
+        "text": {"type": "string"}, "src_lang": {"type": "string"},
+        "tgt_lang": {"type": "string"}, "session_id": {"type": "string"},
+        "prompt_override": {"type": ["string", "null"]},
+        "formality": {"type": ["string", "null"]},
+        "domain": {"type": ["string", "null"]},
+        "glossary": {"type": ["array", "null"], "items": {"type": "array", "items": [{"type": "string"}, {"type": "string"}], "minItems": 2, "maxItems": 2}}
+      }
+    },
+    "TranslationResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "translated_text", "created_at", "session_id"],
+      "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}, "created_at": {"type": "string"}, "session_id": {"type": "string"}}
+    },
+    "StreamFailure": {
+      "type": "object", "additionalProperties": false, "required": ["message", "code", "retriable"],
+      "properties": {"message": {"type": "string"}, "code": {"type": "string"}, "retriable": {"type": "boolean"}}
+    },
+    "StreamStatus": {"type": "string", "enum": ["completed", "cancelled", "incomplete"]},
+    "SegmentRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["system_prompt", "user_prompt", "timeout_ms"],
+      "properties": {"system_prompt": {"type": "string"}, "user_prompt": {"type": "string"}, "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 600000}}
+    },
+    "TranslationEvent": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "chunk", "delta", "char_count", "word_count"], "properties": {
+          "type": {"const": "data"}, "chunk": {"type": "string"}, "delta": {"type": "string"},
+          "char_count": {"type": "integer", "minimum": 0}, "word_count": {"type": "integer", "minimum": 0},
+          "detected_lang": {"type": "string"}, "segment_index": {"type": "integer", "minimum": 1}, "segment_total": {"type": "integer", "minimum": 1}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "id", "translated_text", "created_at"], "properties": {
+          "type": {"const": "complete"}, "id": {"type": "string"}, "translated_text": {"type": "string"}, "created_at": {"type": "string"}, "detected_lang": {"type": "string"}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "message", "code", "retriable"], "properties": {
+          "type": {"const": "error"}, "message": {"type": "string"}, "code": {"type": "string"}, "retriable": {"type": "boolean"}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"const": "cancelled"}}}
+      ]
+    }
+  }
+}

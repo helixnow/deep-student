@@ -7,27 +7,16 @@
 
 import React, { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Database } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
-import {
-  createNavItems,
-  MOBILE_APP_LAUNCHER_VIEWS,
-  type MobileAppLauncherView,
-} from '@/config/navigation';
+import { useSlot } from '@/ui-kernel/react';
+import type { ShellNavItem, ShellView } from '@/ui-kernel/contracts/shell';
+import { renderNavigationIcon } from '@/ui-plugins/official/shell/renderNavigationIcon';
+import { resolveShellView, shellNavigationItems } from '@/ui-plugins/official/shell/navigation';
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
-import { canonicalizeView } from '@/app/navigation/canonicalView';
 import { isNavEntryActive, resolveNavEntryClick } from '@/app/navigation/cardsHub';
 import { useIsUILabEnabled } from '@/utils/uiLabToggle';
-import {
-  StudyBooksIcon,
-  StudyCardsIcon,
-  StudyChatIcon,
-  StudyMagicWandIcon,
-  StudyMediaIcon,
-  StudyTodoIcon,
-} from '@/components/icons/StudySidebarIcons';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 /** @deprecated 请优先使用 APP_EVENTS.MOBILE_APP_NAVIGATE；保留导出以兼容既有 import */
@@ -50,36 +39,6 @@ export const MobileAppNavigationProvider: React.FC<{
   </MobileAppNavigationContext.Provider>
 );
 
-const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
-  'chat-v2': StudyChatIcon,
-  'learning-hub': StudyBooksIcon,
-  media: StudyMediaIcon,
-  todo: StudyTodoIcon,
-  'skills-management': StudyMagicWandIcon,
-  flashcards: StudyCardsIcon,
-  'data-management': Database,
-};
-
-const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
-  'chat-v2': { key: 'sidebar:navigation.launcher.chat_v2', fallback: '会话' },
-  'learning-hub': { key: 'sidebar:navigation.launcher.learning_hub', fallback: '资源' },
-  media: { key: 'sidebar:navigation.launcher.media', fallback: '音视频' },
-  todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
-  'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
-  flashcards: { key: 'sidebar:navigation.launcher.flashcards', fallback: '闪卡' },
-  'data-management': { key: 'sidebar:navigation.launcher.data_management', fallback: '数据' },
-};
-
-const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
-  'chat-v2': { key: 'sidebar:navigation.sessions', fallback: '会话' },
-  'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '资源库' },
-  media: { key: 'sidebar:navigation.media', fallback: '音视频' },
-  todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
-  'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
-  flashcards: { key: 'sidebar:navigation.flashcards', fallback: '闪卡' },
-  'data-management': { key: 'common:navigation.data_management', fallback: '数据管理' },
-};
-
 interface MobileSidebarNavigationProps {
   onNavigate?: (view?: CurrentView) => void;
   className?: string;
@@ -99,26 +58,38 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   className,
   settingsOnly = false,
 }) => {
-  const { t } = useTranslation(['sidebar', 'common']);
+  const { t, i18n } = useTranslation(['sidebar', 'common']);
   const currentView = useViewStore((state) => state.currentView);
   const uiLabEnabled = useIsUILabEnabled();
-  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
+  const navEntries = useSlot<ShellNavItem>('nav');
+  const viewEntries = useSlot<ShellView>('views');
+  const navItems = useMemo(() => shellNavigationItems(navEntries, { dev: import.meta.env.DEV, uiLabEnabled }, 'mobile'), [navEntries, uiLabEnabled]);
   const navigateDirect = useContext(MobileAppNavigationContext);
 
-  const currentCanonicalView = canonicalizeView(currentView);
+  const currentCanonicalView = resolveShellView(currentView, viewEntries);
   const settingsItem = useMemo(
-    () => navItems.find((item) => canonicalizeView(item.view) === 'settings'),
+    () => navItems.find((item) => item.mobile?.placement === 'settings'),
     [navItems],
   );
 
   const launcherItems = useMemo(() => (
-    MOBILE_APP_LAUNCHER_VIEWS.map((view) => ({
-      view,
-      name: t(LAUNCHER_SHORT_LABEL[view].key, LAUNCHER_SHORT_LABEL[view].fallback),
-      ariaLabel: t(LAUNCHER_FULL_LABEL[view].key, LAUNCHER_FULL_LABEL[view].fallback),
-      icon: LAUNCHER_ICONS[view],
-    }))
-  ), [t]);
+    navItems.filter(item => item.mobile?.placement === 'launcher').map((item) => {
+      const resolvedLabelKey = item.owner && !item.labelKey.includes(':') && typeof i18n?.exists === 'function'
+        ? (i18n.exists(`${item.owner}:${item.labelKey}`)
+            ? `${item.owner}:${item.labelKey}`
+            : (i18n.exists(`${item.owner}:title`) ? `${item.owner}:title` : item.labelKey))
+        : item.labelKey;
+      return {
+        id: item.id,
+        owner: item.owner,
+        origin: item.origin,
+        view: item.viewId as CurrentView,
+        name: item.mobile?.label ? t(item.mobile.label.key, item.mobile.label.fallback) : t(resolvedLabelKey),
+        ariaLabel: item.mobile?.ariaLabel ? t(item.mobile.ariaLabel.key, item.mobile.ariaLabel.fallback) : t(resolvedLabelKey),
+        icon: item.mobile?.icon ?? item.icon,
+      };
+    })
+  ), [i18n, navItems, t]);
 
   const handleNavigate = useCallback((entryView: CurrentView) => {
     // 闪卡中心入口：已在组内保持当前分区，否则回到最近访问的分区
@@ -146,10 +117,10 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
           'shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground',
           className,
         )}
-        aria-label={settingsItem.name}
-        onClick={() => handleNavigate(settingsItem.view)}
+        aria-label={settingsItem.fallback === undefined ? t(settingsItem.labelKey) : t(settingsItem.labelKey, settingsItem.fallback)}
+        onClick={() => handleNavigate(settingsItem.viewId as CurrentView)}
       >
-        <SettingsIcon className="size-5" />
+        {renderNavigationIcon(settingsItem.origin, settingsItem.owner, settingsItem.id, SettingsIcon, { className: 'size-5' })}
       </DsButton>
     );
   }
@@ -161,11 +132,11 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       aria-label={t('common:navigation_label')}
       className={cn('grid grid-cols-3 gap-x-0.5 gap-y-0', className)}
     >
-      {launcherItems.map(({ view, icon: Icon, name, ariaLabel }) => {
-        const isActive = isNavEntryActive(canonicalizeView(view), currentCanonicalView);
+      {launcherItems.map(({ id, owner, origin, view, icon: Icon, name, ariaLabel }) => {
+        const isActive = isNavEntryActive(resolveShellView(view, viewEntries), currentCanonicalView);
         return (
           <button
-            key={view}
+            key={`${owner}/${id}`}
             type="button"
             aria-label={ariaLabel}
             aria-current={isActive ? 'page' : undefined}
@@ -179,7 +150,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
               isActive && 'bg-[color:hsl(var(--primary)/0.1)] text-[color:var(--shell-navigation-foreground)]',
             )}
           >
-            <Icon className="size-[25px] shrink-0" />
+            {renderNavigationIcon(origin, owner, id, Icon, { className: 'size-[25px] shrink-0' })}
             <span className="min-w-0 truncate">{name}</span>
           </button>
         );

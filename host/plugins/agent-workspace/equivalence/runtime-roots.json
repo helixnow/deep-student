@@ -1,0 +1,1154 @@
+{
+  "domain": "agent-workspace",
+  "commands": [
+    "chat_v2_authorize_runtime_root",
+    "chat_v2_create_session",
+    "chat_v2_list_runtime_directory",
+    "chat_v2_list_runtime_roots",
+    "chat_v2_read_runtime_file",
+    "chat_v2_reset_workspace_root",
+    "chat_v2_resolve_runtime_path",
+    "chat_v2_revert_workspace_change",
+    "chat_v2_revoke_runtime_root",
+    "chat_v2_set_skill_trust",
+    "chat_v2_set_workspace_root",
+    "skill_create",
+    "skill_list_directories"
+  ],
+  "scenarios": [
+    {
+      "id": "agent_workspace.runtime.list_roots.defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": "   "
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": "session-preview"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": " sess_w0 中文/../x "
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.list_roots.created_session_and_authorized",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-lr",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-lr"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${3.0.path}",
+            "label": null,
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${3.0.path}",
+            "access": "read_write",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.set_workspace.variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-sw",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-sw"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "label": "  W0 工作区📚  ",
+            "access": "read_write",
+            "sessionId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "label": "   ",
+            "access": "read_only"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "label": null,
+            "access": null,
+            "sessionId": "  "
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "/",
+            "access": "read_only"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "access": "read_write"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.reset_workspace.set_then_reset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_reset_workspace_root",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rs",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rs"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${3.0.path}",
+            "access": "read_write",
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_reset_workspace_root",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_reset_workspace_root",
+          "args": {
+            "sessionId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.authorize.labels_sort_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-au",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-au"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${1.0.path}",
+            "skillId": "zeta",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${1.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${1.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${3.0.path}",
+            "label": "  Alpha 授权📚  "
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${1.0.path}",
+            "label": "ignored-on-repeat"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${3.0.path}",
+            "label": "   ",
+            "sessionId": "  "
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.revoke.one_of_two",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rv",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rv"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "inner",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${2.0.path}",
+            "label": "b-root"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${4.0.path}",
+            "label": "a-root"
+          }
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "${6.2.id}",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "${8.1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.list_directory.filter_sort_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ld",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-ld"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "beta",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "Alpha",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "node_modules",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "TARGET",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "__pycache__",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ld/pkg/.cache",
+            "skillId": "hidden",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": ".",
+            "cursor": null,
+            "limit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": null,
+            "relativePath": "  ./beta/  "
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "node_modules"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "1",
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "2",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "999",
+            "limit": 5000
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "7"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": " 0 "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.list_directory.session_and_authorized_roots",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "artifacts"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "artifact",
+            "relativePath": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "temp",
+            "limit": 100
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-la",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-la"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${5.0.path}",
+            "skillId": "sub",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${5.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${5.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "${8.1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "${8.1.id}",
+            "relativePath": "sub"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.resolve_path.roots",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rp",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rp"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "sub",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "SKILL.md"
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": null,
+            "relativePath": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": " ./sub/SKILL.md "
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "sub"
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "artifacts",
+            "relativePath": "."
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "temp",
+            "relativePath": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "${12.1.id}",
+            "relativePath": "sub/SKILL.md"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.read_file.limits_and_roots",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rf",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rf"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "sub",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md"
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": null
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 74
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 73
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 58
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": 4294967296
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": " ./sub/SKILL.md ",
+            "maxBytes": 16
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "${15.1.id}",
+            "relativePath": "sub/SKILL.md"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.skill_trust.trust_retrust_revoke",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-never",
+            "packageRoot": null,
+            "trusted": false
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0_never_2",
+            "trusted": false
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-st",
+            "skillId": "w0-trust",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-st"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-st/w0-trust",
+            "trusted": true
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "  w0-trust  ",
+            "packageRoot": "  ~/.deep-student/skills/w0-st/w0-trust  ",
+            "trusted": true
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "W0_Alias",
+            "packageRoot": "${3.0.path}",
+            "trusted": true
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "/does/not/matter",
+            "trusted": false
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": null,
+            "trusted": false
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "W0_Alias",
+            "packageRoot": "   ",
+            "trusted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.revert_workspace.created_and_moved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rw",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rw"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${2.0.path}",
+            "skillId": "moved",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${2.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${2.0.path}",
+            "access": "read_write"
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-2",
+              "root_id": "workspace",
+              "op": "moved",
+              "relative_path": "restored.md",
+              "after_hash": "35F62FB23F0FB3F82FA9F57894DCCAEF36DDC82084F8E7D49A166F047B472396",
+              "bytes": 74,
+              "destination_path": "moved/SKILL.md",
+              "before_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "moved"
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "restored.md"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

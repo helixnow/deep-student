@@ -1,0 +1,5 @@
+{
+  "$comment": "示例用户 profile：放在 <应用数据目录>/plugins/user.profile.json 即可在官方插件之外加载本插件（host/kernel/profile.ts loadStartupProfile）。module 改成本目录 index.ts 的绝对路径。",
+  "extends": "official",
+  "plugins": [{ "id": "example.study-goal", "module": "./index.ts" }]
+}

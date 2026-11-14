@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readOfficialShellEntries } from '@/app/__tests__/officialShellEntries';
+import { StudySettingsIcon } from '@/components/icons/StudySidebarIcons';
 
 describe('modern sidebar icon contract', () => {
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
   const workbenchSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'), 'utf-8');
 
-  it('keeps navigation icon stroke width stable across selected states', () => {
-    expect(sidebarSource).toContain('<Icon className="size-[18px]" strokeWidth={2} />');
-    expect(sidebarSource).toContain('<StudySettingsIcon className="size-[18px]" strokeWidth={2} />');
+  it('keeps navigation icon stroke width stable across selected states', async () => {
+    const navigationIconSource = readFileSync(resolve(process.cwd(), 'src/ui-plugins/official/shell/renderNavigationIcon.tsx'), 'utf-8');
+    expect(sidebarSource).toContain("renderNavigationIcon(item.origin, item.owner, item.id, Icon, { className: 'size-[18px]', strokeWidth: 2 })");
+    expect(sidebarSource).toContain("renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-[18px]', strokeWidth: 2 })");
+    expect(navigationIconSource).toContain('const icon = <Icon {...props} />;');
+    const { nav } = await readOfficialShellEntries();
+    expect(nav.find((item) => item.desktop?.placement === 'settings')?.icon).toBe(StudySettingsIcon);
     expect(sidebarSource).not.toContain('strokeWidth={isActive ? 2.3 : 2}');
     expect(sidebarSource).not.toContain("strokeWidth={currentView === 'settings' ? 2.3 : 2}");
   });

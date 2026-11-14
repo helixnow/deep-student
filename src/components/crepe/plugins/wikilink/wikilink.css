@@ -7,25 +7,31 @@
 
 .crepe-wikilink {
   color: hsl(var(--primary));
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  background: hsl(var(--primary) / 0.07);
+  padding: 0.08em 0.32em;
+  text-decoration: none;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 4px;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
 .crepe-wikilink:hover {
-  opacity: 0.85;
+  background: hsl(var(--primary) / 0.12);
 }
 
 .crepe-wikilink--unresolved {
-  opacity: 0.7;
-  text-decoration-style: dotted;
-  color: hsl(var(--foreground));
+  opacity: 0.8;
+  background: transparent;
+  padding: 0;
+  text-decoration: underline dashed hsl(var(--muted-foreground) / 0.55);
+  text-underline-offset: 3px;
+  color: hsl(var(--muted-foreground));
 }
 
 .crepe-wikilink--unresolved:hover {
-  opacity: 0.9;
+  opacity: 1;
+  background: transparent;
+  color: hsl(var(--foreground));
 }
 
 /* 歧义标题：同名笔记 >1，点击弹候选浮层（B13） */

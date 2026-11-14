@@ -95,6 +95,11 @@ export interface Command {
   isEnabled?: (deps: DependencyResolver) => boolean;
   /** 仅在特定命令视图显示（空数组或 undefined 表示全局可见） */
   visibleInViews?: CommandView[];
+  /**
+   * 在 `workbench` 视图下只对这些聚焦应用生效（undefined 表示不限）。快捷键冲突检测据此区分共用快捷键的命令；
+   * 运行时仍由 `isEnabled` 判定，二者必须一致。
+   */
+  workbenchApps?: readonly string[];
   /** 额外搜索关键词 */
   keywords?: string[];
   /** 排序权重，越大越靠前（默认 0） */

@@ -13,18 +13,25 @@
  * 6. 暗色/亮色主题支持
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { PulseDot } from '@/components/ui/PulseDot';
 import {
   WarningCircle,
   ArrowCounterClockwise,
   Image as ImageIcon,
   Sparkle,
   ChatDots,
+  CaretDown,
+  CaretRight,
+  CheckCircle,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { ImagePreview } from './components';
 
 // ============================================================================
@@ -71,57 +78,25 @@ const ImageGenProgress: React.FC<ImageGenProgressProps> = ({ prompt }) => {
   const { t } = useTranslation('chatV2');
 
   return (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-4 p-8',
-        'min-h-[200px]'
-      )}
-    >
-      {/* 动画容器 */}
-      <div className="relative">
-        {/* 外圈光效 */}
-        <div
-          className={cn(
-            'absolute inset-0 rounded-full',
-            'bg-primary/20 animate-ping'
-          )}
-          style={{ animationDuration: '1.5s' }}
-        />
-        {/* 内圈图标 */}
-        <div
-          className={cn(
-            'relative w-16 h-16 rounded-full',
-            'bg-primary/10 dark:bg-primary/20',
-            'flex items-center justify-center'
-          )}
-        >
-          <Sparkle size={32} className="text-primary animate-pulse" />
-        </div>
-      </div>
-
-      {/* 提示文字 */}
-      <div className="text-center space-y-1">
-        <div className="text-sm font-medium text-foreground">
-          {t('blocks.imageGen.generating')}
-        </div>
-        {prompt && (
-          <div className="text-xs text-muted-foreground max-w-[300px] line-clamp-2">
-            "{prompt}"
+    <div className="p-3">
+      <div className="relative flex flex-col items-center justify-center gap-2 overflow-hidden rounded-md border border-border/40 bg-muted/35 px-4 py-5">
+        <ToolActivitySweep active className="justify-center">
+          <div className="flex items-center gap-2">
+            <PulseDot className="h-1.5 w-1.5 text-primary" />
+            <TextShimmer
+              className="text-xs font-medium text-muted-foreground"
+              duration={1.5}
+              spread={3}
+            >
+              {t('blocks.imageGen.generating')}
+            </TextShimmer>
           </div>
+        </ToolActivitySweep>
+        {prompt && (
+          <p className="max-w-full truncate text-xs text-muted-foreground/80" title={prompt}>
+            {prompt}
+          </p>
         )}
-      </div>
-
-      {/* 进度点 */}
-      <div className="flex gap-1">
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className={cn(
-              'w-2 h-2 bg-primary rounded-full animate-bounce'
-            )}
-            style={{ animationDelay: `${i * 150}ms` }}
-          />
-        ))}
       </div>
     </div>
   );
@@ -138,21 +113,19 @@ interface ImageInfoProps {
 }
 
 const ImageInfo: React.FC<ImageInfoProps> = ({ width, height, model }) => {
-  const { t } = useTranslation('chatV2');
-
   if (!width && !height && !model) return null;
 
   return (
     <div
       className={cn(
-        'flex items-center justify-between px-3 py-2',
+        'flex items-center justify-between gap-3 px-3 py-2',
         'text-xs text-muted-foreground',
-        'border-t border-border/30'
+        'border-t border-border/40'
       )}
     >
       {/* 尺寸 */}
       {width && height && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 tabular-nums">
           <ImageIcon size={12} />
           <span>
             {width} × {height}
@@ -162,9 +135,9 @@ const ImageInfo: React.FC<ImageInfoProps> = ({ width, height, model }) => {
 
       {/* 模型 */}
       {model && (
-        <div className="flex items-center gap-1">
-            <Sparkle size={12} />
-          <span>{model}</span>
+        <div className="ml-auto flex min-w-0 items-center gap-1">
+          <Sparkle size={12} className="shrink-0" />
+          <span className="truncate">{model}</span>
         </div>
       )}
     </div>
@@ -259,12 +232,29 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   
   // 优先使用 toolOutput 中的结果，fallback 到 toolInput
   const prompt = outputData?.prompt || inputData?.prompt || '';
+  const revisedPrompt = outputData?.revisedPrompt;
+  const params = outputData?.params || inputData?.params;
   const imageUrl = outputData?.imageUrl;
   const width = outputData?.width || inputData?.width;
   const height = outputData?.height || inputData?.height;
   const model = outputData?.model || inputData?.model;
   const resourceId = outputData?.resourceId;
   const resourceHash = outputData?.resourceHash;
+
+  const isPending = block.status === 'pending';
+  const isError = block.status === 'error';
+  const isRunning = !isPending && !isError && (block.status === 'running' || (Boolean(isStreaming) && !imageUrl));
+  const isActive = isPending || isRunning;
+  const isSuccess = !isActive && !isError;
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
+  const paramEntries = useMemo(
+    () => (params ? Object.entries(params).filter(([, value]) => value !== undefined && value !== null) : []),
+    [params]
+  );
+  const hasPromptDetails = Boolean(prompt || revisedPrompt || paramEntries.length > 0);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
 
   // 重试：与 mcp_tool 一致，通过 store.retryMessage 重试所属消息
   const canRetry = useMemo(() => {
@@ -293,106 +283,200 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     });
   }, [store, resourceId, resourceHash, prompt, t]);
 
-  // 待处理状态
-  if (block.status === 'pending') {
-    return (
-      <div
-        className={cn(
-          'image-gen-block',
-          'rounded-lg border border-border/50 overflow-hidden',
-          'bg-card dark:bg-card/80'
-        )}
-      >
-        <div className="p-4 text-center text-muted-foreground text-sm">
-          {t('blocks.imageGen.pending')}
-        </div>
-      </div>
-    );
-  }
+  const headerSubtitle = isPending
+    ? t('blocks.imageGen.pending')
+    : isRunning
+      ? t('blocks.imageGen.generating')
+      : isError
+        ? t('blocks.imageGen.generationFailed')
+        : model || (width && height ? `${width} × ${height}` : t('blocks.imageGen.generatedImage'));
 
-  // 生成中状态
-  if (block.status === 'running' || (isStreaming && !imageUrl)) {
-    return (
-      <div
-        className={cn(
-          'image-gen-block',
-          'rounded-lg border border-border/50 overflow-hidden',
-          'bg-card dark:bg-card/80'
-        )}
-      >
-        <ImageGenProgress prompt={prompt} />
-      </div>
-    );
-  }
-
-  // 错误状态
-  if (block.status === 'error') {
-    return (
-      <div
-        className={cn(
-          'image-gen-block',
-          'rounded-lg border border-destructive/30 overflow-hidden',
-          'bg-card dark:bg-card/80'
-        )}
-      >
-        <ImageGenError
-          error={block.error || t('blocks.imageGen.unknownError')}
-          prompt={prompt}
-          onRetry={canRetry ? handleRetry : undefined}
-          retryUnavailableHint={t('blocks.imageGen.retryUnavailable')}
-        />
-      </div>
-    );
-  }
-
-  // 成功状态
   return (
     <div
       className={cn(
         'image-gen-block',
-        'rounded-lg border border-border/50 overflow-hidden',
-        'bg-card dark:bg-card/80'
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        isError ? 'border-destructive/30' : 'border-border/50'
       )}
     >
-      {/* 提示词 */}
-      {prompt && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Sparkle size={12} />
-            <span className="font-medium">{t('blocks.imageGen.prompt')}:</span>
+      {/* 统一头部 */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        aria-expanded={isExpanded}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left',
+          'transition-colors hover:bg-muted/40 [@media(pointer:coarse)]:!min-h-11',
+          isExpanded && 'border-b border-border/40'
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isActive}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <ImageIcon size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+              <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                {t('blocks.imageGen.title')}
+              </span>
+            </ToolActivitySweep>
+            {isActive ? (
+              <TextShimmer
+                className="text-xs leading-4 text-muted-foreground"
+                duration={1.5}
+                spread={3}
+              >
+                {headerSubtitle}
+              </TextShimmer>
+            ) : (
+              <span
+                className={cn(
+                  'truncate text-xs leading-4 tabular-nums',
+                  isError ? 'text-destructive' : 'text-muted-foreground/80'
+                )}
+              >
+                {headerSubtitle}
+              </span>
+            )}
           </div>
-          <div className="mt-1 text-sm text-foreground line-clamp-2">
-            {prompt}
-          </div>
         </div>
-      )}
 
-      {/* 图片预览 */}
-      {imageUrl ? (
-        <div className="p-3">
-          <ImagePreview
-            src={imageUrl}
-            alt={prompt}
-            width={width}
-            height={height}
-            showActions
-          />
+        <div className="flex shrink-0 items-center gap-2">
+          {!isActive && durationMs !== undefined && durationMs >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(durationMs)}
+            </span>
+          )}
+          {isSuccess && <CheckCircle size={14} className="shrink-0 text-success" />}
+          {isError && <WarningCircle size={14} className="shrink-0 text-destructive" />}
+          {isExpanded ? (
+            <CaretDown size={14} className="shrink-0 text-muted-foreground" />
+          ) : (
+            <CaretRight size={14} className="shrink-0 text-muted-foreground" />
+          )}
         </div>
-      ) : (
-        <div className="p-8 text-center text-muted-foreground text-sm">
-          {t('blocks.imageGen.noImage')}
-        </div>
-      )}
+      </button>
 
-      {/* 图片信息 */}
-      <ImageInfo width={width} height={height} model={model} />
+      {/* 内容区 */}
+      {isExpanded && (
+        <div>
+          {isPending && (
+            <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+              <PulseDot className="h-1.5 w-1.5 text-primary" />
+              <TextShimmer className="text-xs text-muted-foreground" duration={1.5} spread={3}>
+                {t('blocks.imageGen.pending')}
+              </TextShimmer>
+            </div>
+          )}
 
-      {resourceId && resourceHash && (
-        <div className="flex items-center justify-end gap-2 border-t border-border/30 px-3 py-2">
-          <DsButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
-            <ChatDots size={14} />
-            <span>{t('blocks.imageGen.useForFollowup')}</span>
-          </DsButton>
+          {isRunning && <ImageGenProgress prompt={prompt} />}
+
+          {isError && (
+            <ImageGenError
+              error={block.error || t('blocks.imageGen.unknownError')}
+              prompt={prompt}
+              onRetry={canRetry ? handleRetry : undefined}
+              retryUnavailableHint={t('blocks.imageGen.retryUnavailable')}
+            />
+          )}
+
+          {isSuccess && (
+            <>
+              {/* 可折叠提示词与参数区 */}
+              {hasPromptDetails && (
+                <div className="border-b border-border/40">
+                  <button
+                    type="button"
+                    onClick={() => setIsPromptExpanded((prev) => !prev)}
+                    aria-expanded={isPromptExpanded}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/30 [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                      <Sparkle size={12} className="shrink-0" />
+                      <span className="shrink-0 font-medium">
+                        {t('blocks.imageGen.prompt')}
+                      </span>
+                      {!isPromptExpanded && prompt && (
+                        <span className="min-w-0 truncate text-foreground/80">
+                          {prompt}
+                        </span>
+                      )}
+                    </div>
+                    {isPromptExpanded ? (
+                      <CaretDown size={12} className="shrink-0" />
+                    ) : (
+                      <CaretRight size={12} className="shrink-0" />
+                    )}
+                  </button>
+
+                  {isPromptExpanded && (
+                    <div className="space-y-2 border-t border-border/30 bg-muted/20 px-3 py-2.5 text-xs">
+                      {prompt && (
+                        <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground">
+                          {prompt}
+                        </p>
+                      )}
+                      {revisedPrompt && revisedPrompt !== prompt && (
+                        <p className="whitespace-pre-wrap break-words leading-relaxed text-muted-foreground">
+                          {revisedPrompt}
+                        </p>
+                      )}
+                      {paramEntries.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5 tabular-nums">
+                          {paramEntries.map(([key, value]) => (
+                            <span
+                              key={key}
+                              className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-2xs text-muted-foreground"
+                            >
+                              <span className="font-medium text-foreground/80">{key}:</span>
+                              <span>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 图片预览 */}
+              {imageUrl ? (
+                <div className="p-3">
+                  <ImagePreview
+                    src={imageUrl}
+                    alt={prompt}
+                    width={width}
+                    height={height}
+                    showActions
+                  />
+                </div>
+              ) : (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  {t('blocks.imageGen.noImage')}
+                </div>
+              )}
+
+              {/* 图片信息 */}
+              <ImageInfo width={width} height={height} model={model} />
+
+              {resourceId && resourceHash && (
+                <div className="flex items-center justify-end gap-2 border-t border-border/40 px-3 py-2">
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUseForFollowup}
+                    className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <ChatDots size={14} />
+                    <span>{t('blocks.imageGen.useForFollowup')}</span>
+                  </DsButton>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

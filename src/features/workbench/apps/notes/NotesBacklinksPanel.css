@@ -4,9 +4,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid hsl(var(--border));
+  border-left: 1px solid var(--notes-hairline, hsl(var(--border)));
   color: hsl(var(--foreground));
-  background: hsl(var(--muted) / 30%);
+  background: var(--notes-surface-paper, hsl(var(--background)));
   font: 13px/1.4 var(--font-family);
   letter-spacing: 0;
 }
@@ -19,7 +19,7 @@
   align-items: stretch;
   justify-content: space-between;
   gap: 8px;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border)));
 }
 
 .notes-backlinks-panel-heading {
@@ -52,31 +52,9 @@
   white-space: nowrap;
 }
 
-/* 当前笔记名（页签模式下移出头部，独立一行） */
+/* 当前笔记名：页签模式下隐藏独立子标题行，避免与主编辑器标题重复堆叠 */
 .notes-backlinks-panel-note {
-  min-height: 30px;
-  padding: 0 12px;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  border-bottom: 1px solid hsl(var(--border) / 55%);
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 35%);
-}
-
-.notes-backlinks-panel-note > svg {
-  flex: 0 0 auto;
-  opacity: 0.75;
-}
-
-.notes-backlinks-panel-note > span {
-  overflow: hidden;
-  color: hsl(var(--foreground) / 85%);
-  font-size: 12px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: none;
 }
 
 /* ===== 统一右侧栏页签（属性 / 链接）——下划线式，占满头部高度 ===== */
@@ -233,7 +211,7 @@
 
 .notes-backlinks-panel-section {
   padding: 10px 8px 8px;
-  border-bottom: 1px solid hsl(var(--border) / 72%);
+  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border) / 72%));
 }
 
 .notes-backlinks-panel-section h3 {
@@ -247,18 +225,16 @@
   font-weight: 600;
 }
 
-/* 计数徽标：仅作用于 count 元素，避免污染折叠按钮内的图标+文字 label */
+/* 计数徽标：去掉独立胶囊底色，改为紧随标题的 tabular-nums 淡色数字 */
 .notes-backlinks-panel-section-count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  display: inline-grid;
+  padding: 0 2px;
+  display: inline-flex;
   flex: 0 0 auto;
-  place-items: center;
-  border-radius: var(--notes-radius-control);
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--background) / 64%);
-  font-size: 10px;
+  align-items: center;
+  color: hsl(var(--muted-foreground) / 0.75);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 

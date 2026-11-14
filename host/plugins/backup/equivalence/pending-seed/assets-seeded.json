@@ -1,0 +1,98 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_scan_assets"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.assets.seeded.root_symlink",
+      "seed": "l21-assets-root-symlink",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.assets.seeded.nested_symlink",
+      "seed": "l21-assets-nested-symlink",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.assets.seeded.nested_fifo",
+      "seed": "l21-assets-nested-fifo",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

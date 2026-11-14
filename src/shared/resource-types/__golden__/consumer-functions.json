@@ -1,0 +1,7930 @@
+{
+  "baseline": "e73e0d98",
+  "inputs": [
+    "note",
+    "textbook",
+    "exam",
+    "translation",
+    "essay",
+    "image",
+    "file",
+    "mindmap",
+    "all",
+    "folder",
+    "retrieval",
+    "acme.flashcard",
+    "",
+    "__proto__",
+    "constructor",
+    "toString",
+    "hasOwnProperty",
+    "valueOf",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toLocaleString",
+    "__defineGetter__",
+    "__defineSetter__",
+    "__lookupGetter__",
+    "__lookupSetter__",
+    "todo",
+    "skill",
+    "skill_instruction",
+    "selection",
+    "attachment"
+  ],
+  "consumers": {
+    "src/features/chat/components/ContextRefsDisplay.tsx:getResourceIconComponent": {
+      "note": {
+        "result": "<function:NoteIcon>",
+        "calls": []
+      },
+      "textbook": {
+        "result": "<function:TextbookIcon>",
+        "calls": []
+      },
+      "exam": {
+        "result": "<function:ExamIcon>",
+        "calls": []
+      },
+      "translation": {
+        "result": "<function:TranslationIcon>",
+        "calls": []
+      },
+      "essay": {
+        "result": "<function:EssayIcon>",
+        "calls": []
+      },
+      "image": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "file": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "<function:MindmapIcon>",
+        "calls": []
+      },
+      "all": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "todo": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<function:GenericFileIcon>",
+        "calls": []
+      }
+    },
+    "src/features/chat/components/groups/GroupEditorDialog.tsx:getResourceTypeIcon": {
+      "note": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "textbook": {
+        "result": "<function:BookOpen>",
+        "calls": []
+      },
+      "exam": {
+        "result": "<function:ClipboardText>",
+        "calls": []
+      },
+      "translation": {
+        "result": "<function:Translate>",
+        "calls": []
+      },
+      "essay": {
+        "result": "<function:PenNib>",
+        "calls": []
+      },
+      "image": {
+        "result": "<function:ImageIcon>",
+        "calls": []
+      },
+      "file": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "<function:Brain>",
+        "calls": []
+      },
+      "all": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "todo": {
+        "result": "<function:ListChecks>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<function:FileIcon>",
+        "calls": []
+      }
+    },
+    "src/features/chat/components/input-bar/ContextRefChips.tsx:getTypeIcon": {
+      "note": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "textbook": {
+        "result": "<function:BookOpen>",
+        "calls": []
+      },
+      "exam": {
+        "result": "<function:ClipboardText>",
+        "calls": []
+      },
+      "translation": {
+        "result": "<function:Translate>",
+        "calls": []
+      },
+      "essay": {
+        "result": "<function:PencilSimple>",
+        "calls": []
+      },
+      "image": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "file": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "all": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<function:Folder>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "todo": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<function:Lightning>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<function:Lightning>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<function:Quotes>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<function:FileText>",
+        "calls": []
+      }
+    },
+    "src/features/chat/components/input-bar/ContextRefChips.tsx:getTypeLabelKey": {
+      "note": {
+        "result": "chatV2:contextRef.type.note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "chatV2:contextRef.type.textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "chatV2:contextRef.type.exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "chatV2:contextRef.type.translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "chatV2:contextRef.type.essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "all",
+        "calls": []
+      },
+      "folder": {
+        "result": "chatV2:contextRef.type.folder",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "retrieval",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "acme.flashcard",
+        "calls": []
+      },
+      "": {
+        "result": "",
+        "calls": []
+      },
+      "constructor": {
+        "result": "constructor",
+        "calls": []
+      },
+      "toString": {
+        "result": "toString",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "hasOwnProperty",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "valueOf",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "isPrototypeOf",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "propertyIsEnumerable",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "toLocaleString",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "__defineGetter__",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "__defineSetter__",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "__lookupGetter__",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "__lookupSetter__",
+        "calls": []
+      },
+      "todo": {
+        "result": "todo",
+        "calls": []
+      },
+      "skill": {
+        "result": "chatV2:contextRef.type.skill",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "skill_instruction",
+        "calls": []
+      },
+      "selection": {
+        "result": "chatV2:contextRef.type.selection",
+        "calls": []
+      },
+      "attachment": {
+        "result": "attachment",
+        "calls": []
+      }
+    },
+    "src/features/chat/components/input-bar/ContextRefChips.tsx:getTypeColorClass": {
+      "note": {
+        "result": "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+        "calls": []
+      },
+      "textbook": {
+        "result": "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+        "calls": []
+      },
+      "exam": {
+        "result": "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+        "calls": []
+      },
+      "translation": {
+        "result": "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+        "calls": []
+      },
+      "essay": {
+        "result": "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+        "calls": []
+      },
+      "image": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "file": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "all": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "folder": {
+        "result": "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "constructor": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "toString": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "todo": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      },
+      "skill": {
+        "result": "bg-primary/20 text-primary",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "bg-primary/20 text-primary",
+        "calls": []
+      },
+      "selection": {
+        "result": "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+        "calls": []
+      },
+      "attachment": {
+        "result": "bg-muted text-foreground",
+        "calls": []
+      }
+    },
+    "src/features/chat/components/panels/MultimodalSourceCard.tsx:getSourceTypeIcon": {
+      "note": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "textbook": {
+        "result": {
+          "element": "<function:BookOpen>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "exam": {
+        "result": {
+          "element": "<function:FileText>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "translation": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "essay": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "image": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "file": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "mindmap": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "all": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "folder": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "retrieval": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "constructor": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "toString": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "valueOf": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "todo": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "skill": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "selection": {
+        "result": {
+          "element": "<function:ImageIcon>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      },
+      "attachment": {
+        "result": {
+          "element": "<function:Paperclip>",
+          "props": {
+            "size": 16
+          }
+        },
+        "calls": []
+      }
+    },
+    "src/features/chat/components/panels/MultimodalSourceCard.tsx:getSourceTypeColor": {
+      "note": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "textbook": {
+        "result": "text-success bg-success/10",
+        "calls": []
+      },
+      "exam": {
+        "result": "text-primary bg-primary/10",
+        "calls": []
+      },
+      "translation": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "essay": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "image": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "file": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "all": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "folder": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "constructor": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "toString": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "todo": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "skill": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "selection": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      },
+      "attachment": {
+        "result": "text-muted-foreground bg-muted",
+        "calls": []
+      }
+    },
+    "src/features/chat/context/definitions/folder.ts:getItemXmlTag": {
+      "note": {
+        "result": "note_item",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook_item",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam_item",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation_item",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay_item",
+        "calls": []
+      },
+      "image": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "file": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "all": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "folder": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "constructor": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "toString": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "todo": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "skill": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "selection": {
+        "result": "resource_item",
+        "calls": []
+      },
+      "attachment": {
+        "result": "resource_item",
+        "calls": []
+      }
+    },
+    "src/features/chat/pages/ChatV2Page.tsx:getAppIcon": {
+      "note": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "textbook": {
+        "result": "<function:BookOpen>",
+        "calls": []
+      },
+      "exam": {
+        "result": "<function:ClipboardText>",
+        "calls": []
+      },
+      "translation": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "essay": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "image": {
+        "result": "<function:Image>",
+        "calls": []
+      },
+      "file": {
+        "result": "<function:File>",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "all": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "todo": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<function:FileText>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<function:FileText>",
+        "calls": []
+      }
+    },
+    "src/features/chat/pages/ChatV2Page.tsx:handleOpenInLearningHub": {
+      "note": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "navigateToNote",
+              "detail": {
+                "noteId": "resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "textbook": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "exam": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "navigateToExamSheet",
+              "detail": {
+                "sessionId": "resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "translation": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "navigateToTranslation",
+              "detail": {
+                "translationId": "resource-id",
+                "title": "Title"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "essay": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "navigateToEssay",
+              "detail": {
+                "essayId": "resource-id",
+                "title": "Title"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "image": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "file": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "mindmap": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "all": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "folder": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "retrieval": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "acme.flashcard": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "constructor": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "toString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "hasOwnProperty": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "valueOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "isPrototypeOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "propertyIsEnumerable": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "toLocaleString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "__defineGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "__defineSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "__lookupGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "__lookupSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "todo": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "skill": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "skill_instruction": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "selection": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      },
+      "attachment": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "event",
+            {
+              "type": "NAVIGATE_TO_VIEW",
+              "detail": {
+                "view": "learning-hub",
+                "openResource": "/folder/resource-id"
+              }
+            }
+          ],
+          [
+            "close"
+          ],
+          [
+            "panel",
+            false
+          ]
+        ]
+      }
+    },
+    "src/features/learning-hub/apps/UnifiedAppPanel.tsx:contentView": {
+      "note": {
+        "result": {
+          "element": "<function:NoteContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "textbook": {
+        "result": {
+          "element": "<function:TextbookContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "exam": {
+        "result": {
+          "element": "<function:ExamContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "translation": {
+        "result": {
+          "element": "<function:TranslationContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "essay": {
+        "result": {
+          "element": "<function:EssayContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "image": {
+        "result": {
+          "element": "<function:ImageContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "file": {
+        "result": {
+          "element": "<function:FileContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "title": "Title"
+          }
+        },
+        "calls": []
+      },
+      "mindmap": {
+        "result": {
+          "element": "<function:MindMapContentView>",
+          "props": {
+            "resourceId": "resource-id",
+            "storeInstanceId": "host:resource-id",
+            "onTitleChange": "<function:>",
+            "isActive": true,
+            "focusOnActive": true,
+            "onSaveStateChange": "<function:>",
+            "className": "h-full"
+          }
+        },
+        "calls": []
+      },
+      "all": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "all"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "folder": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "folder"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "retrieval": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "retrieval"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "acme.flashcard"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": ""
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "constructor": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "constructor"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "toString": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "toString"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "hasOwnProperty"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "valueOf": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "valueOf"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "isPrototypeOf"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "propertyIsEnumerable"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "toLocaleString"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "__defineGetter__"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "__defineSetter__"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "__lookupGetter__"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "__lookupSetter__"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "todo": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "todo"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "skill": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "skill"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "skill_instruction"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "selection": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "selection"
+              }
+            }
+          ]
+        },
+        "calls": []
+      },
+      "attachment": {
+        "result": {
+          "element": "div",
+          "props": {
+            "className": "flex items-center justify-center h-full text-muted-foreground",
+            "role": "alert"
+          },
+          "children": [
+            {
+              "key": "error.unsupportedType",
+              "options": {
+                "type": "attachment"
+              }
+            }
+          ]
+        },
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/sidebar/SidebarContextMenu.tsx:onCreateItem": {
+      "note": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createNote"
+          ]
+        ]
+      },
+      "textbook": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createTextbook"
+          ]
+        ]
+      },
+      "exam": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createExam"
+          ]
+        ]
+      },
+      "translation": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createTranslation"
+          ]
+        ]
+      },
+      "essay": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createEssay"
+          ]
+        ]
+      },
+      "image": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "file": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "createMindMap"
+          ]
+        ]
+      },
+      "all": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "todo": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<undefined>",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/useReferenceToChat.ts:getResourceType": {
+      "note": {
+        "result": "note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "file",
+        "calls": []
+      },
+      "all": {
+        "result": "file",
+        "calls": []
+      },
+      "folder": {
+        "result": "file",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "file",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "file",
+        "calls": []
+      },
+      "": {
+        "result": "file",
+        "calls": []
+      },
+      "constructor": {
+        "result": "file",
+        "calls": []
+      },
+      "toString": {
+        "result": "file",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "file",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "file",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "file",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "file",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "todo": {
+        "result": "file",
+        "calls": []
+      },
+      "skill": {
+        "result": "file",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "file",
+        "calls": []
+      },
+      "selection": {
+        "result": "file",
+        "calls": []
+      },
+      "attachment": {
+        "result": "file",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/useReferenceToChat.ts:getTypeId": {
+      "note": {
+        "result": "note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "file",
+        "calls": []
+      },
+      "all": {
+        "result": "file",
+        "calls": []
+      },
+      "folder": {
+        "result": "file",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "file",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "file",
+        "calls": []
+      },
+      "": {
+        "result": "file",
+        "calls": []
+      },
+      "constructor": {
+        "result": "file",
+        "calls": []
+      },
+      "toString": {
+        "result": "file",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "file",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "file",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "file",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "file",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "todo": {
+        "result": "file",
+        "calls": []
+      },
+      "skill": {
+        "result": "file",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "file",
+        "calls": []
+      },
+      "selection": {
+        "result": "file",
+        "calls": []
+      },
+      "attachment": {
+        "result": "file",
+        "calls": []
+      }
+    },
+    "src/features/workbench/apps/content/ContentSkeleton.tsx:skeletonVariantForType": {
+      "note": {
+        "result": "text",
+        "calls": []
+      },
+      "textbook": {
+        "result": "pdf",
+        "calls": []
+      },
+      "exam": {
+        "result": "pdf",
+        "calls": []
+      },
+      "translation": {
+        "result": "text",
+        "calls": []
+      },
+      "essay": {
+        "result": "text",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "generic",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "generic",
+        "calls": []
+      },
+      "folder": {
+        "result": "generic",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "generic",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "generic",
+        "calls": []
+      },
+      "": {
+        "result": "generic",
+        "calls": []
+      },
+      "constructor": {
+        "result": "generic",
+        "calls": []
+      },
+      "toString": {
+        "result": "generic",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "generic",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "generic",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "generic",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "generic",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "generic",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "generic",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "generic",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "generic",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "generic",
+        "calls": []
+      },
+      "todo": {
+        "result": "generic",
+        "calls": []
+      },
+      "skill": {
+        "result": "generic",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "generic",
+        "calls": []
+      },
+      "selection": {
+        "result": "generic",
+        "calls": []
+      },
+      "attachment": {
+        "result": "generic",
+        "calls": []
+      }
+    },
+    "src/features/workbench/apps/content/typeMap.ts:resourceTypeToAppTypeId": {
+      "note": {
+        "result": "notes",
+        "calls": []
+      },
+      "textbook": {
+        "result": "file-preview",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "file-preview",
+        "calls": []
+      },
+      "file": {
+        "result": "file-preview",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "notes",
+        "calls": []
+      },
+      "all": {
+        "result": null,
+        "calls": []
+      },
+      "folder": {
+        "result": null,
+        "calls": []
+      },
+      "retrieval": {
+        "result": null,
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": null,
+        "calls": []
+      },
+      "": {
+        "result": null,
+        "calls": []
+      },
+      "constructor": {
+        "result": null,
+        "calls": []
+      },
+      "toString": {
+        "result": null,
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": null,
+        "calls": []
+      },
+      "valueOf": {
+        "result": null,
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": null,
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": null,
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": null,
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": null,
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": null,
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": null,
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": null,
+        "calls": []
+      },
+      "todo": {
+        "result": null,
+        "calls": []
+      },
+      "skill": {
+        "result": null,
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": null,
+        "calls": []
+      },
+      "selection": {
+        "result": null,
+        "calls": []
+      },
+      "attachment": {
+        "result": null,
+        "calls": []
+      }
+    },
+    "src/features/workbench/apps/files/useFilesHoverPreview.tsx:typeLabel": {
+      "note": {
+        "result": "workbench:files.preview.type.note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "workbench:files.preview.type.textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "workbench:files.preview.type.exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "workbench:files.preview.type.translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "workbench:files.preview.type.essay",
+        "calls": []
+      },
+      "image": {
+        "result": "workbench:files.preview.type.image",
+        "calls": []
+      },
+      "file": {
+        "result": "workbench:files.preview.type.file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "workbench:files.preview.type.mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "folder": {
+        "result": "workbench:files.preview.type.folder",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "constructor": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "toString": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "todo": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "skill": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "selection": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      },
+      "attachment": {
+        "result": "workbench:files.preview.type.generic",
+        "calls": []
+      }
+    },
+    "src/features/workbench/apps/files/useResourceDragOut.ts:glyphForType": {
+      "note": {
+        "result": "N",
+        "calls": []
+      },
+      "textbook": {
+        "result": "T",
+        "calls": []
+      },
+      "exam": {
+        "result": "E",
+        "calls": []
+      },
+      "translation": {
+        "result": "L",
+        "calls": []
+      },
+      "essay": {
+        "result": "A",
+        "calls": []
+      },
+      "image": {
+        "result": "I",
+        "calls": []
+      },
+      "file": {
+        "result": "F",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "M",
+        "calls": []
+      },
+      "all": {
+        "result": "F",
+        "calls": []
+      },
+      "folder": {
+        "result": "F",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "F",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "F",
+        "calls": []
+      },
+      "": {
+        "result": "F",
+        "calls": []
+      },
+      "constructor": {
+        "result": "F",
+        "calls": []
+      },
+      "toString": {
+        "result": "F",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "F",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "F",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "F",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "F",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "F",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "F",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "F",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "F",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "F",
+        "calls": []
+      },
+      "todo": {
+        "result": "F",
+        "calls": []
+      },
+      "skill": {
+        "result": "F",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "F",
+        "calls": []
+      },
+      "selection": {
+        "result": "F",
+        "calls": []
+      },
+      "attachment": {
+        "result": "F",
+        "calls": []
+      }
+    },
+    "src/services/multimodalRagService.ts:normalizeSourceType": {
+      "note": {
+        "result": "file",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "file",
+        "calls": []
+      },
+      "essay": {
+        "result": "file",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "file",
+        "calls": []
+      },
+      "all": {
+        "result": "file",
+        "calls": []
+      },
+      "folder": {
+        "result": "file",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "file",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "file",
+        "calls": []
+      },
+      "": {
+        "result": "file",
+        "calls": []
+      },
+      "constructor": {
+        "result": "file",
+        "calls": []
+      },
+      "toString": {
+        "result": "file",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "file",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "file",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "file",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "file",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "file",
+        "calls": []
+      },
+      "todo": {
+        "result": "file",
+        "calls": []
+      },
+      "skill": {
+        "result": "file",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "file",
+        "calls": []
+      },
+      "selection": {
+        "result": "file",
+        "calls": []
+      },
+      "attachment": {
+        "result": "attachment",
+        "calls": []
+      }
+    },
+    "src/ui-plugins/official/content/menu.ts:menuTargetContext": {
+      "note": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "note"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "textbook": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "textbook"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "textbook",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "exam": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "exam"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "exam",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "translation": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "translation"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "translation",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "essay": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "essay"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "essay",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "image": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "image"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "image",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "file": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "file"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "file",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "mindmap": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "mindmap"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "mindmap",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "all": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "all"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "folder": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "folder"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "retrieval": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "retrieval"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "acme.flashcard"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": ""
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "constructor": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "constructor"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "toString": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "toString"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "hasOwnProperty"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "valueOf": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "valueOf"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "isPrototypeOf"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "propertyIsEnumerable"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "toLocaleString"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "__defineGetter__"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "__defineSetter__"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "__lookupGetter__"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "__lookupSetter__"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "todo": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "todo"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "skill": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "skill"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "skill_instruction"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "selection": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "selection"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      },
+      "attachment": {
+        "result": {
+          "scope": "resource",
+          "resource": {
+            "itemId": "resource-id",
+            "itemType": "attachment"
+          },
+          "resourceItem": null,
+          "trashId": "resource-id",
+          "trashItemType": "note",
+          "folderId": null,
+          "isFolder": false
+        },
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/types.ts:itemTypeToResourceType": {
+      "note": {
+        "result": "note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "note",
+        "calls": []
+      },
+      "folder": {
+        "result": "note",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "note",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "note",
+        "calls": []
+      },
+      "": {
+        "result": "note",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:Object>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:toString>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:hasOwnProperty>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:valueOf>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:isPrototypeOf>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:propertyIsEnumerable>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:toLocaleString>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:__defineGetter__>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:__defineSetter__>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:__lookupGetter__>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:__lookupSetter__>",
+        "calls": []
+      },
+      "todo": {
+        "result": "note",
+        "calls": []
+      },
+      "skill": {
+        "result": "note",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "note",
+        "calls": []
+      },
+      "selection": {
+        "result": "note",
+        "calls": []
+      },
+      "attachment": {
+        "result": "note",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/types.ts:itemTypeToPreviewType": {
+      "note": {
+        "result": "markdown",
+        "calls": []
+      },
+      "textbook": {
+        "result": "pdf",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "markdown",
+        "calls": []
+      },
+      "essay": {
+        "result": "markdown",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "none",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "none",
+        "calls": []
+      },
+      "folder": {
+        "result": "none",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "none",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "none",
+        "calls": []
+      },
+      "": {
+        "result": "none",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:Object>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:toString>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:hasOwnProperty>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:valueOf>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:isPrototypeOf>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:propertyIsEnumerable>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:toLocaleString>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:__defineGetter__>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:__defineSetter__>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:__lookupGetter__>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:__lookupSetter__>",
+        "calls": []
+      },
+      "todo": {
+        "result": "none",
+        "calls": []
+      },
+      "skill": {
+        "result": "none",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "none",
+        "calls": []
+      },
+      "selection": {
+        "result": "none",
+        "calls": []
+      },
+      "attachment": {
+        "result": "none",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/types.ts:nodeTypeToFolderItemType": {
+      "note": {
+        "result": "note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": null,
+        "calls": []
+      },
+      "folder": {
+        "result": null,
+        "calls": []
+      },
+      "retrieval": {
+        "result": null,
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": null,
+        "calls": []
+      },
+      "": {
+        "result": null,
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:Object>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:toString>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:hasOwnProperty>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:valueOf>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:isPrototypeOf>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:propertyIsEnumerable>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:toLocaleString>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:__defineGetter__>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:__defineSetter__>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:__lookupGetter__>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:__lookupSetter__>",
+        "calls": []
+      },
+      "todo": {
+        "result": null,
+        "calls": []
+      },
+      "skill": {
+        "result": null,
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": null,
+        "calls": []
+      },
+      "selection": {
+        "result": null,
+        "calls": []
+      },
+      "attachment": {
+        "result": null,
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/types.ts:mapDstuTypeToFolderItemType": {
+      "note": {
+        "result": "note",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbook",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam",
+        "calls": []
+      },
+      "translation": {
+        "result": "translation",
+        "calls": []
+      },
+      "essay": {
+        "result": "essay",
+        "calls": []
+      },
+      "image": {
+        "result": "image",
+        "calls": []
+      },
+      "file": {
+        "result": "file",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmap",
+        "calls": []
+      },
+      "all": {
+        "result": "note",
+        "calls": []
+      },
+      "folder": {
+        "result": "note",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "note",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "note",
+        "calls": []
+      },
+      "": {
+        "result": "note",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:Object>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:toString>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:hasOwnProperty>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:valueOf>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:isPrototypeOf>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:propertyIsEnumerable>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:toLocaleString>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:__defineGetter__>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:__defineSetter__>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:__lookupGetter__>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:__lookupSetter__>",
+        "calls": []
+      },
+      "todo": {
+        "result": "note",
+        "calls": []
+      },
+      "skill": {
+        "result": "note",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "note",
+        "calls": []
+      },
+      "selection": {
+        "result": "note",
+        "calls": []
+      },
+      "attachment": {
+        "result": "note",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/types.ts:itemTypeToSourceDb": {
+      "note": {
+        "result": "notes",
+        "calls": []
+      },
+      "textbook": {
+        "result": "textbooks",
+        "calls": []
+      },
+      "exam": {
+        "result": "exam_sessions",
+        "calls": []
+      },
+      "translation": {
+        "result": "translations",
+        "calls": []
+      },
+      "essay": {
+        "result": "essays",
+        "calls": []
+      },
+      "image": {
+        "result": "attachments",
+        "calls": []
+      },
+      "file": {
+        "result": "attachments",
+        "calls": []
+      },
+      "mindmap": {
+        "result": "mindmaps",
+        "calls": []
+      },
+      "all": {
+        "result": "notes",
+        "calls": []
+      },
+      "folder": {
+        "result": "notes",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "notes",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "notes",
+        "calls": []
+      },
+      "": {
+        "result": "notes",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<function:Object>",
+        "calls": []
+      },
+      "toString": {
+        "result": "<function:toString>",
+        "calls": []
+      },
+      "hasOwnProperty": {
+        "result": "<function:hasOwnProperty>",
+        "calls": []
+      },
+      "valueOf": {
+        "result": "<function:valueOf>",
+        "calls": []
+      },
+      "isPrototypeOf": {
+        "result": "<function:isPrototypeOf>",
+        "calls": []
+      },
+      "propertyIsEnumerable": {
+        "result": "<function:propertyIsEnumerable>",
+        "calls": []
+      },
+      "toLocaleString": {
+        "result": "<function:toLocaleString>",
+        "calls": []
+      },
+      "__defineGetter__": {
+        "result": "<function:__defineGetter__>",
+        "calls": []
+      },
+      "__defineSetter__": {
+        "result": "<function:__defineSetter__>",
+        "calls": []
+      },
+      "__lookupGetter__": {
+        "result": "<function:__lookupGetter__>",
+        "calls": []
+      },
+      "__lookupSetter__": {
+        "result": "<function:__lookupSetter__>",
+        "calls": []
+      },
+      "todo": {
+        "result": "notes",
+        "calls": []
+      },
+      "skill": {
+        "result": "notes",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "notes",
+        "calls": []
+      },
+      "selection": {
+        "result": "notes",
+        "calls": []
+      },
+      "attachment": {
+        "result": "notes",
+        "calls": []
+      }
+    },
+    "src/features/learning-hub/sidebar/useSidebarChatActions.ts:useSidebarReferenceToChat": {
+      "note": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "note",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "textbook": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "textbook",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "exam": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "exam",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "translation": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "translation",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "essay": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "essay",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "image": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "image",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "file": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "file",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "mindmap": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "mindmap",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "all": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "folder": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "retrieval": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "acme.flashcard": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "constructor": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:Object>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "toString": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "hasOwnProperty": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:hasOwnProperty>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "valueOf": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:valueOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "isPrototypeOf": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:isPrototypeOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "propertyIsEnumerable": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:propertyIsEnumerable>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "toLocaleString": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toLocaleString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "__defineGetter__": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "__defineSetter__": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "__lookupGetter__": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "__lookupSetter__": {
+        "result": true,
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "openAttachmentPanel": "<undefined>"
+            }
+          ],
+          [
+            "reference",
+            {
+              "resourceId": "ref"
+            }
+          ]
+        ]
+      },
+      "todo": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "skill": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "skill_instruction": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "selection": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      },
+      "attachment": {
+        "result": false,
+        "calls": [
+          [
+            "notification",
+            "warning",
+            {
+              "key": "error.unsupportedResourceType",
+              "options": {
+                "type": "unknown"
+              }
+            }
+          ]
+        ]
+      }
+    },
+    "src/features/learning-hub/sidebar/useSidebarChatActions.ts:batchAddSelectionToChat": {
+      "note": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "note",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "textbook": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "textbook",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "exam": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "exam",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "translation": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "translation",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "essay": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "essay",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "image": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "image",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "file": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "file",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "mindmap": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "mindmap",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "all": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "folder": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "retrieval": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "acme.flashcard": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "constructor": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:Object>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "toString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "hasOwnProperty": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:hasOwnProperty>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "valueOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:valueOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "isPrototypeOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:isPrototypeOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "propertyIsEnumerable": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:propertyIsEnumerable>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "toLocaleString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toLocaleString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "__defineGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "__defineSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "__lookupGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "__lookupSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              },
+              "resourceHash": "<undefined>",
+              "openAttachmentPanel": false
+            }
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            {
+              "key": "finder.multiSelect.addToChatSuccess",
+              "options": {
+                "count": 1
+              }
+            }
+          ],
+          [
+            "clear"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "todo": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "skill": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "skill_instruction": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "selection": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      },
+      "attachment": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "processing",
+            true
+          ],
+          [
+            "notification",
+            "error",
+            "finder.multiSelect.addToChatFailed"
+          ],
+          [
+            "processing",
+            false
+          ]
+        ]
+      }
+    },
+    "src/features/learning-hub/hooks/useVfsContextInject.ts:injectToChat": {
+      "note": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "note",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "note",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "text/markdown",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "textbook": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "textbook",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "textbook",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/pdf",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "exam": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "exam",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "exam",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/json",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "translation": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "translation",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "translation",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "text/markdown",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "essay": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "essay",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "essay",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "text/markdown",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "image": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "image",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "image",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "image",
+              "mimeType": "image/png",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "file": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "file",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "file",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "mindmap": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "mindmap",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "mindmap",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/json",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "all": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "all",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "all",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "folder": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "folder",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "folder",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "retrieval": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "retrieval",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "retrieval",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "acme.flashcard": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "acme.flashcard",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "acme.flashcard",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "constructor": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "constructor",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "constructor",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:Object>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "toString": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "toString",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "toString",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:toString>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "hasOwnProperty": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "hasOwnProperty",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "hasOwnProperty",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:hasOwnProperty>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "valueOf": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "valueOf",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "valueOf",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:valueOf>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "isPrototypeOf": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "isPrototypeOf",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "isPrototypeOf",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:isPrototypeOf>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "propertyIsEnumerable": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "propertyIsEnumerable",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "propertyIsEnumerable",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:propertyIsEnumerable>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "toLocaleString": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "toLocaleString",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "toLocaleString",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:toLocaleString>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "__defineGetter__": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "__defineGetter__",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "__defineGetter__",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:__defineGetter__>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "__defineSetter__": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "__defineSetter__",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "__defineSetter__",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:__defineSetter__>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "__lookupGetter__": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "__lookupGetter__",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "__lookupGetter__",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:__lookupGetter__>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "__lookupSetter__": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "__lookupSetter__",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "__lookupSetter__",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "<function:__lookupSetter__>",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "todo": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "todo",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "todo",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "skill": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "skill",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "skill",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "skill_instruction": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "skill_instruction",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "skill_instruction",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "selection": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "selection",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "selection",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      },
+      "attachment": {
+        "result": {
+          "success": true,
+          "contextRef": {
+            "resourceId": "ref",
+            "hash": "hash",
+            "typeId": "attachment",
+            "displayName": "Title"
+          }
+        },
+        "calls": [
+          [
+            "injecting",
+            true
+          ],
+          [
+            "contextRef",
+            {
+              "resourceId": "ref",
+              "hash": "hash",
+              "typeId": "attachment",
+              "displayName": "Title"
+            }
+          ],
+          [
+            "attachment",
+            {
+              "id": "vfs-resource-id-0",
+              "name": "Title",
+              "type": "document",
+              "mimeType": "application/octet-stream",
+              "size": 0,
+              "status": "ready",
+              "resourceId": "ref",
+              "sourceId": "resource-id"
+            }
+          ],
+          [
+            "notification",
+            "success",
+            "notes:reference.to_chat_success"
+          ],
+          [
+            "event",
+            {
+              "type": "CHAT_V2_OPEN_ATTACHMENT_PANEL",
+              "detail": "<undefined>"
+            }
+          ],
+          [
+            "injecting",
+            false
+          ]
+        ]
+      }
+    },
+    "src/features/learning-hub/useLearningHubPageController.tsx:handleInjectToChat": {
+      "note": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "note",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "textbook": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "textbook",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "exam": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "exam",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "translation": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "translation",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "essay": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "essay",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "image": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "image",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "file": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "file",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "mindmap": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "mindmap",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "all": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "folder": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "retrieval": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "acme.flashcard": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "constructor": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:Object>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "toString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "hasOwnProperty": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:hasOwnProperty>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "valueOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:valueOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "isPrototypeOf": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:isPrototypeOf>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "propertyIsEnumerable": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:propertyIsEnumerable>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "toLocaleString": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:toLocaleString>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "__defineGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "__defineSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__defineSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "__lookupGetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupGetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "__lookupSetter__": {
+        "result": "<undefined>",
+        "calls": [
+          [
+            "injectToChat",
+            {
+              "sourceId": "resource-id",
+              "sourceType": "<function:__lookupSetter__>",
+              "name": "Title",
+              "metadata": {
+                "title": "Title"
+              }
+            }
+          ]
+        ]
+      },
+      "todo": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "skill": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "skill_instruction": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "selection": {
+        "result": "<undefined>",
+        "calls": []
+      },
+      "attachment": {
+        "result": "<undefined>",
+        "calls": []
+      }
+    }
+  }
+}

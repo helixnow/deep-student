@@ -9,6 +9,7 @@ import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
 import noLegacyTooltip from './eslint-rules/no-legacy-tooltip.js';
 import noHardcodedColor from './eslint-rules/no-hardcoded-color.js';
 import noArbitraryZIndex from './eslint-rules/no-arbitrary-z-index.js';
+import noUntypedCommandThrow from './eslint-rules/no-untyped-command-throw.js';
 import { readFileSync } from 'node:fs';
 
 // App 壳层：src/App.tsx 及从其中搬出的模块，App.tsx 专属护栏同样覆盖这些文件
@@ -300,6 +301,38 @@ export default tseslint.config(
         },
       ],
     },
+  },
+
+  // ============================================================
+  // Host / Electron 命令处理函数：错误必须带分类（host/kernel/API.md §2.3）。
+  // 现存违规按文件冻结在 eslint-rules/no-untyped-command-throw.baseline.json，只拦新增；
+  // 守门由 host/kernel/tests/command-error-lint.test.ts 只跑本规则完成（host 不走全量 lint）。
+  // ============================================================
+  {
+    files: ['host/**/*.ts', 'electron/**/*.ts'],
+    ignores: ['**/tests/**', '**/*.test.ts', '**/__fixtures__/**', 'host/e2e/**'],
+    plugins: {
+      'ds-host': { rules: { 'no-untyped-command-throw': noUntypedCommandThrow } }
+    },
+    rules: {
+      'ds-host/no-untyped-command-throw': 'error'
+    }
+  },
+
+  // ============================================================
+  // Host / Electron：不得使用 `@deprecated` 接口（插件生态 v1：kernel 的不兼容变更先标 @deprecated，
+  // 见 host/kernel/API.md「稳定接口与弃用」）。需要类型信息；现存用法按文件冻结在
+  // eslint-rules/no-deprecated.baseline.json，棘轮由 `bin/heavy node eslint-rules/no-deprecated.baseline.mjs` 守门。
+  // ============================================================
+  {
+    files: ['host/**/*.ts', 'electron/**/*.ts'],
+    ignores: ['**/tests/**', '**/*.test.ts', '**/__fixtures__/**', 'host/e2e/**'],
+    languageOptions: {
+      parserOptions: { project: ['./tsconfig.host.json'], tsconfigRootDir: import.meta.dirname }
+    },
+    rules: {
+      '@typescript-eslint/no-deprecated': 'error'
+    }
   },
 
   // ============================================================

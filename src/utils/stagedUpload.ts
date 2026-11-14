@@ -14,7 +14,7 @@
  * 已有文件路径（拖放/对话框/content://）时用 `stagePathUpload`，Rust 直接复制。
  */
 import { invoke } from '@tauri-apps/api/core';
-import { isAndroid } from './platform';
+import { isAndroid, isWebUiShell } from './platform';
 
 /** 超过该大小走分块暂存；更小的文件保留原 base64 快速路径 */
 export const STAGED_UPLOAD_THRESHOLD = 8 * 1024 * 1024;
@@ -79,13 +79,19 @@ export async function abortStagedUpload(uploadId: string): Promise<void> {
  */
 export async function stageBlobUpload(blob: Blob, options: StageBlobOptions): Promise<string> {
   const { name, onProgress, signal } = options;
-  const android = options.android ?? isAndroid();
+  // WebUI 的 `staged_upload_append` 走的是浏览器 → 宿主的 WebSocket，二进制帧原样传输，
+  // 不需要 Android WebView 那套 base64 兜底（那只是绕开 wry 的请求体限制）。
+  const android = options.android ?? (isAndroid() && !isWebUiShell());
   const chunkSize = options.chunkSize ?? STAGED_UPLOAD_CHUNK_SIZE;
+  if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0 || chunkSize > 16 * 1024 * 1024) {
+    throw new RangeError('Upload chunk size must be an integer between 1 and 16 MiB');
+  }
   const total = blob.size;
   if (signal?.aborted) throw abortError();
 
   const uploadId = await invoke<string>('staged_upload_begin', { name, totalSize: total });
   try {
+    if (signal?.aborted) throw abortError();
     let offset = 0;
     while (offset < total) {
       if (signal?.aborted) throw abortError();
@@ -108,6 +114,7 @@ export async function stageBlobUpload(blob: Blob, options: StageBlobOptions): Pr
       offset = end;
       onProgress?.(offset, total);
     }
+    if (signal?.aborted) throw abortError();
     return uploadId;
   } catch (error: unknown) {
     void abortStagedUpload(uploadId);

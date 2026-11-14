@@ -1,0 +1,331 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_add_tag",
+    "chat_v2_remove_tag",
+    "chat_v2_get_tags_batch",
+    "chat_v2_list_all_tags"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.tag.crud_trim_batch_archive",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "标签一"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "analysis",
+            "title": "标签二"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "  物理  "
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "物理"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "力学 基础"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${1.id}",
+            "tag": "物理"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${1.id}",
+            "tag": "Physics"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${1.id}",
+            "tag": "physics"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}",
+              "${1.id}",
+              "sess_wp226_missing",
+              "legacy_no_prefix",
+              ""
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": []
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}",
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_all_tags",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "  物理  "
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "物理"
+          }
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "从未添加"
+          }
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "sess_wp226_missing",
+            "tag": "物理"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}",
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_all_tags",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_all_tags",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}",
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_all_tags",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.tag.errors_prefix_empty_fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "标签错误"
+          }
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "bad_prefix",
+            "tag": "物理"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "",
+            "tag": "物理"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": " \t\n "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "bad_prefix",
+            "tag": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "sess_wp226_missing",
+            "tag": "物理"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_add_tag",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "bad_prefix",
+            "tag": "物理"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "${0.id}",
+            "tag": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "sessionId": "agent",
+            "tag": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_remove_tag",
+          "args": {
+            "tag": "物理"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": "sess_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_tags_batch",
+          "args": {
+            "sessionIds": [
+              "${0.id}"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

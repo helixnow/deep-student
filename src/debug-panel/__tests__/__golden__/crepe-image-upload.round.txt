@@ -1,0 +1,312 @@
+<div>
+  <div style="display: flex; flex-direction: column; height: 100%; background: var(--background); color: var(--foreground); font-size: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap;">
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: rgb(34, 197, 94); color: white; cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M247.31,124.76c-.35-.79-">
+        "监听中"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M208,56H180.28L166.65,35">
+        "快照"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M168,132.69,214.08,115l.">
+        "测试选择器"
+      <select class="[@media(pointer:coarse)]:min-h-11" style="padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); font-size: 11px;">
+        <option>
+          "全部级别"
+        <option>
+          "Debug"
+        <option>
+          "Info"
+        <option>
+          "Warning"
+        <option>
+          "Error"
+        <option>
+          "Success"
+      <div style="flex: 1 1 0%;">
+      <span style="color: var(--muted-foreground); font-size: 11px;">
+        "16"
+        "/"
+        "16"
+        "条"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;" title="复制日志">
+        <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid rgb(59, 130, 246); border-radius: 4px; background: rgb(59, 130, 246); color: white; cursor: pointer; font-size: 11px;" title="复制完整诊断报告">
+        <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+        "诊断报告"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;" title="清空日志">
+        <svg size=12 icon="M216,48H176V40a24,24,0,0">
+    <div style="display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px;">
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <svg size=12 icon="M215.79,118.17a8,8,0,0,0">
+        <span>
+          "Tauri:"
+        <span style="color: rgb(239, 68, 68); font-weight: bold;">
+          "否"
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <svg size=12 icon="M216,40H40A16,16,0,0,0,2">
+        <span>
+          "ImageBlock:"
+        <span style="color: rgb(34, 197, 94);">
+          "✓"
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <svg size=12 icon="M240,136v64a16,16,0,0,1-">
+        <span>
+          "Uploader:"
+        <span style="color: rgb(34, 197, 94);">
+          "✓"
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <svg size=12 icon="M110.66,147.56a8,8,0,0,0">
+        <span>
+          "HiddenInput:"
+        <span style="color: rgb(34, 197, 94);">
+          "✓"
+    <div style="flex: 1 1 0%; overflow: auto; padding: 8px;">
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(139, 92, 246); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M168,132.69,214.08,115l.">
+            "点击检测"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "023"
+        <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 6px;">
+          "点击图片上传区域"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"target\": \"span.icon\", \"button\": 0 }"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+          <div style="font-weight: bold; margin-bottom: 4px;">
+            "DOM Info:"
+          <code style="font-size: 10px;">
+            "<"
+            "span"
+            "class=\"icon\""
+            ">"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(243, 244, 246); border-left: 3px solid rgb(107, 114, 128); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(99, 102, 241); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M69.12,94.15,28.5,128l40">
+            "选择器检查"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "046"
+        <div style="color: rgb(107, 114, 128); font-weight: 500; margin-bottom: 6px;">
+          "选择器检查"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"matched\": [ \"label.uploader\" ] }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(243, 244, 246); border-left: 3px solid rgb(107, 114, 128); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(16, 185, 129); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M215.79,118.17a8,8,0,0,0">
+            "Tauri检测"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "069"
+        <div style="color: rgb(107, 114, 128); font-weight: 500; margin-bottom: 6px;">
+          "Tauri 环境检测"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"isTauri\": false }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(249, 115, 22); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M216,72H131.31L104,44.69">
+            "打开对话框"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "092"
+        <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 6px;">
+          "打开文件对话框"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"multiple\": false, \"filters\": [ \"png\", \"jpg\" ] }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(255, 251, 235); border-left: 3px solid rgb(245, 158, 11); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(59, 130, 246); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M110.66,147.56a8,8,0,0,0">
+            "对话框结果"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "115"
+        <div style="color: rgb(245, 158, 11); font-weight: 500; margin-bottom: 6px;">
+          "用户取消选择"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"path\": null }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(243, 244, 246); border-left: 3px solid rgb(107, 114, 128); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(6, 182, 212); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M247.31,124.76c-.35-.79-">
+            "文件读取"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "138"
+        <div style="color: rgb(107, 114, 128); font-weight: 500; margin-bottom: 6px;">
+          "proxyDomURL 被调用"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"url\": \"assets/a.png\" }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(240, 253, 244); border-left: 3px solid rgb(34, 197, 94); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(139, 92, 246); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M240,56v48a8,8,0,0,1-8,8">
+            "文件转换"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "161"
+        <div style="color: rgb(34, 197, 94); font-weight: 500; margin-bottom: 6px;">
+          "Base64 转换成功"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"length\": 1234 }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(245, 158, 11); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M240,136v64a16,16,0,0,1-">
+            "开始上传"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "184"
+        <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 6px;">
+          "调用 notes_save_asset"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"noteId\": \"note_1\", \"size\": 2048 }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(240, 253, 244); border-left: 3px solid rgb(34, 197, 94); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(34, 197, 94); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M173.66,98.34a8,8,0,0,1,">
+            "上传完成"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "207"
+        <div style="color: rgb(34, 197, 94); font-weight: 500; margin-bottom: 6px;">
+          "notes_save_asset 返回成功"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"path\": \"assets/a.png\" }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(243, 244, 246); border-left: 3px solid rgb(107, 114, 128); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(99, 102, 241); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M69.12,94.15,28.5,128l40">
+            "查找节点"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "230"
+        <div style="color: rgb(107, 114, 128); font-weight: 500; margin-bottom: 6px;">
+          "查找节点"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"found\": true }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(240, 253, 244); border-left: 3px solid rgb(34, 197, 94); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(34, 197, 94); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M216,40H40A16,16,0,0,0,2">
+            "更新节点"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "253"
+        <div style="color: rgb(34, 197, 94); font-weight: 500; margin-bottom: 0px;">
+          "更新节点"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(20, 184, 166); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M216,40H40A16,16,0,0,0,2">
+            "插入节点"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "276"
+        <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 6px;">
+          "插入节点"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"pos\": 12 }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(255, 251, 235); border-left: 3px solid rgb(245, 158, 11); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(14, 165, 233); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M216,40H40A16,16,0,0,0,2">
+            "图片渲染"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "299"
+        <div style="color: rgb(245, 158, 11); font-weight: 500; margin-bottom: 6px;">
+          "图片渲染"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"naturalWidth\": 0 }"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+          <div style="font-weight: bold; margin-bottom: 4px;">
+            "DOM Info:"
+          <code style="font-size: 10px;">
+            "<"
+            "img"
+            "class=\"image\""
+            ">"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(243, 244, 246); border-left: 3px solid rgb(107, 114, 128); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(139, 92, 246); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M168,132.69,214.08,115l.">
+            "点击检测"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "322"
+        <div style="color: rgb(107, 114, 128); font-weight: 500; margin-bottom: 6px;">
+          "点击普通文本"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+          <div style="font-weight: bold; margin-bottom: 4px;">
+            "DOM Info:"
+          <code style="font-size: 10px;">
+            "<"
+            "em"
+            ">"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(6, 182, 212); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M208,56H180.28L166.65,35">
+            "DOM快照"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "345"
+        <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 0px;">
+          "DOM 快照"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+          <div style="font-weight: bold; margin-bottom: 4px;">
+            "ImageBlock 快照:"
+          <div style="font-family: monospace; white-space: pre-wrap;">
+            "{ \"hasImageBlock\": true, \"hasImageInline\": false, \"hasImageEdit\": true, \"hasPlaceholder\": true, \"hasUploader\": true, \"hasHiddenInput\": true, \"imageBlockClasses\": [ \"milkdown-image-block\", \"selected\", \"empty\" ], \"fullDOMPath\": [ \"div.milkdown-image-block.selected.empty\", \"div.image-edit\", \"div.placeholder\", \"label.uploader\" ], \"hiddenInputId\": \"upload-1\", \"uploaderForAttr\": \"upload-1\" }"
+      <div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(254, 242, 242); border-left: 3px solid rgb(239, 68, 68); border-radius: 4px; font-size: 11px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(239, 68, 68); color: white; border-radius: 3px; font-size: 10px;">
+            <svg size=10 icon="M165.66,101.66,139.31,12">
+            "错误"
+          <span style="color: var(--muted-foreground); font-size: 10px;">
+            "10:00:00 AM"
+            "."
+            "368"
+        <div style="color: rgb(239, 68, 68); font-weight: 500; margin-bottom: 6px;">
+          "图片保存失败"
+        <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+          "{ \"error\": \"ENOSPC: no space left on device\" }"
+      <div>
+----
+log [CrepeImageUpload:click_detected] | 点击图片上传区域 | {"target":"span.icon","button":0}
+log [CrepeImageUpload:selector_check] | 选择器检查 | {"matched":["label.uploader"]}
+log [CrepeImageUpload:tauri_check] | Tauri 环境检测 | {"isTauri":false}
+log [CrepeImageUpload:dialog_open] | 打开文件对话框 | {"multiple":false,"filters":["png","jpg"]}
+warn [CrepeImageUpload:dialog_result] | 用户取消选择 | {"path":null}
+log [CrepeImageUpload:file_read] | proxyDomURL 被调用 | {"url":"assets/a.png"}
+log [CrepeImageUpload:file_convert] | Base64 转换成功 | {"length":1234}
+log [CrepeImageUpload:upload_start] | 调用 notes_save_asset | {"noteId":"note_1","size":2048}
+log [CrepeImageUpload:upload_complete] | notes_save_asset 返回成功 | {"path":"assets/a.png"}
+log [CrepeImageUpload:node_find] | 查找节点 | {"found":true}
+log [CrepeImageUpload:node_update] | 更新节点 | 
+log [CrepeImageUpload:node_insert] | 插入节点 | {"pos":12}
+warn [CrepeImageUpload:image_render] | 图片渲染 | {"naturalWidth":0}
+log [CrepeImageUpload:click_detected] | 点击普通文本 | 
+log [CrepeImageUpload:dom_snapshot] | DOM 快照 | 
+error [CrepeImageUpload:error] | 图片保存失败 | {"error":"ENOSPC: no space left on device"}

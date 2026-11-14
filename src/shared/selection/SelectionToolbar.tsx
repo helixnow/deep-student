@@ -8,26 +8,55 @@
  * 宿主只传自己「真的有」的能力回调；未传的能力默认灰显（聊天旧行为），
  * 宿主可传 `hideUnavailableActions` 直接不渲染，避免出现点了没反应的假入口。
  *
- * 定位契约（P0-3 去 Portal 改造）：
- * - 不再 createPortal 到 body、不再 fixed + z-[9999] 全局悬浮；
- *   改为绝对定位挂在宿主容器内（containerRef 指向的元素需为 position: relative）。
- * - 选区 rect（视口坐标）在渲染前换算为容器局部坐标；随内容一起滚动，
- *   滚动时由 useTextSelection 统一清除选区状态。
- * - 入场动画复用 .chat-msg-enter（150ms fade+rise，自带 reduced-motion 降级）。
+ * 定位契约：
+ * - 导出纯函数 `computeSelectionToolbarPosition`：
+ *   1. 桌面端（精细指针）默认置于选区上方 `rect.top - 46px`；
+ *   2. 触屏端（isCoarsePointer === true）默认优先置于选区下方 `rect.bottom + 12px`
+ *      （将选区上方让给 iOS/Android 原生系统「拷贝/查找」气泡），仅当距视口底部不足 56px 时翻转到上方；
+ *   3. 执行水平 `[100, innerWidth - 100]` 与垂直 `[8, innerHeight - 52]` 双夹逼。
+ * - 渲染时将视口坐标换算为宿主容器局部坐标并采用 absolute 定位；
+ *   入场动画复用 .chat-msg-enter（150ms fade+rise，自带 reduced-motion 降级）。
  */
 
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Copy, Check, Sparkle, Translate, ChatDots, Cards, NotePencil, Quotes } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
-import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { useViewStore } from '@/stores/viewStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useViewStore } from '@/stores/viewStore';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { cn } from '@/utils/cn';
 import type { SelectionRect } from './useTextSelection';
 
 // ============================================================================
 // 类型
 // ============================================================================
+
+export interface SelectionToolbarPositionOptions {
+  /** 是否为粗指针（触屏）设备 */
+  isCoarsePointer?: boolean;
+  /** 视口宽度（px） */
+  innerWidth?: number;
+  /** 视口高度（px） */
+  innerHeight?: number;
+  /** 定位偏好：'auto'（桌面优先上方，触屏优先下方）| 'below'（始终优先下方） */
+  placement?: 'auto' | 'below';
+  /** 视口底部额外避让像素（如移动端底栏/安全区） */
+  viewportBottomInset?: number;
+}
+
+export interface SelectionToolbarPositionInput extends SelectionToolbarPositionOptions {
+  rect?: SelectionRect;
+  selectionRect?: SelectionRect;
+}
+
+export interface SelectionToolbarPositionResult {
+  /** 工具栏顶部视口 Y 坐标（已夹逼在 [8, innerHeight - 52]） */
+  top: number;
+  /** 工具栏水平锚点视口 X 坐标（已夹逼在 [100, innerWidth - 100]） */
+  left: number;
+  /** 最终相对于选区的放置方向 */
+  placement: 'above' | 'below';
+}
 
 export interface SelectionToolbarProps {
   /** 选中的文本 */
@@ -83,18 +112,126 @@ export interface SelectionToolbarProps {
   ariaLabel?: string;
   /** 宿主附加类名（层级 / 色调微调；定位仍由组件计算） */
   className?: string;
+  /**
+   * 宿主附加动作（如笔记「摘录到导图」）。渲染在「引用到聊天」之后，
+   * 只在宿主真正传入时出现，不做灰显占位。
+   */
+  extraActions?: SelectionToolbarExtraAction[];
+}
+
+export interface SelectionToolbarExtraAction {
+  key: string;
+  label: string;
+  icon: React.ReactNode | ((state: { touchTarget: boolean }) => React.ReactNode);
+  run: (text: string) => void;
 }
 
 // ============================================================================
-// 常量
+// 定位常量与纯计算函数
 // ============================================================================
 
-/** 工具栏距选区的间距 */
-const TOOLBAR_GAP = 8;
-/** 工具栏高度估算（用于翻转判断） */
-const TOOLBAR_HEIGHT = 40;
-/** 容器内边距（水平钳制） */
+/** 桌面端默认置于选区上方的偏移量（rect.top - 46px） */
+const DESKTOP_ABOVE_OFFSET_PX = 46;
+/** 触屏端默认置于选区下方的间距（rect.bottom + 12px） */
+const TOUCH_BELOW_OFFSET_PX = 12;
+/** 触屏端下方空间不足翻转阈值（距视口底部不足 56px 时翻转到上方） */
+const TOUCH_BOTTOM_SAFE_SPACE_PX = 56;
+/** 水平边界夹逼边距（[100, innerWidth - 100]） */
+const HORIZONTAL_EDGE_CLAMP_PX = 100;
+/** 垂直顶部最小夹逼边距 */
+const VERTICAL_TOP_CLAMP_PX = 8;
+/** 垂直底部最大夹逼边距（innerHeight - 52） */
+const VERTICAL_BOTTOM_CLAMP_PX = 52;
+/** 容器内边距（水平防溢出兜底） */
 const CONTAINER_PADDING = 4;
+
+function isSelectionRectLike(value: unknown): value is SelectionRect {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'top' in value &&
+    'left' in value &&
+    'width' in value &&
+    'bottom' in value &&
+    !('rect' in value) &&
+    !('selectionRect' in value)
+  );
+}
+
+/**
+ * 计算选词工具栏的视口定位坐标（纯函数）：
+ * - 精细指针桌面端默认置于选区上方 `rect.top - 46px`
+ * - 触屏端（isCoarsePointer === true）或 placement === 'below' 默认优先置于选区下方 `rect.bottom + 12px`，
+ *   仅当距视口底部不足 56px 时翻转到上方 `rect.top - 46px`
+ * - 执行水平 `[100, innerWidth - 100]` 与垂直 `[8, innerHeight - 52]` 双夹逼
+ */
+export function computeSelectionToolbarPosition(
+  rect: SelectionRect,
+  options?: SelectionToolbarPositionOptions,
+): SelectionToolbarPositionResult;
+export function computeSelectionToolbarPosition(
+  input: SelectionToolbarPositionInput,
+): SelectionToolbarPositionResult;
+export function computeSelectionToolbarPosition(
+  rectOrInput: SelectionRect | SelectionToolbarPositionInput,
+  maybeOptions?: SelectionToolbarPositionOptions,
+): SelectionToolbarPositionResult {
+  const rect = isSelectionRectLike(rectOrInput)
+    ? rectOrInput
+    : (rectOrInput.rect ?? rectOrInput.selectionRect)!;
+  const opts: SelectionToolbarPositionOptions = isSelectionRectLike(rectOrInput)
+    ? (maybeOptions ?? {})
+    : rectOrInput;
+
+  const defaultWidth =
+    typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1024;
+  const defaultHeight =
+    typeof window !== 'undefined' &&
+    (window.visualViewport?.height ?? window.innerHeight) > 0
+      ? (window.visualViewport?.height ?? window.innerHeight)
+      : 768;
+
+  const innerWidth = opts.innerWidth ?? defaultWidth;
+  const innerHeight = opts.innerHeight ?? defaultHeight;
+  const isCoarsePointer = Boolean(opts.isCoarsePointer);
+  const placement = opts.placement ?? 'auto';
+  const viewportBottomInset = opts.viewportBottomInset ?? 0;
+
+  const preferBelow = isCoarsePointer || placement === 'below';
+  const effectiveBottom = innerHeight - viewportBottomInset;
+
+  let resolvedPlacement: 'above' | 'below';
+  let rawTop: number;
+
+  if (preferBelow) {
+    const spaceBelow = effectiveBottom - rect.bottom;
+    if (spaceBelow < TOUCH_BOTTOM_SAFE_SPACE_PX) {
+      resolvedPlacement = 'above';
+      rawTop = rect.top - DESKTOP_ABOVE_OFFSET_PX;
+    } else {
+      resolvedPlacement = 'below';
+      rawTop = rect.bottom + TOUCH_BELOW_OFFSET_PX;
+    }
+  } else {
+    resolvedPlacement = 'above';
+    rawTop = rect.top - DESKTOP_ABOVE_OFFSET_PX;
+  }
+
+  const rawCenterX = rect.left + rect.width / 2;
+  const minX = Math.min(HORIZONTAL_EDGE_CLAMP_PX, innerWidth / 2);
+  const maxX = Math.max(innerWidth - HORIZONTAL_EDGE_CLAMP_PX, minX);
+  const left = Math.min(Math.max(rawCenterX, minX), maxX);
+
+  const minY = VERTICAL_TOP_CLAMP_PX;
+  const maxY = Math.max(minY, innerHeight - VERTICAL_BOTTOM_CLAMP_PX);
+  const top = Math.min(Math.max(rawTop, minY), maxY);
+
+  return {
+    top,
+    left,
+    placement: resolvedPlacement,
+  };
+}
 
 // ============================================================================
 // 组件
@@ -118,6 +255,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   dismissOnLeaveView = 'chat-v2',
   ariaLabel,
   className,
+  extraActions = [],
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
@@ -125,65 +263,63 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const toolbarRef = useRef<HTMLDivElement>(null);
   // C-8: 触屏上默认放选区下方（避开系统选择气泡），并放大触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  // ★ M3 修复：窄屏时限制工具栏最大宽度（超宽时允许换行），避免横向溢出容器
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    placement: 'above' | 'below';
+  } | null>(null);
+  // 窄屏时限制工具栏最大宽度（超宽时允许换行），避免横向溢出容器
   const [maxWidth, setMaxWidth] = useState<number | null>(null);
 
-  // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现）。
-  // 选区 rect 是视口坐标，换算为容器局部坐标后用 absolute 定位。
-  useLayoutEffect(() => {
+  // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现）
+  const updateToolbarPosition = useCallback(() => {
     if (!selectionRect || !isVisible) {
       setPosition(null);
       return;
     }
-    const container = containerRef.current;
+    // 同一次挂载提交中子组件 useLayoutEffect 早于父节点 ref 赋值，回退读取 parentElement
+    const container = containerRef.current ?? toolbarRef.current?.parentElement ?? null;
     if (!container) return;
 
     const containerRect = container.getBoundingClientRect();
-    const toolbarWidth = toolbarRef.current?.offsetWidth || 200;
-    const toolbarHeight = toolbarRef.current?.offsetHeight || (isTouchPrimary ? 48 : TOOLBAR_HEIGHT);
+    const viewportPos = computeSelectionToolbarPosition(selectionRect, {
+      isCoarsePointer: isTouchPrimary,
+      innerWidth: window.innerWidth,
+      innerHeight: window.visualViewport?.height ?? window.innerHeight,
+      placement,
+      viewportBottomInset,
+    });
 
-    // 局部坐标系下的选区
-    const localTop = selectionRect.top - containerRect.top;
-    const localBottom = selectionRect.bottom - containerRect.top;
-    const localCenterX = selectionRect.left + selectionRect.width / 2 - containerRect.left;
+    const localTop = viewportPos.top - containerRect.top;
 
-    let top: number;
-    // 触屏默认下方（系统选择气泡通常占据选区上方）；
-    // placement='below' 的宿主（PDF：选区上方已被高亮选色菜单占用）桌面端同样优先下方
-    const preferBelow = isTouchPrimary || placement === 'below';
-    if (preferBelow) {
-      // ★ M3 修复：视口下方空间不足时翻转到选区上方
-      const viewportH = window.visualViewport?.height ?? window.innerHeight;
-      const fitsBelow = selectionRect.bottom + TOOLBAR_GAP + toolbarHeight
-        <= viewportH - CONTAINER_PADDING - viewportBottomInset;
-      top = fitsBelow ? localBottom + TOOLBAR_GAP : localTop - toolbarHeight - TOOLBAR_GAP;
-      // 上方也出容器顶时回退下方（宁可被视口裁一截也不覆盖选区）
-      if (!fitsBelow && top < CONTAINER_PADDING) {
-        top = localBottom + TOOLBAR_GAP;
+    // 真实浏览器下有布局宽度时居中于夹逼锚点并钳制在宿主容器内；
+    // jsdom 等零宽高环境下直接使用 computeSelectionToolbarPosition 计算出的水平坐标
+    if (containerRect.width > 0) {
+      const availableWidth = Math.max(0, containerRect.width - CONTAINER_PADDING * 2);
+      setMaxWidth(availableWidth);
+      const measuredToolbarWidth = toolbarRef.current?.offsetWidth || 200;
+      const localCenterX = viewportPos.left - containerRect.left;
+      let localLeft = localCenterX - measuredToolbarWidth / 2;
+      if (measuredToolbarWidth >= availableWidth) {
+        localLeft = CONTAINER_PADDING;
+      } else {
+        const maxLeft = containerRect.width - measuredToolbarWidth - CONTAINER_PADDING;
+        localLeft = Math.max(CONTAINER_PADDING, Math.min(localLeft, maxLeft));
       }
+      setPosition({ top: localTop, left: localLeft, placement: viewportPos.placement });
     } else {
-      // 桌面：默认在选区上方；容器顶部空间不足时翻转到下方
-      top = localTop - toolbarHeight - TOOLBAR_GAP;
-      if (top < CONTAINER_PADDING) {
-        top = localBottom + TOOLBAR_GAP;
-      }
+      setMaxWidth(null);
+      setPosition({
+        top: localTop,
+        left: viewportPos.left - containerRect.left,
+        placement: viewportPos.placement,
+      });
     }
-
-    // 水平居中于选区，并钳制在容器内
-    // ★ M3 修复：工具栏比容器还宽时靠左贴边 + 限宽换行，不再横向溢出
-    const availableWidth = containerRect.width - CONTAINER_PADDING * 2;
-    setMaxWidth(availableWidth);
-    let left = localCenterX - toolbarWidth / 2;
-    if (toolbarWidth >= availableWidth) {
-      left = CONTAINER_PADDING;
-    } else {
-      const maxLeft = containerRect.width - toolbarWidth - CONTAINER_PADDING;
-      left = Math.max(CONTAINER_PADDING, Math.min(left, maxLeft));
-    }
-
-    setPosition({ top, left });
   }, [selectionRect, isVisible, isTouchPrimary, containerRef, placement, viewportBottomInset]);
+
+  useLayoutEffect(() => {
+    updateToolbarPosition();
+  }, [updateToolbarPosition]);
 
   // 全局视图切换离开宿主视图时，强制关闭工具栏
   const currentView = useViewStore((s) => s.currentView);
@@ -206,7 +342,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [isVisible, onClear]);
 
-  // 键盘可达性：←/→/Home/End 在按钮间移动焦点（roving focus）
+  // 键盘可达性：左/右/Home/End 在按钮间移动焦点（roving focus）
   const handleToolbarKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
     const root = toolbarRef.current;
@@ -250,7 +386,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     }, 1500);
   }, [selectedText]);
 
-  // 选中内容变化时重置"已复制"状态；卸载时清理定时器
+  // 选中内容变化时重置已复制状态；卸载时清理定时器
   useEffect(() => {
     setCopied(false);
   }, [selectedText]);
@@ -339,26 +475,23 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     <div
       ref={toolbarRef}
       data-selection-toolbar
+      data-placement={position?.placement}
       data-wb-blur-surface
       role="toolbar"
       aria-label={ariaLabel ?? t('selectionToolbar.ariaLabel')}
       className={cn(
         'chat-msg-enter absolute z-10 flex items-center',
-        // ★ M3：极窄容器兜底允许换行
         'flex-wrap',
-        'rounded-lg border border-border/50',
+        'rounded-lg border border-border/35',
         'bg-background/80 backdrop-blur-xl',
-        // 阴影走 shell token，暗色由 --shadow-base 透明度自适应
         'shadow-[var(--shadow-shell-floating)]',
-        'dark:bg-background/90 dark:border-border/30',
+        'dark:bg-background/90 dark:border-border/35',
         className,
       )}
       style={{
         top: position?.top ?? 0,
         left: position?.left ?? 0,
-        // ★ M3：限宽在容器内
         maxWidth: maxWidth ?? undefined,
-        // 首帧未测量前隐藏，避免闪现在容器左上角
         visibility: position ? 'visible' : 'hidden',
       }}
       // 阻止 mousedown 默认行为，防止清除选择
@@ -452,11 +585,30 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             onClick={handleAddAsContext}
             icon={<Quotes size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.addAsContext')}
-            isLast
+            isLast={extraActions.length === 0}
             touchTarget={touchTarget}
           />
         </>
       )}
+
+      {/* 宿主附加动作（笔记：摘录到导图） */}
+      {extraActions.map((action, index) => (
+        <React.Fragment key={action.key}>
+          <Divider />
+          <ToolbarButton
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              action.run(selectedText);
+              onClear();
+            }}
+            icon={typeof action.icon === 'function' ? action.icon({ touchTarget }) : action.icon}
+            label={action.label}
+            isLast={index === extraActions.length - 1}
+            touchTarget={touchTarget}
+          />
+        </React.Fragment>
+      ))}
     </div>
   );
 };
@@ -489,7 +641,6 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     type="button"
     onClick={onClick}
     disabled={disabled}
-    // ★ M3：触屏改图标优先（隐藏文字标签，总宽从 ≥330px 降到 ~190px，窄屏不再溢出）
     aria-label={label}
     title={label}
     className={cn(
@@ -497,7 +648,6 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       touchTarget ? 'min-h-11 min-w-11 justify-center px-3 text-ui' : 'px-2.5 py-1.5 text-xs',
       'font-medium text-foreground/80',
       'hover:bg-accent/60 hover:text-foreground',
-      // 键盘 roving focus 的可见反馈（鼠标点击被容器 preventDefault 拦截，不会误触发）
       'focus-visible:outline-none focus-visible:bg-accent/60 focus-visible:text-foreground',
       'transition-colors duration-100',
       'disabled:opacity-40 disabled:cursor-not-allowed',
@@ -511,7 +661,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
 );
 
 const Divider: React.FC = () => (
-  <div className="w-px h-5 bg-border/50" />
+  <div className="w-px h-5 bg-border/35" />
 );
 
 export default SelectionToolbar;

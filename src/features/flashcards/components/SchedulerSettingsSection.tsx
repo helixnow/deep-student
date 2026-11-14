@@ -366,13 +366,13 @@ export const SchedulerSettingsSection: React.FC = () => {
             {error ? (
               <p role="status" className="text-xs text-destructive">{error}</p>
             ) : null}
-            <FsrsOptimizerPanel
+            {config.model !== 'fsrs-7' && <FsrsOptimizerPanel
               fsrsParams={config.fsrsParams}
               optimizedAtMs={config.fsrsOptimizedAtMs}
               optimizedReviewCount={config.fsrsOptimizedReviewCount}
               onConfigChanged={applyConfig}
               disabled={saving}
-            />
+            />}
           </div>
         )}
       </div>

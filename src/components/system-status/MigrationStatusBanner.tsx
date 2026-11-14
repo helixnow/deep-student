@@ -82,24 +82,24 @@ export const MigrationStatusBanner: React.FC = () => {
   const levelStyles = useMemo(() => {
     if (migrationLevel === 'error') {
       return {
-        border: 'border-red-200/60 dark:border-red-500/30',
-        iconBg: 'bg-red-500/10 dark:bg-red-500/15',
-        iconColor: 'text-red-500 dark:text-red-400',
+        border: 'border-destructive/30',
+        iconBg: 'bg-destructive/10 dark:bg-destructive/15',
+        iconColor: 'text-destructive',
         Icon: XCircle,
       };
     }
     if (migrationLevel === 'warning') {
       return {
-        border: 'border-amber-200/60 dark:border-amber-500/30',
-        iconBg: 'bg-amber-500/10 dark:bg-amber-500/15',
-        iconColor: 'text-amber-500 dark:text-amber-400',
+        border: 'border-warning/30',
+        iconBg: 'bg-warning/10 dark:bg-warning/15',
+        iconColor: 'text-warning',
         Icon: Warning,
       };
     }
     return {
-      border: 'border-blue-200/60 dark:border-blue-500/30',
-      iconBg: 'bg-blue-500/10 dark:bg-blue-500/15',
-      iconColor: 'text-blue-500 dark:text-blue-400',
+      border: 'border-info/30',
+      iconBg: 'bg-info/10 dark:bg-info/15',
+      iconColor: 'text-info',
       Icon: Database,
     };
   }, [migrationLevel]);

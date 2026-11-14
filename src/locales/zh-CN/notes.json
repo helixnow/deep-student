@@ -812,7 +812,8 @@
     "focus_mode": "专注模式",
     "exit_focus_mode": "退出专注模式",
     "label": "格式化",
-    "ask_agent_failed": "无法打开助手窗口：{{error}}"
+    "ask_agent_failed": "无法打开助手窗口：{{error}}",
+    "syncHandoutToMindmap": "同步回思维导图"
   },
   "templates": {
     "lecture": "听课笔记",
@@ -1920,10 +1921,17 @@
   },
   "generateMindmap": {
     "untitled": "笔记导图",
-    "noOutline": "这篇笔记里没有标题或列表，先用标题 / 列表整理出层级再生成导图",
+    "noOutline": "导图需要层级：至少两个标题或列表项，当前笔记的大纲还不够",
     "created": "已生成思维导图「{{title}}」（{{count}} 个节点）",
     "failed": "生成思维导图失败",
-    "failedWithError": "生成思维导图失败：{{error}}"
+    "failedWithError": "生成思维导图失败：{{error}}",
+    "syncEmpty": "这篇笔记还没有正文，无法同步回导图",
+    "syncNoSource": "这篇笔记没有来自思维导图的出处，先从导图导出一份精读讲义再同步",
+    "syncMultipleSources": "这篇笔记引用了 {{count}} 张不同的导图，请拆分讲义后分别同步",
+    "syncNotOpen": "请先打开原思维导图再同步",
+    "syncSuccess": "已同步回思维导图：更新 {{updated}} 个节点，新增 {{added}} 个节点",
+    "syncNoChanges": "讲义与导图已经一致，无需同步",
+    "syncFailed": "同步回思维导图失败：{{error}}"
   },
   "versions": {
     "title": "版本历史",
@@ -2243,6 +2251,16 @@
     "open": "回到来源"
   },
   "selection": {
-    "group": "更多"
+    "group": "更多",
+    "excerptToMindmap": "摘录到导图",
+    "excerptToMindmapSent": "已摘录；若导图没有变化，请打开思维导图并开启「划选即入图」后重试",
+    "excerptToMindmapFailed": "摘录失败：当前笔记未就绪"
+  },
+  "inlineCards": {
+    "badge_qa": "问答卡",
+    "badge_cloze": "挖空卡",
+    "synced_tooltip": "已同步至当前学习空间闪卡组",
+    "excerpt_source_prefix": "摘自",
+    "default_deck": "笔记内联卡"
   }
 }

@@ -115,7 +115,7 @@ export async function seedTestDatabase(config?: {
 }
 
 export async function setTestRunId(testRunId: string): Promise<{ success: boolean; test_run_id: string }> {
-  return await invokeWithDebug('set_test_run_id', { test_run_id: testRunId, testRunId }, { tag: 'test_run' });
+  return await invokeWithDebug('set_test_run_id', { testRunId }, { tag: 'test_run' });
 }
 
 export const TestDatabaseAPI = {
@@ -140,9 +140,7 @@ export async function ocrExtractText(options: {
   imageBase64?: string;
 }, timeoutMs: number = OCR_DEFAULT_TIMEOUT_MS): Promise<string> {
   const invokePromise = invoke<string>('ocr_extract_text', {
-    image_path: options.imagePath || null,
-    image_base64: options.imageBase64 || null,
-    imagePath: options.imagePath || null, // 兼容驼峰命名
+    imagePath: options.imagePath || null,
     imageBase64: options.imageBase64 || null,
   });
 

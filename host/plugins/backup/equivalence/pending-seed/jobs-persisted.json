@@ -1,0 +1,55 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_backup_job",
+    "data_governance_list_resumable_jobs",
+    "data_governance_resume_backup_job",
+    "data_governance_get_backup_list"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.jobs.persisted.resume_export_requires_await",
+      "seed": "l21-persisted-jobs-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "job-failed-ckpt-export"
+          },
+          "waitAfter": {
+            "channel": "backup-job-progress",
+            "payload": {
+              "job_id": "${0.job_id}",
+              "status": [
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

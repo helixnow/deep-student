@@ -402,15 +402,15 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center justify-center gap-4 rounded-md bg-muted/30 p-3">
+          <div className="flex items-center justify-center gap-6 rounded-2xl border border-border/40 bg-muted/60 p-4">
             <div className="text-center">
-              <div className="text-sm text-muted-foreground">{t('timed.estimated')}</div>
-              <div className="text-xl font-semibold text-primary">{formatTime(durationMinutes * 60)}</div>
+              <div className="text-xs text-muted-foreground">{t('timed.estimated')}</div>
+              <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-foreground">{formatTime(durationMinutes * 60)}</div>
             </div>
-            <div className="w-px h-10 bg-border" />
+            <div className="w-px h-9 bg-border/50" />
             <div className="text-center">
-              <div className="text-sm text-muted-foreground">{t('timed.perQuestion')}</div>
-              <div className="text-xl font-semibold text-warning">
+              <div className="text-xs text-muted-foreground">{t('timed.perQuestion')}</div>
+              <div className="mt-0.5 font-mono text-xl font-semibold tabular-nums text-foreground">
                 {Math.floor((durationMinutes * 60) / questionCount)}s
               </div>
             </div>
@@ -476,18 +476,18 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {/* 统计信息 */}
         {activeSession && (
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2 rounded-md bg-success/10 p-2.5">
+            <div className="flex items-center gap-2.5 rounded-xl border border-border/40 bg-muted/60 p-3">
               <CheckCircle size={16} className="text-success" />
               <div>
-                <div className="text-sm text-muted-foreground">{t('timed.correct')}</div>
-                <div className="text-lg font-semibold text-success">{activeSession.correct_count}</div>
+                <div className="text-xs text-muted-foreground">{t('timed.correct')}</div>
+                <div className="font-mono text-lg font-semibold tabular-nums text-foreground">{activeSession.correct_count}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-md bg-primary/10 p-2.5">
+            <div className="flex items-center gap-2.5 rounded-xl border border-border/40 bg-muted/60 p-3">
               <Target size={16} className="text-primary" />
               <div>
-                <div className="text-sm text-muted-foreground">{t('timed.rate')}</div>
-                <div className="text-lg font-semibold text-primary">
+                <div className="text-xs text-muted-foreground">{t('timed.rate')}</div>
+                <div className="font-mono text-lg font-semibold tabular-nums text-foreground">
                   {activeSession.answered_count > 0
                     ? Math.max(0, Math.min(100, Math.round((activeSession.correct_count / activeSession.answered_count) * 100)))
                     : 0}%

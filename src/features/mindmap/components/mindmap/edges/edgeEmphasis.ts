@@ -18,8 +18,9 @@ export function getEdgeEmphasis(data: unknown): boolean {
 export function emphasizedEdgeStyle(emphasized: boolean): React.CSSProperties {
   if (!emphasized) return {};
   return {
-    stroke: 'var(--mm-primary)',
+    stroke: 'var(--mm-edge-active, var(--mm-primary))',
     strokeWidth: 2.25,
+    opacity: 1,
   };
 }
 

@@ -1,0 +1,257 @@
+{
+  "domain": "memory",
+  "commands": ["memory_get_config", "memory_create_root_folder", "memory_set_root_folder", "memory_set_privacy_mode", "memory_set_auto_create_subfolders", "memory_set_default_category", "memory_set_auto_extract_frequency", "memory_list", "memory_get_tree"],
+  "scenarios": [
+    {
+      "id": "memory.config.get.fresh",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.get.after_list_bootstrap",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_list", "args": {}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.get.unexpected_args_ignored",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_config", "args": {"extra": 1}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.create_root.basic",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "我的记忆"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.create_root.unvalidated_titles",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": ""}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "   "}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "__sys"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "a/b"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "a/b"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.create_root.missing_title",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {}, "expect": "error"},
+        {"cmd": "memory_create_root_folder", "args": {"title": null}, "expect": "error"},
+        {"cmd": "memory_create_root_folder", "args": {"title": 1}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.set_root.switch_back",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${1.memoryRootFolderId}"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${1.memoryRootFolderId}"}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.set_root.not_found",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "fld_missing"}, "expect": "error"},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": ""}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.set_root.reserved_title",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "__reserved"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${1.memoryRootFolderId}"}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${3.memoryRootFolderId}"}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "  __lead_space"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${1.memoryRootFolderId}"}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${8.memoryRootFolderId}"}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.set_root.missing_arg",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_root_folder", "args": {}, "expect": "error"},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": null}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.privacy.toggle",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": true}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": true}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": false}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.privacy.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_privacy_mode", "args": {}, "expect": "error"},
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": "true"}, "expect": "error"},
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": 1}, "expect": "error"},
+        {"cmd": "memory_set_privacy_mode", "args": {"enabled": null}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.auto_create_subfolders.toggle",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_auto_create_subfolders", "args": {"enabled": false}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_auto_create_subfolders", "args": {"enabled": true}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.auto_create_subfolders.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_auto_create_subfolders", "args": {}, "expect": "error"},
+        {"cmd": "memory_set_auto_create_subfolders", "args": {"enabled": "false"}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.default_category.values",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_default_category", "args": {"category": "经历"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_default_category", "args": {"category": "  学习/偏好  "}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_default_category", "args": {"category": "   "}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_default_category", "args": {"category": ""}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_default_category", "args": {"category": "__system__"}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.default_category.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_default_category", "args": {}, "expect": "error"},
+        {"cmd": "memory_set_default_category", "args": {"category": null}, "expect": "error"},
+        {"cmd": "memory_set_default_category", "args": {"category": ["a"]}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.auto_extract_frequency.valid",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "off"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "aggressive"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "  Balanced \n"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "AGGRESSIVE"}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.auto_extract_frequency.invalid",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "never"}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "  Never  "}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": ""}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "   "}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": "off "}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.config.auto_extract_frequency.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_auto_extract_frequency", "args": {}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": null}, "expect": "error"},
+        {"cmd": "memory_set_auto_extract_frequency", "args": {"frequency": 0}, "expect": "error"},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

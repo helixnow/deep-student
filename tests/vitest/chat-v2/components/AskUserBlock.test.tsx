@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AskUserBlockComponent } from '@/features/chat/plugins/blocks/askUserBlock';
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
@@ -78,5 +79,33 @@ describe('AskUserBlockComponent', () => {
     expect(screen.getByText('Selected:')).toBeInTheDocument();
     expect(screen.getByText('(No response)')).toBeInTheDocument();
     expect(screen.queryByText(/Auto-selected/i)).not.toBeInTheDocument();
+  });
+
+  it('uses unified neutral card tokens instead of legacy shell CSS variables', () => {
+    const { container } = render(
+      <AskUserBlockComponent
+        block={{
+          id: 'ask-block-tokens',
+          type: 'ask_user',
+          status: 'running',
+          messageId: 'msg-tokens',
+          toolCallId: 'ask-tokens',
+          toolInput: {
+            question: 'Choose next step',
+            options: ['Step A', 'Step B'],
+            multiple: false,
+            allowCustom: false,
+          },
+        } as any}
+      />,
+    );
+
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toContain('rounded-lg');
+    expect(card.className).toContain('border-border/50');
+    expect(card.className).toContain('bg-card');
+    expect(container.innerHTML).not.toContain('--surface-elevated');
+    expect(container.innerHTML).not.toContain('--border-soft');
+    expect(container.innerHTML).not.toContain('--radius-shell-row');
   });
 });

@@ -1,0 +1,929 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_commit_authoring_draft",
+    "qbank_get_authoring_draft",
+    "qbank_list_authoring_drafts",
+    "qbank_resolve_authoring_route",
+    "qbank_delete_group",
+    "qbank_update_group",
+    "qbank_delete_material",
+    "qbank_update_material",
+    "qbank_list_structure",
+    "qbank_export_document",
+    "qbank_export_portable",
+    "qbank_legacy_audit",
+    "qbank_legacy_migrate_selected",
+    "qbank_reparse_report",
+    "qbank_reparse_resolve"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.qbank.commit_authoring_draft.err_draft_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "qjob_doesnotexist",
+            "selectedLocalIds": [
+              "q1"
+            ],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.commit_authoring_draft.err_missing_job_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "selectedLocalIds": [
+              "q1"
+            ],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_authoring_draft.err_draft_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_authoring_draft",
+          "args": {
+            "jobId": "qjob_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_authoring_draft.err_missing_job_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_authoring_draft",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.list_authoring_drafts.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.resolve_authoring_route.err_model_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_resolve_authoring_route",
+          "args": {
+            "modelConfigId": "cfg_doesnotexist",
+            "requiresVision": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.resolve_authoring_route.err_missing_requires_vision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_resolve_authoring_route",
+          "args": {
+            "modelConfigId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.delete_group.err_group_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_delete_group",
+          "args": {
+            "groupId": "group_doesnotexist",
+            "mode": "ungroup",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.delete_group.err_missing_group_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_delete_group",
+          "args": {
+            "mode": "ungroup",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_group.err_empty_members",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "group_doesnotexist",
+            "label": "题组",
+            "questionIds": [],
+            "materialIds": [],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_group.err_duplicate_materials",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "group_doesnotexist",
+            "label": "题组",
+            "questionIds": [
+              "q_doesnotexist"
+            ],
+            "materialIds": [
+              "m_doesnotexist",
+              "m_doesnotexist"
+            ],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_group.err_group_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "group_doesnotexist",
+            "label": "题组",
+            "questionIds": [
+              "q_doesnotexist"
+            ],
+            "materialIds": [],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_group.err_missing_group_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "label": "题组",
+            "questionIds": [
+              "q_doesnotexist"
+            ],
+            "materialIds": [],
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.delete_material.err_material_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_delete_material",
+          "args": {
+            "materialId": "m_doesnotexist",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.delete_material.err_missing_material_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_delete_material",
+          "args": {
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_material.err_empty_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_material",
+          "args": {
+            "materialId": "m_doesnotexist",
+            "content": "   ",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_material.err_material_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_material",
+          "args": {
+            "materialId": "m_doesnotexist",
+            "content": "新材料",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_material.err_missing_material_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_material",
+          "args": {
+            "content": "新材料",
+            "expectedVersion": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.list_structure.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "exam_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.list_structure.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_structure",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_document.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_export_document",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_portable.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_export_portable",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_audit.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "exam_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_audit.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_empty_selection",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "cardIds": [],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_duplicate_card_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "cardIds": [
+              "card_x",
+              "card_x"
+            ],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_blank_card_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "cardIds": [
+              "  "
+            ],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "cardIds": [
+              "card_doesnotexist"
+            ],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_audit_version_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "${0.id}",
+            "cardIds": [
+              "card_doesnotexist"
+            ],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_card_not_in_audit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "${0.id}",
+            "cardIds": [
+              "card_doesnotexist"
+            ],
+            "expectedVersion": "${1.audit_version}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.legacy_migrate_selected.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "cardIds": [
+              "card_doesnotexist"
+            ],
+            "expectedVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_report.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "jobId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_report.err_no_reviewable_draft",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_report.err_draft_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "qjob_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_report.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "jobId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_resolve.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "jobId": "qjob_doesnotexist",
+            "decisions": [],
+            "expectedReportVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_resolve.err_draft_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "qjob_doesnotexist",
+            "decisions": [],
+            "expectedReportVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.reparse_resolve.err_missing_job_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "exam_doesnotexist",
+            "decisions": [],
+            "expectedReportVersion": "v_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

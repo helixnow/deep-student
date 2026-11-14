@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelInfo } from '../utils/parseModelMentions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { addTypedEventListener } from '@/events/registry';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
@@ -93,6 +94,9 @@ let cacheTimestamp = 0;
 let inFlightLoad: Promise<ModelInfo[]> | null = null;
 let loadGeneration = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟缓存
+
+// RUST-FIX(RF-W09-stale-model-cache-context-budget): Rust 版只有挂载了本 hook 的组件才清缓存，设置页改了模型后发送仍按旧缓存算预算
+addTypedEventListener('api_configurations_changed', () => clearModelsCache());
 
 // ============================================================================
 // 共享加载逻辑

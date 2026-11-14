@@ -56,7 +56,7 @@ describe('SandboxWorkbenchPage layout', () => {
     render(<SandboxWorkbenchPage />);
 
     expect(screen.getByRole('heading', { name: /HTML Preview/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '刷新' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '刷新' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '收起检查器' })).toBeInTheDocument();
     expect(screen.getByText('来源')).toBeInTheDocument();
     expect(screen.getByText('统计')).toBeInTheDocument();

@@ -1,0 +1,19 @@
+{
+  "name": "deepstudent-plugin-study-goal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "示例插件：UI 半在设置里加“每日学习目标”分区、在命令面板加记录命令，命令经 Host 半累计学习时长，存在插件自己的 SQLite 文件里（examples/README.md）",
+  "type": "module",
+  "engines": { "deepStudent": "^0.20" },
+  "deepStudent": {
+    "manifestVersion": 1,
+    "id": "example.study-goal",
+    "platforms": ["desktop"],
+    "host": "./index.ts",
+    "ui": "./dist/ui.js",
+    "permissions": ["service:storage"]
+  },
+  "scripts": {
+    "build:ui": "node ../../scripts/build-ui.mjs"
+  }
+}

@@ -17,15 +17,21 @@ import {
   ChatCenteredText,
   CircleNotch,
   DotsThree,
-  Folder,
+  FolderSimple,
   Gear,
   MagnifyingGlass,
   PencilSimple,
   Plus,
   SquaresFour,
+  Tray,
   X,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { INBOX_SPACE_ID } from '@/shared/study-space/types';
+import { formatSpaceCountdown, stripEmojiText } from '@/shared/study-space/spaceCountdown';
+import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeStrip';
+import { useActiveStudySpace } from '@/components/study-space/useActiveStudySpace';
+import { useSpaceAutoScope } from '@/components/study-space/useSpaceAutoScope';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
@@ -136,23 +142,41 @@ const DraggableSessionRow: React.FC<{
   );
 };
 
-/** 分组会话列表放置区（dnd-kit useDroppable）：拖入高亮与迁移前 isDraggingOver 一致 */
-const SessionDropZone: React.FC<{
+/** 分组/收件箱放置区（dnd-kit useDroppable）：仅在启用拖拽时挂载到分组 section */
+const DroppableFolderSectionActive: React.FC<{
   droppableId: string;
+  className?: string;
   children: React.ReactNode;
-}> = ({ droppableId, children }) => {
+}> = ({ droppableId, className, children }) => {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
 
   return (
-    <div
+    <section
       ref={setNodeRef}
       className={cn(
-        'space-y-0.5 rounded-2xl transition-colors duration-150',
-        isOver && 'bg-[color:var(--interactive-hover)] ring-1 ring-primary/25'
+        'space-y-1 rounded-2xl transition-colors duration-150',
+        isOver && 'bg-[color:var(--interactive-hover)] ring-1 ring-primary/25',
+        className,
       )}
     >
       {children}
-    </div>
+    </section>
+  );
+};
+
+const DroppableFolderSection: React.FC<{
+  droppableId: string;
+  enabled: boolean;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ droppableId, enabled, className, children }) => {
+  if (!enabled) {
+    return <section className={cn('space-y-1', className)}>{children}</section>;
+  }
+  return (
+    <DroppableFolderSectionActive droppableId={droppableId} className={className}>
+      {children}
+    </DroppableFolderSectionActive>
   );
 };
 
@@ -330,6 +354,46 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [currentSessionId, sessions]
   );
 
+  const {
+    activeSpaceId,
+    activeSpace,
+    spaces,
+    viewFilter,
+    setActiveSpace,
+  } = useActiveStudySpace(visibleGroups);
+
+  const spacesById = React.useMemo(
+    () => new Map(spaces.map((space) => [space.spaceId, space])),
+    [spaces]
+  );
+
+  const { createScopedSession } = useSpaceAutoScope({
+    currentSessionId,
+    currentSession,
+    groups: visibleGroups,
+    sessions,
+    createSession,
+  });
+
+  const prevSessionSelectionRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!currentSession) return;
+    const selection = `${currentSessionId}:${currentSession.groupId ?? ''}`;
+    if (prevSessionSelectionRef.current === selection) return;
+    if (currentSession.groupId && !visibleGroups.some((g) => g.id === currentSession.groupId)) return;
+    prevSessionSelectionRef.current = selection;
+    if (currentSession.groupId && visibleGroups.some((g) => g.id === currentSession.groupId)) {
+      setActiveSpace(currentSession.groupId);
+    } else if (!currentSession.groupId) {
+      setActiveSpace(INBOX_SPACE_ID);
+    }
+  }, [currentSession, currentSessionId, setActiveSpace, visibleGroups]);
+
+  const ungroupedTotalCount = React.useMemo(
+    () => sessions.filter((session) => !session.groupId && isListedAsRegularSession(session)).length,
+    [isListedAsRegularSession, sessions]
+  );
+
   // 展开状态持久化：避免每次进入页面都回到"全部折叠"
   const [expandedGroupIds, setExpandedGroupIds] = React.useState<Set<string>>(readPersistedExpandedFolders);
 
@@ -367,8 +431,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const handleCreateSession = React.useCallback(() => {
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-    void createSession();
-  }, [createSession, setSessionSheetOpen, setViewMode]);
+    void createScopedSession();
+  }, [createScopedSession, setSessionSheetOpen, setViewMode]);
 
   // 移动端进入会话浏览视图（中屏整屏切换，顶栏切为返回箭头）
   const handleOpenBrowser = React.useCallback(() => {
@@ -385,8 +449,14 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       next.add(folderId);
       return next;
     });
-    void createSession(folderId === 'ungrouped' ? undefined : folderId);
-  }, [createSession, setSessionSheetOpen, setViewMode]);
+    if (folderId === 'ungrouped') {
+      setActiveSpace(INBOX_SPACE_ID);
+      void createScopedSession(null);
+    } else {
+      setActiveSpace(folderId);
+      void createScopedSession(folderId);
+    }
+  }, [createScopedSession, setActiveSpace, setSessionSheetOpen, setViewMode]);
 
   const toggleGroup = React.useCallback((groupId: string) => {
     setExpandedGroupIds((current) => {
@@ -399,6 +469,15 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       return next;
     });
   }, []);
+
+  const handleFolderHeaderClick = React.useCallback((folderId: string, group?: SessionGroup) => {
+    if (folderId === 'ungrouped') {
+      setActiveSpace(INBOX_SPACE_ID);
+    } else if (group) {
+      setActiveSpace(group.id, { applyWorkbenchPreset: true });
+    }
+    toggleGroup(folderId);
+  }, [setActiveSpace, toggleGroup]);
 
   const renderPrimaryItem = (
     id: CurrentView | 'new-chat' | 'session-browser',
@@ -453,53 +532,112 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     trailing?: React.ReactNode,
     group?: SessionGroup,
   ) => {
+    const isInboxRow = id === 'ungrouped';
     // 搜索时强制展开，保证命中结果可见（不污染持久化的展开状态）
     const isExpanded = isSearching || expandedGroupIds.has(id);
     const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session) && isListedAsRegularSession(session));
-    const createSessionLabel = id === 'ungrouped'
+    const folderSessionCount = isInboxRow
+      ? ungroupedTotalCount
+      : sessionsForFolder.filter(isListedAsRegularSession).length;
+    const spaceForGroup = group ? spacesById.get(group.id) : undefined;
+    const countdown = spaceForGroup ? formatSpaceCountdown(spaceForGroup.examDate, { t }) : null;
+    const isActiveSpaceHighlight = group
+      ? activeSpaceId === group.id
+      : activeSpaceId === INBOX_SPACE_ID && active;
+    const createSessionLabel = isInboxRow
       ? t('page.newSession')
       : t('page.newSessionInGroup', {groupName: label});
     // 触屏无 hover：常显「…」菜单承载分组的新建会话/重命名/编辑/归档（与桌面 ModernSidebar 分组操作对齐）
     const hasGroupMenu = !!group && editableGroupIds.has(group.id);
     // droppable id 契约与迁移前一致：useSessionEdit.handleDragEnd 据此识别目标分组
-    const droppableId = id === 'ungrouped' ? 'session-ungrouped' : `session-group:${id}`;
+    const droppableId = isInboxRow ? 'session-ungrouped' : `session-group:${id}`;
+    const cleanArchiveName = group
+      ? stripEmojiText(displayQuickLearningLabel(group.name)) || displayQuickLearningLabel(group.name)
+      : label;
 
     return (
-      <section key={id} className="space-y-1">
+      <DroppableFolderSection
+        key={id}
+        droppableId={droppableId}
+        enabled={Boolean(onSessionDragEnd)}
+      >
         <div className="relative">
           <DsButton
             variant="ghost"
             size="sm"
             type="button"
+            aria-label={label}
             aria-expanded={isExpanded}
-            onClick={() => toggleGroup(id)}
+            onClick={() => handleFolderHeaderClick(id, group)}
             className={
               unified
                 ? mobileDrawerThreadRowClassName(
-                    active,
-                    cn('group gap-2.5', hasGroupMenu ? '!pr-20' : '!pr-12'),
+                    active || isActiveSpaceHighlight,
+                    cn(
+                      'group gap-2.5',
+                      hasGroupMenu ? '!pr-20' : '!pr-12',
+                      isActiveSpaceHighlight && 'border border-border/35 bg-[var(--surface-elevated)]',
+                    ),
                   )
                 : getSidebarStudyRowClassName({
                     variant: 'section',
-                    selected: active,
+                    selected: active || isActiveSpaceHighlight,
                     className: cn(
                       'appearance-none overflow-hidden whitespace-nowrap text-left text-[16px] font-normal leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:shrink-0 [&_svg]:text-inherit',
                       hasGroupMenu ? '!pr-20' : '!pr-12',
+                      isActiveSpaceHighlight && 'border border-border/35 bg-[var(--surface-elevated)]',
                     ),
                   })
             }
           >
-            <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
-              <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-foreground)]'} />
+            {isInboxRow ? (
+              <span className={unified ? mobileDrawerRowIconWrapClassName : 'inline-flex items-center'}>
+                <Tray
+                  size={15}
+                  className={unified ? undefined : 'h-[15px] w-[15px] shrink-0 text-[color:var(--sidebar-foreground)]'}
+                />
+              </span>
+            ) : (
+              <span className={cn('inline-flex shrink-0 items-center gap-1.5', unified && mobileDrawerRowIconWrapClassName)}>
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
+                  style={group?.color ? { backgroundColor: group.color } : undefined}
+                />
+                <FolderSimple
+                  size={16}
+                  className={unified ? undefined : 'h-4 w-4 shrink-0 text-[color:var(--sidebar-foreground)]'}
+                />
+              </span>
+            )}
+            <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 truncate'}>{label}</span>
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              {countdown ? (
+                <span
+                  data-testid={group ? `space-countdown-${group.id}` : undefined}
+                  className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', countdown.dotColorClass)}
+                  />
+                  <span>{countdown.label}</span>
+                </span>
+              ) : null}
+              <span
+                data-testid={isInboxRow ? 'sidebar-inbox-count' : group ? `space-session-count-${group.id}` : undefined}
+                className="font-mono text-xs tabular-nums text-[var(--text-secondary)]"
+              >
+                {folderSessionCount}
+              </span>
+              <CaretRight
+                size={14}
+                className={cn(
+                  'shrink-0 text-[color:var(--sidebar-muted)] transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
+                  isExpanded && 'rotate-90'
+                )}
+              />
             </span>
-            <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
-            <CaretRight
-              size={14}
-              className={cn(
-                'ml-auto shrink-0 text-[color:var(--sidebar-muted)] transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
-                isExpanded && 'rotate-90'
-              )}
-            />
           </DsButton>
           <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
             <DsButton
@@ -569,7 +707,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             className="mx-1 flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2"
           >
             <span className="min-w-0 flex-1 text-ui leading-4 text-foreground/90">
-              {t('page.archiveGroupConfirmInline', { name: displayQuickLearningLabel(group.name) })}
+              {t('page.archiveGroupConfirmInline', { name: cleanArchiveName })}
             </span>
             <div className="flex shrink-0 items-center gap-1">
               {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
@@ -606,7 +744,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         >
           <div className={cn('space-y-0.5 overflow-hidden pl-4', !isExpanded && 'pointer-events-none')}>
             {onSessionDragEnd ? (
-              <SessionDropZone droppableId={droppableId}>
+              <div className="space-y-0.5">
                 {nonPinnedSessions.map((session) => (
                   <DraggableSessionRow
                     key={`session:${session.id}`}
@@ -615,7 +753,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     renderSessionItem={renderSessionItem}
                   />
                 ))}
-              </SessionDropZone>
+              </div>
             ) : (
               <AnimatePresence initial={false} mode="popLayout">
                 {nonPinnedSessions.map(renderAnimatedSessionRow)}
@@ -624,7 +762,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             {trailing}
           </div>
         </div>
-      </section>
+      </DroppableFolderSection>
     );
   };
 
@@ -637,9 +775,15 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const activeGroupId = currentSession?.groupId && visibleGroups.some((group) => group.id === currentSession.groupId)
       ? currentSession.groupId
       : (!currentSession?.groupId && currentSession ? 'ungrouped' : null);
+    const filteredVisibleGroups = viewFilter === 'inbox'
+      ? []
+      : viewFilter === 'all'
+        ? visibleGroups
+        : visibleGroups.filter((group) => group.id === viewFilter);
+    const shouldShowInboxRow = viewFilter === 'all' || viewFilter === 'inbox';
     const hasAnySearchResult = Boolean(visibleSuperSession)
       || pinnedSessions.length > 0
-      || visibleGroups.length > 0
+      || filteredVisibleGroups.length > 0
       || ungroupedNonPinned.length > 0;
 
     if (isSearching && !hasAnySearchResult) {
@@ -650,27 +794,53 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       );
     }
 
-    const ungroupedFolder = (ungroupedNonPinned.length > 0 || !isSearching) ? (
-      renderFolderRow(
-        'ungrouped',
-        t('page.ungrouped'),
-        ungroupedNonPinned,
-        activeGroupId === 'ungrouped',
-        unified,
-        hasMoreSessions ? (
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => { void loadMoreSessions(); }}
-            disabled={isLoadingMore}
-            className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
-          >
-            {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
-            <span>{t('page.loadMore')}</span>
-          </DsButton>
-        ) : undefined,
-      )
+    const rawInbox = t('studySpace.inbox');
+    const rawNamespacedInbox = t('chatV2:studySpace.inbox');
+    const inboxCandidate =
+      rawInbox && rawInbox !== 'studySpace.inbox' && rawInbox !== 'chatV2:studySpace.inbox'
+        ? rawInbox
+        : rawNamespacedInbox &&
+            rawNamespacedInbox !== 'chatV2:studySpace.inbox' &&
+            rawNamespacedInbox !== 'studySpace.inbox'
+          ? rawNamespacedInbox
+          : '';
+    const fallbackUngrouped = t('page.ungrouped');
+    const inboxLabel =
+      inboxCandidate ||
+      (fallbackUngrouped && fallbackUngrouped !== 'page.ungrouped'
+        ? fallbackUngrouped
+        : 'Inbox');
+
+    const ungroupedFolder = shouldShowInboxRow && (ungroupedNonPinned.length > 0 || !isSearching) ? (
+      <div
+        data-testid="sidebar-inbox-pinned"
+        className="border-b border-border/35 pb-1.5"
+      >
+        {renderFolderRow(
+          'ungrouped',
+          inboxLabel,
+          ungroupedNonPinned,
+          activeGroupId === 'ungrouped',
+          unified,
+          hasMoreSessions ? (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => { void loadMoreSessions(); }}
+              disabled={isLoadingMore}
+              className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+            >
+              {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+              <span>{t('page.loadMore')}</span>
+            </DsButton>
+          ) : undefined,
+        )}
+      </div>
     ) : null;
+
+    const activeGroupForStrip = activeSpace
+      ? visibleGroups.find((group) => group.id === activeSpace.spaceId) ?? null
+      : null;
 
     return (
       <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
@@ -703,20 +873,32 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <Plus size={15} />
             </DsButton>
           </div>
+          {activeSpace && activeGroupForStrip ? (
+            <StudySpaceBadgeStrip
+              space={activeSpace}
+              onEditSpace={
+                editableGroupIds.has(activeGroupForStrip.id)
+                  ? () => onEditGroup(activeGroupForStrip)
+                  : undefined
+              }
+            />
+          ) : null}
           <div className="space-y-1">
-            {visibleGroups.map((group) =>
-              renderFolderRow(
+            {ungroupedFolder}
+            {filteredVisibleGroups.map((group) => {
+              const rawName = displayQuickLearningLabel(group.name);
+              const cleanGroupLabel = stripEmojiText(rawName) || rawName;
+              return renderFolderRow(
                 group.id,
-                displayQuickLearningLabel(group.name),
+                cleanGroupLabel,
                 sessionsByGroup.get(group.id) ?? [],
                 activeGroupId === group.id,
                 unified,
                 undefined,
                 group,
-              )
-            )}
-            {ungroupedFolder}
-            {visibleGroups.length === 0 && !ungroupedFolder && !isSearching ? (
+              );
+            })}
+            {filteredVisibleGroups.length === 0 && !ungroupedFolder && !isSearching ? (
               <div className="px-3 py-2 text-ui text-muted-foreground opacity-80">
                 {t('page.studySessionsEmpty')}
               </div>
@@ -782,7 +964,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           aria-label={t('page.searchPlaceholder')}
           className={cn(
             'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
-            // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
+            // coarse 指针下 16px 防 iOS 聚焦自动放大
             '[@media(pointer:coarse)]:text-[16px]',
             'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
             'transition-colors duration-150 focus:border-primary/40 focus:bg-background'

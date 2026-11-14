@@ -108,4 +108,15 @@ describe('normalizePdfLigatures', () => {
     expect(matchCount).toBe(1);
     expect(itemRanges.get(0)).toEqual([{ start: 4, end: 8, matchOrdinal: 0 }]);
   });
+
+  it('restores LaTeX Unicode presentation ligatures (ff/fi/fl/ffi/ffl) for search and copy', () => {
+    expect(normalizePdfLigatures('di\uFB00erent o\uFB03cial ba\uFB04e')).toBe(
+      'different official baffle',
+    );
+    const { matchCount } = collectPageSearchMatches(
+      [{ str: 'an ef\uFB01cient work\uFB02ow' }],
+      'efficient workflow',
+    );
+    expect(matchCount).toBe(1);
+  });
 });

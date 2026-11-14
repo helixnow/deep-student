@@ -1,0 +1,289 @@
+## errors only
+日志记录 (5 / 15)
+连接失败: search
+工具错误: write_file
+Stdio错误
+Stdio连接关闭
+断开连接: search
+## server search
+日志记录 (3 / 15)
+开始连接服务器: search (sse)
+连接失败: search
+断开连接: search
+## type tool_call_success
+日志记录 (1 / 15)
+工具成功: read_file (87ms)
+## level debug
+日志记录 (3 / 15)
+Stdio发送消息
+Stdio接收消息
+Stdio发送消息
+## keyword READ_FILE
+日志记录 (2 / 15)
+调用工具: read_file
+工具成功: read_file (87ms)
+## keyword without match
+日志记录 (0 / 15)没有匹配的日志
+
+## throttling off
+日志记录 (18 / 18)
+MCP配置初始化，共 2 个服务器
+MCP配置已更新
+开始连接服务器: fs (stdio)
+连接成功: fs
+开始连接服务器: search (sse)
+连接失败: search
+Stdio发送消息
+Stdio接收消息
+Stdio发送消息
+调用工具: read_file
+工具成功: read_file (87ms)
+工具错误: write_file
+Stdio错误
+Stdio连接关闭
+断开连接: search
+Stdio发送消息
+Stdio发送消息
+Stdio接收消息
+----
+<div class="border rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+  <div class="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 flex items-center justify-between flex-shrink-0">
+    <span>
+      "日志记录 ("
+      "0"
+      "/"
+      "15"
+      ")"
+    <span class="text-xs text-gray-500">
+      "没有匹配的日志"
+  <div class="flex-1 overflow-auto">
+    <div class="p-8 text-center text-gray-500">
+      "没有符合过滤条件的日志"
+----
+<div class="flex items-center justify-between gap-4 flex-shrink-0">
+  <h2 class="text-lg font-semibold flex items-center gap-2">
+    <svg size=20 icon="M208,136H48a16,16,0,0,0-">
+    "MCP 调试"
+  <div class="flex items-center gap-2">
+    <button class="px-3 py-1 text-sm rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 bg-gray-200 text-gray-700" title="节流已禁用">
+      <svg size=16 icon="M128,24A104,104,0,1,0,23">
+      "无节流"
+    <button class="px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 bg-blue-500 text-white" title="自动滚动到底部">
+      "自动滚动"
+    <button class="px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 bg-gray-200 text-gray-700" title="仅显示错误和警告">
+      <svg size=16 icon="M230.6,49.53A15.81,15.81">
+    <button class="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制所有日志到剪贴板">
+      <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+    <button class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="导出日志为JSON文件">
+      <svg size=16 icon="M219.31,72,184,36.69A15.">
+    <button class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 [@media(pointer:coarse)]:min-h-11" title="清空日志">
+      "清空"
+----
+<div>
+  <div class="p-4 space-y-4 h-full flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between gap-4 flex-shrink-0">
+      <h2 class="text-lg font-semibold flex items-center gap-2">
+        <svg size=20 icon="M208,136H48a16,16,0,0,0-">
+        "MCP 调试"
+      <div class="flex items-center gap-2">
+        <button class="px-3 py-1 text-sm rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 bg-gray-200 text-gray-700" title="节流已禁用">
+          <svg size=16 icon="M128,24A104,104,0,1,0,23">
+          "无节流"
+        <button class="px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 bg-blue-500 text-white" title="自动滚动到底部">
+          "自动滚动"
+        <button class="px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 bg-gray-200 text-gray-700" title="仅显示错误和警告">
+          <svg size=16 icon="M230.6,49.53A15.81,15.81">
+        <button class="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制所有日志到剪贴板">
+          <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+        <button class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="导出日志为JSON文件">
+          <svg size=16 icon="M219.31,72,184,36.69A15.">
+        <button class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 [@media(pointer:coarse)]:min-h-11" title="清空日志">
+          "清空"
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2 flex-shrink-0">
+      <div class="p-3 bg-gray-100 rounded">
+        <div class="text-xs text-gray-500">
+          "调试"
+        <div class="text-lg font-semibold text-gray-600">
+          "0"
+      <div class="p-3 bg-blue-100 rounded">
+        <div class="text-xs text-blue-600">
+          "信息"
+        <div class="text-lg font-semibold text-blue-700">
+          "1"
+      <div class="p-3 bg-green-100 rounded">
+        <div class="text-xs text-green-600">
+          "成功"
+        <div class="text-lg font-semibold text-green-700">
+          "0"
+      <div class="p-3 bg-yellow-100 rounded">
+        <div class="text-xs text-yellow-600">
+          "警告"
+        <div class="text-lg font-semibold text-yellow-700">
+          "0"
+      <div class="p-3 bg-red-100 rounded">
+        <div class="text-xs text-red-600">
+          "错误"
+        <div class="text-lg font-semibold text-red-700">
+          "0"
+    <div class="flex flex-wrap gap-3 flex-shrink-0">
+      <div class="flex-1 min-w-[200px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "搜索关键词"
+        <input class="w-full px-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[16px] border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11">
+      <div class="min-w-[180px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "服务器"
+        <select class="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11">
+          <option>
+            "全部服务器 ("
+            "1"
+            ")"
+          <option>
+            "fs-2"
+            "("
+            "1"
+            ")"
+      <div class="min-w-[150px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "事件类型"
+        <select class="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11">
+          <option>
+            "全部类型"
+          <option>
+            "配置初始化"
+            "("
+            "0"
+            ")"
+          <option>
+            "配置变更"
+            "("
+            "0"
+            ")"
+          <option>
+            "连接开始"
+            "("
+            "1"
+            ")"
+          <option>
+            "连接成功"
+            "("
+            "0"
+            ")"
+          <option>
+            "连接失败"
+            "("
+            "0"
+            ")"
+          <option>
+            "重试连接"
+            "("
+            "0"
+            ")"
+          <option>
+            "断开连接"
+            "("
+            "0"
+            ")"
+          <option>
+            "Stdio发送"
+            "("
+            "0"
+            ")"
+          <option>
+            "Stdio接收"
+            "("
+            "0"
+            ")"
+          <option>
+            "Stdio错误"
+            "("
+            "0"
+            ")"
+          <option>
+            "Stdio关闭"
+            "("
+            "0"
+            ")"
+          <option>
+            "工具调用"
+            "("
+            "0"
+            ")"
+          <option>
+            "工具成功"
+            "("
+            "0"
+            ")"
+          <option>
+            "工具错误"
+            "("
+            "0"
+            ")"
+          <option>
+            "缓存命中"
+            "("
+            "0"
+            ")"
+          <option>
+            "缓存未命中"
+            "("
+            "0"
+            ")"
+          <option>
+            "传输错误"
+            "("
+            "0"
+            ")"
+      <div class="min-w-[120px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "日志级别"
+        <select class="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11">
+          <option>
+            "全部级别"
+          <option>
+            "调试"
+          <option>
+            "信息"
+          <option>
+            "成功"
+          <option>
+            "警告"
+          <option>
+            "错误"
+    <div class="border rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+      <div class="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 flex items-center justify-between flex-shrink-0">
+        <span>
+          "日志记录 ("
+          "1"
+          "/"
+          "1"
+          ")"
+      <div class="flex-1 overflow-auto">
+        <div class="divide-y">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M208,136H48a16,16,0,0,0-" class="mt-0.5 flex-shrink-0" style="color: rgb(59, 130, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500">
+                    "10:00:00"
+                    "."
+                    "827"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    "INFO"
+                  <span class="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">
+                    "fs-2"
+                  <span class="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded flex items-center gap-1">
+                    <svg size=12 icon="M240,128a8,8,0,0,1-8,8H2">
+                    "连接开始"
+                <div class="text-sm text-gray-800 mb-1">
+                  "开始连接服务器: fs-2 (stdio)"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs">
+                    "{ \"transport\": \"stdio\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+----
+["success: 已复制 15 条日志到剪贴板"]

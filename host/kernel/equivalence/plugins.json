@@ -1,0 +1,399 @@
+{
+  "domain": "plugins",
+  "commands": [
+    "plugin_list",
+    "plugin_get_status",
+    "plugin_get_config",
+    "plugin_set_config",
+    "plugin_set_enabled",
+    "plugin_start",
+    "plugin_stop",
+    "plugin_begin_login",
+    "plugin_cancel_login",
+    "plugin_logout",
+    "plugin_unbind"
+  ],
+  "scenarios": [
+    {
+      "id": "plugins.list.empty",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_list", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_status.empty",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_status.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_status", "args": { "id": "nope" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_status.id_case_sensitive",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_status", "args": { "id": "ILINKBOT" }, "expect": "error" },
+        { "cmd": "plugin_get_status", "args": { "id": "ilink-bot" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_status.missing_id_arg",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_status", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_status.id_wrong_type",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_status", "args": { "id": 1 }, "expect": "error" },
+        { "cmd": "plugin_get_status", "args": { "id": null }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_config.empty",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.get_config.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_get_config", "args": { "id": "" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.full_patch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "plugin_set_config",
+          "args": {
+            "id": "ilinkbot",
+            "patch": { "enabled": false, "rateLimitPerMin": 25, "modelConfigId": "model-w0", "systemPrompt": "你好，W0" }
+          }
+        },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.frontend_single_field_patches",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "modelConfigId": "model-a" } } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": 10 } } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "systemPrompt": "line1\nline2" } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "modelConfigId": "model-b" } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.repeat_same_value",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "systemPrompt": "same" } } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "systemPrompt": "same" } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.wrong_field_types_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "plugin_set_config",
+          "args": {
+            "id": "ilinkbot",
+            "patch": { "enabled": "true", "rateLimitPerMin": "5", "modelConfigId": 7, "systemPrompt": null }
+          }
+        },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.rate_limit_negative_and_float",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": -1 } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": 2.5 } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": 3.0 } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.rate_limit_zero_and_max_safe",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": 0 } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "rateLimitPerMin": 9007199254740991 } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.empty_strings",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "modelConfigId": "", "systemPrompt": "" } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.token_and_unknown_keys_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "plugin_set_config",
+          "args": {
+            "id": "ilinkbot",
+            "patch": {
+              "token": "should-not-persist",
+              "hasToken": true,
+              "bound": true,
+              "accountId": "acc",
+              "userId": "usr",
+              "baseUrl": "http://127.0.0.1:9",
+              "extra": 1
+            }
+          }
+        },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.non_object_patch",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": null } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": [] } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": "rateLimitPerMin" } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": 1 } },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": {} } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.enabled_flag_does_not_start",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "enabled": true } } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_list", "args": {} },
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "enabled": false } } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "nope", "patch": { "rateLimitPerMin": 5 } }, "expect": "error" },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_config.missing_patch_arg",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_enabled.false_from_idle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_enabled", "args": { "id": "ilinkbot", "enabled": false } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_list", "args": {} },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_enabled.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_enabled", "args": { "id": "nope", "enabled": true }, "expect": "error" },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_enabled.enabled_wrong_type",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_enabled", "args": { "id": "ilinkbot", "enabled": "true" }, "expect": "error" },
+        { "cmd": "plugin_set_enabled", "args": { "id": "ilinkbot", "enabled": 1 }, "expect": "error" },
+        { "cmd": "plugin_set_enabled", "args": { "id": "ilinkbot", "enabled": null }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.set_enabled.missing_enabled_arg",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_enabled", "args": { "id": "ilinkbot" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.start.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_start", "args": { "id": "nope" }, "expect": "error" },
+        { "cmd": "plugin_list", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.stop.idle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_stop", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.stop.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_stop", "args": { "id": "nope" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.begin_login.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_begin_login", "args": { "id": "nope" }, "expect": "error" },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.cancel_login.idle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_cancel_login", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.cancel_login.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_cancel_login", "args": { "id": "nope" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.logout.idle_unbound",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_logout", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.logout.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_logout", "args": { "id": "nope" }, "expect": "error" },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.unbind.idle_unbound",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_set_config", "args": { "id": "ilinkbot", "patch": { "enabled": true } } },
+        { "cmd": "plugin_unbind", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_status", "args": { "id": "ilinkbot" } },
+        { "cmd": "plugin_get_config", "args": { "id": "ilinkbot" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "plugins.unbind.unknown_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "plugin_unbind", "args": { "id": "nope" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

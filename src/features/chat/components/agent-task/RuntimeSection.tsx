@@ -73,8 +73,8 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
         )}
         aria-expanded={expanded}
       >
-        <Terminal size={14} className="shrink-0 text-[color:var(--text-secondary)]" />
-        <span className="font-medium">{t('agentPanel.local')}</span>
+        <Terminal size={12} className="shrink-0 text-[color:var(--text-muted)]" />
+        <span className="text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">{t('agentPanel.local')}</span>
         <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
           {blockedCount > 0 && (
             <span className="text-[color:hsl(var(--destructive))]">

@@ -9,11 +9,13 @@ function tool(name: string) {
 }
 
 describe('phase 10 learning overview tool contracts', () => {
-  it('keeps progressive disclosure closed over exactly three read-only tools', () => {
+  it('keeps progressive disclosure closed over the overview and pomodoro record tools', () => {
     expect(learningOverviewToolsSkill.allowedTools).toEqual(
       learningOverviewToolsSkill.embeddedTools?.map((entry) => entry.name),
     );
-    expect(new Set(learningOverviewToolsSkill.allowedTools).size).toBe(3);
+    expect(new Set(learningOverviewToolsSkill.allowedTools).size).toBe(6);
+    expect(learningOverviewToolsSkill.content).toContain('pomodoro_record_create');
+    expect(learningOverviewToolsSkill.content).toContain('pomodoro_record_delete');
     expect(learningOverviewToolsSkill.content).toContain('partial=true');
     expect(learningOverviewToolsSkill.content).toContain('sourceErrors');
     expect(learningOverviewToolsSkill.content).toContain('不可混为同一队列');

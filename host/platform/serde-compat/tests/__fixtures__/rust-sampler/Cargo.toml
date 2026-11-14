@@ -1,0 +1,17 @@
+# 生成 ../serde-json-floats.json：真实 serde_json 1.0.149 + zmij 1.0.21（与 src-tauri/Cargo.lock 相同版本）的输出。
+# 用法见 src/main.rs 顶部注释。独立 crate，不属于 src-tauri 工作区。
+[package]
+name = "serde-compat-rust-sampler"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+# dstu-anki 打开 arbitrary_precision，工作区打开 preserve_order；结构体与 f32/f64 的序列化不受这两个特性影响，
+# 这里照样打开，保证与桌面构建的特性组合一致。
+serde_json = { version = "=1.0.149", features = ["arbitrary_precision", "preserve_order"] }
+zmij = "=1.0.21"
+ryu = "=1.0.23"
+
+[workspace]

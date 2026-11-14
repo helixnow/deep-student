@@ -1,0 +1,6 @@
+{
+  "plugins": [
+    { "id": "fixture.raw-json", "module": "./raw-json.plugin.ts" },
+    { "id": "fixture.greeter", "module": "./greeter.plugin.ts" }
+  ]
+}

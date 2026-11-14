@@ -274,6 +274,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'}
                 onValueChange={(nextValue) => {
                   void i18n.changeLanguage(nextValue);
+                  // ★ BUG-12: UI 语言同步到 SQLite settings.language，避免设置副本长期漂移
+                  void saveSetting('language', nextValue).catch((error: unknown) => {
+                    console.warn('[GeneralTab] Failed to persist language:', getErrorMessage(error));
+                  });
                 }}
                 size="compact"
                 itemClassName="[@media(pointer:coarse)]:!min-h-11"

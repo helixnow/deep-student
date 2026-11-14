@@ -1,0 +1,6 @@
+{
+  "plugins": [
+    { "id": "fixture.startup-real", "module": "./startup-real.plugin.ts", "config": {} },
+    { "id": "fixture.startup-hook", "module": "./startup-hook.plugin.ts" }
+  ]
+}

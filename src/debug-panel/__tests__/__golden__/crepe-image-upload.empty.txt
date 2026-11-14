@@ -1,0 +1,53 @@
+<div>
+  <div style="display: flex; flex-direction: column; height: 100%; background: var(--background); color: var(--foreground); font-size: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap;">
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: rgb(34, 197, 94); color: white; cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M247.31,124.76c-.35-.79-">
+        "监听中"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M208,56H180.28L166.65,35">
+        "快照"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;">
+        <svg size=12 icon="M168,132.69,214.08,115l.">
+        "测试选择器"
+      <select class="[@media(pointer:coarse)]:min-h-11" style="padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); font-size: 11px;">
+        <option>
+          "全部级别"
+        <option>
+          "Debug"
+        <option>
+          "Info"
+        <option>
+          "Warning"
+        <option>
+          "Error"
+        <option>
+          "Success"
+      <div style="flex: 1 1 0%;">
+      <span style="color: var(--muted-foreground); font-size: 11px;">
+        "0"
+        "/"
+        "0"
+        "条"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;" title="复制日志">
+        <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid rgb(59, 130, 246); border-radius: 4px; background: rgb(59, 130, 246); color: white; cursor: pointer; font-size: 11px;" title="复制完整诊断报告">
+        <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+        "诊断报告"
+      <button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; font-size: 11px;" title="清空日志">
+        <svg size=12 icon="M216,48H176V40a24,24,0,0">
+    <div style="display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px;">
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <svg size=12 icon="M215.79,118.17a8,8,0,0,0">
+        <span>
+          "Tauri:"
+        <span style="color: rgb(239, 68, 68); font-weight: bold;">
+          "否"
+    <div style="flex: 1 1 0%; overflow: auto; padding: 8px;">
+      <div style="text-align: center; color: var(--muted-foreground); padding: 40px 20px;">
+        <svg size=32 icon="M216,40H40A16,16,0,0,0,2" style="margin-bottom: 12px; opacity: 0.5;">
+        <div>
+          "暂无日志"
+        <div style="font-size: 11px; margin-top: 8px;">
+          "请在笔记编辑器中点击图片上传区域触发事件"
+      <div>

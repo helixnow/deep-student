@@ -158,7 +158,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           tabIndex={0}
           onKeyDown={handleKeyDown}
           className={cn(
-            'ui-rise-in w-full max-w-md rounded-2xl border border-border bg-background',
+            'ui-rise-in w-full max-w-md rounded-2xl border border-border/35 bg-foreground/[0.015]',
             compact ? 'p-4' : 'p-6',
             'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
           )}
@@ -169,7 +169,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           {/* 封面占位（紧凑布局缩小，给字幕面板让出高度） */}
           <div
             className={cn(
-              'flex items-center justify-center rounded-2xl bg-muted',
+              'flex items-center justify-center rounded-2xl bg-foreground/[0.04]',
               compact ? 'h-16 w-16' : 'h-36 w-36',
             )}
           >
@@ -199,7 +199,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               markers={scrubberMarkers}
               highlightRanges={scrubberHighlights}
             />
-            <div className="flex justify-between text-xs tabular-nums text-muted-foreground">
+            <div className="flex justify-between font-mono text-xs tabular-nums text-muted-foreground">
               <span>{formatMediaTime(currentTime)}</span>
               <span>{isReady ? formatMediaTime(duration) : '--:--'}</span>
             </div>

@@ -1,0 +1,13 @@
+{
+  "appId": "com.deepstudent.app",
+  "appName": "Deep Student",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

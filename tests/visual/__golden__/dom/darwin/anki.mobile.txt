@@ -1,0 +1,399 @@
+<body .light-theme>
+  <div data-demo-app="anki" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .flex.flex-col.h-full.relative.w-full>
+        <div .flex-1.min-h-0>
+          <div .bg-background.h-full.min-h-0.min-w-0.overflow-hidden.relative.w-full data-wb-sys-app="taskDashboard" data-wb-sys-h="tall" data-wb-sys-size="compact">
+            <div .wb-sys-activity aria-hidden="false" aria-label="3 个制卡任务进行中" data-active="true" data-wb-sys-activity="true" role="status">
+              <span .wb-sys-activity-runner aria-hidden="true" />
+            <div .wb-sys-fade>
+              <div .absolute.inset-0.overflow-hidden.wb-at-root>
+                <div .flex-1.h-full.overflow-clip.relative>
+                  <div .flex.h-full>
+                    <div .bg-background.flex.flex-col.flex-shrink-0.font-sidebar-study-ui.h-full.min-h-0.relative.z-[2] aria-hidden="true" inert>
+                      <div .flex-1.min-h-0.overflow-hidden>
+                        <div .h-0 aria-hidden="true" />
+                    <div .bg-[color:var(--shell-workspace-panel)].flex.flex-col.flex-shrink-0.h-full.overflow-x-hidden.relative.z-[1]>
+                      <button .absolute.appearance-none.bg-[color:var(--overlay)].border-0.duration-[var(--panel-close-dur,350ms)].ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))].inset-0.motion-reduce:transition-none.p-0.transition-opacity aria-hidden="true" aria-label="关闭侧边栏" data-mobile-sidebar-mask="true" tabindex="-1" type="button" />
+                      <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
+                        <div .flex-1.min-h-0.overflow-hidden>
+                          <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                            <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                              <div .max-w-[960px].mx-auto.pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))].w-full.wb-at-screen>
+                                <div .gap-6.grid.grid-cols-1.md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)].wb-at-panel>
+                                  <div .space-y-0>
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "总卡片"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .font-semibold.tabular-nums>
+                                          "37"
+                                        <span .ml-1.text-muted-foreground/50.text-sm>
+                                          "("
+                                          "平均每文档"
+                                          "6"
+                                          ")"
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "文档数"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .font-semibold.tabular-nums>
+                                          "6"
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "活跃任务"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .gap-1.5.inline-flex.items-center>
+                                          <svg .animate-spin.text-info viewBox="0 0 256 256" />
+                                          <span .font-medium.text-info>
+                                            "2"
+                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].ml-1.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-sm.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                            "防休眠"
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "错误率"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .tabular-nums.text-warning>
+                                          "4.2"
+                                          "%"
+                                        <span .ml-1.text-muted-foreground/40>
+                                          "("
+                                          "1"
+                                          "段"
+                                          ")"
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "用过的模板"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .cursor-default.tabular-nums>
+                                          <span .tabular-nums>
+                                            "5"
+                                    <div .grid.grid-cols-[120px_1fr].group.items-center.py-[5px].sm:grid-cols-[150px_1fr]>
+                                      <div .flex.gap-2.items-center.min-w-0>
+                                        <span .flex-shrink-0.group-hover:text-muted-foreground/60.text-muted-foreground/40.transition-colors>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .text-muted-foreground.text-ui.truncate>
+                                          "今日制卡"
+                                      <div .flex.flex-wrap.gap-1.items-center.min-w-0.text-foreground.text-ui>
+                                        <span .font-medium.inline-flex.items-baseline>
+                                          <span .tabular-nums>
+                                            "17"
+                                        <span .mx-1.5.text-muted-foreground/40>
+                                          "·"
+                                        <span .text-muted-foreground/60.text-xs>
+                                          "本周制卡"
+                                        <span .inline-flex.items-baseline.ml-1>
+                                          <span .tabular-nums>
+                                            "37"
+                                  <div .flex.flex-col.gap-6.md:flex-row.min-w-0>
+                                    <div .flex-shrink-0>
+                                      <div .wb-at-panel-title>
+                                        "任务状态分布"
+                                      <div .flex.gap-5.items-center>
+                                        <svg aria-label="个任务" role="img" viewBox="0 0 120 120" />
+                                        <div .space-y-2>
+                                          <div .flex.gap-2.items-center>
+                                            <span .flex-shrink-0.h-2.5.rounded-full.w-2.5 />
+                                            <span .text-muted-foreground.text-sm>
+                                              "已完成"
+                                            <span .ml-auto.tabular-nums.text-foreground/70.text-sm>
+                                              "3"
+                                          <div .flex.gap-2.items-center>
+                                            <span .flex-shrink-0.h-2.5.rounded-full.w-2.5 />
+                                            <span .text-muted-foreground.text-sm>
+                                              "进行中"
+                                            <span .ml-auto.tabular-nums.text-foreground/70.text-sm>
+                                              "2"
+                                          <div .flex.gap-2.items-center>
+                                            <span .flex-shrink-0.h-2.5.rounded-full.w-2.5 />
+                                            <span .text-muted-foreground.text-sm>
+                                              "失败"
+                                            <span .ml-auto.tabular-nums.text-foreground/70.text-sm>
+                                              "1"
+                                    <div .flex-1.min-w-0.w-full>
+                                      <div .wb-at-panel-title>
+                                        "文档制卡排行"
+                                      <div .space-y-2.5>
+                                        <div .group>
+                                          <div .flex.gap-2.items-center.justify-between.mb-1>
+                                            <span .flex.gap-1.5.items-baseline.min-w-0>
+                                              <span .flex-shrink-0.tabular-nums.text-2xs.text-muted-foreground/40.w-3>
+                                                "1"
+                                              <span .text-foreground/80.text-ui.truncate>
+                                                "机器学习系统::第 7 章 分布式训练"
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "10"
+                                          <div .bg-muted/40.h-1.5.overflow-hidden.rounded-full>
+                                            <div .h-full.rounded-full.wb-at-bar-fill />
+                                        <div .group>
+                                          <div .flex.gap-2.items-center.justify-between.mb-1>
+                                            <span .flex.gap-1.5.items-baseline.min-w-0>
+                                              <span .flex-shrink-0.tabular-nums.text-2xs.text-muted-foreground/40.w-3>
+                                                "2"
+                                              <span .text-foreground/80.text-ui.truncate>
+                                                "考研英语::Unit10 核心词汇"
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "7"
+                                          <div .bg-muted/40.h-1.5.overflow-hidden.rounded-full>
+                                            <div .h-full.rounded-full.wb-at-bar-fill />
+                                        <div .group>
+                                          <div .flex.gap-2.items-center.justify-between.mb-1>
+                                            <span .flex.gap-1.5.items-baseline.min-w-0>
+                                              <span .flex-shrink-0.tabular-nums.text-2xs.text-muted-foreground/40.w-3>
+                                                "3"
+                                              <span .text-foreground/80.text-ui.truncate>
+                                                "有机化学::亲核取代反应讲义"
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "7"
+                                          <div .bg-muted/40.h-1.5.overflow-hidden.rounded-full>
+                                            <div .h-full.rounded-full.wb-at-bar-fill />
+                                        <div .group>
+                                          <div .flex.gap-2.items-center.justify-between.mb-1>
+                                            <span .flex.gap-1.5.items-baseline.min-w-0>
+                                              <span .flex-shrink-0.tabular-nums.text-2xs.text-muted-foreground/40.w-3>
+                                                "4"
+                                              <span .text-foreground/80.text-ui.truncate>
+                                                "高等数学::极限与导数 错题"
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "6"
+                                          <div .bg-muted/40.h-1.5.overflow-hidden.rounded-full>
+                                            <div .h-full.rounded-full.wb-at-bar-fill />
+                                        <div .group>
+                                          <div .flex.gap-2.items-center.justify-between.mb-1>
+                                            <span .flex.gap-1.5.items-baseline.min-w-0>
+                                              <span .flex-shrink-0.tabular-nums.text-2xs.text-muted-foreground/40.w-3>
+                                                "5"
+                                              <span .text-foreground/80.text-ui.truncate>
+                                                "线性代数::特征值与特征向量"
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "4"
+                                          <div .bg-muted/40.h-1.5.overflow-hidden.rounded-full>
+                                            <div .h-full.rounded-full.wb-at-bar-fill />
+                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-11.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-full.whitespace-nowrap type="button">
+                                  "管理模板"
+                                <div .wb-at-list>
+                                  <div .wb-at-list-toolbar>
+                                    <div .bg-[color:var(--surface-muted)].flex-shrink-0.p-[3px].rounded-[var(--radius-shell-control)].study-shell-segmented aria-label="全部" data-size="compact" role="radiogroup">
+                                      <span .study-shell-segmented-thumb aria-hidden="true" />
+                                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="true" data-selected="true" role="radio" tabindex="0" type="button">
+                                        <span .study-shell-segmented-label>
+                                          <span>
+                                            "全部"
+                                          <span .ml-1.tabular-nums.text-2xs.text-muted-foreground/40>
+                                            "6"
+                                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                                        <span .study-shell-segmented-label>
+                                          <span>
+                                            "进行中"
+                                          <span .ml-1.tabular-nums.text-2xs.text-muted-foreground/40>
+                                            "2"
+                                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                                        <span .study-shell-segmented-label>
+                                          <span>
+                                            "失败"
+                                          <span .ml-1.tabular-nums.text-2xs.text-muted-foreground/40>
+                                            "1"
+                                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                                        <span .study-shell-segmented-label>
+                                          <span>
+                                            "已完成"
+                                          <span .ml-1.tabular-nums.text-2xs.text-muted-foreground/40>
+                                            "3"
+                                    <div .flex-1 />
+                                    <div .flex-shrink-0.max-w-[200px].relative>
+                                      <svg .-translate-y-1/2.absolute.left-2.text-muted-foreground/30.top-1/2 viewBox="0 0 256 256" />
+                                      <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:h-[var(--touch-target-size)].[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].bg-transparent.border.border-[color:var(--input-shell-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-50.ds-search-input.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:outline-none.focus:ring-0.h-7.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].pl-7.placeholder:text-muted-foreground/50.pr-7.px-3.py-2.rounded-[var(--radius-shell-control)].text-foreground.text-sm.transition-colors.w-full placeholder="搜索文档名称..." type="search" value />
+                                    <div .flex.gap-1.items-center>
+                                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="按时间" title="按时间" type="button">
+                                        <svg viewBox="0 0 256 256" />
+                                        <span .text-xs>
+                                          "按时间"
+                                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.p-0.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-11.whitespace-nowrap aria-label="刷新" type="button">
+                                        <svg viewBox="0 0 256 256" />
+                                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="恢复卡住任务" title="将中断超过 10 分钟的任务标记为已暂停，可点「恢复」继续" type="button">
+                                        <svg viewBox="0 0 256 256" />
+                                        <span .text-xs>
+                                          "恢复卡住任务"
+                                  <div .wb-at-list-head>
+                                    <span .flex-shrink-0.w-4 />
+                                    <span .flex-shrink-0.w-[15px] />
+                                    <span .flex-1.min-w-0>
+                                      "文档名称"
+                                    <span .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                      "状态"
+                                    <span .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                      "卡片"
+                                    <span .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                      "进度"
+                                    <span .flex-shrink-0.hidden.sm:block.text-right.w-[80px]>
+                                      "更新时间"
+                                  <div>
+                                    <div .group/row.wb-at-row.wb-at-row-running data-agent-entity="taskDashboard:doc_demo_vocab_u10">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "考研英语::Unit10 核心词汇"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-info/10.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-info.text-xs>
+                                            <span .wb-at-pulse-dot aria-hidden="true" />
+                                            "进行中"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "7"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-active.wb-at-progress-track>
+                                              <div .bg-info/75.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "3"
+                                              "/"
+                                              "6"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "刚刚"
+                                    <div .group/row.wb-at-row data-agent-entity="taskDashboard:doc_demo_mlsys_ch7">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "机器学习系统::第 7 章 分布式训练"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-success/15.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-success.text-xs>
+                                            "已完成"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "10"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-track>
+                                              <div .bg-success/60.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "5"
+                                              "/"
+                                              "5"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "2 小时前"
+                                    <div .group/row.wb-at-row data-agent-entity="taskDashboard:doc_demo_chem_mech">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "有机化学::亲核取代反应讲义"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-warning/15.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-warning.text-xs>
+                                            "失败"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "7"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-track>
+                                              <div .bg-success/60.h-full.wb-at-progress-fill />
+                                              <div .bg-warning/60.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "5"
+                                              "/"
+                                              "6"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "1 天前"
+                                    <div .group/row.wb-at-row data-agent-entity="taskDashboard:doc_demo_calc_mistakes">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "高等数学::极限与导数 错题"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-success/15.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-success.text-xs>
+                                            "已完成"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "6"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-track>
+                                              <div .bg-success/60.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "2"
+                                              "/"
+                                              "2"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "2 天前"
+                                    <div .group/row.wb-at-row data-agent-entity="taskDashboard:doc_demo_linalg_eigen">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "线性代数::特征值与特征向量"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-info/10.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-info.text-xs>
+                                            "已暂停"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "4"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-track>
+                                              <div .bg-success/60.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "2"
+                                              "/"
+                                              "4"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "3 天前"
+                                    <div .group/row.wb-at-row data-agent-entity="taskDashboard:doc_demo_highlight_mlsys">
+                                      <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].min-h-[44px].wb-at-row-main>
+                                        <span .flex-shrink-0.text-muted-foreground/30.w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <svg .flex-shrink-0.h-[15px].text-muted-foreground/50.w-[15px] viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0.text-foreground.text-ui.truncate>
+                                          "划词制卡::机器学习系统"
+                                        <div .flex-shrink-0.sm:w-[72px].w-[60px]>
+                                          <span .bg-success/15.font-medium.gap-1.5.inline-flex.items-center.px-2.py-0.5.rounded-sm.text-success.text-xs>
+                                            "已完成"
+                                        <div .flex-shrink-0.sm:w-[48px].text-right.w-[40px]>
+                                          <span .tabular-nums.text-muted-foreground.text-xs>
+                                            "3"
+                                        <div .flex-shrink-0.w-[140px].wb-at-col-progress>
+                                          <div .flex.gap-2.5.items-center>
+                                            <div .bg-muted/30.flex.flex-shrink-0.h-1.5.overflow-hidden.rounded-full.w-[80px].wb-at-progress-track>
+                                              <div .bg-success/60.h-full.wb-at-progress-fill />
+                                            <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs>
+                                              "1"
+                                              "/"
+                                              "1"
+                                        <span .flex-shrink-0.hidden.sm:block.tabular-nums.text-muted-foreground/60.text-right.text-xs.w-[80px]>
+                                          "5 天前"
+                                  <div .wb-at-footer>
+                                    <span>
+                                      "共 6 个文档任务"
+                                    <span>
+                                      "任务数据长期保留，可手动删除"
+                            <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                              <div .os-scrollbar-track>
+                                <div .os-scrollbar-handle />
+                            <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                              <div .os-scrollbar-track>
+                                <div .os-scrollbar-handle />
+        <div .notification-container aria-label="通知" role="region" />
+  <div id="@2" />

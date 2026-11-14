@@ -1,5 +1,10 @@
 import i18n from 'i18next';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
+import { isWebUiShell } from '@/utils/platform';
+
+export const keepsTurnsWithoutChatModel = (): boolean =>
+  isWebUiShell() || readShellPlatform()?.kind === 'desktop';
 
 export type ReadinessCode = 'MODEL2_MISSING' | 'MODEL2_AUTO_ASSIGNED';
 export type ReadinessAction = 'OPEN_SETTINGS_MODELS';

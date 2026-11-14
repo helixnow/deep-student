@@ -10,10 +10,10 @@
   flex-direction: column;
   gap: 0.35em;
   margin: 0.5em 0;
-  padding: 0.75em 0.85em;
-  border-radius: var(--notes-radius-control, 8px);
-  border-left: 3px solid transparent;
-  background: hsl(var(--muted) / 0.45);
+  padding: 0.8em 0.95em;
+  border-radius: 10px;
+  border: 0;
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 0.45));
   transition:
     box-shadow 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     gap 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
@@ -193,8 +193,7 @@
 
 /* note — neutral / info-muted */
 .crepe-callout--note {
-  background: hsl(var(--info) / 0.08);
-  border-left-color: hsl(var(--info));
+  background: hsl(var(--info) / 0.07);
   color: hsl(var(--foreground));
 }
 
@@ -205,8 +204,7 @@
 
 /* tip — success */
 .crepe-callout--tip {
-  background: hsl(var(--success) / 0.08);
-  border-left-color: hsl(var(--success));
+  background: hsl(var(--success) / 0.07);
   color: hsl(var(--foreground));
 }
 
@@ -217,8 +215,7 @@
 
 /* warning */
 .crepe-callout--warning {
-  background: hsl(var(--warning) / 0.1);
-  border-left-color: hsl(var(--warning));
+  background: hsl(var(--warning) / 0.085);
   color: hsl(var(--foreground));
 }
 
@@ -229,8 +226,7 @@
 
 /* danger */
 .crepe-callout--danger {
-  background: hsl(var(--danger) / 0.1);
-  border-left-color: hsl(var(--danger));
+  background: hsl(var(--danger) / 0.085);
   color: hsl(var(--foreground));
 }
 
@@ -241,8 +237,7 @@
 
 /* info — primary accent (task example) */
 .crepe-callout--info {
-  background: hsl(var(--primary) / 0.08);
-  border-left-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.07);
   color: hsl(var(--foreground));
 }
 

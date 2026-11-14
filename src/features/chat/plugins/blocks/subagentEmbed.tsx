@@ -26,7 +26,6 @@ import {
   CircleNotch,
   Copy,
   WarningCircle,
-  XCircle,
   MinusCircle,
   Clock,
   ArrowsOut,
@@ -39,6 +38,8 @@ import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
 import { MarkdownRenderer } from '../../components/renderers';
 import { sanitizeDanglingMarkdown } from '../../components/renderers/sanitizeDanglingMarkdown';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { cn } from '@/utils/cn';
 import {
   DsDialog,
@@ -57,7 +58,7 @@ import {
 import { addSubagentEventLog } from '../../debug/exportSessionDebug';
 // 🆕 状态单一真相：从工作区 Store 订阅子代理状态
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
-import { cancelAgent } from '../../workspace/api';
+import { backgroundSubagent, cancelAgent } from '../../workspace/api';
 import type { AgentStatus, AgentCompletionEnvelope } from '../../workspace/types';
 
 // ============================================================================
@@ -175,6 +176,7 @@ interface DispatchedProgress {
   agentSessionId?: string;
   workspaceId?: string;
   runId?: string;
+  canBackground: boolean;
 }
 
 function parseDispatchedFromContent(content: string | undefined): DispatchedProgress | undefined {
@@ -195,6 +197,7 @@ function parseDispatchedFromContent(content: string | undefined): DispatchedProg
       agentSessionId: readString(record, 'agent_session_id'),
       workspaceId: readString(record, 'workspace_id'),
       runId: readString(record, 'run_id'),
+      canBackground: record.can_background === true,
     };
   }
   return undefined;
@@ -204,13 +207,15 @@ function parseDispatchedFromContent(content: string | undefined): DispatchedProg
 // 子代理嵌入视图组件
 // ============================================================================
 
-const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
   const { t, i18n } = useTranslation(['chatV2', 'workspace']);
   const locale = i18n.resolvedLanguage ?? i18n.language;
   // 默认折叠：子代理时间线按需展开（展开后必须完整，见终态重同步逻辑）
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isFullHeight, setIsFullHeight] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isBackgrounding, setIsBackgrounding] = useState(false);
+  const [backgroundRequested, setBackgroundRequested] = useState(false);
   const [copied, setCopied] = useState(false);
   // 🆕 缺口 4: 大尺寸模态中打开子代理完整会话视图
   const [isFullViewOpen, setIsFullViewOpen] = useState(false);
@@ -400,6 +405,12 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const mountedAtRef = useRef<number>(Date.now());
   const elapsedBaseMs = block.startedAt ?? mountedAtRef.current;
   const isInProgress = status === 'running' || status === 'queued';
+  const isBackground = backgroundRequested || output?.backgrounded === true || input?.wait === false;
+  const parentSessionId = store?.getState().sessionId;
+  const canBackground = isInProgress && !isBackground && dispatched?.canBackground === true
+    && (block.status === 'pending' || block.status === 'running')
+    && (block.toolName === 'subagent_call' || block.toolName === 'builtin-subagent_call')
+    && Boolean(parentSessionId);
   const [elapsedMs, setElapsedMs] = useState<number>(() => Date.now() - elapsedBaseMs);
   useEffect(() => {
     if (!isInProgress) return;
@@ -413,14 +424,14 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     };
   }, [isInProgress, elapsedBaseMs]);
 
-  // 🆕 最终输出展示：store 的 lastCompletion.finalOutput 若更完整则优先
+  // 🆕 最终输出展示：store 的 lastCompletion.finalOutput 若更完整则优先，回退 toolOutput.output 与旧 result_summary
   const displayOutput = useMemo(() => {
     const fromStore = storeCompletion?.finalOutput;
     if (fromStore && (!finalOutputFromTool || fromStore.length >= finalOutputFromTool.length)) {
       return fromStore;
     }
-    return finalOutputFromTool;
-  }, [storeCompletion, finalOutputFromTool]);
+    return finalOutputFromTool ?? resultSummary;
+  }, [storeCompletion, finalOutputFromTool, resultSummary]);
   // 只有在展示的是被截断的 toolOutput.output 时才标注"（已截断）"
   const showTruncatedTag = outputTruncated && displayOutput === finalOutputFromTool;
 
@@ -457,6 +468,26 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       setIsCancelling(false);
     }
   }, [isCancelling, workspaceId, sessionId, t]);
+
+  const handleBackground = useCallback(async () => {
+    if (isBackgrounding || !canBackground || !parentSessionId) return;
+    setIsBackgrounding(true);
+    try {
+      const accepted = await backgroundSubagent(parentSessionId, block.id);
+      if (accepted) {
+        setBackgroundRequested(true);
+        showGlobalNotification('success', t('workspace:subagentEmbed.backgroundRequested'));
+      } else {
+        showGlobalNotification('info', t('workspace:subagentEmbed.backgroundNoop'));
+      }
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      console.error(`[SubagentEmbed] Failed to background tool block ${block.id}:`, error);
+      showGlobalNotification('error', t('workspace:subagentEmbed.backgroundFailed', { msg }));
+    } finally {
+      setIsBackgrounding(false);
+    }
+  }, [isBackgrounding, canBackground, parentSessionId, block.id, t]);
 
   // 🆕 缺口 4: 打开完整视图（附调试埋点）
   const handleOpenFullView = useCallback(() => {
@@ -506,26 +537,20 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     );
   }, []);
 
-  // 状态图标
+  // 终态状态图标（进行中由 ToolActivitySweep + TextShimmer 表达，不做旋转图标）
   const statusIcon = useMemo(() => {
     switch (status) {
-      case 'running':
-        return <CircleNotch size={16} className="text-primary animate-spin" />;
-      case 'queued':
-        return <Clock size={16} className="text-primary" />;
       case 'completed':
-        return <CheckCircle size={16} className="text-success" />;
+        return <CheckCircle size={16} weight="fill" className="w-4 h-4 text-success shrink-0" />;
       case 'failed':
-        return <WarningCircle size={16} className="text-destructive" />;
       case 'cancelled':
       case 'interrupted':
-        return <XCircle size={16} className="text-warning" />;
+        return <WarningCircle size={16} className="w-4 h-4 text-destructive shrink-0" />;
       case 'closed':
-        return <XCircle size={16} className="text-muted-foreground" />;
       case 'ended':
-        return <MinusCircle size={16} className="text-muted-foreground" />;
+        return <MinusCircle size={16} className="w-4 h-4 text-muted-foreground shrink-0" />;
       default:
-        return <Clock size={16} className="text-muted-foreground" />;
+        return null;
     }
   }, [status]);
 
@@ -566,6 +591,10 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     return t('subagent.unknownSkill');
   }, [taskSummary, skillId, sessionId, t]);
 
+  const statusDisplayLabel = status === 'running' && isBackground
+    ? t('workspace:subagentEmbed.backgroundRunning')
+    : statusText;
+
   // 实时路径：subagent_call 的 toolInput 没有 sessionId，工具返回前 output 也不存在。
   // 块仍在执行时显示"启动中"占位，而不是错误卡
   if (!sessionId) {
@@ -580,14 +609,32 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     if ((block.isPreparing && blockTerminal) || endedBeforeExecution) {
       return (
         <div
-          className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-card"
+          className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80"
           data-testid="subagent-embed-not-executed"
         >
-          <Robot size={16} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-sm font-medium flex-1 truncate text-muted-foreground">{cardTitle}</span>
-          <span className="text-xs text-muted-foreground flex-shrink-0">
-            {t('subagent.status.cancelled')}
-          </span>
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <ToolActivitySweep
+                active={false}
+                className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+              >
+                <Robot size={16} className="text-muted-foreground" />
+              </ToolActivitySweep>
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                <ToolActivitySweep active={false} className="max-w-full leading-4">
+                  <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                    {cardTitle}
+                  </span>
+                </ToolActivitySweep>
+                <span className="text-xs leading-4 text-muted-foreground">
+                  {t('subagent.status.cancelled')}
+                </span>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <WarningCircle size={16} className="w-4 h-4 text-destructive shrink-0" />
+            </div>
+          </div>
         </div>
       );
     }
@@ -595,306 +642,392 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       block.isPreparing || block.status === 'pending' || block.status === 'running';
     if (blockInProgress) {
       return (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-card">
-          <Robot size={16} className="text-primary flex-shrink-0" />
-          <span className="text-sm font-medium flex-1 truncate">{cardTitle}</span>
-          <CircleNotch size={16} className="text-primary animate-spin flex-shrink-0" />
-          <span className="text-xs text-muted-foreground flex-shrink-0">
-            {t('subagent.status.running')}
-          </span>
+        <div className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <ToolActivitySweep
+                active={true}
+                className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+              >
+                <Robot size={16} className="text-muted-foreground" />
+              </ToolActivitySweep>
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                <ToolActivitySweep active={true} className="max-w-full leading-4">
+                  <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                    {cardTitle}
+                  </span>
+                </ToolActivitySweep>
+                <TextShimmer
+                  className="text-xs leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {t('subagent.status.running')}
+                </TextShimmer>
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
     // 已结束但仍无 sessionId：数据确实缺失
     return (
-      <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/30">
-        <WarningCircle size={16} className="text-destructive" />
-        <span className="text-sm text-destructive">
-          {t('subagent.noSessionId')}
-        </span>
+      <div className="rounded-lg border border-destructive/30 overflow-hidden bg-card dark:bg-card/80">
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <ToolActivitySweep
+              active={false}
+              className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+            >
+              <Robot size={16} className="text-muted-foreground" />
+            </ToolActivitySweep>
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+              <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                {cardTitle}
+              </span>
+              <span className="text-xs leading-4 text-destructive">
+                {t('subagent.noSessionId')}
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <WarningCircle size={16} className="w-4 h-4 text-destructive shrink-0" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={cn(
-      "rounded-lg border border-border/50 bg-card overflow-hidden",
-      status === 'running' && "ring-2 ring-primary/30"
-    )}>
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        status === 'failed' ? 'border-destructive/30' : 'border-border/50'
+      )}
+    >
       {/* 头部：可点击折叠 */}
-      <DsButton
-        variant="ghost"
-        size="sm"
+      <div
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full !justify-start gap-2 !p-3 text-left [@media(pointer:coarse)]:!min-h-11"
+        className={cn(
+          'flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/20 [@media(pointer:coarse)]:min-h-11',
+          (!isCollapsed || status === 'failed') && 'border-b border-border/30'
+        )}
       >
-        {/* 折叠图标 */}
-        {isCollapsed ? (
-          <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
-        ) : (
-          <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
-        )}
-
-        {/* 代理图标 */}
-        <Robot size={16} className="text-primary flex-shrink-0" />
-
-        {/* 标题：任务摘要 > 技能名 > 会话 ID 尾巴 */}
-        <span className="text-sm font-medium flex-1 truncate" title={taskSummary || skillId || sessionId}>
-          {cardTitle}
-        </span>
-
-        {/* 🆕 profile 徽标（与续跑标签同款 chip） */}
-        {profileLabel && (
-          <span className="px-1.5 py-0.5 rounded border border-border/60 text-2xs text-muted-foreground flex-shrink-0">
-            {profileLabel}
-          </span>
-        )}
-
-        {/* 🆕 契约 C7：续跑标记 */}
-        {isResumed && (
-          <span className="px-1.5 py-0.5 rounded border border-border/60 text-2xs text-muted-foreground flex-shrink-0">
-            {t('workspace:subagentEmbed.resumed')}
-          </span>
-        )}
-
-        {/* 🆕 C12：inbox 待消费徽标（非 running/queued 且有积压时，琥珀色） */}
-        {!isInProgress && typeof pendingInboxCount === 'number' && pendingInboxCount > 0 && (
-          <span
-            className="px-1.5 py-0.5 rounded border border-warning/40 bg-warning/10 text-2xs text-warning flex-shrink-0"
-            title={t('workspace:subagentEmbed.pendingInboxHint')}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* 代理图标徽标 */}
+          <ToolActivitySweep
+            active={isInProgress}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
           >
-            {/* count 以字符串传入，避免 i18next 数字复数后缀解析（同 tokens chip 范式） */}
-            {t('workspace:subagentEmbed.pendingInbox', { count: String(pendingInboxCount) })}
-          </span>
-        )}
+            <Robot size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
 
-        {/* 状态 */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {statusIcon}
-          <span className="text-xs text-muted-foreground">{statusText}</span>
-          {/* 🆕 运行中已用时长 */}
-          {isInProgress && (
-            <span className="text-2xs text-muted-foreground tabular-nums">
-              {formatElapsed(elapsedMs)}
-            </span>
-          )}
-          {/* 🆕 契约 C8：终态 token 计数 */}
-          {showTokenUsage && tokenUsageTotal !== undefined && (
-            <span className="text-2xs text-muted-foreground">
-              {t('workspace:subagentEmbed.tokens', { count: formatTokenCount(tokenUsageTotal) })}
-            </span>
-          )}
-        </div>
+          {/* 标题与状态双行堆叠 */}
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ToolActivitySweep active={isInProgress} className="min-w-0 max-w-full leading-4">
+                <span
+                  className="block truncate text-xs font-medium leading-4 text-muted-foreground"
+                  title={taskSummary || skillId || sessionId}
+                >
+                  {cardTitle}
+                </span>
+              </ToolActivitySweep>
 
-        {/* 🆕 取消按钮（running/queued 且会话信息已知时显示）——用 span 避免 button 嵌套（同尺寸切换按钮范式） */}
-        {canCancel && (
-          <span
-            role="button"
-            tabIndex={0}
-            aria-disabled={isCancelling}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              void handleCancel();
-            }}
-            onMouseDown={(e) => { e.stopPropagation(); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.stopPropagation();
-                e.preventDefault();
-                void handleCancel();
-              }
-            }}
-            className={cn(
-              'px-1.5 py-0.5 rounded border border-border/60 text-xs text-muted-foreground',
-              'hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0',
-              // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免相邻操作命中区互相覆盖
-              "[@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[11px] [@media(pointer:coarse)]:after:content-['']",
-              isCancelling && 'opacity-50 pointer-events-none'
-            )}
-            aria-label={t('workspace:subagentEmbed.cancel')}
-            title={t('workspace:subagentEmbed.cancel')}
-          >
-            {isCancelling ? (
-              <CircleNotch size={12} className="animate-spin" />
-            ) : (
-              t('workspace:subagentEmbed.cancel')
-            )}
-          </span>
-        )}
-
-        {/* 🆕 缺口 4: 在完整视图打开——用 span 避免 button 嵌套（同高度切换按钮范式） */}
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            handleOpenFullView();
-          }}
-          onMouseDown={(e) => { e.stopPropagation(); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.stopPropagation();
-              e.preventDefault();
-              handleOpenFullView();
-            }
-          }}
-          // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免与尺寸切换命中区重叠
-          className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
-          aria-label={t('workspace:subagentEmbed.openFull')}
-          title={t('workspace:subagentEmbed.openFull')}
-        >
-          <ArrowSquareOut size={14} className="text-muted-foreground" />
-        </span>
-
-        {/* 高度切换按钮（仅展开时显示）——用 span 避免 button 嵌套（同 NoteToolPreview 范式），并放开强制尺寸保证触控目标 */}
-        {!isCollapsed && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); setIsFullHeight(!isFullHeight); }}
-            onMouseDown={(e) => { e.stopPropagation(); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsFullHeight(!isFullHeight);
-              }
-            }}
-            // 触屏：同 open-full 范式，真实水平占位防止相邻操作互相截获点击
-            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
-            aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
-            title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
-          >
-            {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
-          </span>
-        )}
-      </DsButton>
-
-      {/* 任务摘要（折叠时显示） */}
-      {isCollapsed && taskSummary && (
-        <div className="px-3 pb-2 text-xs text-muted-foreground line-clamp-1">
-          {taskSummary}
-        </div>
-      )}
-
-      {/* 结果摘要（折叠且完成时显示）：优先契约 C4 最终输出前 200 字符，回退旧 result_summary */}
-      {isCollapsed && status === 'completed' && (displayOutput || resultSummary) && (
-        <div className="px-3 pb-2 text-xs text-success line-clamp-2">
-          {displayOutput
-            ? (displayOutput.length > 200 ? `${displayOutput.slice(0, 200)}…` : displayOutput)
-            : resultSummary}
-        </div>
-      )}
-
-      {/* 🆕 错误摘要（折叠且失败时显示）：前 120 字符一行 */}
-      {isCollapsed && status === 'failed' && (
-        <div className="px-3 pb-2 text-xs text-destructive line-clamp-1">
-          {failureDetail.length > 120 ? `${failureDetail.slice(0, 120)}…` : failureDetail}
-        </div>
-      )}
-
-      {/* 🆕 错误详情（展开且失败时显示，位于嵌入对话上方，与最终结果同构） */}
-      {!isCollapsed && status === 'failed' && (
-        <div className="border-t border-destructive/30 px-3 py-2 bg-destructive/5">
-          <div className="text-2xs font-medium text-destructive mb-1">
-            {t('workspace:subagentEmbed.errorDetail')}
-          </div>
-          <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
-            <div className="text-xs text-destructive whitespace-pre-wrap break-words">
-              {failureDetail}
-            </div>
-          </CustomScrollArea>
-        </div>
-      )}
-
-      {/* 🆕 最终结果（展开且有输出时显示，位于嵌入对话上方；失败但有部分输出也照常显示） */}
-      {!isCollapsed && (status === 'completed' || status === 'failed') && displayOutput && (
-        <div className="border-t border-border/50 px-3 py-2 bg-muted/20">
-          <div className="flex items-center text-2xs font-medium text-muted-foreground mb-1">
-            <span>
-              {t('workspace:subagentEmbed.finalResult')}
-              {showTruncatedTag && (
-                <span className="ml-1">{t('workspace:subagentEmbed.truncated')}</span>
+              {/* 🆕 profile 徽标 */}
+              {profileLabel && (
+                <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
+                  {profileLabel}
+                </span>
               )}
-            </span>
-            {/* 🆕 复制最终结果——用 span 避免 button 嵌套（同取消按钮范式） */}
+
+              {/* 🆕 契约 C7：续跑标记 */}
+              {isResumed && (
+                <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
+                  {t('workspace:subagentEmbed.resumed')}
+                </span>
+              )}
+
+              {/* 🆕 C12：inbox 待消费徽标（非 running/queued 且有积压时，琥珀色） */}
+              {!isInProgress && typeof pendingInboxCount === 'number' && pendingInboxCount > 0 && (
+                <span
+                  className="shrink-0 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-2xs leading-none text-warning"
+                  title={t('workspace:subagentEmbed.pendingInboxHint')}
+                >
+                  {/* count 以字符串传入，避免 i18next 数字复数后缀解析（同 tokens chip 范式） */}
+                  {t('workspace:subagentEmbed.pendingInbox', { count: String(pendingInboxCount) })}
+                </span>
+              )}
+            </div>
+
+            <div className="flex min-w-0 items-center gap-1.5">
+              {isInProgress ? (
+                <TextShimmer
+                  className="text-xs leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {statusDisplayLabel}
+                </TextShimmer>
+              ) : (
+                <span className="text-xs leading-4 text-muted-foreground">
+                  {statusDisplayLabel}
+                </span>
+              )}
+              {/* 🆕 运行中已用时长 */}
+              {isInProgress && (
+                <span className="text-2xs leading-4 text-muted-foreground tabular-nums">
+                  {formatElapsed(elapsedMs)}
+                </span>
+              )}
+              {/* 🆕 契约 C8：终态 token 计数 */}
+              {showTokenUsage && tokenUsageTotal !== undefined && (
+                <span className="text-2xs leading-4 text-muted-foreground tabular-nums">
+                  {t('workspace:subagentEmbed.tokens', { count: formatTokenCount(tokenUsageTotal) })}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧操作与状态指示 */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* 转后台按钮（仅阻塞派发运行中可见） */}
+          {canBackground && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              disabled={isBackgrounding}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleBackground();
+              }}
+              title={t('workspace:subagentEmbed.backgroundHint')}
+              className="h-6 px-2 text-xs border-border/50 bg-transparent text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+            >
+              {isBackgrounding && <CircleNotch size={12} className="animate-spin" />}
+              {t('workspace:subagentEmbed.background')}
+            </DsButton>
+          )}
+
+          {/* 🆕 取消按钮（running/queued 且会话信息已知时显示） */}
+          {canCancel && (
             <span
               role="button"
               tabIndex={0}
+              aria-disabled={isCancelling}
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                handleCopy(displayOutput);
+                void handleCancel();
               }}
               onMouseDown={(e) => { e.stopPropagation(); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.stopPropagation();
                   e.preventDefault();
-                  handleCopy(displayOutput);
+                  void handleCancel();
                 }
               }}
-              // 触屏：本体 ~22px（icon 12 + p-1 8 + text-2xs strut），-inset-3 → ≥44px 命中
-              className="ml-auto p-1 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer flex-shrink-0 relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-3"
-              aria-label={t('workspace:subagentEmbed.copyResult')}
-              title={t('workspace:subagentEmbed.copyResult')}
+              className={cn(
+                'px-1.5 py-0.5 rounded border border-border/50 bg-transparent text-xs text-muted-foreground',
+                'hover:bg-[var(--interactive-hover)] hover:text-foreground transition-colors cursor-pointer relative z-10 flex-shrink-0',
+                // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免相邻操作命中区互相覆盖
+                "[@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[11px] [@media(pointer:coarse)]:after:content-['']",
+                isCancelling && 'opacity-50 pointer-events-none'
+              )}
+              aria-label={t('workspace:subagentEmbed.cancel')}
+              title={t('workspace:subagentEmbed.cancel')}
             >
-              {copied ? (
-                <Check size={12} className="text-success" />
+              {isCancelling ? (
+                <CircleNotch size={12} className="animate-spin" />
               ) : (
-                <Copy size={12} className="text-muted-foreground" />
+                t('workspace:subagentEmbed.cancel')
               )}
             </span>
-          </div>
-          <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
-            <div className="prose prose-sm dark:prose-invert max-w-none text-xs break-words">
-              <MarkdownRenderer content={sanitizedDisplayOutput ?? displayOutput} />
-            </div>
-          </CustomScrollArea>
-        </div>
-      )}
-
-      {/* 嵌入的聊天视图（展开时显示） */}
-      {!isCollapsed && (
-        <div
-          className={cn(
-            // 高度用视口相对值封顶，避免小屏上嵌套滚动区超出可视范围
-            "border-t border-border/50 overflow-hidden",
-            isFullHeight ? "h-[min(600px,70vh)]" : "h-[min(300px,45vh)]"
           )}
-        >
-          {/* 
-            核心复用：使用 ChatContainer 渲染子代理的完整聊天视图
-            - showInputBar=false 隐藏输入栏
-            - 子代理 sessionId 作为 key 确保独立 Store
-          */}
-          <ChatContainer
-            key={sessionId}
-            sessionId={sessionId}
-            showInputBar={false}
-            className="h-full"
-          />
+
+          {/* 🆕 缺口 4: 在完整视图打开 */}
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              handleOpenFullView();
+            }}
+            onMouseDown={(e) => { e.stopPropagation(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation();
+                e.preventDefault();
+                handleOpenFullView();
+              }
+            }}
+            // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免与尺寸切换命中区重叠
+            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
+            aria-label={t('workspace:subagentEmbed.openFull')}
+            title={t('workspace:subagentEmbed.openFull')}
+          >
+            <ArrowSquareOut size={14} className="text-muted-foreground" />
+          </span>
+
+          {/* 高度切换按钮（仅展开时显示） */}
+          {!isCollapsed && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setIsFullHeight(!isFullHeight); }}
+              onMouseDown={(e) => { e.stopPropagation(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setIsFullHeight(!isFullHeight);
+                }
+              }}
+              // 触屏：同 open-full 范式，真实水平占位防止相邻操作互相截获点击
+              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
+              aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
+              title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
+            >
+              {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
+            </span>
+          )}
+
+          {/* 终态状态图标 */}
+          {statusIcon}
+
+          {/* 折叠箭头 */}
+          {isCollapsed ? (
+            <CaretRight size={14} className="text-muted-foreground shrink-0" />
+          ) : (
+            <CaretDown size={14} className="text-muted-foreground shrink-0" />
+          )}
+        </div>
+      </div>
+
+      {/* 折叠且失败时仅显示紧凑错误条，与 mcpTool 一致 */}
+      {isCollapsed && status === 'failed' && (
+        <div className="px-3 py-2">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive/90 line-clamp-2 break-words">
+            {failureDetail.length > 160 ? `${failureDetail.slice(0, 160)}…` : failureDetail}
+          </div>
         </div>
       )}
 
-      {/* 底部元信息 */}
-      <div className="flex items-center gap-3 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
-        {createdAt && (
-          <div className="flex items-center gap-1">
-            <Clock size={12} />
-            <span>{new Date(createdAt).toLocaleTimeString(locale)}</span>
+      {/* 展开内容：任务摘要、错误详情、最终结果、嵌入聊天、元信息 */}
+      {!isCollapsed && (
+        <>
+          {taskSummary && (
+            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+              {taskSummary}
+            </div>
+          )}
+
+          {/* 🆕 错误详情（展开且失败时显示） */}
+          {status === 'failed' && (
+            <div className="border-t border-border/30 px-3 py-2">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-destructive mb-1">
+                  <WarningCircle size={14} className="shrink-0" />
+                  <span>{t('workspace:subagentEmbed.errorDetail')}</span>
+                </div>
+                <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
+                  <div className="text-xs text-destructive/90 whitespace-pre-wrap break-words">
+                    {failureDetail}
+                  </div>
+                </CustomScrollArea>
+              </div>
+            </div>
+          )}
+
+          {/* 🆕 最终结果（展开且有输出时显示，位于嵌入对话上方；失败但有部分输出也照常显示） */}
+          {(status === 'completed' || status === 'failed') && displayOutput && (
+            <div className="border-t border-border/30 px-3 py-2 bg-muted/20">
+              <div className="flex items-center text-2xs font-medium text-muted-foreground mb-1">
+                <span>
+                  {t('workspace:subagentEmbed.finalResult')}
+                  {showTruncatedTag && (
+                    <span className="ml-1">{t('workspace:subagentEmbed.truncated')}</span>
+                  )}
+                </span>
+                {/* 🆕 复制最终结果 */}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleCopy(displayOutput);
+                  }}
+                  onMouseDown={(e) => { e.stopPropagation(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleCopy(displayOutput);
+                    }
+                  }}
+                  // 触屏：本体 ~22px（icon 12 + p-1 8 + text-2xs strut），-inset-3 → ≥44px 命中
+                  className="ml-auto p-1 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer flex-shrink-0 relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-3"
+                  aria-label={t('workspace:subagentEmbed.copyResult')}
+                  title={t('workspace:subagentEmbed.copyResult')}
+                >
+                  {copied ? (
+                    <Check size={12} className="text-success" />
+                  ) : (
+                    <Copy size={12} className="text-muted-foreground" />
+                  )}
+                </span>
+              </div>
+              <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
+                <div className="prose prose-sm dark:prose-invert max-w-none text-xs break-words">
+                  <MarkdownRenderer content={sanitizedDisplayOutput ?? displayOutput} />
+                </div>
+              </CustomScrollArea>
+            </div>
+          )}
+
+          {/* 嵌入的聊天视图 */}
+          <div
+            className={cn(
+              // 高度用视口相对值封顶，避免小屏上嵌套滚动区超出可视范围
+              'border-t border-border/30 overflow-hidden',
+              isFullHeight ? 'h-[min(600px,70vh)]' : 'h-[min(300px,45vh)]'
+            )}
+          >
+            {/*
+              核心复用：使用 ChatContainer 渲染子代理的完整聊天视图
+              - showInputBar=false 隐藏输入栏
+              - 子代理 sessionId 作为 key 确保独立 Store
+            */}
+            <ChatContainer
+              key={sessionId}
+              sessionId={sessionId}
+              showInputBar={false}
+              className="h-full"
+            />
           </div>
-        )}
-        {completedAt && (
-          <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-success" />
-            <span>{new Date(completedAt).toLocaleTimeString(locale)}</span>
+
+          {/* 底部元信息（仅展开时显示） */}
+          <div className="flex items-center gap-3 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
+            {createdAt && (
+              <div className="flex items-center gap-1 tabular-nums">
+                <Clock size={12} />
+                <span>{new Date(createdAt).toLocaleTimeString(locale)}</span>
+              </div>
+            )}
+            {completedAt && (
+              <div className="flex items-center gap-1 tabular-nums">
+                <CheckCircle size={12} className="text-success" />
+                <span>{new Date(completedAt).toLocaleTimeString(locale)}</span>
+              </div>
+            )}
+            <span className="font-mono">{sessionId.slice(-12)}</span>
           </div>
-        )}
-        <span className="font-mono">{sessionId.slice(-12)}</span>
-      </div>
+        </>
+      )}
 
       {/* 🆕 缺口 4: 完整视图模态（DsDialog 渲染到 portal，ESC/遮罩关闭走默认行为）
           注意：DsDialog 桌面态内联 maxHeight 上限为 min(85vh, 720px)，
@@ -907,7 +1040,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       >
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2 pr-8">
-            <Robot size={16} className="text-primary flex-shrink-0" />
+            <Robot size={16} className="text-muted-foreground flex-shrink-0" />
             <span className="truncate" title={taskSummary || skillId || sessionId}>
               {cardTitle}
             </span>

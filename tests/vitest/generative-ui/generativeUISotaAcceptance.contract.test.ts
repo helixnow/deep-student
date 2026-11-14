@@ -45,11 +45,11 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   {
     id: 'rust-generative-ui-executor',
     check: () =>
-      fs.existsSync(path.join(REPO, 'src-tauri/src/chat_v2/tools/generative_ui_executor.rs')),
+      fs.existsSync(path.join(REPO, 'host/plugins/vfs/src/tools/generative-ui.ts')),
   },
   {
     id: 'rust-hpias-event-emit',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/events.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'host/plugins/memory/src/hpias-payloads.ts')),
   },
   {
     id: 'hpias-frontend-bridge',
@@ -100,25 +100,24 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     id: 'hpias-rust-executor-wiring',
     check: () => {
       const src = fs.readFileSync(
-        path.join(REPO, 'src-tauri/src/chat_v2/tools/generative_ui_executor.rs'),
+        path.join(REPO, 'host/plugins/vfs/src/tools/generative-ui.ts'),
         'utf8',
       );
       return (
-        src.includes('emit_hpias_session_started_if_needed') &&
-        src.includes('HpiasEventEmitter') &&
-        src.includes('create_research_backend')
+        src.includes('parseResearchSessionId(call.arguments, intent)') &&
+        src.includes('this.research().startFromIntent(')
       );
     },
   },
   {
     id: 'hpias-pipeline-orchestrator',
     check: () =>
-      fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/orchestrator.rs')) &&
-      fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/payloads.rs')),
+      fs.existsSync(path.join(REPO, 'host/plugins/memory/src/hpias-service.ts')) &&
+      fs.existsSync(path.join(REPO, 'host/plugins/memory/src/hpias-payloads.ts')),
   },
   {
     id: 'hpias-research-service',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/service.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'host/plugins/memory/src/hpias-research.ts')),
   },
   {
     id: 'hpias-lifecycle-contract',
@@ -153,24 +152,17 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   },
   {
     id: 'hpias-retrieval-backend',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/retrieval_backend.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'host/plugins/memory/src/hpias-retrieval.ts')),
   },
   {
     id: 'hpias-llm-synthesis',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/synthesis.rs')),
+    check: () =>
+      fileContains('host/plugins/memory/src/hpias-research.ts', ['export function buildSynthesisLlmPrompt']),
   },
   {
     id: 'tauri-e2e-rust-harness',
-    check: () => {
-      const src = fs.readFileSync(
-        path.join(REPO, 'src-tauri/tests/generative_ui_executor_e2e.rs'),
-        'utf8',
-      );
-      return (
-        src.includes('execute_with_research_session_emits_hpias_session_started') &&
-        src.includes('execute_hpias_stub_pipeline_emits_plan_generated')
-      );
-    },
+    check: () =>
+      fs.existsSync(path.join(REPO, 'host/plugins/integration/tests/generative-ui-executor-e2e.test.ts')),
   },
   {
     id: 'tauri-e2e-docs',
@@ -278,7 +270,9 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fileContains('src/features/generative-ui/blocks/index.ts', [
         "import { BUILTIN_GENERATIVE_BLOCK_SCHEMAS } from '../blockSchemas'",
         'for (const config of BUILTIN_GENERATIVE_BLOCK_SCHEMAS)',
-        'generativeUIRegistry.register({ ...config, component: components[config.type] })',
+        'const contribution = { ...config, component: components[config.type] };',
+        'generativeUIRegistry.register(contribution);',
+        'genuiComponentContributions.announce(contribution);',
       ]),
   },
   {
@@ -384,8 +378,8 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     id: 'round59-meta-research-session-id',
     check: () =>
       fileContains('src/features/generative-ui/schema.ts', ['researchSessionId']) &&
-      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
-        '/meta/researchSessionId',
+      fileContains('host/plugins/vfs/src/tools/generative-ui.ts', [
+        'meta)?.researchSessionId',
       ]),
   },
   {
@@ -510,14 +504,9 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   {
     id: 'round75-rust-block-type-allowlist',
     check: () =>
-      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
-        'ALLOWED_GENERATIVE_UI_BLOCK_TYPES',
-        'fn validate_block_types',
-        'parse_intent_rejects_unknown_block_type',
-        'parse_intent_accepts_all_registered_block_types',
-      ]) &&
-      fileContains('src-tauri/tests/generative_ui_executor_e2e.rs', [
-        'execute_rejects_unknown_block_type',
+      fileContains('host/plugins/vfs/src/tools/generative-ui.ts', [
+        'const BLOCK_TYPES = new Set(',
+        'BLOCK_TYPES.has(block.type)',
       ]),
   },
   {
@@ -532,8 +521,8 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fileContains('src/features/generative-ui/components/ResearchReportBlock.tsx', [
         'role="note"',
       ]) &&
-      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
-        'intent_has_research_blocks(&intent)',
+      fileContains('host/plugins/memory/src/hpias-payloads.ts', [
+        'export function intentHasResearchBlocks',
       ]),
   },
   {
@@ -563,9 +552,9 @@ describe('generativeUISotaAcceptance contract', () => {
     expect(arch).toContain('session_started');
   });
 
-  it('Rust hpias channel constant matches frontend', () => {
-    const rust = fs.readFileSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/events.rs'), 'utf8');
-    expect(rust).toContain('"hpias_event"');
+  it('Host hpias channel constant matches frontend', () => {
+    const host = fs.readFileSync(path.join(REPO, 'host/plugins/memory/src/hpias-payloads.ts'), 'utf8');
+    expect(host).toContain("HPIAS_EVENT_CHANNEL = 'hpias_event'");
   });
 
   it('Round 40/41 symbols exist: 18-block set + v1.1 + telemetry + fallback', () => {

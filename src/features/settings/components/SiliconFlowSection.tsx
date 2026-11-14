@@ -1213,7 +1213,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
             {loading ? t('common:siliconflow.fetching_models') : t('common:siliconflow.get_model_list')}
           </DsButton>
         </div>
-        <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p className="inline-flex items-center gap-1.5 text-sm tabular-nums text-muted-foreground">
           <Stack className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{t('common:siliconflow.models_count', { count: models.length })}</span>
         </p>
@@ -1257,7 +1257,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   );
 
   const modelCardDefault = (
-    <Card className="w-full">
+    <Card className="w-full !rounded-2xl !border-transparent !bg-muted shadow-none">
       <CardHeader>
         <CardTitle className="text-base">{t('common:siliconflow.select_model')}</CardTitle>
       </CardHeader>

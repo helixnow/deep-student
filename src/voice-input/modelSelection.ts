@@ -25,6 +25,7 @@ const ASR_UNSUPPORTED_TRANSPORT_REGEX = /realtime|streaming|filetrans/i;
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
+  deepseek: 'DeepSeek',
   siliconflow: 'SiliconFlow',
   deepgram: 'Deepgram',
   elevenlabs: 'ElevenLabs',
@@ -63,6 +64,10 @@ export function isVoiceInputProviderSupported(providerId: string | undefined): b
 
 /** 这条模型配置能否被应用内转写调用（供应商协议 + 模型接口形态） */
 function isVoiceInputRuntimeSupported(api: ApiConfig): boolean {
+  if (getProviderId(api) === 'deepseek' && api.model === 'deepseek-asr') {
+    try { return new URL(api.baseUrl).origin === 'https://api.deepseek.com'; }
+    catch { return false; }
+  }
   if (!isVoiceInputProviderSupported(getProviderId(api))) return false;
   if (api.apiProtocol && ASR_UNSUPPORTED_PROTOCOLS.has(api.apiProtocol)) return false;
   return !ASR_UNSUPPORTED_TRANSPORT_REGEX.test(stripGatewayPrefix(api.model));

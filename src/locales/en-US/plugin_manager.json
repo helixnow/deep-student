@@ -1,0 +1,333 @@
+{
+  "manager": {
+    "browse": "Browse and manage", "technical": "Technical information", "trustDisabled": "Trust cannot be changed in safe mode. Exit safe mode to continue.", "servicePermission": "Allow {{name}} to use its declared application service", "declaredPermission": "Declared access permission",
+    "categories": { "conversation": "Chat and AI", "learning": "Learning and review", "resources": "Resources and files", "integrations": "Integrations and sync", "platform": "Application services" },
+    "source": "Source", "sources": { "builtin": "Bundled", "workshop": "Plugin Workshop", "package": "Offline package" },
+    "start": "Start plugin",
+    "updatesUnavailable": "No update index is connected, so no updates can be confirmed. Import a newer local package in Discover.",
+    "full": "Full trust", "restricted": "Restricted", "fullEnable": "Enable a fully trusted plugin", "changeTrust": "Change trust level", "confirmTrust": "Confirm",
+    "fullRisk": "Fully trusted plugins have the same capabilities as official plugins, can access application services and data, and execute in the application process. Only run code you trust.",
+    "restrictedNote": "Restricted plugins use confirmed service permissions but still run in the application process, not an isolated sandbox. Changing trust stops the plugin; enable it again manually.",
+    "installed": "Installed", "discover": "Discover", "creations": "My creations",
+    "create": "Create a plugin with AI", "modify": "Modify with AI", "workshopPending": "Plugin Workshop is not connected yet. Your creations and progress will appear here once connected.",
+    "search": "Search name, author or plugin ID", "all": "All", "enabled": "Enabled", "problem": "Needs attention", "update": "Updates", "official": "Official",
+    "noMatches": "No matching plugins", "other": "Other features", "details": "View details for {{id}}", "status": "Status",
+    "trust": "Trust and permissions", "trustUnknown": "The host has not provided trust or permission information yet.", "builtinTrust": "Official plugin bundled with the application.",
+    "version": "Version and rollback", "rollbackPending": "This host does not provide version history or manual rollback yet. Failed offline updates report the actual recovery result.",
+    "offline": "Offline plugin package", "offlineDescription": "Select a local .dstuplugin file. Permission confirmation is required before enabling an installed plugin.",
+    "index": "Plugin index sources", "indexDescription": "This first version supports local sources only. No network index is connected.",
+    "waiting": "Enabled · not running", "disabled": "Disabled", "problemStatus": "Needs attention", "settings": "Settings", "noSettings": "This plugin has no editable settings."
+  },
+  "title": "Plugins",
+  "builtinNames": {
+    "dstu": {
+      "plugins": "Channel Plugin Manager",
+      "shell": "Shell & Startup Control",
+      "native": "Native Runtime Modules",
+      "vector": "Vector Engine",
+      "platform": {
+        "crypto": "Platform Crypto",
+        "diagnostics": "Diagnostics & Background Tasks",
+        "cloud-config": "Cloud Configuration",
+        "files": "Local File Access",
+        "http": "HTTP Client",
+        "log": "Platform Logging",
+        "paths": "Application Paths",
+        "secrets": "Secrets Storage",
+        "backup-config": "Configuration Backup",
+        "settings": "Platform Settings",
+        "storage": "Local Storage & Database"
+      },
+      "llm": "LLM & AI Capabilities",
+      "llm-providers": "LLM Providers",
+      "llm-replay": "LLM Replay",
+      "chat": "Chat Sessions",
+      "chat-pipeline": "Chat Pipeline",
+      "chatanki": "Chat-to-Anki Assistant",
+      "agent-workspace": "Agent Workspace",
+      "agent-orchestration": "Agent Orchestration",
+      "agent-skills": "Agent Skills & Tools",
+      "memory": "Memory & Research",
+      "notes": "Notes",
+      "qbank": "Question Bank",
+      "review": "Review & Analytics",
+      "anki": "Anki Flashcards",
+      "media": "Media & Document Parser",
+      "vfs": "Virtual File System",
+      "vfs-repos": "Resource Repositories",
+      "vfs-index": "Full-Text Index & Search",
+      "vfs-handlers": "File System Handlers",
+      "mcp": "MCP Tool Connector",
+      "browser": "Browser & Web Capture",
+      "sync": "Encrypted Sync",
+      "sync-providers": "Sync Storage Providers",
+      "sync-support": "Sync Support & Conflict Handling",
+      "sync-startup": "Sync Startup Restore",
+      "backup": "Backup & Data Governance",
+      "plugin-workshop": "AI Plugin Workshop",
+      "integration": "Third-Party Integrations",
+      "translation": "Translation"
+    }
+  },
+  "builtinDescriptions": {
+    "dstu": {
+      "plugins": "Manage lifecycle and configuration of third-party channel plugins",
+      "shell": "Startup gate, system notifications and window lifecycle management",
+      "native": "Native modules for document parsing, imaging, sandboxing and FSRS",
+      "vector": "Local vector search engine and similarity computation",
+      "platform": {
+        "crypto": "Core cryptographic primitives including encryption, hashing and signing",
+        "diagnostics": "Runtime diagnostics collection and background task scheduling",
+        "cloud-config": "Read and manage application-level cloud configuration",
+        "files": "Controlled local file read/write and path-safe access",
+        "http": "Cross-platform HTTP request and transport wrapper",
+        "log": "Unified structured logging and output management",
+        "paths": "Resolve standard application data, cache and config directories",
+        "secrets": "Protect API keys and sensitive credentials using secure storage",
+        "backup-config": "Sync and export core application configuration snapshots",
+        "settings": "Read, write and observe global application preferences",
+        "storage": "Local SQLite persistence, data spaces and usage tracking"
+      },
+      "llm": "Model calls, embeddings, reranking and OCR AI capabilities",
+      "llm-providers": "Connect vendor models and manage adapter protocols",
+      "llm-replay": "Replay recorded model requests for offline tests",
+      "chat": "Session state, message history and chat attachments",
+      "chat-pipeline": "Message pipeline, retrieval and the super inbox",
+      "chatanki": "Create Anki cards from conversations",
+      "agent-workspace": "Workspace files, shell access and approval policy",
+      "agent-orchestration": "Multi-agent collaboration and task orchestration",
+      "agent-skills": "Skill package loading and PTC tool execution",
+      "memory": "Long-term memory and research",
+      "notes": "Note read/write, templates and note search",
+      "qbank": "Question bank management, import and assembly",
+      "review": "Review scheduling and learning statistics",
+      "anki": "Anki card sync and deck management",
+      "media": "Media and document parsing plus image handling",
+      "vfs": "Shared read/write capability for the virtual file system",
+      "vfs-repos": "Repository registration and file reads",
+      "vfs-index": "File indexing and full-text search",
+      "vfs-handlers": "File system operation commands",
+      "mcp": "MCP tool access and browser control",
+      "browser": "Browser automation and web capture",
+      "sync": "End-to-end encrypted sync",
+      "sync-providers": "Pluggable sync storage providers",
+      "sync-support": "Sync conflict handling and support services",
+      "sync-startup": "Restore sync sessions at startup",
+      "backup": "Backup, restore and data governance",
+      "plugin-workshop": "Create, install and repair plugins with AI",
+      "integration": "Third-party integrations and account linking",
+      "translation": "Text and document translation",
+      "ui": {
+        "app": "App shell, startup flow and global state",
+        "shell": "Window shell, sidebar and top bar layout",
+        "navigation": "Global navigation and view switching",
+        "menu": "Application menu and command palette entry",
+        "settings": "Settings page and section navigation",
+        "chat": "Chat surface, message stream and composer",
+        "content": "Content rendering and split layout",
+        "dashboard": "Home dashboard and shortcuts",
+        "notes": "Note list and editor surface",
+        "editor": "Rich text and Markdown editor",
+        "anki": "Anki review surface",
+        "learning-hub": "Learning hub and resource views",
+        "learning-today": "Today's study plan and progress",
+        "todo": "Todo list surface",
+        "workbench": "AI workbench",
+        "genui": "Generative UI component rendering",
+        "debug": "Debug panels (development only)",
+        "dev": "Development helpers (development only)"
+      }
+    }
+  },
+  "subtitle": "Manage official and community plugins: enable, uninstall, consent and configuration",
+  "channel": {
+    "title": "Channel plugins",
+    "description": "Connect third-party chat channels. The WeChat iLink Bot can be bound, toggled and configured here.",
+    "loading": "Loading channel plugins",
+    "empty": "No channel plugins found",
+    "bind": "Scan to bind",
+    "configure": "Configure",
+    "configureA11y": "Configure {{id}}",
+    "enableA11y": "Enable {{id}}",
+    "bound": "Bound",
+    "unbound": "Not bound",
+    "bindHint": "Not bound: choose Scan to bind, then scan the QR code with mobile WeChat.",
+    "boundHint": "Bound: toggle it, pick the reply model, and set rate limit and system prompt.",
+    "error": "Channel plugin action failed"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "install": "Install offline package",
+    "installing": "Installing…",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "close": "Close",
+    "dismiss": "Dismiss"
+  },
+  "origin": {
+    "builtin": "Official",
+    "community": "Community"
+  },
+  "platform": {
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "unsupported": "Not supported on this platform",
+    "declared": "Platforms"
+  },
+  "host": {
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "runtime": {
+    "label": "Runtime",
+    "running": "Running",
+    "stopped": "Stopped",
+    "error": "Runtime error",
+    "unknown": "Unknown",
+    "note": "Enabled does not mean running"
+  },
+  "list": {
+    "loading": "Loading plugins",
+    "aria": "Installed plugins",
+    "official": "Official plugins",
+    "community": "Community plugins",
+    "officialEmpty": "No official plugins found",
+    "communityEmpty": "No community plugins installed yet",
+    "empty": "No plugins installed"
+  },
+  "safeMode": {
+    "title": "Safe mode",
+    "description": "Safe-mode sessions load official plugins only; community plugins stay disabled until a normal restart.",
+    "rowHint": "Community plugins cannot be enabled in safe mode"
+  },
+  "row": {
+    "version": "Version",
+    "configure": "Configure",
+    "uninstall": "Uninstall",
+    "enable": "Enable {{id}}",
+    "configA11y": "Configure {{id}}",
+    "uninstallA11y": "Uninstall {{id}}",
+    "unsupportedPlatform": "Unavailable on this platform",
+    "consentRequired": "Consent required",
+    "degraded": "Degraded",
+    "reviewConsent": "Review consent",
+    "reviewConsentA11y": "Review consent for {{id}}"
+  },
+  "degraded": {
+    "title": "Degraded reason",
+    "detail": "Detail",
+    "noCode": "Unclassified reason",
+    "code": {
+      "manifest_missing": "Plugin manifest (package.json) is missing",
+      "manifest_version_unsupported": "Manifest version is newer than this app supports",
+      "engine_incompatible": "The plugin requires a different app version",
+      "manifest_invalid": "The plugin manifest violates the contract",
+      "id_reserved": "The plugin id uses a reserved publisher prefix",
+      "id_mismatch": "Manifest, profile and module plugin ids differ",
+      "version_mismatch": "Module version differs from package.json",
+      "host_entry_mismatch": "The Host entry does not match the manifest",
+      "import_failed": "Could not load the plugin Host module",
+      "unsupported_on_platform": "This platform is outside the plugin's platforms",
+      "requires_missing": "A required plugin was not loaded",
+      "requires_incompatible": "A required plugin version is out of range",
+      "permission_unknown_kind": "A permission uses an unknown kind",
+      "permission_undeclared": "A service permission was used without being declared",
+      "service_name_invalid": "The provided service name is outside the plugin namespace",
+      "service_conflict": "The provided service name conflicts with another plugin",
+      "kernel_api_forbidden": "A community plugin used a kernel API it may not use",
+      "config_invalid": "Plugin configuration does not satisfy its schema",
+      "config_credential": "The configuration schema declares credential fields",
+      "consent_required": "Plugin permissions need your consent",
+      "safe_mode_active": "Community plugins cannot be enabled or changed in safe mode",
+      "service_missing": "A service this plugin depends on is not loaded",
+      "apply_failed": "The plugin failed to start"
+    }
+  },
+  "errorBudget": {
+    "title": "Automatic uninstalls",
+    "count": "Render errors {{errors}}/{{budget}}",
+    "row": "Automatically uninstalled after {{errors}} render errors (budget {{budget}})",
+    "auto": "Automatically uninstalled"
+  },
+  "consent": {
+    "title": "Your consent is required",
+    "description": "{{id}} v{{version}} needs the permissions below to run. Confirming records your consent and reloads the app.",
+    "id": "Plugin ID",
+    "version": "Version",
+    "permissions": "Requested permissions",
+    "noPermissions": "No service permissions declared",
+    "service": "Service",
+    "note": "Consent covers only the permissions listed above; a new version or changed permissions require consent again.",
+    "confirm": "Allow and reload",
+    "cancel": "Not now",
+    "working": "Saving consent"
+  },
+  "config": {
+    "title": "{{id}} configuration",
+    "loading": "Loading configuration",
+    "revision": "Revision {{revision}}",
+    "save": "Save",
+    "saving": "Saving",
+    "cancel": "Cancel",
+    "retry": "Reload",
+    "saved": "Saved (revision {{revision}})",
+    "empty": "This plugin has no editable configuration",
+    "unsupported": "These entries cannot be edited here yet and keep their current values when saving: {{fields}}",
+    "default": "Default: {{value}}",
+    "conflict": "The configuration changed elsewhere (revision conflict). Reload before saving; your input is kept.",
+    "error": {
+      "required": "This field is required",
+      "boolean": "Expected an on/off value",
+      "string": "Expected text",
+      "number": "Expected a number",
+      "range": "Outside the allowed range",
+      "enum": "Not an allowed option",
+      "pattern": "Does not match the required format",
+      "save": "Saving failed"
+    }
+  },
+  "install": {
+    "idle": "Install offline .dstuplugin package",
+    "running": "Installing plugin package…",
+    "installed": {
+      "title": "Installed {{id}} v{{version}}",
+      "upgrade": "Upgraded from v{{previous}}",
+      "fresh": "Fresh install",
+      "diskOnly": "Installation only writes to disk; permissions consent is still required before it runs."
+    },
+    "rolledBack": {
+      "title": "Installation failed and was rolled back",
+      "reason": "Reason: {{reason}}",
+      "toPrevious": "Restored v{{previous}}",
+      "noPrevious": "No previous version to restore; the disk is unchanged"
+    },
+    "rejected": {
+      "title": "Installation rejected ({{code}})",
+      "detail": "{{detail}}"
+    },
+    "rollback": {
+      "restored": "Previous version restored",
+      "unchanged": "Disk unchanged",
+      "failed": "Rollback failed; reinstall and check the plugins directory"
+    }
+  },
+  "uninstall": {
+    "title": "Uninstall {{id}}",
+    "description": "Its runtime will be stopped and the installed package removed from the active list. Continue?",
+    "confirm": "Uninstall",
+    "cancel": "Cancel"
+  },
+  "notice": {
+    "enabled": "Enabled {{id}}",
+    "disabled": "Disabled {{id}}",
+    "uninstalled": "Uninstalled {{id}}",
+    "consentGranted": "Consent recorded for {{id}}; reloading",
+    "configSaved": "Saved configuration for {{id}} (revision {{revision}})"
+  },
+  "error": {
+    "title": "Operation failed",
+    "code": "Code: {{code}}",
+    "list": "Failed to load the plugin list",
+    "reload": "Consent was saved but reloading failed"
+  }
+}

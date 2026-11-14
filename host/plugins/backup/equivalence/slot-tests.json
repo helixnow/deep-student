@@ -1,0 +1,71 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_run_slot_c_empty_db_test",
+    "data_governance_run_slot_d_clone_db_test"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.slot_tests.c_then_d_repeatable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_slot_c_empty_db_test",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_slot_c_empty_db_test",
+          "args": {
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "data_governance_run_slot_d_clone_db_test",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_slot_d_clone_db_test",
+          "args": {
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "data_governance_run_slot_c_empty_db_test",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_slot_d_clone_db_test",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.slot_tests.d_before_c",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_slot_d_clone_db_test",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_slot_c_empty_db_test",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

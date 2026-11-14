@@ -15,11 +15,11 @@ import {
   Play,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { ExamReadinessHud } from '@/components/exam-sprint';
 import { cardDisplayFront } from '../cardDisplay';
 import { CardMathText } from '../cardMathPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { PullToRefresh } from '@/components/mobile';
-import type { AnkiLibraryDeckCount, FsrsStats } from '@/types';
+import type { AnkiLibraryDeckCount, AnkiLibraryListResponse, FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import { DeckReviewPanel } from '../components/DeckReviewPanel';
 import { subscribeFlashcardsDueRefresh } from '../events';
@@ -112,12 +112,11 @@ export const TodayScreen: React.FC = () => {
   const learnExtraNew = useCallback(async () => {
     if (extraBusy || extraNewCount <= 0) return;
     setExtraBusy(true);
-    const [{ listAnkiLibraryCards }, { showGlobalNotification }] = await Promise.all([
-      import('@/utils/chatApi'),
-      import('@/components/UnifiedNotification'),
-    ]);
+    const { showGlobalNotification } = await import('@/components/UnifiedNotification');
     try {
-      const response = await listAnkiLibraryCards({ status: 'new', page: 1, page_size: extraNewCount, sort: 'created' });
+      const response = await invoke<AnkiLibraryListResponse>('list_anki_library_cards', {
+        request: { status: 'new', page: 1, pageSize: extraNewCount, sort: 'created' },
+      });
       const cards = response.items ?? [];
       if (cards.length === 0) {
         showGlobalNotification('info', t('today.learnMoreEmpty'));
@@ -178,11 +177,6 @@ export const TodayScreen: React.FC = () => {
     };
   }, [loadDue, loadStats, activity.reload]);
 
-  // 返回 Promise：下拉刷新指示器保持到数据到位（顶栏刷新按钮亦复用）
-  const handleRefresh = useCallback(async () => {
-    activity.reload(true);
-    await Promise.allSettled([loadDue(), loadStats()]);
-  }, [loadDue, loadStats, activity.reload]);
 
   const dateLabel = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, {
@@ -244,11 +238,8 @@ export const TodayScreen: React.FC = () => {
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={startDueSession}>
         <Play size={20} />
       </DsButton>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.refresh')} disabled={loading} onClick={() => void handleRefresh()}>
-        <ArrowClockwise size={20} />
-      </DsButton>
     </>,
-  }, [t, loading, dueCards.length, startDueSession, handleRefresh]);
+  }, [t, loading, dueCards.length, startDueSession]);
 
   return (
     <div className="wb-fc-screen wb-fc-today">
@@ -264,21 +255,6 @@ export const TodayScreen: React.FC = () => {
                 ? t('today.loadFailed')
                 : `${dateLabel} · ${t('today.dueCount', { count: displayDueCount })}`}
           </p>
-        </div>
-        <div className="wb-fc-toolbar shrink-0">
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            iconOnly
-            disabled={loading}
-            onClick={() => void handleRefresh()}
-            aria-label={t('today.refresh')}
-            title={t('today.refresh')}
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          >
-            <ArrowClockwise size={15} />
-          </DsButton>
         </div>
       </header>}
 
@@ -304,12 +280,8 @@ export const TodayScreen: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* 触屏下拉刷新（桌面鼠标不受影响）；PullToRefresh 自身即滚动容器 */
-        <PullToRefresh
-          onRefresh={handleRefresh}
-          className="min-h-0 flex-1"
-          contentClassName="wb-fcx-scroll"
-        >
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ExamReadinessHud variant="mobile-banner" />
           <section className="wb-fcx-panel wb-fcx-hero">
             <div className="wb-fcx-hero-ring">
               <ProgressRing
@@ -493,7 +465,7 @@ export const TodayScreen: React.FC = () => {
               </div>
             </section>
           )}
-        </PullToRefresh>
+        </div>
       )}
     </div>
   );

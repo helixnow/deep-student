@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Scroll, Copy, Check, Trash, Play, Pause, Warning } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { createPanelFeed } from '../panelFeed';
 import {
-  NOTES_OUTLINE_DEBUG_EVENT,
+  NOTES_OUTLINE_DEBUG_CHANNEL,
   type OutlineDebugEventDetail,
   type OutlineDebugLogPayload,
   type OutlineScrollSnapshot,
@@ -16,6 +18,14 @@ interface DebugLogEntry extends OutlineDebugLogPayload {
 
 const MAX_LOGS = 200;
 const MAX_SNAPSHOTS = 30;
+
+/** Active panel instances; reports arriving while none is active are dropped. */
+const outlineDebugFeed = createPanelFeed<OutlineDebugEventDetail>();
+
+serveDebugChannel(NOTES_OUTLINE_DEBUG_CHANNEL, {
+  log: (payload: OutlineDebugLogPayload) => outlineDebugFeed.publish({ type: 'log', payload }),
+  snapshot: (payload: OutlineScrollSnapshot) => outlineDebugFeed.publish({ type: 'snapshot', payload }),
+});
 
 export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginProps) {
   const [logs, setLogs] = useState<DebugLogEntry[]>([]);
@@ -30,9 +40,8 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
     pausedRef.current = paused;
   }, [paused]);
 
-  const handleDebugEvent = useCallback((event: CustomEvent<OutlineDebugEventDetail>) => {
+  const handleDebugEvent = useCallback((detail: OutlineDebugEventDetail) => {
     if (pausedRef.current) return;
-    const detail = event.detail;
     if (detail.type === 'log') {
       setLogs(prev => [
         {
@@ -53,9 +62,7 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
 
   useEffect(() => {
     if (!isActive) return;
-    const listener = (e: Event) => handleDebugEvent(e as CustomEvent<OutlineDebugEventDetail>);
-    window.addEventListener(NOTES_OUTLINE_DEBUG_EVENT, listener);
-    return () => window.removeEventListener(NOTES_OUTLINE_DEBUG_EVENT, listener);
+    return outlineDebugFeed.subscribe(handleDebugEvent);
   }, [handleDebugEvent, isActive]);
 
   const filteredLogs = useMemo(() => {

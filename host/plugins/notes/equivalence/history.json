@@ -1,0 +1,1836 @@
+{
+  "domain": "notes",
+  "commands": [
+    "notes_history_current",
+    "notes_history_get",
+    "notes_history_get_retention",
+    "notes_history_list",
+    "notes_history_restore_copy",
+    "notes_history_restore_current",
+    "notes_history_restore_selection_copy",
+    "notes_history_set_pinned",
+    "notes_history_set_retention"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.history.chain.create_edit_list_get_restore_current",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "历史链",
+              "content": "# 标题\n\n第一版正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 标题\n\n第二版正文\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 标题\n\n第三版正文\n",
+              "expected_updated_at": "${3.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${5.items.2.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${5.items.2.version_id}",
+            "expectedUpdatedAt": "${7.updated_at}",
+            "selection": null
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": true
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${5.items.1.version_id}",
+            "expectedUpdatedAt": "${7.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${5.items.0.version_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.copy.full_selection_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "复制源",
+              "content": "# 第一节\n\n第一段\n\n# 第二节\n\n第二段\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 3
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 5,
+              "end_line": 8
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 8
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 2,
+              "end_line": 2
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${3.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": true
+          }
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "nrev_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${3.id}",
+            "versionId": "${2.items.0.version_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 0,
+              "end_line": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 2
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 9
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": -1,
+              "end_line": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1,
+              "extra": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "nrev_missing",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.selection.root_block_boundaries_and_reference_definitions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "结构选择",
+              "content": "# 标题\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\n- 一\n- 二\n\n尾段\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 4
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 4,
+              "end_line": 6
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 8,
+              "end_line": 8
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 6
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 8,
+              "end_line": 9
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${2.items.0.version_id}",
+            "selection": {
+              "start_line": 11,
+              "end_line": 12
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "引用定义在前",
+              "content": "[x]: https://example.com\n\n正文 [x]\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${10.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${10.id}",
+            "versionId": "${11.items.0.version_id}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 3
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${10.id}",
+            "versionId": "${11.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 4
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "引用定义在后",
+              "content": "正文 [x]\n\n[x]: https://example.com\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${14.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${14.id}",
+            "versionId": "${15.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.list.pagination_limits_and_cursor",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "分页",
+              "content": "v0\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "v1\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "v2\n",
+              "expected_updated_at": "${3.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "v3\n",
+              "expected_updated_at": "${4.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 2,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": "${6.next_cursor}",
+            "limit": 2,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": "${7.next_cursor}",
+            "limit": 2,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 0,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 101,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": null,
+            "pinnedOnly": null
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "note_missing",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 1,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 0,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": -1,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": true
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.list.integer_boundaries_near_2p53_and_i64",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "整数边界",
+              "content": "x\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 9007199254740991,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 9007199254740992,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 9007199254740993,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 9223372036854775807,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 9223372036854775808,
+            "limit": 30,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": -9223372036854775808,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": -9223372036854775809,
+            "limit": 30,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": 1.5,
+            "limit": 30,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": "1",
+            "limit": 30,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 4294967295,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 4294967296,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": -1,
+            "pinnedOnly": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.get_and_set_pinned.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "固定A",
+              "content": "a\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "固定B",
+              "content": "b\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${2.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${2.id}",
+            "versionId": "${3.items.0.version_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "nrev_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": false
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": true
+          }
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": true
+          }
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": true
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": true
+          }
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${2.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "nrev_missing",
+            "pinned": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": "true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${2.id}",
+            "versionId": "${4.items.0.version_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.trash.history_survives_soft_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "回收站历史",
+              "content": "# 已删\n\n内容\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_get",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_set_pinned",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "pinned": true
+          }
+        },
+        {
+          "cmd": "notes_history_restore_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_restore_selection_copy",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${3.items.0.version_id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "note_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.retention.get_set_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 60,
+              "max_edit_versions": 10
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": 0
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 86400,
+              "max_edit_versions": 100000
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": -1,
+              "max_edit_versions": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 86401,
+              "max_edit_versions": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": 100001
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": -1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 9223372036854775808,
+              "max_edit_versions": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 1.5,
+              "max_edit_versions": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null,
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "max_edit_versions": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_get_retention",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.retention.coalescing_deferred_policy_and_budget",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 86400,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "合并",
+              "content": "e0\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "e1\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "e2\n",
+              "expected_updated_at": "${3.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "e3\n",
+              "expected_updated_at": "${4.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 86400,
+              "max_edit_versions": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "e4\n",
+              "expected_updated_at": "${5.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "e5\n",
+              "expected_updated_at": "${9.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.history.restore_current.cas_selection_lease_and_missing_branches",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "当前恢复",
+              "content": "# 标题\n\n```js\nconst a = 1;\n```\n\n- 一\n- 二\n\n尾段\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "# 新标题\n\n改写\n",
+              "expected_updated_at": "${2.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "nrev_missing",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 4
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 0,
+              "end_line": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 99
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 1,
+              "end_line": 1,
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": null,
+            "lease": {
+              "participant_id": "nep_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "selection": {
+              "start_line": 3,
+              "end_line": 5
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${16.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "note_missing",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "${19.updated_at}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_restore_current",
+          "args": {
+            "noteId": "${1.id}",
+            "versionId": "${4.items.1.version_id}",
+            "expectedUpdatedAt": "",
+            "selection": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_list",
+          "args": {
+            "noteId": "${1.id}",
+            "cursor": null,
+            "limit": 30,
+            "pinnedOnly": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

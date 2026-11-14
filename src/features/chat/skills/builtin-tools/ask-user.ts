@@ -39,7 +39,7 @@ export const askUserSkill: SkillDefinition = {
 
 ## 使用规则
 
-1. 提供 2-6 个明确的选项
+1. 常规提问提供 2-6 个明确的选项；若使用 ui（openui-lang 生成式决策面板）或 html（内联交互画板），options 可省略或传空数组
 2. **推荐选项必须放在 options 数组第一位（索引 0），并在标签末尾标注 "(Recommended)"**
 3. 问题要简洁明确，选项要互斥（单选时）或可组合（多选时）且覆盖常见场景
 4. 默认无超时，会无限等待用户回答；当前实现不会根据 timeoutSeconds 自动替用户作答
@@ -47,18 +47,23 @@ export const askUserSkill: SkillDefinition = {
 6. 仅在确实需要用户输入时才提问，避免不必要的打扰
 7. 当选项已经足够覆盖所有合理场景时，设置 allowCustom: false 隐藏自由输入框
 8. 如需解释每个选项背后的原因，可把 options 写成对象数组并附带 reason 字段；前端会在 hover 时显示该说明
+9. 当需要多字段配置、滑块/日期/多选组合或可视化对比拍板时，优先传入 ui（openui-lang DSL，含 Choice / Input / DateInput / Slider / Button）或 html（内联沙盒画板，按钮调用 window.dstu.submit(data, summary) 或 window.openchamber.submit(data, summary) 回传结构化决策）
 `,
   embeddedTools: [
     {
       name: 'builtin-ask_user',
       description:
-        '向用户提出一个轻量级选择题（2-6 个选项，单选/多选，可自由输入）。推荐选项放首位并标注 (Recommended)。永久等待回答，不超时。',
+        '向用户提出一个轻量级选择题（2-6 个选项，单选/多选，可自由输入），或通过 ui (openui-lang) / html (内联交互画板) 发起可视化拍板决策。永久等待回答，不超时。',
       inputSchema: {
         type: 'object',
         properties: {
           question: {
             type: 'string',
             description: '问题内容，简洁明确',
+          },
+          title: {
+            type: 'string',
+            description: '画板或生成式决策面板的可选标题',
           },
           options: {
             type: 'array',
@@ -81,10 +86,20 @@ export const askUserSkill: SkillDefinition = {
                 },
               ],
             },
-            minItems: 2,
+            minItems: 0,
             maxItems: 6,
             description:
-              '选项数组：字符串或 { label, reason? } 对象。推荐选项放第一位并在标签末尾标注 "(Recommended)"',
+              '选项数组：字符串或 { label, reason? } 对象。推荐选项放第一位并在标签末尾标注 "(Recommended)"。当提供 html 或 ui 时可省略。',
+          },
+          ui: {
+            type: 'string',
+            description:
+              'openui-lang 生成式 UI 程序代码（支持 Stack/Row/Card/Choice/Input/DateInput/Slider/Button 等组件），点击 Button 时自动提交表单值与备注',
+          },
+          html: {
+            type: 'string',
+            description:
+              '内联自包含交互式 HTML/SVG 画板文档，内部按钮调用 window.dstu.submit(data, summary) 或 window.openchamber.submit(data, summary) 提交用户决策',
           },
           multiple: {
             type: 'boolean',
@@ -102,7 +117,7 @@ export const askUserSkill: SkillDefinition = {
             description: '提问原因的简要上下文',
           },
         },
-        required: ['question', 'options'],
+        required: ['question'],
       },
     },
   ],

@@ -31,6 +31,7 @@ export interface AppSelectGroup {
 }
 
 export interface AppSelectProps {
+  ariaLabel?: string;
   /** 当前选中值 */
   value?: string;
   /** 值变化回调 */
@@ -101,6 +102,7 @@ export interface AppSelectProps {
  * />
  */
 export function AppSelect({
+  ariaLabel,
   value,
   onValueChange,
   options = [],
@@ -204,7 +206,7 @@ export function AppSelect({
           variant="ghost"
           disabled={disabled}
           aria-haspopup="listbox"
-          aria-label={t('app_menu.select_app')}
+          aria-label={ariaLabel ?? t('app_menu.select_app')}
           className={cn(
             '!inline-flex !justify-between !gap-2 !rounded-md font-medium',
             'disabled:pointer-events-none disabled:opacity-50',

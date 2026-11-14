@@ -202,14 +202,9 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         // 4. 构建 ContextRef 并添加到 Store
         // ★ P1 物质化补全：真实 mime/type、sourceId、显式 injectModes、可用的预览 URL
         const vfsMimeTypes: Record<string, string> = {
-          note: 'text/markdown',
-          textbook: 'application/pdf',
-          exam: 'application/json',
-          translation: 'text/markdown',
-          essay: 'text/markdown',
-          image: 'image/png',
-          file: 'application/octet-stream',
-          mindmap: 'application/json',
+          note: 'text/markdown', textbook: 'application/pdf', exam: 'application/json',
+          translation: 'text/markdown', essay: 'text/markdown', image: 'image/png',
+          file: 'application/octet-stream', mindmap: 'application/json',
         };
         // 优先使用资源元数据中的真实 MIME，兜底走类型映射
         // 「导入资料」统一归为 textbook 类型，PPTX/DOCX/EPUB 也在其中：先看扩展名，

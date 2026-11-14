@@ -28,10 +28,15 @@ const migratedFiles = [
 const iconGovernedFiles = [
   'src/components/layout/MobileHeader.tsx',
   'src/components/layout/UnifiedMobileHeader.tsx',
-  'src/components/layout/MobileSidebarNavigation.tsx',
+  'src/ui-plugins/official/shell/index.ts',
   'src/components/ui/unified-sidebar/MobileSidebarLayout.tsx',
   'src/components/ui/unified-sidebar/SidebarDrawer.tsx',
   'src/components/ui/unified-sidebar/UnifiedSidebar.tsx',
+] as const;
+
+/** 图标来自 nav slot 条目（官方条目在 official/shell/index.ts 声明），本身不再直接引入图标库。 */
+const slotIconConsumerFiles = [
+  'src/components/layout/MobileSidebarNavigation.tsx',
 ] as const;
 
 describe('Phase 7 DeepStudent migration foundation source guards', () => {
@@ -168,6 +173,12 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
       expect(source, `${file} should not import lucide-react`).not.toContain("from 'lucide-react'");
       expect(source, `${file} should not import lucide-react`).not.toContain('from "lucide-react"');
       expect(source, `${file} should import Phosphor icons`).toContain('@phosphor-icons/react');
+    });
+    slotIconConsumerFiles.forEach((file) => {
+      const source = readSource(file);
+      expect(source, `${file} should not import lucide-react`).not.toContain("from 'lucide-react'");
+      expect(source, `${file} should not import lucide-react`).not.toContain('from "lucide-react"');
+      expect(source, `${file} should render nav slot icons`).toContain('renderNavigationIcon(');
     });
   });
 });

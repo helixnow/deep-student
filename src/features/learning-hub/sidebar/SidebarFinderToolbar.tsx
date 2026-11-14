@@ -61,7 +61,6 @@ export function SidebarFinderToolbar({
   canSearchInCurrentView,
   canCreateInCurrentView,
   handleNewFolder,
-  handleRefresh,
   quickAccessPortalTarget,
   handleNewNote,
   setCreatingLearningNote,
@@ -99,7 +98,6 @@ export function SidebarFinderToolbar({
     searchPlaceholder={searchPlaceholder}
     searchDisabled={!canSearchInCurrentView}
     onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
-    onRefresh={handleRefresh}
     createMenuItems={quickAccessPortalTarget && canCreateInCurrentView ? (
       <FinderCreateMenuItems
         onNewFolder={handleNewFolder}

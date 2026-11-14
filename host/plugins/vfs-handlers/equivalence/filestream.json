@@ -1,0 +1,103 @@
+{
+  "domain": "vfs-handlers",
+  "commands": [
+    "filestream_check_access"
+  ],
+  "scenarios": [
+    {
+      "id": "filestream.check_access.empty_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "filestream_check_access",
+          "args": {
+            "path": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "filestream.check_access.missing_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "filestream_check_access",
+          "args": {
+            "path": "/nonexistent-ds-equivalence/missing.mp4"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "filestream.check_access.outside_allowed_dirs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "filestream_check_access",
+          "args": {
+            "path": "/"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "filestream.check_access.missing_path_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "filestream_check_access",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "filestream.check_access.path_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "filestream_check_access",
+          "args": {
+            "path": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

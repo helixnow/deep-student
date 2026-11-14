@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VendorConfig } from '@/types';
 import { DeepSeekBalanceSection } from '../DeepSeekBalanceSection';
@@ -93,7 +92,7 @@ describe('DeepSeekBalanceSection', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it('re-fetches when the refresh button is clicked', async () => {
+  it('re-fetches the balance when the window regains focus', async () => {
     const fetcher = vi.fn().mockReturnValue(okResponse('6.28'));
 
     render(
@@ -102,7 +101,8 @@ describe('DeepSeekBalanceSection', () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
 
     fetcher.mockReturnValue(okResponse('5.00'));
-    await userEvent.click(screen.getByRole('button', { name: '刷新余额' }));
+    expect(screen.queryByRole('button', { name: '刷新余额' })).toBeNull();
+    fireEvent.focus(window);
 
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     expect(await screen.findByText(/5\.00/)).toBeTruthy();

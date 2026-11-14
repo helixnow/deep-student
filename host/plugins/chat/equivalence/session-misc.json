@@ -1,0 +1,938 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_get_rag_scope",
+    "chat_v2_list_sessions_referencing",
+    "chat_v2_list_agent_sessions",
+    "chat_v2_compact_session",
+    "chat_v2_get_anki_cards_from_block_by_document_id",
+    "chat_v2_perform_ocr"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.misc.rag_scope",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "检索范围"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_rag_scope",
+          "args": {
+            "sessionId": "${0.id}",
+            "folderIds": [
+              " fld_wp226_a ",
+              "",
+              "fld_wp226_b"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_rag_scope",
+          "args": {
+            "sessionId": "${0.id}",
+            "folderIds": [
+              "   "
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_rag_scope",
+          "args": {
+            "sessionId": "${0.id}",
+            "folderIds": [
+              "fld_wp226_c"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": "sess_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_rag_scope",
+          "args": {
+            "sessionId": 7
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.sessions_referencing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "引用会话一"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_r1",
+            "messageId": "msg_wp226_r1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "见 [PDF@file_a:12] 的推导",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_r2",
+            "messageId": "msg_wp226_r2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "再看 [PDF@file_a:13]",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_r3",
+            "messageId": "msg_wp226_r3",
+            "sessionId": "${3.id}",
+            "blockType": "content",
+            "content": "只提到 file_a 不带标记",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_import_session",
+          "args": {
+            "snapshotJson": "{\"format\":\"deepstudent-conversation-snapshot\",\"version\":1,\"exportedAt\":\"2026-11-06T00:00:00Z\",\"appVersion\":\"wp226\",\"session\":{\"id\":\"sess_wp226_src\",\"mode\":\"chat\",\"title\":\"导入引用\",\"titleLocked\":false,\"persistStatus\":\"active\",\"createdAt\":\"2026-11-01T08:00:00Z\",\"updatedAt\":\"2026-11-01T08:10:00Z\",\"metadata\":{\"note\":\"保留\"},\"groupId\":\"grp_wp226_not_here\",\"tags\":[\"旧标签\"]},\"sessionState\":null,\"messages\":[{\"id\":\"msg_wp226_ref_i\",\"sessionId\":\"sess_wp226_src\",\"role\":\"assistant\",\"blockIds\":[\"blk_wp226_ref_i\"],\"timestamp\":1762000000000}],\"blocks\":[{\"id\":\"blk_wp226_ref_i\",\"messageId\":\"msg_wp226_ref_i\",\"type\":\"content\",\"status\":\"success\",\"content\":\"复习 [PDF@file_a:1] 与 [PDF@file_ab:2] 和 [PDF@file%x:3]\",\"startedAt\":1762000000000,\"endedAt\":1762000000010}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": 20
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": 1000
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_ab"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              " file_ab "
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "  ",
+              ""
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": []
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_%"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file%x"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a",
+              "file_ab",
+              "file_a"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": "file_a"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "sourceIds": [
+              "file_a"
+            ],
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_sessions_referencing",
+          "args": {
+            "limit": 5
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.list_agent_sessions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_wp226_ag_creator",
+            "request": {
+              "name": "代理列表一"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "requester_session_id": "sess_wp226_ag_creator",
+              "role": "coordinator",
+              "initial_task": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_wp226_ag_creator",
+            "request": {
+              "name": "代理列表二"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${2.workspace_id}",
+              "requester_session_id": "sess_wp226_ag_creator",
+              "role": "coordinator",
+              "initial_task": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "普通会话不应列出"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": "${0.workspace_id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": "${2.workspace_id}",
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": "${0.workspace_id}",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": "ws_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": null,
+            "limit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${1.agent_session_id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": "${0.workspace_id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_agent_sessions",
+          "args": {
+            "workspaceId": 5
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.compact_session_no_llm_outcomes_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "压缩"
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "wp226-model",
+            "contextLimit": 1000
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "wp226-model"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_cp1",
+            "messageId": "msg_wp226_cp1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "短回答",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "  wp226-model  ",
+            "contextLimit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "wp226-model",
+            "contextLimit": 4294967295
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "sess_wp226_missing",
+            "modelConfigId": "wp226-model",
+            "contextLimit": 1000
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "   ",
+            "contextLimit": 1000
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "只读压缩",
+            "metadata": {
+              "is_subagent": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${9.id}",
+            "modelConfigId": "wp226-model"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${9.id}",
+            "modelConfigId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "wp226-model",
+            "contextLimit": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.anki_cards_by_document_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "制卡"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_old",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolName": "chatanki_generate",
+            "toolOutputJson": "{\"documentId\":\"doc_wp226\",\"cards\":[{\"id\":\"card_old\",\"front\":\"旧问\",\"back\":\"旧答\",\"tags\":[\"wp226\"],\"images\":[],\"taskId\":\"task_wp226\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\"}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_new",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolName": "chatanki_generate",
+            "toolOutputJson": "{\"documentId\":\"doc_wp226\",\"cards\":[{\"id\":\"card_new\",\"front\":\"新问\",\"back\":\"新答\",\"tags\":[\"wp226\"],\"images\":[],\"taskId\":\"task_wp226\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\",\"text\":\"{{c1::填空}}\",\"extraFields\":{\"Note\":\"备注\"},\"templateId\":\"tpl_1\"},\"非对象\",{\"id\":\"card_partial\",\"front\":\"仅正面\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\"},{\"id\":\"card_bad\",\"front\":1}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_tool",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "tool_call",
+            "content": "",
+            "status": "success",
+            "toolName": "chatanki_generate",
+            "toolOutputJson": "{\"documentId\":\"doc_wp226\",\"cards\":[{\"id\":\"card_tool\",\"front\":\"不应返回\",\"back\":\"x\",\"tags\":[\"wp226\"],\"images\":[],\"taskId\":\"task_wp226\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\"}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_extra",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolOutputJson": "{\"documentId\":\"doc_wp226_extra\",\"cards\":[{\"id\":\"card_extra\",\"front\":\"超集\",\"back\":\"x\",\"tags\":[\"wp226\"],\"images\":[],\"taskId\":\"task_wp226\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\"}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_nodoc",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "doc_wp226",
+            "status": "running",
+            "toolOutputJson": "{\"note\":\"doc_wp226 only in text\",\"cards\":[{\"id\":\"card_nodoc\",\"front\":\"x\",\"back\":\"y\",\"tags\":[\"wp226\"],\"images\":[],\"taskId\":\"task_wp226\",\"createdAt\":\"2026-11-01T00:00:00Z\",\"updatedAt\":\"2026-11-01T00:00:00Z\"}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_anki_nocards",
+            "messageId": "msg_wp226_anki",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolOutputJson": "{\"documentId\":\"doc_wp226_empty\"}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc_wp226"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "  doc_wp226  "
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc_wp226_extra"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc_wp226_empty"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc_%"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "doc\\wp226"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": " \n "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "document_id": "doc_wp226"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.perform_ocr_errors_no_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "@@@not-base64@@@"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+                "@@@"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "ocr.available_models",
+            "value": "[{\"configId\":\"wp226-sys\",\"model\":\"system\",\"engineType\":\"system_ocr\",\"name\":\"System OCR\",\"isFree\":true,\"enabled\":true,\"priority\":0}]"
+          }
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.misc.perform_ocr_mock_vlm",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp226-ocr",
+                "name": "WP226 wp226-ocr",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/v1",
+                "model": "wp226-ocr",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "ocr.available_models",
+            "value": "[{\"configId\":\"wp226-ocr\",\"model\":\"wp226-ocr\",\"engineType\":\"generic_vlm\",\"name\":\"WP226 VLM\",\"isFree\":true,\"enabled\":true,\"priority\":0}]"
+          }
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+                "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_perform_ocr",
+          "args": {
+            "request": {
+              "images": [
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+                "@@@"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

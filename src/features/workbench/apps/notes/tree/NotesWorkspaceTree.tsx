@@ -504,12 +504,22 @@ export function NotesWorkspaceTree({
     setContextMenu({ item, x: event.clientX, y: event.clientY });
   }, [beginRename, getMenuItems, onContextMenuOpen]);
 
+  const restoreFocusAfterMenu = useCallback((id: string) => {
+    requestAnimationFrame(() => {
+      // 只在焦点随菜单卸载落回 body 时还给树节点。菜单动作已把焦点交给别处（如「新建文件夹」的
+      // 行内输入框）时不抢：抢回会触发对方 onBlur，空输入框随即被当作取消关掉。
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      treeRef.current?.querySelector<HTMLElement>(`[data-nwt-id="${id}"]`)?.focus();
+    });
+  }, []);
+
   const closeMenu = useCallback(() => {
     setContextMenu((current) => {
-      if (current) focusRowDom(current.item.id);
+      if (current) restoreFocusAfterMenu(current.item.id);
       return null;
     });
-  }, [focusRowDom]);
+  }, [restoreFocusAfterMenu]);
 
   const focusRow = useCallback((id: string) => {
     const lead = id === NOTES_WORKSPACE_TREE_ROOT_ID ? null : id;

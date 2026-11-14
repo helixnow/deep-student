@@ -12,7 +12,7 @@ import { DialogControlProvider } from './contexts/DialogControlContext';
 import { McpService, bootstrapMcpFromSettings } from './mcp/mcpService';
 // ★ DSTU Logger 初始化（依赖注入模式）
 import { setDstuLogger, createLoggerFromDebugPlugin } from './dstu';
-import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
+import { dstuDebugLog } from '@/shared/debug/channels/dstu';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
@@ -23,7 +23,7 @@ import { getMaterialTier } from './features/workbench/core/materialTier';
 import { installChatV2DomainEventBridge } from './utils/chatV2DomainEventBridge';
 import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 import { getOrCreateReactRoot } from './reactRoot';
-import { initializeFontSetting } from './hooks/useAppInitialization';
+import { initializeFontSetting, installCrossTabSettingsSync } from './hooks/useAppInitialization';
 import {
   FRONTEND_ERROR_REPORTED_EVENT,
   installGlobalErrorReporter,
@@ -43,6 +43,8 @@ import {
 } from './features/data-recovery/debugRecoveryScenarios';
 import { getMaintenanceStatus } from './api/dataGovernance';
 import { useSystemStatusStore } from './stores/systemStatusStore';
+import { UiKernelProvider } from './ui-kernel/react';
+import type { UiKernel } from './ui-kernel/kernel';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
@@ -366,15 +368,28 @@ const IS_QUICK_ASSISTANT_WINDOW =
   new URLSearchParams(window.location.search).get('window') === 'quick-assistant';
 const IS_LIGHTWEIGHT_WINDOW = IS_POMODORO_MINI_WINDOW || IS_QUICK_ASSISTANT_WINDOW;
 
-const appTree = (
-  <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
-    <OverlayCoordinatorProvider>
-      <DialogControlProvider>
-        <App />
-        <PracticeRuntimeBridge />
-      </DialogControlProvider>
-    </OverlayCoordinatorProvider>
-  </ErrorBoundary>
+let uiKernelPromise: Promise<UiKernel> | undefined;
+const getUiKernel = () => {
+  if (!uiKernelPromise) {
+    uiKernelPromise = import('./ui-kernel/bootstrap').then(({ createAppUiKernel }) => createAppUiKernel());
+    registerCleanup(() => {
+      void uiKernelPromise.then((kernel) => kernel.dispose()).catch((error) => console.warn('[ui-plugins] cleanup failed', error));
+    });
+  }
+  return uiKernelPromise;
+};
+
+const appTree = (kernel: UiKernel) => (
+  <UiKernelProvider kernel={kernel}>
+    <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+      <OverlayCoordinatorProvider>
+        <DialogControlProvider>
+          <App />
+          <PracticeRuntimeBridge />
+        </DialogControlProvider>
+      </OverlayCoordinatorProvider>
+    </ErrorBoundary>
+  </UiKernelProvider>
 );
 
 const recoveryTree = (
@@ -556,14 +571,15 @@ if (IS_POMODORO_MINI_WINDOW) {
         return;
       }
 
+      const kernel = await getUiKernel();
       if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
-        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+        root.render(<React.StrictMode>{appTree(kernel)}</React.StrictMode>);
       } else {
-        root.render(appTree);
+        root.render(appTree(kernel));
       }
       startNormalFrontendRuntime();
     })
-    .catch((error) => {
+    .catch(async (error) => {
       // 纯 Web 预览没有 Tauri IPC，可继续渲染；桌面端不能把预检故障误判为安全启动，
       // 因为恢复专用后端不会创建普通 AppState。
       if ((window as any).__TAURI_INTERNALS__) {
@@ -581,11 +597,12 @@ if (IS_POMODORO_MINI_WINDOW) {
         );
         return;
       }
+      const kernel = await getUiKernel();
       console.warn('[main] Tauri startup preflight unavailable in web preview.', error);
       if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
-        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+        root.render(<React.StrictMode>{appTree(kernel)}</React.StrictMode>);
       } else {
-        root.render(appTree);
+        root.render(appTree(kernel));
       }
       startNormalFrontendRuntime();
     });
@@ -683,12 +700,19 @@ const triggerChatV2EmergencySave = () => {
     // 动态获取 sessionManager 和 autoSave（避免启动时循环依赖）
     const chatV2Module = (window as any).__CHAT_V2_EMERGENCY_SAVE__;
     if (chatV2Module && typeof chatV2Module.emergencySave === 'function') {
-      chatV2Module.emergencySave();
+      return chatV2Module.emergencySave();
     }
   } catch (e) {
     console.warn('[main] Chat V2 emergency save failed:', e);
   }
 };
+
+window.addEventListener('workbench:before-quit', (event) => {
+  const pending = triggerChatV2EmergencySave();
+  const detail = (event as CustomEvent<{ pending: Promise<unknown>[] | Promise<unknown> | null }>).detail;
+  if (Array.isArray(detail.pending)) detail.pending.push(Promise.resolve(pending));
+  else detail.pending = Promise.all([detail.pending, pending]);
+});
 
 // 确保在页面关闭时保存MCP缓存和Chat V2会话
 const handleBeforeUnload = () => {
@@ -747,11 +771,22 @@ function startNormalFrontendRuntime() {
 
   window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
   registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
+  registerCleanup(installCrossTabSettingsSync());
   window.addEventListener('beforeunload', handleBeforeUnload);
   registerCleanup(() => window.removeEventListener('beforeunload', handleBeforeUnload));
   document.addEventListener('visibilitychange', handleVisibilityChange);
   registerCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
   initializeMcpDebugRuntime();
+  if ((window as any).__TAURI_INTERNALS__ && !(window as any).__DS_DEMO_SHELL__) {
+    const community = getUiKernel().then(async (kernel) => {
+      const { startCommunityUiPlugins } = await import('./ui-kernel/community');
+      return startCommunityUiPlugins(kernel);
+    });
+    registerCleanup(() => {
+      void community.then((stop) => stop()).catch((error) => console.warn('[ui-plugins] cleanup failed', error));
+    });
+    void community.catch((error) => console.error('[ui-plugins] startup failed', error));
+  }
 }
 
 if ((import.meta as any)?.hot) {

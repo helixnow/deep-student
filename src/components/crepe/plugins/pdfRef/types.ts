@@ -15,12 +15,13 @@ export const PDF_REF_EVENTS = {
 export interface PdfRefOpenDetail {
   sourceId: string;
   pageNumber: number;
+  quote?: string;
 }
 
-export function dispatchOpenPdfRef(sourceId: string, pageNumber: number): void {
+export function dispatchOpenPdfRef(sourceId: string, pageNumber: number, quote?: string): void {
   document.dispatchEvent(
     new CustomEvent<PdfRefOpenDetail>(PDF_REF_EVENTS.OPEN_PDF_REF, {
-      detail: { sourceId, pageNumber },
+      detail: { sourceId, pageNumber, quote },
     }),
   );
 }

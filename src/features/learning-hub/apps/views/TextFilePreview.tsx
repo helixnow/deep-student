@@ -30,10 +30,21 @@ import katex from 'katex';
 import 'katex/contrib/mhchem';
 import { ArrowsDownUp, CaretDown, CaretUp, Check, Copy, FileText, NotePencil } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { openUrl } from '@/utils/urlOpener';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
+import {
+  SourceImageViewer,
+  parseSourceImageHref,
+} from '../../components/SourceImageViewer';
+import {
+  AgentCoEditHistoryManager,
+  computeLivePreviewSyntaxVisibility,
+  type AgentMarkdownEdit,
+  type MarkdownSyntaxNode,
+} from '../../utils/mdLivePreviewAndAgentCoEdit';
 
 /** CSV 最大渲染行数（超出截断，避免超大文件拖垮 DOM） */
 const CSV_MAX_RENDER_ROWS = 1000;
@@ -491,15 +502,64 @@ const markdownComponents = {
       {children}
     </blockquote>
   ),
-  a: ({ children, node: _node, ...props }: any) => (
-    <a
-      className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  img: ({ src, alt, node: _node, ...props }: any) => {
+    if (typeof src === 'string' && parseSourceImageHref(src)) {
+      return (
+        <div className="not-prose my-3">
+          <SourceImageViewer href={src} alt={typeof alt === 'string' ? alt : undefined} />
+        </div>
+      );
+    }
+    return <img src={src} alt={alt} {...props} />;
+  },
+  a: ({ href, children, node: _node, ...props }: any) => {
+    if (typeof href === 'string' && parseSourceImageHref(href)) {
+      return (
+        <div className="not-prose my-3">
+          <SourceImageViewer href={href} alt={flattenChildrenText(children)} />
+        </div>
+      );
+    }
+    return (
+      <a
+        href={href}
+        className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
 };
+
+function scanLightweightSyntaxNodes(markdown: string): MarkdownSyntaxNode[] {
+  const nodes: MarkdownSyntaxNode[] = [];
+  let offset = 0;
+  for (const line of markdown.split('\n')) {
+    const headingMatch = /^(#{1,6}[ \t]+)/.exec(line);
+    if (headingMatch) {
+      nodes.push({
+        type: 'heading',
+        from: offset,
+        to: offset + line.length,
+      });
+    } else if (/^>[ \t]*/.test(line)) {
+      nodes.push({
+        type: 'blockquote',
+        from: offset,
+        to: offset + line.length,
+      });
+    } else if (/^[ \t]*[-*+][ \t]+/.test(line)) {
+      nodes.push({
+        type: 'bullet_list',
+        from: offset,
+        to: offset + line.length,
+      });
+    }
+    offset += line.length + 1;
+  }
+  return nodes;
+}
 
 // ============================================================================
 // CSV / TSV
@@ -902,6 +962,61 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
     if (isMarkdown) ensureKatexStyles();
   }, [isMarkdown]);
 
+  const coEditManagerRef = useRef<AgentCoEditHistoryManager | null>(null);
+  const [coEditMarkdown, setCoEditMarkdown] = useState<string | null>(null);
+  const [hasAgentCoEditBatch, setHasAgentCoEditBatch] = useState(false);
+  const [mdCursorPos, setMdCursorPos] = useState(0);
+
+  useEffect(() => {
+    if (!isMarkdown) {
+      coEditManagerRef.current = null;
+      setCoEditMarkdown(null);
+      setHasAgentCoEditBatch(false);
+      return;
+    }
+    coEditManagerRef.current = new AgentCoEditHistoryManager(cappedText);
+    setCoEditMarkdown(null);
+    setHasAgentCoEditBatch(false);
+  }, [isMarkdown, cappedText]);
+
+  useEffect(() => {
+    if (!isMarkdown) return;
+    const handleAgentEdits = (event: Event) => {
+      const detail = (event as CustomEvent<{ edits?: readonly AgentMarkdownEdit[]; fileName?: string }>).detail;
+      if (!detail?.edits || (detail.fileName && detail.fileName !== fileName)) return;
+      const mgr = coEditManagerRef.current;
+      if (!mgr) return;
+      const applied = mgr.applyAgentEdits(detail.edits);
+      if (applied.ok) {
+        setCoEditMarkdown(applied.markdown);
+        setHasAgentCoEditBatch(mgr.hasAgentBatch());
+      }
+    };
+    window.addEventListener('tfp:agent-markdown-edits', handleAgentEdits);
+    return () => window.removeEventListener('tfp:agent-markdown-edits', handleAgentEdits);
+  }, [isMarkdown, fileName]);
+
+  const handleUndoAgentCoEdit = useCallback(() => {
+    const mgr = coEditManagerRef.current;
+    if (!mgr) return;
+    const undone = mgr.undoLastAgentEdit();
+    if (undone.ok) {
+      setCoEditMarkdown(undone.markdown === cappedText ? null : undone.markdown);
+      setHasAgentCoEditBatch(mgr.hasAgentBatch());
+    }
+  }, [cappedText]);
+
+  const effectiveMarkdownText = coEditMarkdown ?? cappedText;
+  const mdSyntaxVisibility = useMemo(() => {
+    if (!isMarkdown) return null;
+    const syntaxNodes = scanLightweightSyntaxNodes(effectiveMarkdownText.slice(0, 8000));
+    return computeLivePreviewSyntaxVisibility(
+      effectiveMarkdownText.slice(0, 8000),
+      syntaxNodes,
+      [{ from: mdCursorPos, to: mdCursorPos }],
+    );
+  }, [isMarkdown, effectiveMarkdownText, mdCursorPos]);
+
   // 代码类：gutter 行号靠 ::before content 生成，样式必须在首帧 paint 前注入
   // （useLayoutEffect），且不依赖 Prism 加载成功——大文件降级不高亮时行号也要可见
   useLayoutEffect(() => {
@@ -957,26 +1072,47 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
   // Markdown 富渲染
   if (isMarkdown) {
     return (
-      <div className={cn('min-h-full', className)}>
-        <FileMetaBar ext={ext} items={textMetaItems} copyText={content}>
+      <div
+        className={cn('min-h-full', className)}
+        data-md-hidden-ranges={mdSyntaxVisibility?.hiddenRanges.length ?? 0}
+      >
+        <FileMetaBar ext={ext} items={textMetaItems} copyText={effectiveMarkdownText}>
+          {hasAgentCoEditBatch && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-testid="tfp-undo-agent-coedit"
+              onClick={handleUndoAgentCoEdit}
+              className="inline-flex items-center gap-1 rounded border border-success/35 bg-success/10 px-1.5 py-0.5 text-xs text-success transition-colors hover:bg-success/20"
+            >
+              <span>{t('learningHub:textPreview.undoAgentCoedit', '撤销 AI 共编')}</span>
+            </DsButton>
+          )}
           {onConvertToNote && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={onConvertToNote}
               className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground"
               title={t('learningHub:filePreview.convertToNoteHint')}
             >
               <NotePencil size={12} aria-hidden="true" />
               <span>{t('learningHub:filePreview.convertToNote')}</span>
-            </button>
+            </DsButton>
           )}
         </FileMetaBar>
-        <div className="px-4 pb-4" onClick={handleMarkdownClick}>
+        <div
+          className="px-4 pb-4"
+          onClick={(e) => {
+            setMdCursorPos((prev) => (prev === 0 ? 1 : 0));
+            handleMarkdownClick(e);
+          }}
+        >
           {truncationNotice}
           {/* break-words：长 URL / 无空格长词在 375px 视口下不得撑出横向溢出 */}
           <div className="prose prose-sm dark:prose-invert max-w-none break-words">
             <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} components={markdownComponents as any}>
-              {cappedText}
+              {effectiveMarkdownText}
             </ReactMarkdown>
           </div>
         </div>

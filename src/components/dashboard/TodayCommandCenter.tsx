@@ -7,28 +7,22 @@
  * - 运行中制卡任务 k（直达任务页）
  *
  * 数据加载失败时静默降级（显示 0 / 不显示徽标），不阻塞统计区渲染。
+ * 标题旁的入口（周报）、卡片行、行下方的条（薄弱知识点）都来自 `dashboard.widgets` 槽位，按 placement 分区；
+ * 计数在这里统一加载后传给每个小部件。
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Cards, CheckSquare, CircleNotch, ArrowRight, Notebook, WarningDiamond } from '@phosphor-icons/react';
 import { loadTodayLearning } from '@/features/learning-today/todayLearning';
-import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
-import { WeakConceptsStrip } from './WeakConceptsStrip';
-import { WeeklyReportActions } from './WeeklyReportActions';
-
-type ActionView = 'learning-hub' | 'todo' | 'task-dashboard' | 'flashcards';
+import '@/features/learning-today/dashboardWidgets';
+import { SlotOutlet } from '@/ui-kernel/outlet';
+import { useOptionalUiKernel, useT } from '@/ui-kernel/react';
+import type { SlotEntry } from '@/ui-kernel/slots';
+import './coreWidgets';
+import { useUnattachedDashboardWidgets, type DashboardView, type DashboardWidget, type TodayCounts } from '@/ui-plugins/official/dashboard/api';
 
 interface TodayCommandCenterProps {
-  onNavigate?: (view: ActionView) => void;
-}
-
-interface TodayCounts {
-  cardsDue: number;
-  mistakesDue: number;
-  notesDue: number;
-  todoDue: number;
-  activeJobs: number;
+  onNavigate?: (view: DashboardView) => void;
 }
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -48,52 +42,34 @@ async function loadCounts(): Promise<TodayCounts> {
   return { cardsDue: learning.cards, mistakesDue: learning.mistakes, notesDue: learning.notes, todoDue, activeJobs };
 }
 
-interface ActionCardProps {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  hint: string;
-  highlight: boolean;
-  spinning?: boolean;
-  onClick?: () => void;
-}
+const FRAME_CLASS = {
+  md: 'flex min-w-[280px] flex-[2_1_360px] flex-col gap-2',
+  lg: 'flex basis-full flex-col gap-2',
+} as const;
 
-const ActionCard: React.FC<ActionCardProps> = ({ icon, label, count, hint, highlight, spinning, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={[
-      'group flex flex-1 min-w-[180px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
-      highlight
-        ? 'border-[color:hsl(var(--primary)/0.35)] bg-[color:hsl(var(--primary)/0.06)] hover:bg-[color:hsl(var(--primary)/0.1)]'
-        : 'border-border bg-card hover:bg-muted/50',
-    ].join(' ')}
-  >
-    <span
-      className={[
-        'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md',
-        highlight ? 'bg-[color:hsl(var(--primary)/0.12)] text-[color:hsl(var(--primary))]' : 'bg-muted text-muted-foreground',
-      ].join(' ')}
-    >
-      {spinning ? <CircleNotch size={18} className="animate-spin" /> : icon}
-    </span>
-    <span className="flex-1 min-w-0">
-      <span className="block text-[13px] text-muted-foreground">{label}</span>
-      <span className="block text-[20px] font-semibold leading-tight tabular-nums text-foreground">
-        {count}
-      </span>
-    </span>
-    {/* 触屏无 hover：常显"前往"提示，保证入口可发现 */}
-    <span className="flex items-center gap-0.5 text-[12px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground/70">
-      {hint}
-      <ArrowRight size={12} />
-    </span>
-  </button>
-);
+const WidgetTitle: React.FC<{ titleKey: string }> = ({ titleKey }) => {
+  const t = useT();
+  return <h3 className="text-ui font-medium text-muted-foreground">{t(titleKey)}</h3>;
+};
+
+/** `md` / `lg` widgets get a row frame (and their title when a kernel scope can translate it). */
+function renderWidget(entry: SlotEntry<DashboardWidget>, props: React.ComponentProps<DashboardWidget['component']>, titled: boolean) {
+  const { size, titleKey, component: Widget } = entry.value;
+  if (size === 'sm') return <Widget {...props} />;
+  return (
+    <section className={FRAME_CLASS[size]} data-ds-widget={entry.id}>
+      {titled && titleKey && <WidgetTitle titleKey={titleKey} />}
+      <Widget {...props} />
+    </section>
+  );
+}
 
 export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNavigate }) => {
   const { t } = useTranslation('data');
   const [counts, setCounts] = useState<TodayCounts | null>(null);
+  const kernel = useOptionalUiKernel();
+  const platform = kernel?.platform.kind;
+  const unattached = useUnattachedDashboardWidgets();
 
   const refresh = useCallback(() => {
     loadCounts().then(setCounts).catch(() => setCounts({ cardsDue: 0, mistakesDue: 0, notesDue: 0, todoDue: 0, activeJobs: 0 }));
@@ -119,6 +95,16 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
   const nothingToDo = counts.cardsDue === 0 && counts.mistakesDue === 0 && counts.notesDue === 0
     && counts.todoDue === 0 && counts.activeJobs === 0;
 
+  const widgets = (placement: NonNullable<DashboardWidget['placement']>) => (
+    <SlotOutlet
+      name="dashboard.widgets"
+      entries={unattached}
+      filter={(entry) => (entry.value.placement ?? 'row') === placement
+        && (!platform || !entry.value.platforms || entry.value.platforms.includes(platform))}
+      render={(entry) => renderWidget(entry, { today: counts, onNavigate }, !!kernel)}
+    />
+  );
+
   return (
     <div className="mb-6">
       <div className="mb-2 flex items-baseline gap-2">
@@ -126,52 +112,10 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
         {nothingToDo && (
           <span className="text-[12px] text-muted-foreground/60">{t('today_center.all_clear')}</span>
         )}
-        <WeeklyReportActions />
+        {widgets('header')}
       </div>
-      <div className="flex flex-wrap gap-3">
-        <ActionCard
-          icon={<Cards size={18} />}
-          label={t('today_center.cards_due', { defaultValue: '到期卡片' })}
-          count={counts.cardsDue}
-          hint={t('today_center.go')}
-          highlight={counts.cardsDue > 0}
-          onClick={() => openTodayReviewTarget('cards')}
-        />
-        <ActionCard
-          icon={<WarningDiamond size={18} />}
-          label={t('today_center.mistakes_due', { defaultValue: '错题复习' })}
-          count={counts.mistakesDue}
-          hint={t('today_center.go')}
-          highlight={counts.mistakesDue > 0}
-          onClick={() => openTodayReviewTarget('mistakes')}
-        />
-        <ActionCard
-          icon={<Notebook size={18} />}
-          label={t('today_center.notes_due', { defaultValue: '待复习笔记' })}
-          count={counts.notesDue}
-          hint={t('today_center.go')}
-          highlight={counts.notesDue > 0}
-          onClick={() => openTodayReviewTarget('notes')}
-        />
-        <ActionCard
-          icon={<CheckSquare size={18} />}
-          label={t('today_center.todo_due')}
-          count={counts.todoDue}
-          hint={t('today_center.go')}
-          highlight={counts.todoDue > 0}
-          onClick={() => onNavigate?.('todo')}
-        />
-        <ActionCard
-          icon={<CircleNotch size={18} />}
-          label={t('today_center.active_jobs')}
-          count={counts.activeJobs}
-          hint={t('today_center.go')}
-          highlight={false}
-          spinning={counts.activeJobs > 0}
-          onClick={() => onNavigate?.('task-dashboard')}
-        />
-      </div>
-      <WeakConceptsStrip />
+      <div className="flex flex-wrap gap-3">{widgets('row')}</div>
+      {widgets('below')}
     </div>
   );
 };

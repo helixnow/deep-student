@@ -1,0 +1,740 @@
+{
+  "domain": "anki",
+  "commands": [
+    "create_custom_template",
+    "update_custom_template",
+    "delete_custom_template",
+    "export_template",
+    "import_custom_templates_bulk"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.anki.create_custom_template.empty_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "  ",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.empty_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {},
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.empty_front_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "  ",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.empty_back_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "  ",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.empty_generation_prompt",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "  ",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.missing_extraction_rule",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.extra_extraction_rule",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Extra字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_custom_template.cloze_without_placeholder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Text}}",
+              "back_template": "{{Text}} {{Extra}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Text字段"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Extra字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_custom_template.missing_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "w0-missing-template",
+            "request": {
+              "name": "改名",
+              "expected_version": "1.0.0"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_custom_template.missing_expected_version",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "name": "改名"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_custom_template.stale_expected_version",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "name": "改名",
+              "expected_version": "0.0.0-stale"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_custom_template.merged_request_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "测试模板",
+              "description": "desc",
+              "author": null,
+              "version": "1.0.0",
+              "preview_front": "",
+              "preview_back": "",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "gen",
+              "front_template": "{{Front}}",
+              "back_template": "{{FrontSide}} {{Back}}",
+              "css_style": "",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Front字段"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "Back字段"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": true,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "name": "  ",
+              "expected_version": "1.0.0"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.delete_custom_template.missing_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "w0-missing-template"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_template.missing_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "w0-missing-template"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_custom_templates_bulk.invalid_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "{not json",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_custom_templates_bulk.scalar_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "42",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

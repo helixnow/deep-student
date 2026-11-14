@@ -1,0 +1,1519 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_create_or_reuse",
+    "vfs_decrement_ref",
+    "vfs_create_attachment_root_folder",
+    "vfs_get_attachment_config",
+    "vfs_get_attachment",
+    "vfs_get_attachment_content",
+    "vfs_delete_attachment",
+    "vfs_delete_file",
+    "vfs_get_blob_base64",
+    "vfs_create_mindmap",
+    "vfs_delete_mindmap",
+    "vfs_download_paper"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.vfs_create_or_reuse.ok_create_then_reuse",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 内容 A",
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 内容 A",
+              "subject": null
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_or_reuse.ok_source_and_metadata",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "file",
+              "data": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo=",
+              "sourceId": "att_wp224_src",
+              "metadata": {
+                "name": "wp224.txt",
+                "mimeType": "text/plain",
+                "size": 22,
+                "source": "chat",
+                "extra": {
+                  "k": [
+                    1,
+                    2
+                  ]
+                }
+              },
+              "subject": null
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_or_reuse.ok_type_case_and_alias",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "IMAGE",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "insightcard",
+              "data": "WP224 卡片",
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "retrieval",
+              "data": "",
+              "subject": null
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_or_reuse.err_invalid_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "video",
+              "data": "x",
+              "subject": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_or_reuse.err_missing_data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "subject": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_or_reuse.err_missing_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "type": "note",
+            "data": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_decrement_ref.ok_floor_at_zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_decrement_ref.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {
+            "resourceId": "att_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_decrement_ref.err_zero_width_unicode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {
+            "resourceId": "res_wp224​"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_decrement_ref.err_missing_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {
+            "resourceId": "res_wp224missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_decrement_ref.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_decrement_ref",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_attachment_root_folder.ok_create_and_replace",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {
+            "title": "WP224 附件"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {
+            "title": "WP224 附件二"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_attachment_root_folder.ok_empty_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {
+            "title": ""
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_attachment_root_folder.err_missing_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_config.ok_unset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_config.ok_after_upload_default_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.ok_att_and_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "${1.file.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.ok_missing_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "att_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.ok_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.err_bad_prefix_res",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "res_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.err_bad_prefix_tb",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "tb_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_inline_att",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.sourceId}",
+            "maxBytes": 1048576
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_blob_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.file.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.file.id}",
+            "maxBytes": 69
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_max_bytes_exceeded_inline",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.sourceId}",
+            "maxBytes": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_max_bytes_exceeded_blob",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.file.id}",
+            "maxBytes": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_res_prefix_resolved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.attachment.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_res_prefix_unlinked",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_img_prefix_unresolved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "img_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.ok_missing_found_false",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "att_wp224missing"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "file_wp224missing"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "tb_wp224missing",
+            "maxBytes": 1024
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "note_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.err_negative_max_bytes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "att_wp224missing",
+            "maxBytes": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_attachment_content.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_attachment.ok_delete_twice_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_attachment.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {
+            "attachmentId": "${0.file.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_attachment.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {
+            "attachmentId": "att_wp224missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_attachment.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_attachment",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_file.ok_delete_twice_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_file",
+          "args": {
+            "fileId": "${0.file.id}"
+          }
+        },
+        {
+          "cmd": "vfs_delete_file",
+          "args": {
+            "fileId": "${0.file.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment",
+          "args": {
+            "attachmentId": "${0.file.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_file.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_file",
+          "args": {
+            "fileId": "${0.sourceId}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_file.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_file",
+          "args": {
+            "fileId": "file_wp224missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_file.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_file",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_blob_base64.ok_uploaded_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_blob_base64",
+          "args": {
+            "blobHash": "${0.file.blobHash}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_blob_base64.err_blob_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_blob_base64",
+          "args": {
+            "blobHash": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_blob_base64.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_blob_base64",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.ok_frontend_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root_wp224aaaa\",\"text\":\"WP224 导图\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-11-06T00:00:00.000Z\",\"updatedAt\":\"2026-11-06T00:00:00.000Z\"}}",
+              "defaultView": "mindmap"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.ok_defaults_and_optional",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 默认"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 大纲",
+              "description": "说明",
+              "defaultView": "outline",
+              "theme": "dark"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.ok_in_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {
+            "title": "WP224 导图目录"
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 目录内",
+              "defaultView": "mindmap",
+              "folderId": "${0}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.err_folder_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 无目录",
+              "folderId": "fld_wp224missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.err_missing_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "defaultView": "mindmap"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_mindmap.err_missing_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "title": "WP224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_mindmap.ok_delete_twice_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "WP224 待删导图"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_mindmap.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "note_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_mindmap.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "mm_wp224missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_mindmap.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.err_http_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "http://127.0.0.1:9/wp224.pdf",
+              "title": "WP224 论文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.err_non_https_scheme",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "ftp://127.0.0.1/wp224.pdf",
+              "title": "WP224 论文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.err_https_connection_refused",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:9/wp224.pdf",
+              "title": "WP224 论文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.err_missing_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:9/wp224.pdf"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import {
   consumePendingMemoryLocate,
   peekPendingMemoryLocate,
@@ -55,12 +56,10 @@ import {
   Lightning,
   Robot,
   User,
-  BookOpen,
   List,
   GitBranch,
   Folder,
   ListPlus,
-  Sparkle,
 } from '@phosphor-icons/react';
 import { MemoryIcon } from '../icons/ResourceIcons';
 import { DsButton } from '@/components/ui/DsButton';
@@ -914,6 +913,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     loadAuditLogs(auditLogs.length);
   }, [loadAuditLogs, auditLogs.length]);
 
+  useRefreshOnReturn(() => { if (showAuditLog && !isLoadingAuditLog) void loadAuditLogs(0); });
+
   // 筛选变更时重新加载第一页（面板打开时）
   const isFirstAuditFilterRender = useRef(true);
   useEffect(() => {
@@ -1170,12 +1171,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
   // ========== 渲染：主视图 ==========
   return (
-    <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
-      {/* 顶部工具栏 - 简洁风格（窄容器允许折行，避免单行溢出） */}
-      <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
-        {/* 搜索框：保留最小可用宽度，不足时让后续按钮折行 */}
+    <div className={cn('flex h-full min-h-0 flex-col overflow-hidden bg-background', className)}>
+      {/* 顶部单层控制栏：紧凑 h-10 搜索与核心动作 */}
+      <div data-wb-blur-surface className="flex flex-wrap items-center gap-1.5 gap-y-1 px-3 py-1.5 min-h-[40px] border-b border-border/35 bg-background/95 backdrop-blur-sm">
+        {/* 搜索框：保留最小可用宽度 */}
         <div className="flex-1 min-w-[9rem] relative">
-          <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
+          <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
           <Input
             type="search"
             placeholder={t('memory.search_placeholder')}
@@ -1186,21 +1187,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               if (e.key === 'Enter') handleSearch();
               else if (e.key === 'Escape' && searchQuery) handleClearSearch();
             }}
-            className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+            className="w-full h-7 pl-8 pr-7 text-xs bg-foreground/[0.035] border-border/35 rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
           />
           {isSearching ? (
-            <CircleNotch size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/60" />
+            <CircleNotch size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/60" />
           ) : searchQuery ? (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.clear_search')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.clear_search')}>
               ×
             </DsButton>
           ) : null}
         </div>
 
         {/* 视图切换 */}
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.refresh')}>
-          <ArrowClockwise className={cn('w-4 h-4', isListLoading && 'animate-spin')} />
-        </DsButton>
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
@@ -1208,10 +1206,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
-          {viewMode === 'tree' ? <List size={16} /> : <GitBranch size={16} />}
+          {viewMode === 'tree' ? <List size={15} /> : <GitBranch size={15} />}
         </DsButton>
 
-        <div className="w-px h-5 bg-border/50" />
+        <div className="w-px h-3.5 bg-border/35" />
 
         {/* 操作 */}
         <DsButton
@@ -1220,13 +1218,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
-          <CheckSquare size={16} />
+          <CheckSquare size={15} />
         </DsButton>
         <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.export')}>
-          <Download size={16} />
+          <Download size={15} />
         </DsButton>
 
-        <div className="w-px h-5 bg-border/50" />
+        <div className="w-px h-3.5 bg-border/35" />
 
         {/* 面板 */}
         <DsButton
@@ -1235,7 +1233,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', showProfile && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.profile')}
         >
-          <MemoryIcon size={16} />
+          <MemoryIcon size={15} />
         </DsButton>
         <DsButton
           variant="ghost" size="icon" iconOnly
@@ -1244,7 +1242,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           aria-label={t('memory.aria.audit_log')}
           title={t('memory.audit_log')}
         >
-          <ClockCounterClockwise size={16} />
+          <ClockCounterClockwise size={15} />
         </DsButton>
         {!batchMode && (
           <>
@@ -1253,7 +1251,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
               className={cn('text-success hover:bg-success/10 [@media(pointer:coarse)]:!min-h-11', isBatchImporting && 'bg-success/10')}
             >
-              <ListPlus size={16} />
+              <ListPlus size={15} />
               {t('memory.batch_import')}
             </DsButton>
             <DsButton
@@ -1261,7 +1259,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               onClick={isCreatingInline ? handleCancelCreate : handleOpenCreate}
               className={cn('text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11', isCreatingInline && 'bg-primary/10')}
             >
-              <Plus size={16} />
+              <Plus size={15} />
               {t('memory.new')}
             </DsButton>
           </>
@@ -1281,11 +1279,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 onClick={handleBatchDelete}
                 disabled={isMutating}
                 className={cn(
-                  'text-danger hover:bg-danger/10 transition-colors [@media(pointer:coarse)]:!min-h-11',
+                  'text-danger hover:bg-danger/10 font-mono tabular-nums transition-colors [@media(pointer:coarse)]:!min-h-11',
                   confirmingBatchDelete && 'bg-danger/15 font-medium'
                 )}
               >
-                {isMutating ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
+                {isMutating ? <CircleNotch size={15} className="animate-spin" /> : <Trash size={15} />}
                 {confirmingBatchDelete
                   ? t('memory.confirm_delete')
                   : t('memory.batch_delete', { count: selectedIds.size })}
@@ -1295,58 +1293,82 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         )}
       </div>
 
-      {/* 当前根文件夹 + 提取频率设置 */}
-      <div className="px-4 py-2 text-xs text-muted-foreground space-y-1.5 border-b border-border/30">
-        <div className="flex items-center gap-2">
-          <FolderOpen size={14} />
-          <span>{t('memory.root_folder')}:</span>
-          <span className="font-medium text-foreground">{config.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : t('memory.defaultRootTitle')}</span>
-          <DsButton
-            variant="ghost" size="sm"
-            onClick={handleOpenRootPicker}
-            disabled={loadingFolders}
-            className={cn('ml-auto !h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', isPickerOpen && 'bg-primary/10 text-primary')}
-          >
-            {loadingFolders ? (
-              <CircleNotch size={12} className="animate-spin" />
-            ) : (
-              <Gear size={12} />
-            )}
-            {t('memory.change')}
-          </DsButton>
-        </div>
-        <div className="flex items-center gap-2">
-          <Lightning size={14} />
-          <span>{t('memory.auto_extract')}:</span>
-          <div className="flex items-center gap-0.5 ml-1">
-            {([
-              { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
-              { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
-              { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
-            ]).map((opt) => (
-              <button
-                key={opt.value}
-                title={opt.desc}
-                onClick={() => handleFrequencyChange(opt.value)}
-                className={cn(
-                  'px-2 py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
-                  config.autoExtractFrequency === opt.value
-                    ? 'bg-primary/15 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
+      {/* 单行高定筛选与元数据轨：禁止多行折行（overflow-x-auto scrollbar-none flex-nowrap），用 6px 语义微圆点替代彩色胶囊 */}
+      <div className="px-3 py-1 text-xs text-muted-foreground border-b border-border/35">
+        <div className="flex items-center gap-3 overflow-x-auto scrollbar-none flex-nowrap whitespace-nowrap">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <FolderOpen size={13} className="shrink-0" />
+            <span>{t('memory.root_folder')}:</span>
+            <span className="font-medium text-foreground max-w-[140px] truncate">{config.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : t('memory.defaultRootTitle')}</span>
+            <DsButton
+              variant="ghost" size="sm"
+              onClick={handleOpenRootPicker}
+              disabled={loadingFolders}
+              className={cn('!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', isPickerOpen && 'bg-primary/10 text-primary')}
+            >
+              {loadingFolders ? (
+                <CircleNotch size={12} className="animate-spin" />
+              ) : (
+                <Gear size={12} />
+              )}
+              {t('memory.change')}
+            </DsButton>
           </div>
+
+          <span className="h-3 w-px bg-border/35 shrink-0" aria-hidden="true" />
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Lightning size={13} className="shrink-0" />
+            <span>{t('memory.auto_extract')}:</span>
+            <div className="flex items-center gap-0.5">
+              {([
+                { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
+                { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
+                { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  title={opt.desc}
+                  onClick={() => handleFrequencyChange(opt.value)}
+                  className={cn(
+                    'px-1.5 py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
+                    config.autoExtractFrequency === opt.value
+                      ? 'bg-primary/15 text-primary font-medium'
+                      : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {memories.length > 0 && !isSearchMode && (
+            <div className="ml-auto flex items-center gap-2.5 shrink-0 text-2xs font-mono tabular-nums text-muted-foreground/80">
+              <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
+              {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
+                <span key={key} className="inline-flex items-center gap-1 text-muted-foreground">
+                  <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[key] || 'bg-muted-foreground/50')} aria-hidden="true" />
+                  <span>{purposeLabel(t, key)}</span>
+                  <span>{count}</span>
+                </span>
+              ))}
+              {memoryStats.importantCount > 0 && (
+                <span className="inline-flex items-center gap-0.5">
+                  <Star size={10} className="text-amber-500" weight="fill" />
+                  {memoryStats.importantCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ★ 内联根目录选择面板（原为模态框） */}
         <AnimatePresence initial={false}>
           {isPickerOpen && (
             <motion.div key="root-picker" {...disclosureMotion} className="overflow-hidden">
-              <div className="mt-1 rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
+              <div className="mt-1 rounded-lg border border-border/35 bg-card/50 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border/35">
                   <FolderOpen size={13} className="text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground">{t('memory.select_root_folder')}</span>
                   <div className="flex-1 relative ml-1">
@@ -1394,24 +1416,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </AnimatePresence>
       </div>
 
-      {/* 统计栏 — 窄容器（移动端中屏）允许折行，避免类别徽章把统计栏撑出横向溢出 */}
-      {memories.length > 0 && !isSearchMode && (
-        <div className="px-4 py-1.5 text-2xs text-muted-foreground/70 border-b border-border/20 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
-          {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
-            <span key={key} className={cn('px-1.5 py-0 rounded', PURPOSE_BADGE_STYLES[key] || 'bg-muted')}>
-              {purposeLabel(t, key)} {count}
-            </span>
-          ))}
-          {memoryStats.importantCount > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Star size={10} className="text-amber-500" weight="fill" />
-              {memoryStats.importantCount}
-            </span>
-          )}
-        </div>
-      )}
-
       {/* 记忆列表 */}
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="p-3 space-y-3" ref={scrollHostRef}>
@@ -1419,8 +1423,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <AnimatePresence initial={false}>
             {showProfile && (
               <motion.div key="profile-panel" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-                  <div data-wb-blur-surface className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex items-center gap-2 px-3 py-2 border-b border-border/35">
                     <MemoryIcon size={14} className="text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title')}</span>
                   </div>
@@ -1440,7 +1444,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       {t('memory.profile_empty')}
                     </div>
                   ) : (
-                    <div className="px-4 py-3 space-y-3">
+                    <div className="px-3 py-2.5 space-y-2.5">
                       {profileSections.map((section) => (
                         <div key={section.category}>
                           <div className="text-xs font-medium text-foreground/70 mb-1">{section.category}</div>
@@ -1458,9 +1462,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <AnimatePresence initial={false}>
             {showAuditLog && (
               <motion.div key="audit-panel" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-                  {/* 窄容器允许筛选器折行，避免标题 + 两个筛选下拉在移动端横向溢出 */}
-                  <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-3 py-2 border-b border-border/35">
                     <ClockCounterClockwise size={14} className="text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log')}</span>
                     <div className="ml-auto flex items-center gap-1.5">
@@ -1489,9 +1492,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <DsButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(0)} disabled={isLoadingAuditLog} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.refresh_logs')}>
-                        <ArrowClockwise className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
-                      </DsButton>
                     </div>
                   </div>
                   {isLoadingAuditLog && auditLogs.length === 0 ? (
@@ -1513,13 +1513,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     </div>
                   ) : (
                     <div>
-                      <div className="divide-y divide-border/20">
+                      <div className="divide-y divide-border/35">
                         {auditLogs.map((log) => (
                           <AuditLogRow key={log.id} log={log} />
                         ))}
                       </div>
                       {hasMoreAuditLogs && (
-                        <div className="flex justify-center py-2 border-t border-border/20">
+                        <div className="flex justify-center py-2 border-t border-border/35">
                           <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
                             {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
                             {t('memory.audit_load_more')}
@@ -1537,93 +1537,95 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <AnimatePresence initial={false}>
             {isBatchImporting && (
               <motion.div key="batch-import-form" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <ListPlus size={16} />
-                      <span className="text-sm font-medium">{t('memory.batch_import')}</span>
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/35">
+                    <div className="flex items-center gap-2 min-w-0 text-muted-foreground">
+                      <ListPlus size={14} className="shrink-0" />
+                      <span className="text-xs font-medium text-muted-foreground">{t('memory.batch_import')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
-                      <X size={16} />
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="!h-6 !w-6 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
+                      <X size={14} />
                     </DsButton>
                   </div>
 
-                  <div className="text-xs text-muted-foreground leading-relaxed">
-                    {t('memory.batch_import_hint')}
-                  </div>
+                  <div className="p-3.5 space-y-3">
+                    <div className="text-xs text-muted-foreground leading-relaxed">
+                      {t('memory.batch_import_hint')}
+                    </div>
 
-                  <Textarea
-                    placeholder={t('memory.batch_import_placeholder')}
-                    value={batchImportText}
-                    onChange={(e) => setBatchImportText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !isMutating) {
-                        e.preventDefault();
-                        handleBatchImport();
-                      }
-                    }}
-                    rows={8}
-                    className="w-full bg-muted/30 border-transparent rounded-md resize-y focus-visible:border-border focus-visible:bg-background"
-                  />
+                    <Textarea
+                      placeholder={t('memory.batch_import_placeholder')}
+                      value={batchImportText}
+                      onChange={(e) => setBatchImportText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !isMutating) {
+                          e.preventDefault();
+                          handleBatchImport();
+                        }
+                      }}
+                      rows={8}
+                      className="w-full bg-muted/30 border-transparent rounded-md resize-y focus-visible:border-border focus-visible:bg-background"
+                    />
 
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
-                    {([
-                      ['fact', 'memory.type_fact'],
-                      ['study', 'memory.type_study'],
-                      ['note', 'memory.type_note'],
-                    ] as const).map(([type, labelKey]) => (
-                      <DsButton
-                        key={type}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setBatchImportType(type)}
-                        className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
-                          batchImportType === type
-                            ? 'bg-primary/15 text-primary font-medium'
-                            : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                        )}
-                      >
-                        {t(labelKey)}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
+                      {([
+                        ['fact', 'memory.type_fact'],
+                        ['study', 'memory.type_study'],
+                        ['note', 'memory.type_note'],
+                      ] as const).map(([type, labelKey]) => (
+                        <DsButton
+                          key={type}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setBatchImportType(type)}
+                          className={cn(
+                            '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
+                            batchImportType === type
+                              ? 'bg-primary/15 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+                          )}
+                        >
+                          {t(labelKey)}
+                        </DsButton>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
+                      {(batchImportType === 'fact'
+                        ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
+                        : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
+                        <DsButton
+                          key={p}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setBatchImportPurpose(p)}
+                          className={cn(
+                            '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
+                            batchImportPurpose === p
+                              ? 'bg-primary/15 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+                          )}
+                        >
+                          {purposeLabel(t, p)}
+                        </DsButton>
+                      ))}
+                    </div>
+
+                    <div className="text-xs font-mono tabular-nums text-muted-foreground">
+                      {t('memory.batch_import_count', { count: parseBatchImportItems(batchImportText).length })}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
+                        {t('common:cancel')}
                       </DsButton>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
-                    {(batchImportType === 'fact'
-                      ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
-                      : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
-                      <DsButton
-                        key={p}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setBatchImportPurpose(p)}
-                        className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
-                          batchImportPurpose === p
-                            ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
-                            : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                        )}
-                      >
-                        {purposeLabel(t, p)}
+                      <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
+                        {isMutating && <CircleNotch size={16} className="animate-spin" />}
+                        {t('memory.batch_import_confirm')}
                       </DsButton>
-                    ))}
-                  </div>
-
-                  <div className="text-xs text-muted-foreground">
-                    {t('memory.batch_import_count', { count: parseBatchImportItems(batchImportText).length })}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
-                      {t('common:cancel')}
-                    </DsButton>
-                    <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
-                      {isMutating && <CircleNotch size={16} className="animate-spin" />}
-                      {t('memory.batch_import_confirm')}
-                    </DsButton>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1634,99 +1636,101 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <AnimatePresence initial={false}>
             {isCreatingInline && (
               <motion.div key="create-form" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MemoryIcon size={16} />
-                      <span className="text-sm font-medium">{t('memory.create_title')}</span>
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/35">
+                    <div className="flex items-center gap-2 min-w-0 text-muted-foreground">
+                      <MemoryIcon size={14} className="shrink-0" />
+                      <span className="text-xs font-medium text-muted-foreground">{t('memory.create_title')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel')}>
-                      <X size={16} />
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="!h-6 !w-6 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel')}>
+                      <X size={14} />
                     </DsButton>
                   </div>
 
-                  <Input
-                    placeholder={t('memory.title_placeholder')}
-                    value={newMemoryTitle}
-                    onChange={(e) => setNewMemoryTitle(e.target.value)}
-                    autoFocus
-                    className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
-                  />
-                  <Textarea
-                    placeholder={
-                      newMemoryType === 'fact'
-                        ? t('memory.content_placeholder_fact')
-                        : newMemoryType === 'study'
-                          ? t('memory.content_placeholder_study')
-                          : t('memory.content_placeholder_note')
-                    }
-                    value={newMemoryContent}
-                    onChange={(e) => setNewMemoryContent(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && newMemoryTitle.trim() && newMemoryContent.trim() && !isMutating) {
-                        e.preventDefault();
-                        handleCreateMemory();
+                  <div className="p-3.5 space-y-3">
+                    <Input
+                      placeholder={t('memory.title_placeholder')}
+                      value={newMemoryTitle}
+                      onChange={(e) => setNewMemoryTitle(e.target.value)}
+                      autoFocus
+                      className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+                    />
+                    <Textarea
+                      placeholder={
+                        newMemoryType === 'fact'
+                          ? t('memory.content_placeholder_fact')
+                          : newMemoryType === 'study'
+                            ? t('memory.content_placeholder_study')
+                            : t('memory.content_placeholder_note')
                       }
-                    }}
-                    rows={5}
-                    className="w-full bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background"
-                  />
+                      value={newMemoryContent}
+                      onChange={(e) => setNewMemoryContent(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && newMemoryTitle.trim() && newMemoryContent.trim() && !isMutating) {
+                          e.preventDefault();
+                          handleCreateMemory();
+                        }
+                      }}
+                      rows={5}
+                      className="w-full bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background"
+                    />
 
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
-                    {([
-                      ['fact', 'memory.type_fact'],
-                      ['study', 'memory.type_study'],
-                      ['note', 'memory.type_note'],
-                    ] as const).map(([type, labelKey]) => (
-                      <DsButton
-                        key={type}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setNewMemoryType(type)}
-                        className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
-                          newMemoryType === type
-                            ? 'bg-primary/15 text-primary font-medium'
-                            : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                        )}
-                      >
-                        {t(labelKey)}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
+                      {([
+                        ['fact', 'memory.type_fact'],
+                        ['study', 'memory.type_study'],
+                        ['note', 'memory.type_note'],
+                      ] as const).map(([type, labelKey]) => (
+                        <DsButton
+                          key={type}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setNewMemoryType(type)}
+                          className={cn(
+                            '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
+                            newMemoryType === type
+                              ? 'bg-primary/15 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+                          )}
+                        >
+                          {t(labelKey)}
+                        </DsButton>
+                      ))}
+                    </div>
+
+                    {/* 目的分类选择 */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
+                      {(newMemoryType === 'fact'
+                        ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
+                        : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
+                        <DsButton
+                          key={p}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setNewMemoryPurpose(p)}
+                          className={cn(
+                            '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
+                            newMemoryPurpose === p
+                              ? 'bg-primary/15 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+                          )}
+                        >
+                          {purposeLabel(t, p)}
+                        </DsButton>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <DsButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
+                        {t('common:cancel')}
                       </DsButton>
-                    ))}
-                  </div>
-
-                  {/* 目的分类选择 */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
-                    {(newMemoryType === 'fact'
-                      ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
-                      : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
-                      <DsButton
-                        key={p}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setNewMemoryPurpose(p)}
-                        className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
-                          newMemoryPurpose === p
-                            ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
-                            : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                        )}
-                      >
-                        {purposeLabel(t, p)}
+                      <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
+                        {isMutating && <CircleNotch size={16} className="animate-spin" />}
+                        {t('common:create')}
                       </DsButton>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
-                      {t('common:cancel')}
-                    </DsButton>
-                    <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
-                      {isMutating && <CircleNotch size={16} className="animate-spin" />}
-                      {t('common:create')}
-                    </DsButton>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1852,7 +1856,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           )}
                           <FileText size={14} className="text-muted-foreground" />
                           <span className="text-sm font-medium truncate">{result.noteTitle}</span>
-                          <span className="text-2xs text-muted-foreground/60 ml-auto tabular-nums">
+                          <span className="text-2xs text-muted-foreground/60 ml-auto font-mono tabular-nums">
                             {(result.score * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -1937,31 +1941,29 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         )} />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <span className="text-sm font-medium truncate">{memory.title}</span>
                           {memory.memoryType === 'fact' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-amber-500/10 text-amber-600 text-2xs font-medium flex-shrink-0">
-                              <Sparkle size={10} />
+                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" aria-hidden="true" />
                               {t('memory.type_fact')}
                             </span>
                           )}
                           {memory.memoryType === 'note' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-2xs font-medium flex-shrink-0">
-                              <BookOpen size={10} />
+                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" aria-hidden="true" />
                               {t('memory.type_note')}
                             </span>
                           )}
                           {memory.memoryType === 'study' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-2xs font-medium flex-shrink-0">
-                              <FileText size={10} />
+                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
                               {t('memory.type_study')}
                             </span>
                           )}
                           {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (
-                            <span className={cn(
-                              'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
-                              PURPOSE_BADGE_STYLES[memory.memoryPurpose] || 'bg-muted text-muted-foreground'
-                            )}>
+                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
+                              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[memory.memoryPurpose] || 'bg-muted-foreground/50')} aria-hidden="true" />
                               {purposeLabel(t, memory.memoryPurpose)}
                             </span>
                           )}
@@ -1994,20 +1996,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           )}
                           {memory.needsDedupReview && (
                             <span
-                              className="px-1.5 py-0 rounded bg-warning/10 text-warning text-2xs font-medium flex-shrink-0"
+                              className="inline-flex items-center gap-1 text-warning text-2xs font-medium flex-shrink-0"
                               title={t('memory.needs_dedup_review_tooltip')}
                             >
+                              <span className="h-1.5 w-1.5 rounded-full bg-warning shrink-0" aria-hidden="true" />
                               {t('memory.needs_dedup_review')}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{new Date(memory.updatedAt).toLocaleDateString()}</span>
+                          <span className="font-mono tabular-nums">{new Date(memory.updatedAt).toLocaleDateString()}</span>
                           {memory.folderPath && (
-                            <span className="px-1.5 py-0 rounded bg-muted/50 text-2xs">{localizeMemoryFolderPath(memory.folderPath, t)}</span>
+                            <span className="text-2xs text-muted-foreground/75">{localizeMemoryFolderPath(memory.folderPath, t)}</span>
                           )}
                           {memory.hits > 0 && (
-                            <span className="text-2xs text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
+                            <span className="text-2xs font-mono tabular-nums text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
                           )}
                         </div>
                       </div>
@@ -2149,7 +2152,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
           <Folder size={14} className="text-amber-500 flex-shrink-0" />
           <span className="text-sm font-medium truncate">{localizeMemoryFolderTitle(node.folder.title, t)}</span>
           {hasChildren && (
-            <span className="text-2xs text-muted-foreground/50 ml-auto">
+            <span className="text-2xs font-mono tabular-nums text-muted-foreground/50 ml-auto">
               {node.items.length}
             </span>
           )}
@@ -2221,10 +2224,8 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     <FileText size={14} className="text-muted-foreground flex-shrink-0" />
                     <span className="text-sm truncate flex-1">{noteTitle}</span>
                     {meta?.memoryPurpose && meta.memoryPurpose !== 'memorized' && (
-                      <span className={cn(
-                        'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
-                        PURPOSE_BADGE_STYLES[meta.memoryPurpose] || 'bg-muted text-muted-foreground'
-                      )}>
+                      <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
+                        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[meta.memoryPurpose] || 'bg-muted-foreground/50')} aria-hidden="true" />
                         {purposeLabel(t, meta.memoryPurpose)}
                       </span>
                     )}
@@ -2327,7 +2328,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
   const isLongContent = content.length > 360 || content.split('\n').length > 6;
 
   return (
-    <div className={cn('rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 overflow-hidden shadow-sm', className)}>
+    <div className={cn('border-l-2 border-primary/40 bg-foreground/[0.02] rounded-r-md overflow-hidden', className)}>
       {isLoadingContent ? (
         <div className="flex items-center justify-center py-6">
           <CircleNotch size={16} className="animate-spin text-muted-foreground" />
@@ -2391,7 +2392,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
               )}
             </div>
           )}
-          <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/30 bg-muted/20">
+          <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/35">
             <div className="flex items-center gap-1.5">
               <DsButton
                 variant="ghost" size="sm"
@@ -2438,10 +2439,11 @@ function purposeLabel(t: (key: string) => string, purpose: string): string {
   return key ? t(key) : purpose;
 }
 
-const PURPOSE_BADGE_STYLES: Record<string, string> = {
-  internalized: 'bg-violet-500/10 text-violet-600',
-  supplementary: 'bg-teal-500/10 text-teal-600',
-  systemic: 'bg-slate-500/10 text-slate-500',
+const PURPOSE_DOT_COLORS: Record<string, string> = {
+  memorized: 'bg-primary',
+  internalized: 'bg-violet-500',
+  supplementary: 'bg-teal-500',
+  systemic: 'bg-slate-500',
 };
 
 const SOURCE_META: Record<string, { labelKey: string; icon: React.ReactNode; color: string }> = {
@@ -2470,19 +2472,19 @@ const OPERATION_I18N_KEYS: Record<string, string> = {
   semantic_merge: 'memory.operation.semantic_merge',
 };
 
-const EVENT_COLORS: Record<string, string> = {
-  ADD: 'bg-success/15 text-success',
-  UPDATE: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
-  APPEND: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  DELETE: 'bg-danger/15 text-danger',
-  NONE: 'bg-muted text-muted-foreground',
-  FILTERED: 'bg-warning/15 text-warning',
-  SKIPPED: 'bg-muted text-muted-foreground',
-  STALE_DEMOTE: 'bg-warning/15 text-warning',
-  STALE_RESTORE: 'bg-success/15 text-success',
-  ARCHIVE: 'bg-warning/15 text-warning',
-  ARCHIVE_RESTORE: 'bg-success/15 text-success',
-  SEMANTIC_MERGE: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+const EVENT_DOT_COLORS: Record<string, string> = {
+  ADD: 'bg-success',
+  UPDATE: 'bg-blue-500',
+  APPEND: 'bg-sky-500',
+  DELETE: 'bg-danger',
+  NONE: 'bg-muted-foreground/50',
+  FILTERED: 'bg-warning',
+  SKIPPED: 'bg-muted-foreground/50',
+  STALE_DEMOTE: 'bg-warning',
+  STALE_RESTORE: 'bg-success',
+  ARCHIVE: 'bg-warning',
+  ARCHIVE_RESTORE: 'bg-success',
+  SEMANTIC_MERGE: 'bg-blue-500',
 };
 
 const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) => {
@@ -2503,7 +2505,7 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         role="button"
         tabIndex={0}
         className={cn(
-          'flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors',
+          'flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors',
           // 触屏：审计日志行是展开命中区，保证 ≥44px 触控高度
           '[@media(pointer:coarse)]:min-h-11',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50'
@@ -2537,12 +2539,10 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         {/* 操作 */}
         <span className="text-2xs text-muted-foreground flex-shrink-0">{operationLabel}</span>
 
-        {/* 事件标签 */}
+        {/* 事件标签：6px 语义圆点 + 纯文本 */}
         {log.event && (
-          <span className={cn(
-            'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
-            EVENT_COLORS[log.event] ?? 'bg-muted text-muted-foreground'
-          )}>
+          <span className="inline-flex items-center gap-1 text-2xs font-mono text-muted-foreground flex-shrink-0">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', EVENT_DOT_COLORS[log.event] ?? 'bg-muted-foreground/50')} aria-hidden="true" />
             {log.event}
           </span>
         )}
@@ -2553,13 +2553,13 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         </span>
 
         {/* 时间 */}
-        <span className="text-2xs text-muted-foreground/60 flex-shrink-0 tabular-nums">
+        <span className="text-2xs text-muted-foreground/60 flex-shrink-0 font-mono tabular-nums">
           {timeStr}
         </span>
 
         {/* 耗时 */}
         {log.durationMs != null && (
-          <span className="text-2xs text-muted-foreground/40 flex-shrink-0 tabular-nums w-12 text-right">
+          <span className="text-2xs text-muted-foreground/40 flex-shrink-0 font-mono tabular-nums w-12 text-right">
             {log.durationMs}ms
           </span>
         )}
@@ -2569,11 +2569,11 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div key="detail" {...disclosureMotion} className="overflow-hidden">
-            <div className="px-4 pb-3 ml-7 space-y-1.5">
+            <div className="px-3 pb-3 ml-6 space-y-1.5">
               {log.noteId && (
                 <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.note_id')}: </span>
-                  <code className="text-2xs bg-muted/50 px-1 rounded">{log.noteId}</code>
+                  <code className="text-2xs font-mono bg-muted/50 px-1 rounded">{log.noteId}</code>
                 </div>
               )}
               {log.contentPreview && (
@@ -2592,7 +2592,7 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
                 <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.confidence')}: </span>
                   <span className={cn(
-                    'font-medium',
+                    'font-medium font-mono tabular-nums',
                     log.confidence >= 0.8 ? 'text-success' :
                     log.confidence >= 0.5 ? 'text-warning' : 'text-danger'
                   )}>
@@ -2609,7 +2609,7 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
               {log.sessionId && (
                 <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.session')}: </span>
-                  <code className="text-2xs bg-muted/50 px-1 rounded">{log.sessionId}</code>
+                  <code className="text-2xs font-mono bg-muted/50 px-1 rounded">{log.sessionId}</code>
                 </div>
               )}
             </div>

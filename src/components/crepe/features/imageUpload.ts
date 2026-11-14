@@ -8,7 +8,7 @@ import { appDataDir } from '@tauri-apps/api/path';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { extractFileName, extractFileExtension } from '../../../utils/fileManager';
-import { emitImageUploadDebug } from '../../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
+import { emitImageUploadDebug } from '@/shared/debug/channels/crepeImageUpload';
 import { showGlobalNotification } from '../../UnifiedNotification';
 import { convertHeicToJpeg, describeHeicConversionError, HeicConversionError, isHeicFile, sniffHeicMime } from '../../../utils/heicConversion';
 
@@ -160,11 +160,8 @@ export const createImageUploader = (
         // P1-15: 后端要求 subject 参数，使用默认值 "_global"
         const saved = await invoke<{ absolute_path: string; relative_path: string }>('notes_save_asset', {
           subject: '_global',
-          note_id: nid,
           noteId: nid,
-          base64_data: base64,
           base64Data: base64,
-          default_ext: ext,
           defaultExt: ext,
         });
 

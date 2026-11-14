@@ -2,13 +2,14 @@
  * FSRS 参数个性化：用本机复习日志跑优化器（fsrs_optimize_parameters），
  * 新参数更准才写入并按新参数重算记忆状态；可恢复 FSRS-6 默认参数。
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Brain } from '@phosphor-icons/react';
+import { Brain, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { requestFlashcardsDueRefresh } from '../events';
+import { DEFAULT_FSRS6_WEIGHTS } from './FsrsParamsPanel';
 import {
   parseOptimizeResult,
   parseSchedulerConfig,
@@ -39,7 +40,13 @@ export const FsrsOptimizerPanel: React.FC<FsrsOptimizerPanelProps> = ({
   const [busy, setBusy] = useState<'optimize' | 'reset' | null>(null);
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [weightsExpanded, setWeightsExpanded] = useState(false);
   const personalized = fsrsParams.length > 0;
+  const activeWeights = fsrsParams.length === 21 ? fsrsParams : DEFAULT_FSRS6_WEIGHTS;
+  const vectorPreview = useMemo(
+    () => `[${activeWeights.slice(0, 4).map((w) => w.toFixed(4)).join(', ')}, …, ${activeWeights[activeWeights.length - 1]!.toFixed(4)}]`,
+    [activeWeights],
+  );
 
   const refreshConfig = useCallback(async () => {
     const parsed = parseSchedulerConfig(await invoke<unknown>('fsrs_get_scheduler_config'));
@@ -103,6 +110,34 @@ export const FsrsOptimizerPanel: React.FC<FsrsOptimizerPanelProps> = ({
             : t('settings.optimizer.personalized')
           : t('settings.optimizer.usingDefaults')}
       </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <code className="truncate font-mono text-[11px] tabular-nums text-muted-foreground">
+          w = {vectorPreview}
+        </code>
+        <button
+          type="button"
+          aria-expanded={weightsExpanded}
+          onClick={() => setWeightsExpanded((prev) => !prev)}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span>
+            {weightsExpanded
+              ? t('settings.optimizer.collapseWeights', { defaultValue: '收起 21 维权重明细' })
+              : t('settings.optimizer.expandWeights', { defaultValue: '展开 21 维权重明细' })}
+          </span>
+          {weightsExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
+        </button>
+      </div>
+      {weightsExpanded ? (
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 font-mono text-[11px] tabular-nums sm:grid-cols-7">
+          {activeWeights.map((weight, index) => (
+            <div key={index} className="flex items-baseline justify-between gap-1">
+              <span className="text-muted-foreground">w[{index}]</span>
+              <span className="text-foreground/90">{weight.toFixed(4)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <DsButton
           type="button"

@@ -10,6 +10,7 @@
  * 版本冲突时不覆盖任何内容，显示冲突提示并自动载入最新结构。
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -154,6 +155,8 @@ export function QuestionStructureManager({
       if (seq === loadSeqRef.current && !options?.silent) setLoading(false);
     }
   }, [examId]);
+
+  useRefreshOnReturn(() => loadStructure(), open && !loading && !busyKey);
 
   useEffect(() => {
     if (!open) {
@@ -547,9 +550,9 @@ export function QuestionStructureManager({
                 <section
                   key={group.id}
                   aria-label={groupLabel}
-                  className="rounded-xl border border-border/50 bg-card/30"
+                  className="rounded-xl border border-border/40 bg-card/30"
                 >
-                  <div className="flex flex-wrap items-center gap-1.5 border-b border-border/40 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-1.5 border-b border-border/35 px-3.5 py-2.5">
                     <ListChecks size={14} className="flex-shrink-0 text-primary" aria-hidden="true" />
                     {editing ? (
                       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -971,16 +974,6 @@ export function QuestionStructureManager({
             </div>
           ) : (
             <>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                disabled={loading || Boolean(busyKey)}
-                onClick={() => void loadStructure()}
-                className="lg:!h-8 text-muted-foreground"
-              >
-                <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
-                {t('questionBank.structure.reload', { defaultValue: '重新载入' })}
-              </DsButton>
               <DsButton
                 variant="secondary"
                 size="sm"

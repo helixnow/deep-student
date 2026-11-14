@@ -1,0 +1,900 @@
+{
+  "domain": "backup",
+  "commands": [
+    "cloud_config_test_connection_draft"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.cloud_draft.password_gate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "short"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": " 1234567 "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "备份密码七个字"
+            },
+            "encryptionPasswordIsPreexisting": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": ""
+              }
+            },
+            "credentials": {
+              "encryptionPassword": "x"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "short"
+            },
+            "encryptionPasswordIsPreexisting": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "   "
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cloud_draft.webdav_config_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "   ",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "not a url",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "ftp://127.0.0.1/dav",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://user:pw@127.0.0.1:9/dav",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://example.invalid/dav",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://127.0.0.1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav\u0007",
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "  "
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "u\nv"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              },
+              "root": "../escape"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              },
+              "root": "a//b"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              },
+              "root": "a\\b"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              },
+              "root": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user",
+                "password": "leak"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              },
+              "unexpected": true
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "dropbox",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": "yes"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cloud_draft.missing_secret",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "   "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wrong-provider"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              }
+            },
+            "credentials": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cloud_draft.s3_ftp_config_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://example.invalid",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": " ",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "",
+                "region": "us-east-1",
+                "pathStyle": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "",
+                "pathStyle": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true,
+                "secretAccessKey": "leak"
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 0,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 65536,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp://127.0.0.1",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "user@127.0.0.1",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "a b",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "example.invalid",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cloud_draft.connection_refused_loopback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:9/dav",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://localhost:9/dav",
+                "username": "u"
+              },
+              "root": "/wave0/"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 9,
+                "username": "wave0-user",
+                "useTls": false
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 9,
+                "username": "u"
+              }
+            },
+            "credentials": {
+              "ftpPassword": "wave0-pass"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -10,11 +10,12 @@ import React, { useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { Stack, X, Image, Info } from '@phosphor-icons/react';
+import { Stack, Image, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SnappySlider } from '@/components/ui/SnappySlider';
+import { ComposerPanel } from '../../components/input-bar/ComposerPanel/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 
 // ============================================================================
@@ -124,32 +125,20 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
   }, [store]);
 
   return (
-    <div className="space-y-3">
+    <ComposerPanel.Root>
       {/* 📱 面板头部移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键）；副标题窄屏隐藏省宽 */}
-      <div className="flex items-center justify-between">
-        <div className="flex min-w-0 items-center gap-2">
-          <Stack size={16} className="text-foreground shrink-0" />
-          <span className="text-sm text-foreground shrink-0">{t('analysis:input_bar.rag.title')}</span>
-          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-            {t('chat_host:rag.panel.vfs_subtitle')}
-          </span>
-        </div>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onClose}
-          aria-label={t('common:actions.cancel')}
-          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <X size={16} />
-        </DsButton>
-      </div>
+      <ComposerPanel.Header
+        icon={Stack}
+        title={t('analysis:input_bar.rag.title')}
+        subtitle={t('chat_host:rag.panel.vfs_subtitle')}
+        onClose={onClose}
+        closeAriaLabel={t('common:actions.cancel')}
+      />
 
       {/* 配置区域（简化：只保留检索参数） */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Top-K 滑条 */}
-        <div className="rounded-md border border-border bg-card p-2">
+        <div className="rounded-md border border-border/35 bg-card p-2">
           <SnappySlider
             className={cn('pb-1', ragControlsDisabled && 'pointer-events-none opacity-60')}
             values={RAG_TOPK_SNAP_POINTS}
@@ -188,7 +177,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
         </div>
 
         {/* Rerank 开关 */}
-        <div className="rounded-md border border-border bg-card p-2">
+        <div className="rounded-md border border-border/35 bg-card p-2">
           {/* ★ 触控目标：label 点击即切换 Switch，触屏行高兜底 ≥44px */}
           <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <span className="text-ui text-foreground">
@@ -207,7 +196,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           </p>
         </div>
 
-        <div className="rounded-md border border-border bg-card p-2">
+        <div className="rounded-md border border-border/35 bg-card p-2">
           <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <div className="flex items-center gap-1.5">
               <Image size={13} className="text-muted-foreground" />
@@ -236,7 +225,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             )}
           >
             <div className="min-h-0 overflow-hidden">
-              <div className="mt-2 border-t border-border/50 pt-2">
+              <div className="mt-2 border-t border-border/35 pt-2">
                 <SnappySlider
                   className={cn('pb-1', ragControlsDisabled && 'pointer-events-none opacity-60')}
                   values={MULTIMODAL_TOPK_SNAP_POINTS}
@@ -261,7 +250,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
                   {t('chatV2:ragPanel.multimodalTopkHelper')}
                 </p>
                 {/* 多模态精排开关（默认跟随全局 Rerank） */}
-                <div className="mt-2 border-t border-border/50 pt-2">
+                <div className="mt-2 border-t border-border/35 pt-2">
                   <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
                     <span className="text-[12px] text-foreground">
                       {t('enhanced_rag:enable_reranking')}
@@ -293,7 +282,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             : t('chatV2:ragPanel.nextRunHint')}
         </span>
       </p>
-    </div>
+    </ComposerPanel.Root>
   );
 };
 

@@ -2,13 +2,14 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CheckCircle,
-  CircleNotch,
   Clock,
   ShieldWarning,
   Terminal,
   WarningCircle,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { TextShimmer } from '../ui/TextShimmer';
 import { ShellOutputView, extractShellExecuteOutput } from '../../plugins/blocks/components';
 
 type ShellToolKind = 'preflight' | 'execute';
@@ -165,13 +166,12 @@ export const ShellCommandTimelineView: React.FC<ShellCommandTimelineViewProps> =
     return <ShellOutputView output={input.toolOutput} className={className} />;
   }
 
-  const StatusIcon = descriptor.tone === 'running'
-    ? CircleNotch
-    : descriptor.tone === 'success'
-      ? CheckCircle
-      : descriptor.tone === 'error'
-        ? WarningCircle
-        : Clock;
+  const isRunning = descriptor.tone === 'running';
+  const StatusIcon = descriptor.tone === 'success'
+    ? CheckCircle
+    : descriptor.tone === 'error'
+      ? WarningCircle
+      : Clock;
 
   return (
     <div className={cn('overflow-hidden rounded-md border border-border/60 bg-muted/20', className)}>
@@ -191,14 +191,25 @@ export const ShellCommandTimelineView: React.FC<ShellCommandTimelineViewProps> =
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-3 py-2 text-[11px]">
         <span className={cn(
-          'inline-flex items-center gap-1 font-medium',
-          descriptor.tone === 'running' && 'text-primary',
+          'inline-flex items-center gap-1.5 font-medium',
+          isRunning && 'text-primary',
           descriptor.tone === 'success' && 'text-success',
           descriptor.tone === 'error' && 'text-destructive',
           descriptor.tone === 'muted' && 'text-muted-foreground',
         )}>
-          <StatusIcon size={12} className={cn(descriptor.tone === 'running' && 'animate-spin')} />
-          {shellCommandVerb(descriptor, t)}
+          {isRunning ? (
+            <>
+              <PulseDot className="h-1.5 w-1.5 text-primary" />
+              <TextShimmer duration={1.5} spread={3}>
+                {shellCommandVerb(descriptor, t)}
+              </TextShimmer>
+            </>
+          ) : (
+            <>
+              <StatusIcon size={12} />
+              <span>{shellCommandVerb(descriptor, t)}</span>
+            </>
+          )}
         </span>
         {descriptor.riskLevel && (
           <code className="font-mono text-muted-foreground">risk:{descriptor.riskLevel}</code>

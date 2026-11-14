@@ -1,0 +1,308 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_run_backup",
+    "data_governance_backup_tiered",
+    "data_governance_cancel_backup",
+    "data_governance_list_backup_jobs",
+    "data_governance_get_backup_list",
+    "data_governance_get_backup_job",
+    "data_governance_delete_backup"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.run_backup.incremental_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": "incremental"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": "incremental",
+            "baseVersion": "20260101_000000_x",
+            "includeAssets": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.run_backup.backup_type_case_and_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": "Incremental"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": "weird"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${3.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.run_backup.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "includeAssets": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "assetTypes": "images"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "assetTypes": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "baseVersion": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.backup_tiered.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "tiers": "core"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "tiers": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "maxAssetSize": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "maxAssetSize": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "maxAssetSize": "100"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "includeAssets": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "includeDatabases": "vfs"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "excludeDatabases": [
+              null
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_backup_tiered",
+          "args": {
+            "assetTypes": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cancel_backup.unknown_and_ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": ""
+          }
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": "../backup_jobs/x"
+          }
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": "x",
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_cancel_backup",
+          "args": {
+            "jobId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

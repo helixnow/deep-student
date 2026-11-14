@@ -1,0 +1,278 @@
+# 全平台打包（纯 Node.js / Electron / Capacitor，无任何 Rust、Cargo、Tauri 步骤）。
+#
+# 产物：
+#   - macOS（arm64）：release/*.dmg、release/*.zip（macos-15：私有的个人账户仓库不支持 macos-14 标签）
+#   - Windows（x64）：release/*.exe、release/*.zip
+#   - Linux（x64）：release/*.AppImage、release/*.deb
+#   - Android：mobile/dist/deep-student-debug.apk
+#   - iOS 模拟器：mobile/dist/deep-student-ios-simulator-app.zip
+name: Build all platforms
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-all-platforms-${{ github.ref }}
+  # 不取消进行中的构建：五个平台的产物都不可互相替代。
+  cancel-in-progress: false
+
+env:
+  # 所有 job 共用同一个构建号，打包脚本据此写入版本信息。
+  DEEP_STUDENT_BUILD_NUMBER: '20000'
+
+jobs:
+  build-macos:
+    name: macOS arm64
+    runs-on: macos-15
+    env:
+      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
+      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
+      ELECTRON_CUSTOM_DIR: '{{ version }}'
+      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx @electron/rebuild -f -w better-sqlite3
+      # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
+      # GitHub release CDN 偶发 504，下载失败重试三次。
+      - name: Install Electron binary
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then exit 0; fi
+            echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
+            sleep 15
+          done
+          exit 1
+      - name: Generate version metadata
+        run: node scripts/generate-version.mjs
+      - name: Build frontend
+        run: npm run build
+      - name: Package macOS app
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node electron/scripts/package.mjs --mac --arm64; then exit 0; fi
+            echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
+      # 静态校验（fuse wire / asar 完整性 / 签名 / 原生二进制解包）。行为探针需要 Developer ID 签名，
+      # CI 只有 ad-hoc 签名，DYLD_INSERT_LIBRARIES 用例在无签名身份的 runner 上不成立，故用 --static。
+      - name: Verify fuses and asar integrity
+        run: node electron/scripts/verify-fuses.mjs --mac --static
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-student-macos-arm64
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.app.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    name: Windows x64
+    runs-on: windows-latest
+    env:
+      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
+      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
+      ELECTRON_CUSTOM_DIR: '{{ version }}'
+      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx @electron/rebuild -f -w better-sqlite3
+      # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
+      # GitHub release CDN 偶发 504，下载失败重试三次。
+      - name: Install Electron binary
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then exit 0; fi
+            echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
+            sleep 15
+          done
+          exit 1
+      - name: Generate version metadata
+        run: node scripts/generate-version.mjs
+      - name: Build frontend
+        run: npm run build
+      - name: Package Windows app
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node electron/scripts/package.mjs --win; then exit 0; fi
+            echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
+      - name: Verify fuses and asar integrity
+        run: node electron/scripts/verify-fuses.mjs --win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-student-windows-x64
+          path: |
+            release/*.exe
+            release/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    env:
+      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
+      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
+      ELECTRON_CUSTOM_DIR: '{{ version }}'
+      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfuse2 rpm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx @electron/rebuild -f -w better-sqlite3
+      # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
+      # GitHub release CDN 偶发 504，下载失败重试三次。
+      - name: Install Electron binary
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then exit 0; fi
+            echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
+            sleep 15
+          done
+          exit 1
+      - name: Generate version metadata
+        run: node scripts/generate-version.mjs
+      - name: Build frontend
+        run: npm run build
+      - name: Package Linux app
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node electron/scripts/package.mjs --linux; then exit 0; fi
+            echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
+      - name: Verify fuses and asar integrity
+        run: node electron/scripts/verify-fuses.mjs --linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-student-linux-x64
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  build-android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          # 默认值含已从 SDK 移除的 `tools` 包，会让 action 直接失败。
+          packages: 'platform-tools'
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Install mobile dependencies
+        run: npm --prefix mobile ci --legacy-peer-deps
+      # Gradle wrapper 的发行包从 GitHub release 下载，偶发 504，失败重试三次。
+      # Gradle wrapper 的官方地址会 302 到 GitHub release（这些 runner 上 504），改用腾讯镜像预置本地缓存。
+      - name: Cache Gradle distribution
+        run: |
+          dest="$HOME/.gradle/wrapper/dists/gradle-8.14.3-bin/seed"
+          mkdir -p "$dest"
+          if ! curl -fsSL --retry 2 --retry-delay 5 -o "$dest/gradle-8.14.3-bin.zip" https://services.gradle.org/distributions/gradle-8.14.3-bin.zip; then
+            curl -fsSL --retry 3 --retry-delay 5 -o "$dest/gradle-8.14.3-bin.zip" https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-bin.zip
+          fi
+      - name: Build debug APK
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if node mobile/scripts/build-apk.mjs; then exit 0; fi
+            echo "apk build failed (attempt ${attempt}/3), retrying in 30s"
+            sleep 30
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-student-android-apk
+          path: mobile/dist/deep-student-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build-ios:
+    name: iOS simulator app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Install mobile dependencies
+        run: npm --prefix mobile ci --legacy-peer-deps
+      - name: Build mobile frontend
+        run: npm --prefix mobile run build
+      # Capacitor 从当前目录读 capacitor.config.json：必须进 mobile/ 执行，`npx --prefix` 只影响包解析不影响 cwd。
+      # SPM 的 Capacitor 框架要从 GitHub release 下载 xcframework（这些 runner 上 504），改用 CocoaPods（依赖来自 node_modules）。
+      - name: Add or sync iOS platform
+        working-directory: mobile
+        run: npx cap add ios --packagemanager CocoaPods || npx cap sync ios
+      - name: Sync iOS platform
+        working-directory: mobile
+        run: npx cap sync ios
+      - name: Build simulator app
+        run: xcodebuild -workspace mobile/ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath mobile/ios/build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Zip simulator app
+        run: |
+          mkdir -p mobile/dist
+          ditto -c -k --sequesterRsrc --keepParent mobile/ios/build/Build/Products/Debug-iphonesimulator/App.app mobile/dist/deep-student-ios-simulator-app.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-student-ios-simulator-app
+          path: mobile/dist/deep-student-ios-simulator-app.zip
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,22 @@
+{
+  "scene": "reading-translation",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:anki_generation_event",
+        "import_builtin_templates()",
+        "get_all_custom_templates()",
+        "get_default_template_id()",
+        "listen:tauri://close-requested",
+        "dstu_get(path)",
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "vfs_get_file_blob_path(id)",
+        "vfs_get_attachment_content(attachmentId)",
+        "listen:pdf-annotations:changed"
+      ]
+    }
+  ]
+}

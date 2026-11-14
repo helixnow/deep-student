@@ -1,0 +1,239 @@
+{
+  "channels": {
+    "channelsAtMount": [
+      "chat_v2_event_sess_coordinator_0001",
+      "workspace_agent_joined",
+      "workspace_agent_status_changed",
+      "workspace_closed",
+      "workspace_message_received",
+      "workspace_worker_ready"
+    ],
+    "channelsAfterCreate": [
+      "chat_v2_event_sess_coordinator_0001",
+      "chat_v2_event_sess_new_0004",
+      "workspace_agent_joined",
+      "workspace_agent_status_changed",
+      "workspace_closed",
+      "workspace_message_received",
+      "workspace_worker_ready"
+    ],
+    "channelsAfterDestroy": [
+      "workspace_agent_joined",
+      "workspace_agent_status_changed",
+      "workspace_closed",
+      "workspace_message_received",
+      "workspace_worker_ready"
+    ],
+    "channelsAfterDeactivate": []
+  },
+  "report": {
+    "title": "多 Agent 调试报告",
+    "generatedAt": 609,
+    "workspace": {
+      "id": "ws_0123456789abcdef",
+      "name": "AI教育研究",
+      "status": "active"
+    },
+    "agents": [
+      {
+        "sessionId": "sess_coordinator_0001",
+        "role": "coordinator",
+        "status": "running"
+      },
+      {
+        "sessionId": "sess_worker_research_02",
+        "role": "worker",
+        "status": "idle",
+        "skillId": "research"
+      },
+      {
+        "sessionId": "sess_worker_writer_0003",
+        "role": "worker",
+        "status": "failed",
+        "skillId": "writer"
+      }
+    ],
+    "messagesCount": 12,
+    "logsCount": 15,
+    "logs": [
+      {
+        "timestamp": 0,
+        "type": "system",
+        "action": "LOGGED_BEFORE_MOUNT",
+        "severity": "info",
+        "data": {
+          "note": "shown on first render"
+        }
+      },
+      {
+        "timestamp": 29,
+        "type": "message",
+        "action": "MESSAGE_RECEIVED",
+        "severity": "info",
+        "data": {
+          "workspaceId": "ws_0123456789abcdef",
+          "messageId": "msg_12"
+        }
+      },
+      {
+        "timestamp": 58,
+        "type": "agent",
+        "action": "AGENT_JOINED",
+        "severity": "success",
+        "data": {
+          "sessionId": "sess_worker_writer_0003",
+          "role": "worker"
+        }
+      },
+      {
+        "timestamp": 87,
+        "type": "agent",
+        "action": "AGENT_STATUS_CHANGED",
+        "severity": "info",
+        "data": {
+          "sessionId": "sess_worker_research_02",
+          "status": "running"
+        }
+      },
+      {
+        "timestamp": 116,
+        "type": "agent",
+        "action": "WORKER_READY",
+        "severity": "success",
+        "data": {
+          "sessionId": "sess_worker_research_02"
+        }
+      },
+      {
+        "timestamp": 145,
+        "type": "workspace",
+        "action": "TOOL_CALL_START",
+        "severity": "info",
+        "data": {
+          "toolName": "workspace_create",
+          "blockId": "blk-1",
+          "messageId": "m-1",
+          "toolInput": {
+            "name": "AI教育研究"
+          },
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 232,
+        "type": "workspace",
+        "action": "TOOL_CALL_END",
+        "severity": "success",
+        "data": {
+          "toolName": "workspace_create",
+          "blockId": "blk-1",
+          "result": {
+            "workspaceId": "ws_0123456789abcdef"
+          },
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 290,
+        "type": "workspace",
+        "action": "TOOL_CALL_START",
+        "severity": "info",
+        "data": {
+          "toolName": "subagent_call",
+          "blockId": "blk-4",
+          "messageId": "m-2",
+          "toolInput": {
+            "skill": "research"
+          },
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 319,
+        "type": "error",
+        "action": "TOOL_CALL_ERROR",
+        "severity": "error",
+        "data": {
+          "toolName": "subagent_call",
+          "blockId": "blk-4",
+          "error": "worker crashed",
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 348,
+        "type": "workspace",
+        "action": "TOOL_CALL_END",
+        "severity": "success",
+        "data": {
+          "toolName": "workspace_send_message",
+          "blockId": "blk-9",
+          "result": {
+            "ok": true
+          },
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 377,
+        "type": "workspace",
+        "action": "TOOL_CALL_END",
+        "severity": "success",
+        "data": {
+          "toolName": "workspace_list_agents",
+          "blockId": "",
+          "result": [],
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 435,
+        "type": "workspace",
+        "action": "TOOL_CALL_START",
+        "severity": "info",
+        "data": {
+          "toolName": "workspace_query",
+          "blockId": "blk-5",
+          "messageId": "m-3",
+          "toolInput": {},
+          "sessionId": "sess_new_0004"
+        }
+      },
+      {
+        "timestamp": 464,
+        "type": "workspace",
+        "action": "TOOL_CALL_START",
+        "severity": "info",
+        "data": {
+          "toolName": "workspace_close",
+          "blockId": "blk-6",
+          "toolInput": {},
+          "sessionId": "sess_coordinator_0001"
+        }
+      },
+      {
+        "timestamp": 551,
+        "type": "workspace",
+        "action": "TOOL_CALL_END",
+        "severity": "success",
+        "data": {
+          "toolName": "workspace_query",
+          "blockId": "blk-5",
+          "result": {
+            "agents": 3
+          },
+          "sessionId": "sess_new_0004"
+        }
+      },
+      {
+        "timestamp": 609,
+        "type": "workspace",
+        "action": "WORKSPACE_CLOSED",
+        "severity": "warning",
+        "data": {
+          "workspaceId": "ws_0123456789abcdef"
+        }
+      }
+    ]
+  }
+}

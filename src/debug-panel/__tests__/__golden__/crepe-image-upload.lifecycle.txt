@@ -1,0 +1,7 @@
+mounted (not activated) after an earlier report: rows -, console 1
+not activated: rows 未激活, console 2
+master switch off: rows 未激活, console 2
+hidden: rows (not rendered), console 3
+shown again: rows 未激活, 隐藏时, console 3
+unmounted: rows (not rendered), console 4
+mounted again: rows -, console 4

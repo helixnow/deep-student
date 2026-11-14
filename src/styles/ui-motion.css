@@ -470,6 +470,25 @@
   }
 }
 
+/*
+ * 全局 reduce 兜底（src/shared/styles/deep-student.css）给 `*` 强制
+ * transition-duration: 0.01ms !important，以保留 transitionend 语义。但
+ * transition-property 初始值是 all：没声明过渡的元素也会被变成
+ * `all 0.01ms`，任何样式变化都要为每个变动属性新建过渡，样式重算成倍变贵。
+ * 这里把未声明过渡的元素默认回 none，与 no-preference 下的过渡集合一致。
+ * 放在级联层里是为了优先级低于一切未分层样式（含 0 特异性的 :where() 与
+ * 内联 style）：作者声明过的过渡属性照旧生效，按 0.01ms 跑完并派发事件。
+ */
+@layer ds-reduced-motion-defaults {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-property: none;
+    }
+  }
+}
+
 /* ============ Mobile primitives（2026-07 mobile 基建，追加区） ============ */
 
 /*

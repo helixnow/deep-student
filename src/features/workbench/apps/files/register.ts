@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { AppDefinition } from '../../core/types';
 import { startResourceSync } from './resourceSync';
 import { handleFilesActivation } from './filesActivation';
@@ -30,5 +30,5 @@ export const FILES_APP_DEFINITION: AppDefinition = {
   handlesCloseShortcut: true,
 }
 
-appRegistry.register(FILES_APP_DEFINITION);
+contributeWorkbenchApp(FILES_APP_DEFINITION);
 startResourceSync();

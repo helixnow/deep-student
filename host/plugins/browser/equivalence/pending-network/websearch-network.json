@@ -1,0 +1,37 @@
+{
+  "domain": "browser",
+  "commands": ["save_setting","test_all_search_engines","test_web_search_connectivity","test_search_engine"],
+  "scenarios": [
+    {
+      "id": "websearch.pending_network.test_all_search_engines.default",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"test_all_search_engines","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.pending_network.test_all_search_engines.searxng_local_404",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"web_search.searxng.endpoint","value":"${mcp.url}/wave0-searxng-404"}},
+        {"cmd":"save_setting","args":{"key":"web_search.api_key.tavily","value":"wave0-fake-tavily"}},
+        {"cmd":"test_all_search_engines","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.pending_network.connectivity_default_bing",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"test_web_search_connectivity","args":{"engine":null}},
+        {"cmd":"test_search_engine","args":{"engine":"bing_rss"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

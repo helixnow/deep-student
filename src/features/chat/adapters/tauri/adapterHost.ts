@@ -214,6 +214,7 @@ export interface TauriAdapterHost {
   }): string | undefined;
   resolveModelSupportsRuntimeThinking(modelId: string | undefined): boolean | undefined;
   applyRuntimeThinkingCapability(options: SendOptions): void;
+  applyRuntimeContextBudget(options: SendOptions): void;
   shouldResolveContextAsMultimodal(options: {
     modelId?: string;
     model2OverrideId?: string;

@@ -6,10 +6,11 @@
  * legacy 壳（无 workbenchActive）行为不变。
  */
 import React from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CommandPaletteProvider, useCommandPalette } from '@/command-palette';
 import { closeAppsPanel, isAppsPanelOpen } from '@/features/workbench/components/appsPanelStore';
+import { installWorkbenchHost, uninstallWorkbenchHost } from '@/app/workbench/host-runtime';
 
 const Probe: React.FC = () => {
   const { isOpen, open, toggle } = useCommandPalette();
@@ -39,7 +40,12 @@ function renderProvider(workbenchActive: boolean) {
 
 describe('CommandPaletteProvider workbench 改道', () => {
   beforeEach(() => {
+    installWorkbenchHost();
     closeAppsPanel();
+  });
+
+  afterEach(() => {
+    uninstallWorkbenchHost();
   });
 
   it('workbenchActive：open/toggle 改道全部应用面板，独立面板不打开', () => {

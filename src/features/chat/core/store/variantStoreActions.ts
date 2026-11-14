@@ -5,12 +5,14 @@ import type { ChatStoreState, SetState, GetState } from './types';
 import {
   type BackendVariantEvent,
   canSwitchToVariant,
+  cleanupVariantTerminalBlocks,
   determineActiveVariantId,
   debouncedSwitchVariantBackend,
 } from './variantActions';
+import type { Block } from '../types/block';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { modeRegistry } from '../../registry';
 import {
   updateSingleMessage,
@@ -294,17 +296,14 @@ export function createVariantStoreActions(
                 const variant = message.variants?.find((v) => v.id === variantId);
                 if (variant && (variant.status === 'streaming' || variant.status === 'pending')) {
                   variant.status = 'cancelled' as VariantStatus;
-                  // 将该变体内 running 状态的块标记为 error，并从 activeBlockIds 移除
-                  // （与 handleVariantEnd 的块清理逻辑对齐）
-                  for (const blockId of variant.blockIds) {
-                    const block = draft.blocks.get(blockId);
-                    if (block && block.status === 'running') {
-                      block.status = 'error';
-                      block.error = 'cancelled';
-                      block.endedAt = Date.now();
-                      draft.activeBlockIds = removeFromSet(draft.activeBlockIds, blockId);
-                    }
-                  }
+                  // 清理该变体内 running / isPreparing 块，并从 activeBlockIds 移除
+                  cleanupVariantTerminalBlocks(
+                    draft.blocks as Map<string, Block>,
+                    draft.activeBlockIds,
+                    variant.blockIds,
+                    'cancelled',
+                    'cancelled',
+                  );
                   // 从 streamingVariantIds 移除
                   draft.streamingVariantIds = removeFromSet(draft.streamingVariantIds, variantId);
                   // 如果所有变体都结束了，恢复 sessionStatus 到 idle
@@ -659,33 +658,33 @@ export function createVariantStoreActions(
                 }
               }
 
-              // 🔧 P0修复：更新变体内部所有块的状态
-              // 当变体结束时，需要将其内部所有 running 状态的块标记为 success/error
-              // 解决 thinking 块状态未更新导致 UI 仍显示"思考中..."的问题
-              if (status === 'success' || status === 'error') {
-                const blockStatus = status === 'success' ? 'success' : 'error';
-                const now = Date.now();
-                let updatedBlockCount = 0;
-
-                for (const blockId of variantBlockIds) {
-                  const block = draft.blocks.get(blockId);
-                  if (block && block.status === 'running') {
-                    block.status = blockStatus;
-                    block.endedAt = now;
-                    updatedBlockCount++;
-                    // 同时从 activeBlockIds 移除
-                    draft.activeBlockIds = removeFromSet(draft.activeBlockIds, blockId);
-                  }
+              // 🔧 P0修复：更新变体内部所有块的状态（含 running 与 isPreparing）
+              // 当变体结束时（success / error / cancelled / interrupted），清理残留运行中或正在准备的块
+              const { updatedCount: updatedBlockCount, removedPreparingIds } =
+                cleanupVariantTerminalBlocks(
+                  draft.blocks as Map<string, Block>,
+                  draft.activeBlockIds,
+                  variantBlockIds,
+                  status as VariantStatus,
+                  error,
+                );
+              if (removedPreparingIds.length > 0) {
+                const removedSet = new Set(removedPreparingIds);
+                if (variantIndex !== -1) {
+                  msg.variants![variantIndex].blockIds = msg.variants![variantIndex].blockIds.filter(
+                    (id) => !removedSet.has(id),
+                  );
                 }
+                msg.blockIds = msg.blockIds.filter((id) => !removedSet.has(id));
+              }
 
-                if (updatedBlockCount > 0) {
-                  logMultiVariant('store', 'handleVariantEnd_blocks_updated', {
-                    variantId,
-                    updatedBlockCount,
-                    variantBlockIds,
-                    blockStatus,
-                  }, 'info');
-                }
+              if (updatedBlockCount > 0) {
+                logMultiVariant('store', 'handleVariantEnd_blocks_updated', {
+                  variantId,
+                  updatedBlockCount,
+                  variantBlockIds,
+                  status,
+                }, 'info');
               }
 
               // 如果当前激活的是此变体且变成了 error，需要切换到其他可用变体

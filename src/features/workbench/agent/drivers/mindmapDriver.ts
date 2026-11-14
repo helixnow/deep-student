@@ -16,6 +16,11 @@
  */
 import i18n from '@/i18n';
 import {
+  getMindMapVersions,
+  restoreMindMapVersion,
+  type VfsMindMap,
+} from '@/features/mindmap';
+import {
   getMindMapStoreForResource,
   getMindMapStoreForWindow,
   MAX_MINDMAP_DEPTH,
@@ -24,6 +29,7 @@ import {
 } from '@/features/mindmap/store/mindmapStore';
 import type {
   BlankRange,
+  MindMapDocument,
   MindMapNode,
   MindMapNodeRef,
   NodeStyle,
@@ -33,7 +39,7 @@ import {
   findNodeById,
   findParentNode,
   isDescendantOf,
-} from '@/features/mindmap/utils/node/find';
+} from '@/shared/mindmap/find';
 import { readCssTimeMs } from '@/shared/utils/cssTime';
 import type {
   AcrProbeState,
@@ -49,6 +55,15 @@ import {
   stashMindmapSuggestion,
   getMindmapSuggestion,
   clearMindmapSuggestion,
+  removeMindmapSuggestionBranch,
+  setAcceptedMindmapCheckpoint,
+  getAcceptedMindmapCheckpoint,
+  clearAcceptedMindmapCheckpoint,
+  registerMindmapSuggestionActions,
+  updateMindmapSuggestionRevision,
+  type AcceptedMindmapCheckpoint,
+  type MindmapAgentSuggestion,
+  type MindmapSuggestionReason,
 } from './mindmapSuggestionStore';
 
 const TYPE_ID = 'mindmap';
@@ -79,6 +94,21 @@ function agentExitingMs(): number {
  * R3-02：200 节点生长压测取上限 5，降低 ensureNodeVisible/setCenter 频率。
  */
 export const VIEWPORT_FOLLOW_EVERY = 5;
+
+/** 干净窗口触发幽灵分支结构审阅的节点阈值（同时含新增与删除/移动） */
+export const GHOST_CLEAN_STRUCTURAL_NODE_THRESHOLD = 6;
+
+export type MindmapGhostReviewPreference = 'auto' | 'always';
+
+let ghostReviewPreference: MindmapGhostReviewPreference = 'auto';
+
+export function getMindmapGhostReviewPreference(): MindmapGhostReviewPreference {
+  return ghostReviewPreference;
+}
+
+export function setMindmapGhostReviewPreference(pref: MindmapGhostReviewPreference): void {
+  ghostReviewPreference = pref;
+}
 
 /**
  * P2 人机双写：破坏性 ops 暂存为建议，画布确认条（MindmapAgentSuggestionBar）
@@ -661,6 +691,34 @@ function requiresUserEditBarrier(op: AgentOp): boolean {
   return isDestructiveOp(op) || op.kind === 'update_node';
 }
 
+function countNestedRawNodes(childrenRaw: unknown, seen: WeakSet<object>): number {
+  if (!Array.isArray(childrenRaw)) return 0;
+  let total = 0;
+  for (const item of childrenRaw) {
+    const rec = asRecord(item);
+    if (!rec || seen.has(rec)) continue;
+    seen.add(rec);
+    total += 1 + countNestedRawNodes(rec.children, seen);
+  }
+  return total;
+}
+
+export function countProposedBatchNodes(ops: AgentOp[]): number {
+  let count = 0;
+  const seen = new WeakSet<object>();
+  for (const op of ops) {
+    if (op.kind === 'add_node') {
+      const payload = asRecord(op.payload);
+      const data = asRecord(payload?.data);
+      if (data) seen.add(data);
+      count += 1 + countNestedRawNodes(data?.children, seen);
+    } else {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function mergeNodeStylePatch(
   current: NodeStyle | undefined,
   patch: unknown,
@@ -885,7 +943,22 @@ function applyOneOp(
       const refs = cloneNodeRefs(data.refs);
       if (refs) nodeData.refs = refs;
 
-      const newId = storeApi.getState().agentAddSubtree(parentId, nodeData, index);
+      const explicitId =
+        typeof data.id === 'string' && data.id.trim().length > 0 ? data.id.trim() : null;
+      let newId = '';
+      if (explicitId && !findNodeById(storeApi.getState().document.root, explicitId)) {
+        const prevFocused = storeApi.getState().focusedNodeId;
+        const explicitNode: MindMapNode = { ...nodeData, id: explicitId };
+        storeApi.getState().agentInsertSubtree(parentId, explicitNode, index);
+        if (findNodeById(storeApi.getState().document.root, explicitId)) {
+          if (storeApi.getState().focusedNodeId !== prevFocused) {
+            storeApi.getState().setFocusedNodeId(prevFocused);
+          }
+          newId = explicitId;
+        }
+      } else {
+        newId = storeApi.getState().agentAddSubtree(parentId, nodeData, index);
+      }
       if (!newId) {
         return {
           entityId: null,
@@ -1234,24 +1307,44 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     const op = ops[i];
     const step = i + 1;
 
-    // 逐 op 决策屏障：允许建议前的非破坏操作完成，但不得越过首个需要确认的操作。
-    // expectedDocumentVersion 用于区分本 run 自己制造的 dirty 与执行期间插入的用户编辑。
+    // 逐 op 决策屏障：
+    // 1) 显式幽灵审阅（propose=true 或全局偏好 always）
+    // 2) 干净窗口大规模结构重组（首步 i===0、节点数 >= 6 且同时含新增与删除/移动）
+    // 3) 用户未保存编辑 / 并发编辑 / 正在编辑目标节点屏障
     const currentState = storeApi.getState();
     const hasConcurrentUserEdit = currentState._documentVersion !== expectedDocumentVersion;
-    if (
+    const explicitProposal =
+      (run as { propose?: boolean }).propose === true ||
+      getMindmapGhostReviewPreference() === 'always' ||
+      asRecord(op.payload)?.propose === true;
+    const cleanStructuralProposal =
+      i === 0 &&
+      !startedDirty &&
+      !hasConcurrentUserEdit &&
+      !isHotForOps(storeApi, ops) &&
+      countProposedBatchNodes(ops) >= GHOST_CLEAN_STRUCTURAL_NODE_THRESHOLD &&
+      ops.some((o) => o.kind === 'delete_node' || o.kind === 'move_node') &&
+      ops.some((o) => o.kind === 'add_node');
+    const dirtyOrHotBarrier =
       requiresUserEditBarrier(op) &&
-      (startedDirty || hasConcurrentUserEdit || isHotForOps(storeApi, [op]))
-    ) {
+      (startedDirty || hasConcurrentUserEdit || isHotForOps(storeApi, [op]));
+
+    if (explicitProposal || cleanStructuralProposal || dirtyOrHotBarrier) {
+      const reason: MindmapSuggestionReason = explicitProposal
+        ? 'explicit_proposal'
+        : cleanStructuralProposal
+          ? 'clean_structural'
+          : 'dirty_or_hot';
       stoppedAtSuggestion = true;
       receipt.mode = 'suggestion';
       receipt.suggestionPending = true;
-      // P2 人机双写 MVP：剩余 ops 暂存（含命中 op），画布确认条裁决后
-      // acceptMindmapSuggestion 应用 / 拒绝丢弃（此前为纯拒绝式，无确认 UI）。
       stashMindmapSuggestion({
         runId: run.runId,
         mindmapId: resourceId,
         windowId: run.windowId,
         ops: ops.slice(i),
+        reason,
+        documentVersion: currentState._documentVersion,
       });
       for (let j = i; j < ops.length; j++) {
         receipt.undone.push(ops[j].label);
@@ -1472,39 +1565,29 @@ export interface MindmapSuggestionApplyResult {
   failed: string[];
   /** save 是否成功（失败时内容在内存/草稿，不丢） */
   saved: boolean;
+  documentVersion?: number;
 }
 
-/**
- * 接受暂存建议：逐 op 应用（复用 applyOneOp，含锚点解析/校验/逆操作构造）
- * + 批量 flash 标记 + save。
- *
- * 合成 run 上下文的取舍（MVP）：
- * - pacing instant（用户已确认，不再逐 op  pacing 演出；收尾统一 flash）；
- * - ledger noop——接受的暂存不进 runLedger（原 run 已 seal），
- *   恢复路径 = 导图版本历史（save 落版本）；
- * - reportProgress noop（确认条有自己的应用中态，无需工具卡进度）。
- */
-export async function acceptMindmapSuggestion(
-  suggestionId: string,
+function resolveSuggestionStore(
   mindmapId: string,
-): Promise<MindmapSuggestionApplyResult | null> {
-  const suggestion = getMindmapSuggestion(mindmapId);
-  if (!suggestion || suggestion.id !== suggestionId) return null;
+  windowId: string | null,
+): MindMapStoreApi | null {
+  return (
+    (windowId ? getMindMapStoreForWindow(windowId, mindmapId) : null) ??
+    getMindMapStoreForResource(mindmapId)
+  );
+}
 
-  const storeApi = suggestion.windowId
-    ? getMindMapStoreForWindow(suggestion.windowId, mindmapId)
-    : getMindMapStoreForResource(mindmapId);
-  if (!storeApi || storeApi.getState().mindmapId !== mindmapId) {
-    // store 已卸载/切换：暂存失效，清掉避免幽灵确认条
-    clearMindmapSuggestion(mindmapId);
-    return null;
-  }
-
-  const syntheticRun: AcrRunContext = {
-    runId: `${suggestion.runId}:accept`,
+function createSyntheticAcceptRun(
+  runId: string,
+  mindmapId: string,
+  windowId: string | null,
+): AcrRunContext {
+  return {
+    runId: `${runId}:accept`,
     sessionId: '',
     target: { typeId: TYPE_ID, resourceId: mindmapId },
-    windowId: suggestion.windowId,
+    windowId,
     pacing: {
       profile: {
         name: 'fast',
@@ -1526,16 +1609,65 @@ export async function acceptMindmapSuggestion(
       sealRun: () => {},
     },
   };
+}
 
+async function capturePreAcceptCheckpoint(
+  storeApi: MindMapStoreApi,
+  suggestion: MindmapAgentSuggestion,
+): Promise<AcceptedMindmapCheckpoint> {
+  const existing = getAcceptedMindmapCheckpoint(suggestion.mindmapId);
+  if (existing && existing.suggestionId === suggestion.id) {
+    return existing;
+  }
+
+  const preAcceptDocument = JSON.parse(
+    JSON.stringify(storeApi.getState().document),
+  ) as MindMapDocument;
+  let preAcceptVersionId: string | null = null;
+
+  try {
+    if (storeApi.getState().isDirty) {
+      await storeApi.getState().save();
+    }
+    const versions = await getMindMapVersions(suggestion.mindmapId);
+    if (Array.isArray(versions) && versions.length > 0) {
+      preAcceptVersionId = versions[0]?.versionId ?? null;
+    }
+  } catch {
+    // 非 Tauri 环境或单测未 mock 版本接口时不阻塞采纳
+  }
+
+  return {
+    checkpointId: `mmcp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    suggestionId: suggestion.id,
+    mindmapId: suggestion.mindmapId,
+    windowId: suggestion.windowId,
+    preAcceptVersionId,
+    preAcceptDocument,
+    postAcceptDocVersion: storeApi.getState()._documentVersion,
+    appliedCount: 0,
+    acceptedAt: Date.now(),
+  };
+}
+
+async function applySuggestionOpsBatch(
+  storeApi: MindMapStoreApi,
+  mindmapId: string,
+  runId: string,
+  windowId: string | null,
+  opsToApply: AgentOp[],
+): Promise<MindmapSuggestionApplyResult> {
+  const syntheticRun = createSyntheticAcceptRun(runId, mindmapId, windowId);
   const enteredIds: string[] = [];
   const updatedIds: string[] = [];
   const failed: string[] = [];
   let applied = 0;
 
-  for (const op of suggestion.ops) {
-    // 应用期间目标导图被切换 → 停止，剩余计入失败列表
+  const before = storeApi.getState();
+
+  for (const op of opsToApply) {
     if (storeApi.getState().mindmapId !== mindmapId) {
-      for (const rest of suggestion.ops.slice(applied + failed.length)) {
+      for (const rest of opsToApply.slice(applied + failed.length)) {
         failed.push(rest.label);
       }
       break;
@@ -1553,22 +1685,222 @@ export async function acceptMindmapSuggestion(
     }
     applied += 1;
     if (result.entityId) {
-      if (op.kind === 'update_node') updatedIds.push(result.entityId);
-      else if (op.kind !== 'delete_node') enteredIds.push(result.entityId);
+      if (op.kind === 'update_node') {
+        updatedIds.push(result.entityId);
+      } else if (op.kind === 'add_node') {
+        const subtreeIds = collectSubtreeIds(storeApi.getState().document.root, result.entityId);
+        enteredIds.push(...(subtreeIds.length > 0 ? subtreeIds : [result.entityId]));
+      } else if (op.kind !== 'delete_node') {
+        enteredIds.push(result.entityId);
+      }
     }
   }
 
-  // 直落终态 + flash（instant 语义，与 applyMindmap 收尾一致）
   if (enteredIds.length > 0) markEntering(storeApi, enteredIds);
   if (updatedIds.length > 0) markUpdated(storeApi, updatedIds);
 
+  if (applied > 0) {
+    storeApi.setState((state) => ({
+      history: {
+        past: [...state.history.past, {
+          document: before.document,
+          ui: { focusedNodeId: before.focusedNodeId, selection: before.selection, viewRootId: before.viewRootId },
+        }].slice(-50),
+        future: [],
+      },
+    }));
+  }
+
+  const documentVersion = storeApi.getState()._documentVersion;
   let saved = true;
   if (applied > 0 && storeApi.getState().mindmapId === mindmapId) {
     saved = await storeApi.getState().save();
   }
 
-  clearMindmapSuggestion(mindmapId);
-  return { applied, failed, saved };
+  return { applied, failed, saved, documentVersion };
+}
+
+/**
+ * 直接为指定导图生成幽灵分支提案（供 Chat / Agent 工具显式调用，干净或脏窗口均可）。
+ */
+export function proposeMindmapOps(params: {
+  mindmapId: string;
+  windowId?: string | null;
+  runId?: string;
+  ops: AgentOp[];
+}): MindmapAgentSuggestion {
+  return stashMindmapSuggestion({
+    runId: params.runId ?? `propose_${Date.now()}`,
+    mindmapId: params.mindmapId,
+    windowId: params.windowId ?? null,
+    ops: params.ops,
+    reason: 'explicit_proposal',
+    documentVersion: resolveSuggestionStore(params.mindmapId, params.windowId ?? null)?.getState()._documentVersion,
+  });
+}
+
+/**
+ * 逐分支采纳幽灵建议：仅应用指定 branch.ops，其余待审阅分支保持挂起。
+ */
+const acceptingSuggestions = new Set<string>();
+
+export async function acceptMindmapSuggestionBranch(
+  suggestionId: string,
+  mindmapId: string,
+  branchId: string,
+): Promise<MindmapSuggestionApplyResult | null> {
+  return acceptSuggestion(suggestionId, mindmapId, branchId);
+}
+
+async function acceptSuggestion(
+  suggestionId: string,
+  mindmapId: string,
+  branchId?: string,
+): Promise<MindmapSuggestionApplyResult | null> {
+  if (acceptingSuggestions.has(mindmapId)) return null;
+  const suggestion = getMindmapSuggestion(mindmapId);
+  if (!suggestion || suggestion.id !== suggestionId) return null;
+  const branch = branchId ? suggestion.branches.find((b) => b.branchId === branchId) : undefined;
+  if (branchId && !branch) return null;
+
+  const storeApi = resolveSuggestionStore(mindmapId, suggestion.windowId);
+  if (!storeApi || storeApi.getState().mindmapId !== mindmapId) {
+    clearMindmapSuggestion(mindmapId);
+    return null;
+  }
+
+  const before = storeApi.getState();
+  if (before.editingNodeId || before.editingNoteNodeId ||
+    (suggestion.documentVersion !== undefined && suggestion.documentVersion !== before._documentVersion)) {
+    return { applied: 0, failed: ['导图已修改，请重新生成建议'], saved: false };
+  }
+  acceptingSuggestions.add(mindmapId);
+  try {
+    const checkpoint = await capturePreAcceptCheckpoint(storeApi, suggestion);
+    const current = getMindmapSuggestion(mindmapId);
+    if (storeApi.getState().mindmapId !== mindmapId ||
+      storeApi.getState()._documentVersion !== before._documentVersion ||
+      current?.id !== suggestionId ||
+      (branchId && !current.branches.some((item) => item.branchId === branchId))) {
+      return null;
+    }
+    const result = await applySuggestionOpsBatch(
+    storeApi,
+    mindmapId,
+    suggestion.runId,
+    suggestion.windowId,
+    branch?.ops ?? current.ops,
+  );
+
+  if (getMindmapSuggestion(mindmapId)?.id === suggestionId) {
+    if (branchId) {
+      removeMindmapSuggestionBranch(mindmapId, suggestionId, branchId);
+      updateMindmapSuggestionRevision(mindmapId, suggestionId, result.documentVersion!);
+    } else clearMindmapSuggestion(mindmapId);
+  }
+
+  const totalApplied = checkpoint.appliedCount + result.applied;
+  if (totalApplied > 0) {
+    setAcceptedMindmapCheckpoint({
+      ...checkpoint,
+      appliedCount: totalApplied,
+      postAcceptDocVersion: result.documentVersion!,
+      acceptedAt: Date.now(),
+    });
+  }
+
+  return result;
+  } finally {
+    acceptingSuggestions.delete(mindmapId);
+  }
+}
+
+/**
+ * 逐分支放弃幽灵建议：仅移除指定 branch，不修改导图文档。
+ */
+export function rejectMindmapSuggestionBranch(
+  suggestionId: string,
+  mindmapId: string,
+  branchId: string,
+): boolean {
+  const suggestion = getMindmapSuggestion(mindmapId);
+  if (!suggestion || suggestion.id !== suggestionId) return false;
+  if (!suggestion.branches.some((b) => b.branchId === branchId)) return false;
+  removeMindmapSuggestionBranch(mindmapId, suggestionId, branchId);
+  return true;
+}
+
+/**
+ * 接受全部暂存建议：捕获修改前版本检查点 -> 逐 op 应用 -> 批量 flash 标记 -> save。
+ */
+export async function acceptMindmapSuggestion(
+  suggestionId: string,
+  mindmapId: string,
+): Promise<MindmapSuggestionApplyResult | null> {
+  return acceptSuggestion(suggestionId, mindmapId);
+}
+
+/**
+ * 一键撤回最近一次已采纳的 AI 修改，恢复至采纳前版本快照（mindmap_versions + 内存文档回滚）。
+ */
+export async function revertLastAcceptedMindmapSuggestion(
+  mindmapId: string,
+): Promise<boolean> {
+  const checkpoint = getAcceptedMindmapCheckpoint(mindmapId);
+  if (!checkpoint) return false;
+
+  const storeApi = resolveSuggestionStore(mindmapId, checkpoint.windowId);
+  if (storeApi && storeApi.getState()._documentVersion !== checkpoint.postAcceptDocVersion) return false;
+  let backendRestored = false;
+  let restoredMetadata: VfsMindMap | null = null;
+
+  if (checkpoint.preAcceptVersionId) {
+    try {
+      restoredMetadata = await restoreMindMapVersion(checkpoint.preAcceptVersionId);
+      backendRestored = true;
+    } catch {
+      backendRestored = false;
+    }
+  }
+
+  const hasLiveStore = Boolean(storeApi && storeApi.getState().mindmapId === mindmapId);
+  if (!hasLiveStore && !backendRestored) {
+    return false;
+  }
+
+  if (storeApi && storeApi.getState().mindmapId === mindmapId) {
+    const restoredDoc = JSON.parse(
+      JSON.stringify(checkpoint.preAcceptDocument),
+    ) as MindMapDocument;
+    storeApi.setState((state) => ({
+      document: restoredDoc,
+      ...(restoredMetadata ? { metadata: restoredMetadata } : {}),
+      _documentVersion: state._documentVersion + 1,
+      selection: [],
+      selectionAnchorId: null,
+      editingNodeId: null,
+      editingNoteNodeId: null,
+      focusedNodeId:
+        state.focusedNodeId && findNodeById(restoredDoc.root, state.focusedNodeId)
+          ? state.focusedNodeId
+          : restoredDoc.root.id,
+      isDirty: !backendRestored,
+    }));
+
+    if (!backendRestored) {
+      try {
+        await storeApi.getState().save();
+      } catch {
+        // 单测或离线降级路径忽略异常
+      }
+    }
+  }
+
+  if (getMindmapSuggestion(mindmapId)?.id === checkpoint.suggestionId) {
+    clearMindmapSuggestion(mindmapId);
+  }
+  clearAcceptedMindmapCheckpoint(mindmapId);
+  return true;
 }
 
 /** 拒绝暂存建议：丢弃暂存 ops（从未应用，无需回滚） */
@@ -1579,3 +1911,11 @@ export function dismissMindmapSuggestion(mindmapId: string): void {
 export function registerMindmapDriver(stage: StageManagerApi): void {
   stage.registerDriver(mindmapDriver);
 }
+
+registerMindmapSuggestionActions({
+  acceptMindmapSuggestion,
+  acceptMindmapSuggestionBranch,
+  rejectMindmapSuggestionBranch,
+  dismissMindmapSuggestion,
+  revertLastAcceptedMindmapSuggestion,
+});

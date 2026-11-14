@@ -1,0 +1,202 @@
+{
+  "timestamp": "START+87ms",
+  "category": "dependency",
+  "level": "warning",
+  "message": "Prism 语言包加载慢",
+  "details": {
+    "ms": 812
+  }
+}
+----
+[
+  {
+    "timestamp": "START+203ms",
+    "category": "error",
+    "level": "error",
+    "message": "Crepe.create() 失败",
+    "details": {
+      "error": "TypeError: x is undefined"
+    }
+  },
+  {
+    "timestamp": "START+232ms",
+    "category": "error",
+    "level": "error",
+    "message": "全局错误捕获: Prism is not defined",
+    "details": {
+      "filename": "prism.js",
+      "lineno": 3,
+      "colno": 7,
+      "error": "ReferenceError: Prism is not defined"
+    }
+  },
+  {
+    "timestamp": "START+290ms",
+    "category": "error",
+    "level": "error",
+    "message": "Promise 拒绝: Error: milkdown plugin failed",
+    "details": {
+      "reason": "Error: milkdown plugin failed",
+      "stack": "Error: milkdown plugin failed\n    at load (milkdown.js:9:1)"
+    }
+  }
+]
+----
+success: 日志已复制到剪贴板
+success: 已复制 3 条日志到剪贴板
+----
+[{"href":"blob:crepe-editor-export","download":"crepe-editor-debug-START+1000ms.json"}] application/json revoked ["blob:crepe-editor-export"]
+{
+  "exportTime": "START+1319ms",
+  "liveSnapshot": {
+    "wrapperExists": true,
+    "dataReady": "false",
+    "milkdownExists": true,
+    "proseMirrorExists": true,
+    "contentEditable": "false",
+    "pointerEvents": "none",
+    "opacity": "0.5",
+    "wrapperClassName": "crepe-editor-wrapper",
+    "childCount": 2
+  },
+  "logs": [
+    {
+      "ts": START+0ms,
+      "category": "lifecycle",
+      "level": "info",
+      "message": "Crepe 编辑器调试插件已激活",
+      "details": {
+        "timestamp": "START+0ms"
+      },
+      "id": "START+0ms-<random>",
+      "timestamp": "START+0ms"
+    },
+    {
+      "category": "lifecycle",
+      "level": "info",
+      "message": "CrepeEditor mount",
+      "details": {
+        "noteId": "note_1"
+      },
+      "ts": START+29ms,
+      "id": "START+29ms-<random>",
+      "timestamp": "START+29ms"
+    },
+    {
+      "category": "init",
+      "level": "debug",
+      "message": "创建 Crepe 实例",
+      "details": {
+        "features": [
+          "code-mirror",
+          "image-block"
+        ]
+      },
+      "ts": START+58ms,
+      "id": "START+58ms-<random>",
+      "timestamp": "START+58ms"
+    },
+    {
+      "category": "dependency",
+      "level": "warning",
+      "message": "Prism 语言包加载慢",
+      "details": {
+        "ms": 812
+      },
+      "ts": START+87ms,
+      "id": "START+87ms-<random>",
+      "timestamp": "START+87ms"
+    },
+    {
+      "category": "dom",
+      "level": "info",
+      "message": "DOM 状态",
+      "details": {},
+      "domSnapshot": {
+        "wrapperExists": true,
+        "dataReady": "false",
+        "milkdownExists": true,
+        "proseMirrorExists": true,
+        "contentEditable": "false",
+        "pointerEvents": "none",
+        "opacity": "0.5",
+        "wrapperClassName": "crepe-editor-wrapper",
+        "childCount": 2
+      },
+      "ts": START+116ms,
+      "id": "START+116ms-<random>",
+      "timestamp": "START+116ms"
+    },
+    {
+      "category": "editor",
+      "level": "debug",
+      "message": "markdownUpdated",
+      "details": {
+        "length": 42
+      },
+      "editorSnapshot": {
+        "crepeExists": true,
+        "isReady": false,
+        "readonly": false,
+        "noteId": "note_1",
+        "subject": null,
+        "markdownLength": 42
+      },
+      "ts": START+145ms,
+      "id": "START+145ms-<random>",
+      "timestamp": "START+145ms"
+    },
+    {
+      "category": "snapshot",
+      "level": "info",
+      "message": "编辑器快照",
+      "editorSnapshot": {
+        "crepeExists": false,
+        "isReady": false,
+        "readonly": true,
+        "noteId": null,
+        "markdownLength": 0
+      },
+      "ts": START+174ms,
+      "id": "START+174ms-<random>",
+      "timestamp": "START+174ms"
+    },
+    {
+      "category": "error",
+      "level": "error",
+      "message": "Crepe.create() 失败",
+      "details": {
+        "error": "TypeError: x is undefined"
+      },
+      "ts": START+203ms,
+      "id": "START+203ms-<random>",
+      "timestamp": "START+203ms"
+    },
+    {
+      "ts": START+232ms,
+      "category": "error",
+      "level": "error",
+      "message": "全局错误捕获: Prism is not defined",
+      "details": {
+        "filename": "prism.js",
+        "lineno": 3,
+        "colno": 7,
+        "error": "ReferenceError: Prism is not defined"
+      },
+      "id": "START+232ms-<random>",
+      "timestamp": "START+232ms"
+    },
+    {
+      "ts": START+290ms,
+      "category": "error",
+      "level": "error",
+      "message": "Promise 拒绝: Error: milkdown plugin failed",
+      "details": {
+        "reason": "Error: milkdown plugin failed",
+        "stack": "Error: milkdown plugin failed\n    at load (milkdown.js:9:1)"
+      },
+      "id": "START+290ms-<random>",
+      "timestamp": "START+290ms"
+    }
+  ]
+}

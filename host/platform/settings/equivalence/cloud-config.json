@@ -1,0 +1,3128 @@
+{
+  "domain": "settings",
+  "commands": [
+    "cloud_config_ssot_save",
+    "cloud_config_ssot_get",
+    "cloud_config_ssot_clear",
+    "cloud_config_publish"
+  ],
+  "scenarios": [
+    {
+      "id": "settings.cloud.get.not_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.webdav_basic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "deep-student-sync"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.webdav_no_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.webdav_trim_normalize",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "  https://dav.equivalence.invalid/dav  ",
+                "username": "\tstudent\n"
+              },
+              "root": "  /a/b/  "
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.root_blank_and_slashes_become_absent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "   "
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "///"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": null
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.idempotent_resave_from_get",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "r"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": "${1.config}"
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.loopback_http_drops_allow_insecure",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.0.0.1:8080/dav",
+                "username": "student"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://localhost:8080/dav",
+                "username": "student"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://[::1]:8080/dav",
+                "username": "student"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://127.42.0.1/dav",
+                "username": "student"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.public_http_opt_in",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://dav.equivalence.invalid/dav",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://dav.equivalence.invalid/dav",
+                "username": "student"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.https_allow_insecure_false_omitted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "allowInsecure": false
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.length_bounds_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+              },
+              "root": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学"
+              },
+              "root": "根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根根"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.length_bounds_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学学"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.webdav_endpoint_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "   ",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/\u0007",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "not a url",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "dav.equivalence.invalid",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "ftp://dav.equivalence.invalid",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "file:///etc/passwd",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://user:pass@dav.equivalence.invalid",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://user@dav.equivalence.invalid",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.webdav_username_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": ""
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": " \t "
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "stu\u0000dent"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.root_traversal_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "../escape"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "a/./b"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "a//b"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "a\\b"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "a\u0001b"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.error_precedence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://dav.equivalence.invalid",
+                "username": ""
+              },
+              "root": ".."
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": ""
+              },
+              "root": ".."
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.secret_and_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student",
+                "password": "secret"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "encryptionPassword": "secret"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "WebDAV",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "gdrive",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "allowInsecure": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": 7
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.s3_full",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "backups"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.s3_minimal_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.s3_region_null_and_loopback_http",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://127.0.0.1:9000",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "region": null
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.s3_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "http://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              },
+              "allowInsecure": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": " ",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": ""
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "region": " "
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "secretAccessKey": "secret"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "pathStyle": "yes"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.s3_allow_insecure_normalized_false",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_tls",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 990,
+                "username": "student",
+                "useTls": true
+              },
+              "root": "ftp-root"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "username": "student"
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_plaintext_opt_in",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_tls_drops_allow_insecure",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              },
+              "allowInsecure": true
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_loopback_hosts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "127.0.0.1",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "LOCALHOST",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "::1",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "[::1]",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_port_bounds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 65535,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 0,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 65536,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": -1,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21.5,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": "21",
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": null,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.ftp_host_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp://ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid/dir",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "user@ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp equivalence",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "",
+                "port": 0,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "",
+                "useTls": true
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true,
+                "password": "secret"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.provider_switch_overwrites",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.save.invalid_keeps_previous",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "keep"
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.clear.empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.clear.after_save",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_ssot_save",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.clear.after_publish_removes_credentials",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "Equiv-Pass-9x"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.clear.credentials_without_ssot",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "secure_save_cloud_credentials",
+          "args": {
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.webdav_first",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "deep-student-sync"
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "Equiv-Pass-9x"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.frontend_shape_all_credential_keys",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.generation_increments_and_keeps_secret",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "second"
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "third"
+            },
+            "credentials": {
+              "webdavPassword": "   "
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.generation_resets_after_clear",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_clear",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret-2"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.secure_delete_keeps_generation_pointer",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "secure_delete_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret-2"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.missing_provider_secret",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "  "
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "s3-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "encryptionPassword": "Equiv-Pass-9x"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.provider_secret_from_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "secure_save_cloud_credentials",
+          "args": {
+            "credentials": {
+              "ftpPassword": "ftp-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": true
+              }
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.s3_and_ftp",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "https://s3.equivalence.invalid",
+                "bucket": "ds-bucket",
+                "accessKeyId": "AKIAEQUIVALENCE",
+                "region": "eu-west-1"
+              }
+            },
+            "credentials": {
+              "s3SecretAccessKey": "s3-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "ftp",
+              "ftp": {
+                "host": "ftp.equivalence.invalid",
+                "port": 21,
+                "username": "student",
+                "useTls": false
+              },
+              "allowInsecure": true
+            },
+            "credentials": {
+              "ftpPassword": "ftp-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.public_http_opt_in",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://dav.equivalence.invalid",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "http://dav.equivalence.invalid",
+                "username": "student"
+              },
+              "allowInsecure": true
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.short_password_gate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "Ab1-xyz"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "  Ab1-xyz  "
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "密码一二三四五"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "密码一二三四五六"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.short_password_preexisting",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abc"
+            },
+            "encryptionPasswordIsPreexisting": true
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.weak_password_gate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "Password123"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": " 12345678 "
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abababab"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abcabcab"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abcdabcd"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.weak_password_preexisting",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "password"
+            },
+            "encryptionPasswordIsPreexisting": true
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.error_precedence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "encryptionPassword": "short"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "encryptionPassword": "password"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "encryptionPassword": "password"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "password"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.preexisting_flag_forms",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abc"
+            },
+            "encryptionPasswordIsPreexisting": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abc"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "abc"
+            },
+            "encryptionPasswordIsPreexisting": "true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret"
+            },
+            "encryptionPasswordIsPreexisting": null
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {}
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.credentials_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "token": "ignored",
+              "webdav_password": "ignored"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": 5
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            },
+            "credentials": null,
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "credentials": {
+              "webdavPassword": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.cloud.publish.failures_keep_previous_state",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "v1"
+            },
+            "credentials": {
+              "webdavPassword": "dav-secret",
+              "encryptionPassword": "Equiv-Pass-9x"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "",
+                "username": "student"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "dav-new"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "v2"
+            },
+            "credentials": {
+              "encryptionPassword": "password"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "v2"
+            },
+            "credentials": {
+              "encryptionPassword": "short"
+            },
+            "encryptionPasswordIsPreexisting": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        },
+        {
+          "cmd": "secure_get_cloud_credentials",
+          "args": {}
+        },
+        {
+          "cmd": "cloud_config_publish",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "https://dav.equivalence.invalid/remote.php/dav",
+                "username": "student"
+              },
+              "root": "v2"
+            },
+            "credentials": {},
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_ssot_get",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

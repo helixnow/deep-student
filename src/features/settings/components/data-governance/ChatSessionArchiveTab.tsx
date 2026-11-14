@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -7,7 +8,6 @@ import {
   Clock,
   CircleNotch,
   Chat,
-  ArrowClockwise,
   ArrowCounterClockwise,
   Trash,
 } from '@phosphor-icons/react';
@@ -15,6 +15,7 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { GroupTitle } from '../settingsTabPrimitives';
 import type { ChatSession } from '@/features/chat/types/session';
 import type { SessionGroup } from '@/features/chat/types/group';
 
@@ -104,6 +105,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
       setLoading(false);
     }
   }, [t]);
+
+  useRefreshOnReturn(loadArchivedSessions);
 
   useEffect(() => {
     void loadArchivedSessions();
@@ -301,36 +304,16 @@ export const ChatSessionArchiveTab: React.FC = () => {
   }, [actionGroupId, actionSessionId, confirmingPermanentDeleteId, permanentlyDeleteSession, restoreGroup, restoreSession, t]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Archive size={16} className="text-muted-foreground" />
-            {t('data:governance.archive_title')}
+    <section className="min-w-0 space-y-6">
+      <GroupTitle
+        title={t('data:governance.archive_title')}
+        description={
+          <div className="space-y-0.5">
+            <p>{t('data:governance.archive_description')}</p>
+            <p className="tabular-nums">{sessionCountLabel}</p>
           </div>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            {t('data:governance.archive_description')}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {sessionCountLabel}
-          </p>
-        </div>
-
-        <DsButton
-          variant="outline"
-          size="sm"
-          className="[@media(pointer:coarse)]:!min-h-11"
-          onClick={loadArchivedSessions}
-          disabled={loading || actionSessionId !== null || actionGroupId !== null}
-        >
-          {loading ? (
-            <CircleNotch size={14} className="animate-spin" />
-          ) : (
-            <ArrowClockwise size={14} />
-          )}
-          <span>{t('common:actions.refresh')}</span>
-        </DsButton>
-      </div>
+        }
+      />
 
       {loadError ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
@@ -435,7 +418,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           ) : null}
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

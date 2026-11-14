@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { LatexText } from '@/components/LatexText';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -36,6 +36,19 @@ import {
   loadQuestionImageUrls,
   QUESTION_IMAGE_LOAD_ERROR,
 } from '@/components/questionImageLoader';
+import {
+  ProgressCommandCoalescer,
+  prepareFaithfulHtmlMaterial,
+} from '@/utils/faithfulHtmlMaterialAndCoalescer';
+import { getErrorMessage } from '@/utils/errorUtils';
+
+const HTML_MATERIAL_BLOCK_RE = /<(?:table|div|section|article|p|ul|ol|h[1-6]|blockquote|pre|style)\b/i;
+
+const materialProgressCoalescer = new ProgressCommandCoalescer<number>({
+  debounceMs: 400,
+  maxDelayMs: 1000,
+  send: () => Promise.resolve(),
+});
 
 export interface QuestionMaterialViewProps {
   materials: QuestionMaterial[];
@@ -143,7 +156,7 @@ const MaterialImageGrid: React.FC<MaterialImageGridProps> = ({ images, urls }) =
         return (
           <div
             key={image.id}
-            className="overflow-hidden rounded-md border border-border/40 bg-muted/20"
+            className="overflow-hidden rounded-md border border-border/35 bg-muted/20"
           >
             {failed ? (
               <div className="flex h-24 items-center justify-center gap-1.5 px-2 text-xs text-muted-foreground">
@@ -210,7 +223,8 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ material, onCancel, onS
       const updated = await updateQuestionMaterial(material.id, content, material.version);
       await onSaved(updated);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      // RUST-FIX(RF-W09-material-conflict-apperror-message): String(err) turned the AppError object into "[object Object]", hiding the conflict hint
+      const message = getErrorMessage(err);
       const conflict = /version|conflict|stale|concurrent/i.test(message);
       setError(conflict
         ? t('materials.versionConflict', {
@@ -270,7 +284,7 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ material, onCancel, onS
         >
           {t('common:cancel', { defaultValue: '取消' })}
         </DsButton>
-        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+        <span className="ml-auto text-xs font-mono tabular-nums text-muted-foreground">
           {t('materials.version', { defaultValue: '版本 {{version}}', version: material.version })}
         </span>
       </div>
@@ -287,12 +301,28 @@ const MaterialBlock: React.FC<{
   const { t } = useTranslation('exam_sheet');
   const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [faithfulHtmlOpen, setFaithfulHtmlOpen] = useState(false);
   const [localMaterial, setLocalMaterial] = useState(material);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const loadTokenRef = useRef(0);
 
+  const hasStructuredHtml = useMemo(
+    () => HTML_MATERIAL_BLOCK_RE.test(localMaterial.content || ''),
+    [localMaterial.content],
+  );
+
+  const preparedFaithfulHtml = useMemo(() => {
+    if (!hasStructuredHtml) return null;
+    try {
+      return prepareFaithfulHtmlMaterial(localMaterial.content, { allowRemoteResources: false });
+    } catch {
+      return null;
+    }
+  }, [hasStructuredHtml, localMaterial.content]);
+
   useEffect(() => {
     setLocalMaterial(material);
+    setFaithfulHtmlOpen(false);
   }, [material]);
 
   useEffect(() => {
@@ -312,8 +342,8 @@ const MaterialBlock: React.FC<{
   return (
     <section
       className={cn(
-        'border-l-2 border-primary/50 bg-primary/[0.04] pl-2.5 pr-2 text-sm',
-        compact ? 'py-1.5' : 'py-2',
+        'rounded-r-xl border-l-2 border-primary/35 bg-foreground/[0.025] pl-3.5 pr-3 text-sm',
+        compact ? 'py-2' : 'py-2.5',
       )}
       aria-label={t('materials.sectionLabel', { defaultValue: '共享材料' })}
       data-question-material-id={localMaterial.id}
@@ -322,19 +352,45 @@ const MaterialBlock: React.FC<{
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-primary ui-state-colors"
+          className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground/80 hover:text-foreground ui-state-colors"
           aria-expanded={expanded}
         >
-          {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
-          <BookOpen size={13} aria-hidden="true" />
+          {expanded ? <CaretDown size={12} className="text-muted-foreground" /> : <CaretRight size={12} className="text-muted-foreground" />}
+          <BookOpen size={13} className="text-primary/80" aria-hidden="true" />
           <span className="truncate">{t('materials.title', { defaultValue: '共享材料' })}</span>
         </button>
+        {preparedFaithfulHtml && !editing && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            aria-pressed={faithfulHtmlOpen}
+            data-testid="toggle-faithful-html-material"
+            onClick={() => {
+              const next = !faithfulHtmlOpen;
+              setFaithfulHtmlOpen(next);
+              materialProgressCoalescer.enqueue({
+                scopeId: 'qbank-materials',
+                resourceId: localMaterial.id,
+                field: 'unitCount',
+                value: preparedFaithfulHtml.materialBlocks.length,
+              });
+            }}
+            className="ml-auto !h-auto !px-1.5 !py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+          >
+            {faithfulHtmlOpen
+              ? t('materials.plainView', { defaultValue: '标准视图' })
+              : t('materials.faithfulHtmlView', { defaultValue: '保真 HTML' })}
+          </DsButton>
+        )}
         {mode === 'edit' && !editing && (
           <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setEditing(true)}
-            className="ml-auto !h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground"
+            className={cn(
+              '!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground',
+              !preparedFaithfulHtml && 'ml-auto',
+            )}
           >
             <PencilSimple size={12} className="mr-1" />
             {t('materials.edit', { defaultValue: '编辑材料' })}
@@ -352,16 +408,27 @@ const MaterialBlock: React.FC<{
             />
           ) : (
             <>
-              <LatexText
-                content={localMaterial.content}
-                className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed"
-              />
+              {faithfulHtmlOpen && preparedFaithfulHtml ? (
+                <iframe
+                  data-testid="faithful-html-material-iframe"
+                  data-material-units={preparedFaithfulHtml.materialBlocks.length}
+                  sandbox={preparedFaithfulHtml.sandboxAttribute}
+                  srcDoc={preparedFaithfulHtml.html}
+                  title={t('materials.title', { defaultValue: '共享材料' })}
+                  className="min-h-32 w-full rounded border border-border/35 bg-background"
+                />
+              ) : (
+                <LatexText
+                  content={localMaterial.content}
+                  className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed"
+                />
+              )}
               <MaterialImageGrid images={localMaterial.images} urls={imageUrls} />
               {localMaterial.source_refs && localMaterial.source_refs.length > 0 && (
-                <div className="mt-1 text-[11px] text-muted-foreground">
+                <div className="mt-1 text-xs text-muted-foreground">
                   {t('materials.source', { defaultValue: '来源：' })}
                   {localMaterial.source_refs.map((ref, index) => (
-                    <span key={`${ref.source_id}-${ref.page ?? 'x'}-${index}`} className="mr-1.5 tabular-nums">
+                    <span key={`${ref.source_id}-${ref.page ?? 'x'}-${index}`} className="mr-1.5 font-mono tabular-nums">
                       {ref.source_id}
                       {ref.page != null ? ` · p.${ref.page}` : ''}
                     </span>

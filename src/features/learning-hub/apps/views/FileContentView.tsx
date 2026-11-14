@@ -35,7 +35,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform, supportsStreamProtocol } from '@/utils/platform';
 
 /**
  * 富文档（docx/xlsx/pptx/epub）在 WebView 内整份解析，且预览组件需要 base64：
@@ -120,6 +120,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   node,
   isActive = true,
   focusScopeId,
+  pdfToolbarVariant,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'pdf']);
@@ -309,17 +310,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     nodeName: node.name,
   });
 
+  const effectiveSourceId = node.sourceId || node.id;
+
   // 处理页面选择变化 + 广播给 Chat InputBar
   const handlePageSelectionChange = useCallback((pages: Set<number>) => {
     setSelectedPages(pages);
     document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
       detail: {
-        sourceId: node.sourceId,
+        sourceId: effectiveSourceId,
         sourceName: node.name,
         pages: Array.from(pages).sort((a, b) => a - b),
       },
     }));
-  }, [node.sourceId, node.name]);
+  }, [effectiveSourceId, node.name]);
 
   // 监听 Chat 侧发来的清除/移除选择事件
   // ★ 标签页：通过 sourceId 过滤，避免多个 PDF tab 互相干扰
@@ -328,13 +331,13 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       // ★ 非活跃标签页不响应全局清除事件
       if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
-      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
+      if (detail?.sourceId && detail.sourceId !== effectiveSourceId) return;
       setSelectedPages(new Set());
     };
     const handleRemove = (event: Event) => {
       if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ page: number; sourceId?: string }>).detail;
-      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
+      if (detail?.sourceId && detail.sourceId !== effectiveSourceId) return;
       setSelectedPages((prev) => {
         const next = new Set(prev);
         next.delete(detail.page);
@@ -348,10 +351,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
       // ★ 卸载（关闭 tab）时广播空选择，避免聊天 chips 残留指向已关闭的 PDF
       document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
-        detail: { sourceId: node.sourceId, sourceName: '', pages: [] },
+        detail: { sourceId: effectiveSourceId, sourceName: '', pages: [] },
       }));
     };
-  }, [node.sourceId]);
+  }, [effectiveSourceId]);
 
   // 稳定的空回调（避免每次渲染创建新函数）
   const noopExportPages = useCallback(() => {}, []);
@@ -474,7 +477,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             ? resolveAudioMimeType(mimeType, node.name)
             : resolveVideoMimeType(mimeType, node.name);
 
-          if (!streamBlocked) {
+          if (!streamBlocked && supportsStreamProtocol()) {
             try {
               const canStream = await invoke<boolean>('filestream_check_access', {
                 path: blobPath,
@@ -487,8 +490,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
                 const mimeParam = encodeURIComponent(
                   (mediaMimeType.split(';')[0] ?? '').trim(),
                 );
+                const streamBaseUrl = convertFileSrc(blobPath, 'filestream');
+                // 基址可能自带查询串（自定义协议外壳），不能直接再拼一个 `?`
+                const sep = streamBaseUrl.includes('?') ? '&' : '?';
                 setMediaSource({
-                  url: `${convertFileSrc(blobPath, 'filestream')}?mime=${mimeParam}`,
+                  url: `${streamBaseUrl}${sep}mime=${mimeParam}`,
                   kind: 'stream',
                 });
                 return;
@@ -533,12 +539,26 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
       // Legacy inline resources have no blob path. Keep the compatibility
       // fallback, guarded by the database metadata size check above.
-      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
+      let result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
         attachmentId: node.id,
         maxBytes: getRichPreviewMaxBytes(),
       });
 
       if (!isMounted) return;
+
+      // Old small-file uploads wrote an empty inline row without a blob. Try
+      // the file-content command (blob-first) before giving up.
+      if (!result?.found || !result.content) {
+        try {
+          const direct = await invoke<{ content: string | null; found: boolean }>('vfs_get_file_content', {
+            fileId: node.id,
+          });
+          if (!isMounted) return;
+          if (direct?.found && direct.content) result = direct;
+        } catch {
+          // Attachment ids (att_*) are not file ids; keep the original result.
+        }
+      }
 
       if (result?.found && result?.content) {
         const estimatedSize = estimateBase64Size(result.content);
@@ -630,7 +650,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           await loadTextContent();
         }
       } catch (err: unknown) {
-        // 🔒 审计修复: 二进制加载失败时设置错误状态（原代码静默吞掉）
+        // 审计修复: 二进制加载失败时设置错误状态（原代码静默吞掉）
         // （loadTextContent 内部自带 try/catch，此处仅捕获二进制加载异常）
         if (isMounted) {
           setError(getErrorMessage(err));
@@ -681,7 +701,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       onFontChange={setFontScale}
       onZoomReset={resetZoom}
       onFontReset={resetFont}
-      fallback={<div className="flex items-center justify-center h-full"><CircleNotch className="h-8 w-8 animate-spin text-primary" /></div>}
+      fallback={<div className="flex items-center justify-center h-full"><CircleNotch className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
+      rootClassName="bg-background"
     />
   );
 
@@ -774,6 +795,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             onBookmarksChange={handleBookmarksChange}
             onQuoteToChat={handleQuoteToChat}
             selectionSourceId={node.sourceId || node.id}
+            toolbarVariant={pdfToolbarVariant}
           />
         );
       }

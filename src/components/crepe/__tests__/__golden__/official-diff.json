@@ -1,0 +1,203 @@
+{
+  "prose": {
+    "uses": [
+      "125× @milkdown/preset-commonmark:NodeSchema<doc> @milkdown/preset-commonmark:Attr<paragraph> @milkdown/preset-commonmark:NodeSchemaCtx<paragraph> @milkdown/preset-commonmark:NodeSchema<paragraph> @milkdown/preset-commonmark:Ctx<HeadingIdGenerator> @milkdown/preset-commonmark:Attr<heading> @milkdown/preset-commonmark:NodeSchemaCtx<heading> @milkdown/preset-commonmark:NodeSchema<heading> @milkdown/preset-commonmark:Attr<hardbreak> @milkdown/preset-commonmark:NodeSchemaCtx<hardbreak> @milkdown/preset-commonmark:NodeSchema<hardbreak> @milkdown/preset-commonmark:Attr<blockquote> @milkdown/preset-commonmark:NodeSchemaCtx<blockquote> @milkdown/preset-commonmark:NodeSchema<blockquote> @milkdown/preset-commonmark:Attr<codeBlock> @milkdown/preset-commonmark:NodeSchemaCtx<codeBlock> @milkdown/preset-commonmark:NodeSchema<codeBlock> @milkdown/preset-commonmark:Attr<hr> @milkdown/preset-commonmark:NodeSchemaCtx<hr> @milkdown/preset-commonmark:NodeSchema<hr> @milkdown/preset-commonmark:Attr<image> @milkdown/preset-commonmark:NodeSchemaCtx<image> @milkdown/preset-commonmark:NodeSchema<image> @milkdown/preset-commonmark:Attr<bulletList> @milkdown/preset-commonmark:NodeSchemaCtx<bulletList> @milkdown/preset-commonmark:NodeSchema<bulletList> @milkdown/preset-commonmark:Attr<orderedList> @milkdown/preset-commonmark:NodeSchemaCtx<orderedList> @milkdown/preset-commonmark:NodeSchema<orderedList> @milkdown/preset-commonmark:Attr<listItem> @milkdown/preset-commonmark:NodeSchemaCtx<listItem> @milkdown/preset-commonmark:NodeSchema<listItem> @milkdown/preset-commonmark:Attr<emphasis> @milkdown/preset-commonmark:MarkSchemaCtx<emphasis> @milkdown/preset-commonmark:MarkSchema<emphasis> @milkdown/preset-commonmark:Attr<strong> @milkdown/preset-commonmark:MarkSchemaCtx<strong> @milkdown/preset-commonmark:MarkSchema<strong> @milkdown/preset-commonmark:Attr<inlineCode> @milkdown/preset-commonmark:MarkSchemaCtx<inlineCode> @milkdown/preset-commonmark:MarkSchema<inlineCode> @milkdown/preset-commonmark:Attr<link> plugin @milkdown/preset-commonmark:MarkSchema<link> @milkdown/preset-commonmark:Attr<html> @milkdown/preset-commonmark:NodeSchemaCtx<html> @milkdown/preset-commonmark:NodeSchema<html> @milkdown/preset-commonmark:NodeSchema<text> @milkdown/preset-commonmark:InputRule<wrapInBlockquoteInputRule> @milkdown/preset-commonmark:InputRule<wrapInBulletListInputRule> @milkdown/preset-commonmark:InputRule<wrapInOrderedListInputRule> @milkdown/preset-commonmark:InputRule<createCodeBlockInputRule> @milkdown/preset-commonmark:InputRule<insertHrInputRule> @milkdown/preset-commonmark:InputRule<wrapInHeadingInputRule> @milkdown/preset-commonmark:InputRule<emphasis>|Star @milkdown/preset-commonmark:InputRule<emphasis>|Underscore @milkdown/preset-commonmark:InputRule<inlineCodeInputRule> @milkdown/preset-commonmark:InputRule<strong> @milkdown/preset-commonmark:Command<turnIntoTextCommand> @milkdown/preset-commonmark:Command<wrapInBlockquoteCommand> @milkdown/preset-commonmark:Command<wrapInHeadingCommand> @milkdown/preset-commonmark:Command<downgradeHeadingCommand> @milkdown/preset-commonmark:Command<createCodeBlockCommand> @milkdown/preset-commonmark:Command<insertHardbreakCommand> @milkdown/preset-commonmark:Command<insertHrCommand> @milkdown/preset-commonmark:Command<insertImageCommand> @milkdown/preset-commonmark:Command<updateImageCommand> @milkdown/preset-commonmark:Command<wrapInOrderedListCommand> @milkdown/preset-commonmark:Command<wrapInBulletListCommand> @milkdown/preset-commonmark:Command<sinkListItemCommand> @milkdown/preset-commonmark:Command<splitListItemCommand> @milkdown/preset-commonmark:Command<liftListItemCommand> @milkdown/preset-commonmark:Command<liftFirstListItemCommand> @milkdown/preset-commonmark:Command<toggleEmphasisCommand> @milkdown/preset-commonmark:Command<toggleInlineCodeCommand> @milkdown/preset-commonmark:Command<toggleStrongCommand> @milkdown/preset-commonmark:Command<toggleLinkCommand> @milkdown/preset-commonmark:Command<updateLinkCommand> plugin plugin plugin plugin plugin plugin plugin @milkdown/preset-commonmark:KeymapCtx<blockquote> @milkdown/preset-commonmark:Keymap<blockquote> @milkdown/preset-commonmark:KeymapCtx<codeBlock> @milkdown/preset-commonmark:Keymap<codeBlock> @milkdown/preset-commonmark:KeymapCtx<hardbreak> @milkdown/preset-commonmark:Keymap<hardbreak> @milkdown/preset-commonmark:KeymapCtx<heading> @milkdown/preset-commonmark:Keymap<heading> @milkdown/preset-commonmark:KeymapCtx<listItem> @milkdown/preset-commonmark:Keymap<listItem> @milkdown/preset-commonmark:KeymapCtx<orderedList> @milkdown/preset-commonmark:Keymap<orderedList> @milkdown/preset-commonmark:KeymapCtx<bulletListKeymap> @milkdown/preset-commonmark:Keymap<bulletListKeymap> @milkdown/preset-commonmark:KeymapCtx<paragraph> @milkdown/preset-commonmark:Keymap<paragraph> @milkdown/preset-commonmark:KeymapCtx<emphasis> @milkdown/preset-commonmark:Keymap<emphasis> @milkdown/preset-commonmark:KeymapCtx<inlineCode> @milkdown/preset-commonmark:Keymap<inlineCode> @milkdown/preset-commonmark:KeymapCtx<strong> @milkdown/preset-commonmark:Keymap<strong> @milkdown/preset-commonmark:Prose<hardbreakClearMarkPlugin> @milkdown/preset-commonmark:Ctx<hardbreakFilterNodes> @milkdown/preset-commonmark:Prose<hardbreakFilterPlugin> @milkdown/preset-commonmark:Prose<inlineNodesCursorPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:Remark<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkInlineLinkPlugin> @milkdown/preset-commonmark:Remark<remarkInlineLinkPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkLineBreak> @milkdown/preset-commonmark:Remark<remarkLineBreak> @milkdown/preset-commonmark:RemarkConfig<remarkHtmlTransformer> @milkdown/preset-commonmark:Remark<remarkHtmlTransformer> @milkdown/preset-commonmark:RemarkConfig<remarkMarker> @milkdown/preset-commonmark:Remark<remarkMarker> @milkdown/preset-commonmark:RemarkConfig<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Remark<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Prose<syncHeadingIdPlugin> @milkdown/preset-commonmark:Prose<syncListOrderPlugin>",
+      "1× @milkdown/plugin-listener:Listener",
+      "6× @milkdown/plugin-history:Ctx<historyProviderConfig> @milkdown/plugin-history:Ctx<historyProviderPlugin> @milkdown/plugin-history:KeymapCtx<history> @milkdown/plugin-history:Keymap<history> @milkdown/plugin-history:Command<undo> @milkdown/plugin-history:Command<redo>",
+      "2× @milkdown/plugin-indent:Ctx<indentConfig> @milkdown/plugin-indent:Shortcut<indent>",
+      "2× @milkdown/plugin-trailing:Ctx<trailingConfig> @milkdown/plugin-trailing:Prose<trailing>",
+      "1× @milkdown/plugin-clipboard:Prose<clipboard>",
+      "2× @milkdown/plugin-upload:Ctx<uploadConfig> @milkdown/plugin-upload:Prose<upload>",
+      "48× @milkdown/preset-gfm:NodeSchemaCtx<taskListItem> @milkdown/preset-gfm:NodeSchema<taskListItem> @milkdown/preset-gfm:NodeSchemaCtx<table> @milkdown/preset-gfm:NodeSchema<table> @milkdown/preset-gfm:NodeSchemaCtx<tableHeaderRow> @milkdown/preset-gfm:NodeSchema<tableHeaderRow> @milkdown/preset-gfm:NodeSchemaCtx<tableRow> @milkdown/preset-gfm:NodeSchema<tableRow> @milkdown/preset-gfm:NodeSchemaCtx<tableHeader> @milkdown/preset-gfm:NodeSchema<tableHeader> @milkdown/preset-gfm:NodeSchemaCtx<tableCell> @milkdown/preset-gfm:NodeSchema<tableCell> @milkdown/preset-gfm:NodeSchemaCtx<footnodeDef> @milkdown/preset-gfm:NodeSchema<footnodeDef> @milkdown/preset-gfm:NodeSchemaCtx<footnodeRef> @milkdown/preset-gfm:NodeSchema<footnodeRef> @milkdown/preset-gfm:Attr<strikethrough> @milkdown/preset-gfm:MarkSchemaCtx<strikethrough> @milkdown/preset-gfm:MarkSchema<strikethrough> @milkdown/preset-gfm:InputRule<insertTableInputRule> @milkdown/preset-gfm:InputRule<wrapInTaskListInputRule> @milkdown/preset-gfm:PasteRule<table> @milkdown/preset-gfm:InputRule<strikethrough> @milkdown/preset-gfm:KeymapCtx<strikethrough> @milkdown/preset-gfm:Keymap<strikethrough> @milkdown/preset-gfm:KeymapCtx<table> @milkdown/preset-gfm:Keymap<table> @milkdown/preset-gfm:Command<goToNextTableCellCommand> @milkdown/preset-gfm:Command<goToPrevTableCellCommand> @milkdown/preset-gfm:Command<breakTableCommand> @milkdown/preset-gfm:Command<insertTableCommand> @milkdown/preset-gfm:Command<moveRowCommand> @milkdown/preset-gfm:Command<moveColCommand> @milkdown/preset-gfm:Command<selectRowCommand> @milkdown/preset-gfm:Command<selectColCommand> @milkdown/preset-gfm:Command<selectTableCommand> @milkdown/preset-gfm:Command<deleteSelectedCellsCommand> @milkdown/preset-gfm:Command<addRowBeforeCommand> @milkdown/preset-gfm:Command<addRowAfterCommand> @milkdown/preset-gfm:Command<addColBeforeCommand> @milkdown/preset-gfm:Command<addColAfterCommand> @milkdown/preset-gfm:Command<setAlignCommand> @milkdown/preset-gfm:Command<ToggleStrikethrough> @milkdown/preset-gfm:Prose<keepTableAlignPlugin> @milkdown/preset-gfm:Prose<autoInsertSpanPlugin> @milkdown/preset-gfm:RemarkConfig<remarkGFMPlugin> @milkdown/preset-gfm:Remark<remarkGFMPlugin> @milkdown/preset-gfm:Prose<tableEditingPlugin>",
+      "5× @milkdown/plugin-cursor:Prose<gapCursor> @milkdown/plugin-cursor:Ctx<dropIndicatorConfig> @milkdown/plugin-cursor:Ctx<dropIndicatorState> @milkdown/plugin-cursor:Prose<dropIndicatorDOM> @milkdown/plugin-cursor:Prose<dropIndicator>",
+      "1× plugin",
+      "2× @milkdown/components:Config<list-item-block> @milkdown/components:NodeView<list-item-block>",
+      "6× @milkdown/components:RemarkConfig<remarkImageBlock> @milkdown/components:Remark<remarkImageBlock> plugin @milkdown/components:NodeSchema<image-block> @milkdown/components:NodeView<image-block> @milkdown/components:Config<image-block>",
+      "2× @milkdown/components:Config<image-inline> @milkdown/components:NodeView<image-inline>",
+      "1× plugin",
+      "1× plugin",
+      "2× @milkdown/components:NodeView<code-block> @milkdown/components:Config<code-block>",
+      "2× @milkdown/components:Config<table-block> @milkdown/components:NodeView<table-block>",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× @milkdown/plugin-tooltip:Ctx<tooltipSpec>|INLINE_LATEX @milkdown/plugin-tooltip:Prose<tooltip>|INLINE_LATEX",
+      "1× plugin",
+      "1× plugin",
+      "2× plugin plugin",
+      "1× plugin",
+      "7× plugin plugin plugin plugin plugin plugin plugin",
+      "13× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin toggleKeymap",
+      "10× @milkdown/plugin-diff:Ctx<diffConfig> @milkdown/plugin-diff:Prose<diff> @milkdown/plugin-diff:Command<startDiffReview> @milkdown/plugin-diff:Command<startDiffReviewFromDoc> @milkdown/plugin-diff:Command<acceptDiffChunk> @milkdown/plugin-diff:Command<acceptDiffRange> @milkdown/plugin-diff:Command<rejectDiffChunk> @milkdown/plugin-diff:Command<rejectDiffRange> @milkdown/plugin-diff:Command<acceptAllDiffs> @milkdown/plugin-diff:Command<clearDiffReview>",
+      "2× @milkdown/components:Ctx<diffComponentConfig> @milkdown/components:Prose<diffDecoration>",
+      "10× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin",
+      "2× · behavior"
+    ],
+    "pending": [
+      {
+        "fromA": 7,
+        "toA": 16,
+        "fromB": 7,
+        "toB": 7
+      },
+      {
+        "fromA": 26,
+        "toA": 29,
+        "fromB": 17,
+        "toB": 20
+      }
+    ],
+    "controls": [
+      {
+        "action": "accept",
+        "label": "接受此组",
+        "disabled": false
+      },
+      {
+        "action": "accept",
+        "label": "接受此组",
+        "disabled": false
+      },
+      {
+        "action": "reject",
+        "label": "拒绝此组",
+        "disabled": false
+      },
+      {
+        "action": "reject",
+        "label": "拒绝此组",
+        "disabled": false
+      }
+    ],
+    "titles": [],
+    "markdownAfterAcceptAll": "Keep.\n\nAnchor.\n\nNew.\n"
+  },
+  "table": {
+    "uses": [
+      "125× @milkdown/preset-commonmark:NodeSchema<doc> @milkdown/preset-commonmark:Attr<paragraph> @milkdown/preset-commonmark:NodeSchemaCtx<paragraph> @milkdown/preset-commonmark:NodeSchema<paragraph> @milkdown/preset-commonmark:Ctx<HeadingIdGenerator> @milkdown/preset-commonmark:Attr<heading> @milkdown/preset-commonmark:NodeSchemaCtx<heading> @milkdown/preset-commonmark:NodeSchema<heading> @milkdown/preset-commonmark:Attr<hardbreak> @milkdown/preset-commonmark:NodeSchemaCtx<hardbreak> @milkdown/preset-commonmark:NodeSchema<hardbreak> @milkdown/preset-commonmark:Attr<blockquote> @milkdown/preset-commonmark:NodeSchemaCtx<blockquote> @milkdown/preset-commonmark:NodeSchema<blockquote> @milkdown/preset-commonmark:Attr<codeBlock> @milkdown/preset-commonmark:NodeSchemaCtx<codeBlock> @milkdown/preset-commonmark:NodeSchema<codeBlock> @milkdown/preset-commonmark:Attr<hr> @milkdown/preset-commonmark:NodeSchemaCtx<hr> @milkdown/preset-commonmark:NodeSchema<hr> @milkdown/preset-commonmark:Attr<image> @milkdown/preset-commonmark:NodeSchemaCtx<image> @milkdown/preset-commonmark:NodeSchema<image> @milkdown/preset-commonmark:Attr<bulletList> @milkdown/preset-commonmark:NodeSchemaCtx<bulletList> @milkdown/preset-commonmark:NodeSchema<bulletList> @milkdown/preset-commonmark:Attr<orderedList> @milkdown/preset-commonmark:NodeSchemaCtx<orderedList> @milkdown/preset-commonmark:NodeSchema<orderedList> @milkdown/preset-commonmark:Attr<listItem> @milkdown/preset-commonmark:NodeSchemaCtx<listItem> @milkdown/preset-commonmark:NodeSchema<listItem> @milkdown/preset-commonmark:Attr<emphasis> @milkdown/preset-commonmark:MarkSchemaCtx<emphasis> @milkdown/preset-commonmark:MarkSchema<emphasis> @milkdown/preset-commonmark:Attr<strong> @milkdown/preset-commonmark:MarkSchemaCtx<strong> @milkdown/preset-commonmark:MarkSchema<strong> @milkdown/preset-commonmark:Attr<inlineCode> @milkdown/preset-commonmark:MarkSchemaCtx<inlineCode> @milkdown/preset-commonmark:MarkSchema<inlineCode> @milkdown/preset-commonmark:Attr<link> plugin @milkdown/preset-commonmark:MarkSchema<link> @milkdown/preset-commonmark:Attr<html> @milkdown/preset-commonmark:NodeSchemaCtx<html> @milkdown/preset-commonmark:NodeSchema<html> @milkdown/preset-commonmark:NodeSchema<text> @milkdown/preset-commonmark:InputRule<wrapInBlockquoteInputRule> @milkdown/preset-commonmark:InputRule<wrapInBulletListInputRule> @milkdown/preset-commonmark:InputRule<wrapInOrderedListInputRule> @milkdown/preset-commonmark:InputRule<createCodeBlockInputRule> @milkdown/preset-commonmark:InputRule<insertHrInputRule> @milkdown/preset-commonmark:InputRule<wrapInHeadingInputRule> @milkdown/preset-commonmark:InputRule<emphasis>|Star @milkdown/preset-commonmark:InputRule<emphasis>|Underscore @milkdown/preset-commonmark:InputRule<inlineCodeInputRule> @milkdown/preset-commonmark:InputRule<strong> @milkdown/preset-commonmark:Command<turnIntoTextCommand> @milkdown/preset-commonmark:Command<wrapInBlockquoteCommand> @milkdown/preset-commonmark:Command<wrapInHeadingCommand> @milkdown/preset-commonmark:Command<downgradeHeadingCommand> @milkdown/preset-commonmark:Command<createCodeBlockCommand> @milkdown/preset-commonmark:Command<insertHardbreakCommand> @milkdown/preset-commonmark:Command<insertHrCommand> @milkdown/preset-commonmark:Command<insertImageCommand> @milkdown/preset-commonmark:Command<updateImageCommand> @milkdown/preset-commonmark:Command<wrapInOrderedListCommand> @milkdown/preset-commonmark:Command<wrapInBulletListCommand> @milkdown/preset-commonmark:Command<sinkListItemCommand> @milkdown/preset-commonmark:Command<splitListItemCommand> @milkdown/preset-commonmark:Command<liftListItemCommand> @milkdown/preset-commonmark:Command<liftFirstListItemCommand> @milkdown/preset-commonmark:Command<toggleEmphasisCommand> @milkdown/preset-commonmark:Command<toggleInlineCodeCommand> @milkdown/preset-commonmark:Command<toggleStrongCommand> @milkdown/preset-commonmark:Command<toggleLinkCommand> @milkdown/preset-commonmark:Command<updateLinkCommand> plugin plugin plugin plugin plugin plugin plugin @milkdown/preset-commonmark:KeymapCtx<blockquote> @milkdown/preset-commonmark:Keymap<blockquote> @milkdown/preset-commonmark:KeymapCtx<codeBlock> @milkdown/preset-commonmark:Keymap<codeBlock> @milkdown/preset-commonmark:KeymapCtx<hardbreak> @milkdown/preset-commonmark:Keymap<hardbreak> @milkdown/preset-commonmark:KeymapCtx<heading> @milkdown/preset-commonmark:Keymap<heading> @milkdown/preset-commonmark:KeymapCtx<listItem> @milkdown/preset-commonmark:Keymap<listItem> @milkdown/preset-commonmark:KeymapCtx<orderedList> @milkdown/preset-commonmark:Keymap<orderedList> @milkdown/preset-commonmark:KeymapCtx<bulletListKeymap> @milkdown/preset-commonmark:Keymap<bulletListKeymap> @milkdown/preset-commonmark:KeymapCtx<paragraph> @milkdown/preset-commonmark:Keymap<paragraph> @milkdown/preset-commonmark:KeymapCtx<emphasis> @milkdown/preset-commonmark:Keymap<emphasis> @milkdown/preset-commonmark:KeymapCtx<inlineCode> @milkdown/preset-commonmark:Keymap<inlineCode> @milkdown/preset-commonmark:KeymapCtx<strong> @milkdown/preset-commonmark:Keymap<strong> @milkdown/preset-commonmark:Prose<hardbreakClearMarkPlugin> @milkdown/preset-commonmark:Ctx<hardbreakFilterNodes> @milkdown/preset-commonmark:Prose<hardbreakFilterPlugin> @milkdown/preset-commonmark:Prose<inlineNodesCursorPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:Remark<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkInlineLinkPlugin> @milkdown/preset-commonmark:Remark<remarkInlineLinkPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkLineBreak> @milkdown/preset-commonmark:Remark<remarkLineBreak> @milkdown/preset-commonmark:RemarkConfig<remarkHtmlTransformer> @milkdown/preset-commonmark:Remark<remarkHtmlTransformer> @milkdown/preset-commonmark:RemarkConfig<remarkMarker> @milkdown/preset-commonmark:Remark<remarkMarker> @milkdown/preset-commonmark:RemarkConfig<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Remark<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Prose<syncHeadingIdPlugin> @milkdown/preset-commonmark:Prose<syncListOrderPlugin>",
+      "1× @milkdown/plugin-listener:Listener",
+      "6× @milkdown/plugin-history:Ctx<historyProviderConfig> @milkdown/plugin-history:Ctx<historyProviderPlugin> @milkdown/plugin-history:KeymapCtx<history> @milkdown/plugin-history:Keymap<history> @milkdown/plugin-history:Command<undo> @milkdown/plugin-history:Command<redo>",
+      "2× @milkdown/plugin-indent:Ctx<indentConfig> @milkdown/plugin-indent:Shortcut<indent>",
+      "2× @milkdown/plugin-trailing:Ctx<trailingConfig> @milkdown/plugin-trailing:Prose<trailing>",
+      "1× @milkdown/plugin-clipboard:Prose<clipboard>",
+      "2× @milkdown/plugin-upload:Ctx<uploadConfig> @milkdown/plugin-upload:Prose<upload>",
+      "48× @milkdown/preset-gfm:NodeSchemaCtx<taskListItem> @milkdown/preset-gfm:NodeSchema<taskListItem> @milkdown/preset-gfm:NodeSchemaCtx<table> @milkdown/preset-gfm:NodeSchema<table> @milkdown/preset-gfm:NodeSchemaCtx<tableHeaderRow> @milkdown/preset-gfm:NodeSchema<tableHeaderRow> @milkdown/preset-gfm:NodeSchemaCtx<tableRow> @milkdown/preset-gfm:NodeSchema<tableRow> @milkdown/preset-gfm:NodeSchemaCtx<tableHeader> @milkdown/preset-gfm:NodeSchema<tableHeader> @milkdown/preset-gfm:NodeSchemaCtx<tableCell> @milkdown/preset-gfm:NodeSchema<tableCell> @milkdown/preset-gfm:NodeSchemaCtx<footnodeDef> @milkdown/preset-gfm:NodeSchema<footnodeDef> @milkdown/preset-gfm:NodeSchemaCtx<footnodeRef> @milkdown/preset-gfm:NodeSchema<footnodeRef> @milkdown/preset-gfm:Attr<strikethrough> @milkdown/preset-gfm:MarkSchemaCtx<strikethrough> @milkdown/preset-gfm:MarkSchema<strikethrough> @milkdown/preset-gfm:InputRule<insertTableInputRule> @milkdown/preset-gfm:InputRule<wrapInTaskListInputRule> @milkdown/preset-gfm:PasteRule<table> @milkdown/preset-gfm:InputRule<strikethrough> @milkdown/preset-gfm:KeymapCtx<strikethrough> @milkdown/preset-gfm:Keymap<strikethrough> @milkdown/preset-gfm:KeymapCtx<table> @milkdown/preset-gfm:Keymap<table> @milkdown/preset-gfm:Command<goToNextTableCellCommand> @milkdown/preset-gfm:Command<goToPrevTableCellCommand> @milkdown/preset-gfm:Command<breakTableCommand> @milkdown/preset-gfm:Command<insertTableCommand> @milkdown/preset-gfm:Command<moveRowCommand> @milkdown/preset-gfm:Command<moveColCommand> @milkdown/preset-gfm:Command<selectRowCommand> @milkdown/preset-gfm:Command<selectColCommand> @milkdown/preset-gfm:Command<selectTableCommand> @milkdown/preset-gfm:Command<deleteSelectedCellsCommand> @milkdown/preset-gfm:Command<addRowBeforeCommand> @milkdown/preset-gfm:Command<addRowAfterCommand> @milkdown/preset-gfm:Command<addColBeforeCommand> @milkdown/preset-gfm:Command<addColAfterCommand> @milkdown/preset-gfm:Command<setAlignCommand> @milkdown/preset-gfm:Command<ToggleStrikethrough> @milkdown/preset-gfm:Prose<keepTableAlignPlugin> @milkdown/preset-gfm:Prose<autoInsertSpanPlugin> @milkdown/preset-gfm:RemarkConfig<remarkGFMPlugin> @milkdown/preset-gfm:Remark<remarkGFMPlugin> @milkdown/preset-gfm:Prose<tableEditingPlugin>",
+      "5× @milkdown/plugin-cursor:Prose<gapCursor> @milkdown/plugin-cursor:Ctx<dropIndicatorConfig> @milkdown/plugin-cursor:Ctx<dropIndicatorState> @milkdown/plugin-cursor:Prose<dropIndicatorDOM> @milkdown/plugin-cursor:Prose<dropIndicator>",
+      "1× plugin",
+      "2× @milkdown/components:Config<list-item-block> @milkdown/components:NodeView<list-item-block>",
+      "6× @milkdown/components:RemarkConfig<remarkImageBlock> @milkdown/components:Remark<remarkImageBlock> plugin @milkdown/components:NodeSchema<image-block> @milkdown/components:NodeView<image-block> @milkdown/components:Config<image-block>",
+      "2× @milkdown/components:Config<image-inline> @milkdown/components:NodeView<image-inline>",
+      "1× plugin",
+      "1× plugin",
+      "2× @milkdown/components:NodeView<code-block> @milkdown/components:Config<code-block>",
+      "2× @milkdown/components:Config<table-block> @milkdown/components:NodeView<table-block>",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× @milkdown/plugin-tooltip:Ctx<tooltipSpec>|INLINE_LATEX @milkdown/plugin-tooltip:Prose<tooltip>|INLINE_LATEX",
+      "1× plugin",
+      "1× plugin",
+      "2× plugin plugin",
+      "1× plugin",
+      "7× plugin plugin plugin plugin plugin plugin plugin",
+      "13× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin toggleKeymap",
+      "10× @milkdown/plugin-diff:Ctx<diffConfig> @milkdown/plugin-diff:Prose<diff> @milkdown/plugin-diff:Command<startDiffReview> @milkdown/plugin-diff:Command<startDiffReviewFromDoc> @milkdown/plugin-diff:Command<acceptDiffChunk> @milkdown/plugin-diff:Command<acceptDiffRange> @milkdown/plugin-diff:Command<rejectDiffChunk> @milkdown/plugin-diff:Command<rejectDiffRange> @milkdown/plugin-diff:Command<acceptAllDiffs> @milkdown/plugin-diff:Command<clearDiffReview>",
+      "2× @milkdown/components:Ctx<diffComponentConfig> @milkdown/components:Prose<diffDecoration>",
+      "10× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin",
+      "2× · behavior"
+    ],
+    "pending": [
+      {
+        "fromA": 16,
+        "toA": 19,
+        "fromB": 16,
+        "toB": 21
+      },
+      {
+        "fromA": 23,
+        "toA": 24,
+        "fromB": 25,
+        "toB": 26
+      }
+    ],
+    "controls": [
+      {
+        "action": "accept",
+        "label": "接受此组",
+        "disabled": false
+      },
+      {
+        "action": "reject",
+        "label": "拒绝此组",
+        "disabled": false
+      }
+    ],
+    "titles": [],
+    "markdownAfterAcceptAll": "| A     | B     |\n| ----- | ----- |\n| fresh | $x^3$ |\n\nAnchor.\n"
+  },
+  "toggle-callout": {
+    "uses": [
+      "125× @milkdown/preset-commonmark:NodeSchema<doc> @milkdown/preset-commonmark:Attr<paragraph> @milkdown/preset-commonmark:NodeSchemaCtx<paragraph> @milkdown/preset-commonmark:NodeSchema<paragraph> @milkdown/preset-commonmark:Ctx<HeadingIdGenerator> @milkdown/preset-commonmark:Attr<heading> @milkdown/preset-commonmark:NodeSchemaCtx<heading> @milkdown/preset-commonmark:NodeSchema<heading> @milkdown/preset-commonmark:Attr<hardbreak> @milkdown/preset-commonmark:NodeSchemaCtx<hardbreak> @milkdown/preset-commonmark:NodeSchema<hardbreak> @milkdown/preset-commonmark:Attr<blockquote> @milkdown/preset-commonmark:NodeSchemaCtx<blockquote> @milkdown/preset-commonmark:NodeSchema<blockquote> @milkdown/preset-commonmark:Attr<codeBlock> @milkdown/preset-commonmark:NodeSchemaCtx<codeBlock> @milkdown/preset-commonmark:NodeSchema<codeBlock> @milkdown/preset-commonmark:Attr<hr> @milkdown/preset-commonmark:NodeSchemaCtx<hr> @milkdown/preset-commonmark:NodeSchema<hr> @milkdown/preset-commonmark:Attr<image> @milkdown/preset-commonmark:NodeSchemaCtx<image> @milkdown/preset-commonmark:NodeSchema<image> @milkdown/preset-commonmark:Attr<bulletList> @milkdown/preset-commonmark:NodeSchemaCtx<bulletList> @milkdown/preset-commonmark:NodeSchema<bulletList> @milkdown/preset-commonmark:Attr<orderedList> @milkdown/preset-commonmark:NodeSchemaCtx<orderedList> @milkdown/preset-commonmark:NodeSchema<orderedList> @milkdown/preset-commonmark:Attr<listItem> @milkdown/preset-commonmark:NodeSchemaCtx<listItem> @milkdown/preset-commonmark:NodeSchema<listItem> @milkdown/preset-commonmark:Attr<emphasis> @milkdown/preset-commonmark:MarkSchemaCtx<emphasis> @milkdown/preset-commonmark:MarkSchema<emphasis> @milkdown/preset-commonmark:Attr<strong> @milkdown/preset-commonmark:MarkSchemaCtx<strong> @milkdown/preset-commonmark:MarkSchema<strong> @milkdown/preset-commonmark:Attr<inlineCode> @milkdown/preset-commonmark:MarkSchemaCtx<inlineCode> @milkdown/preset-commonmark:MarkSchema<inlineCode> @milkdown/preset-commonmark:Attr<link> plugin @milkdown/preset-commonmark:MarkSchema<link> @milkdown/preset-commonmark:Attr<html> @milkdown/preset-commonmark:NodeSchemaCtx<html> @milkdown/preset-commonmark:NodeSchema<html> @milkdown/preset-commonmark:NodeSchema<text> @milkdown/preset-commonmark:InputRule<wrapInBlockquoteInputRule> @milkdown/preset-commonmark:InputRule<wrapInBulletListInputRule> @milkdown/preset-commonmark:InputRule<wrapInOrderedListInputRule> @milkdown/preset-commonmark:InputRule<createCodeBlockInputRule> @milkdown/preset-commonmark:InputRule<insertHrInputRule> @milkdown/preset-commonmark:InputRule<wrapInHeadingInputRule> @milkdown/preset-commonmark:InputRule<emphasis>|Star @milkdown/preset-commonmark:InputRule<emphasis>|Underscore @milkdown/preset-commonmark:InputRule<inlineCodeInputRule> @milkdown/preset-commonmark:InputRule<strong> @milkdown/preset-commonmark:Command<turnIntoTextCommand> @milkdown/preset-commonmark:Command<wrapInBlockquoteCommand> @milkdown/preset-commonmark:Command<wrapInHeadingCommand> @milkdown/preset-commonmark:Command<downgradeHeadingCommand> @milkdown/preset-commonmark:Command<createCodeBlockCommand> @milkdown/preset-commonmark:Command<insertHardbreakCommand> @milkdown/preset-commonmark:Command<insertHrCommand> @milkdown/preset-commonmark:Command<insertImageCommand> @milkdown/preset-commonmark:Command<updateImageCommand> @milkdown/preset-commonmark:Command<wrapInOrderedListCommand> @milkdown/preset-commonmark:Command<wrapInBulletListCommand> @milkdown/preset-commonmark:Command<sinkListItemCommand> @milkdown/preset-commonmark:Command<splitListItemCommand> @milkdown/preset-commonmark:Command<liftListItemCommand> @milkdown/preset-commonmark:Command<liftFirstListItemCommand> @milkdown/preset-commonmark:Command<toggleEmphasisCommand> @milkdown/preset-commonmark:Command<toggleInlineCodeCommand> @milkdown/preset-commonmark:Command<toggleStrongCommand> @milkdown/preset-commonmark:Command<toggleLinkCommand> @milkdown/preset-commonmark:Command<updateLinkCommand> plugin plugin plugin plugin plugin plugin plugin @milkdown/preset-commonmark:KeymapCtx<blockquote> @milkdown/preset-commonmark:Keymap<blockquote> @milkdown/preset-commonmark:KeymapCtx<codeBlock> @milkdown/preset-commonmark:Keymap<codeBlock> @milkdown/preset-commonmark:KeymapCtx<hardbreak> @milkdown/preset-commonmark:Keymap<hardbreak> @milkdown/preset-commonmark:KeymapCtx<heading> @milkdown/preset-commonmark:Keymap<heading> @milkdown/preset-commonmark:KeymapCtx<listItem> @milkdown/preset-commonmark:Keymap<listItem> @milkdown/preset-commonmark:KeymapCtx<orderedList> @milkdown/preset-commonmark:Keymap<orderedList> @milkdown/preset-commonmark:KeymapCtx<bulletListKeymap> @milkdown/preset-commonmark:Keymap<bulletListKeymap> @milkdown/preset-commonmark:KeymapCtx<paragraph> @milkdown/preset-commonmark:Keymap<paragraph> @milkdown/preset-commonmark:KeymapCtx<emphasis> @milkdown/preset-commonmark:Keymap<emphasis> @milkdown/preset-commonmark:KeymapCtx<inlineCode> @milkdown/preset-commonmark:Keymap<inlineCode> @milkdown/preset-commonmark:KeymapCtx<strong> @milkdown/preset-commonmark:Keymap<strong> @milkdown/preset-commonmark:Prose<hardbreakClearMarkPlugin> @milkdown/preset-commonmark:Ctx<hardbreakFilterNodes> @milkdown/preset-commonmark:Prose<hardbreakFilterPlugin> @milkdown/preset-commonmark:Prose<inlineNodesCursorPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:Remark<remarkAddOrderInListPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkInlineLinkPlugin> @milkdown/preset-commonmark:Remark<remarkInlineLinkPlugin> @milkdown/preset-commonmark:RemarkConfig<remarkLineBreak> @milkdown/preset-commonmark:Remark<remarkLineBreak> @milkdown/preset-commonmark:RemarkConfig<remarkHtmlTransformer> @milkdown/preset-commonmark:Remark<remarkHtmlTransformer> @milkdown/preset-commonmark:RemarkConfig<remarkMarker> @milkdown/preset-commonmark:Remark<remarkMarker> @milkdown/preset-commonmark:RemarkConfig<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Remark<remarkPreserveEmptyLine> @milkdown/preset-commonmark:Prose<syncHeadingIdPlugin> @milkdown/preset-commonmark:Prose<syncListOrderPlugin>",
+      "1× @milkdown/plugin-listener:Listener",
+      "6× @milkdown/plugin-history:Ctx<historyProviderConfig> @milkdown/plugin-history:Ctx<historyProviderPlugin> @milkdown/plugin-history:KeymapCtx<history> @milkdown/plugin-history:Keymap<history> @milkdown/plugin-history:Command<undo> @milkdown/plugin-history:Command<redo>",
+      "2× @milkdown/plugin-indent:Ctx<indentConfig> @milkdown/plugin-indent:Shortcut<indent>",
+      "2× @milkdown/plugin-trailing:Ctx<trailingConfig> @milkdown/plugin-trailing:Prose<trailing>",
+      "1× @milkdown/plugin-clipboard:Prose<clipboard>",
+      "2× @milkdown/plugin-upload:Ctx<uploadConfig> @milkdown/plugin-upload:Prose<upload>",
+      "48× @milkdown/preset-gfm:NodeSchemaCtx<taskListItem> @milkdown/preset-gfm:NodeSchema<taskListItem> @milkdown/preset-gfm:NodeSchemaCtx<table> @milkdown/preset-gfm:NodeSchema<table> @milkdown/preset-gfm:NodeSchemaCtx<tableHeaderRow> @milkdown/preset-gfm:NodeSchema<tableHeaderRow> @milkdown/preset-gfm:NodeSchemaCtx<tableRow> @milkdown/preset-gfm:NodeSchema<tableRow> @milkdown/preset-gfm:NodeSchemaCtx<tableHeader> @milkdown/preset-gfm:NodeSchema<tableHeader> @milkdown/preset-gfm:NodeSchemaCtx<tableCell> @milkdown/preset-gfm:NodeSchema<tableCell> @milkdown/preset-gfm:NodeSchemaCtx<footnodeDef> @milkdown/preset-gfm:NodeSchema<footnodeDef> @milkdown/preset-gfm:NodeSchemaCtx<footnodeRef> @milkdown/preset-gfm:NodeSchema<footnodeRef> @milkdown/preset-gfm:Attr<strikethrough> @milkdown/preset-gfm:MarkSchemaCtx<strikethrough> @milkdown/preset-gfm:MarkSchema<strikethrough> @milkdown/preset-gfm:InputRule<insertTableInputRule> @milkdown/preset-gfm:InputRule<wrapInTaskListInputRule> @milkdown/preset-gfm:PasteRule<table> @milkdown/preset-gfm:InputRule<strikethrough> @milkdown/preset-gfm:KeymapCtx<strikethrough> @milkdown/preset-gfm:Keymap<strikethrough> @milkdown/preset-gfm:KeymapCtx<table> @milkdown/preset-gfm:Keymap<table> @milkdown/preset-gfm:Command<goToNextTableCellCommand> @milkdown/preset-gfm:Command<goToPrevTableCellCommand> @milkdown/preset-gfm:Command<breakTableCommand> @milkdown/preset-gfm:Command<insertTableCommand> @milkdown/preset-gfm:Command<moveRowCommand> @milkdown/preset-gfm:Command<moveColCommand> @milkdown/preset-gfm:Command<selectRowCommand> @milkdown/preset-gfm:Command<selectColCommand> @milkdown/preset-gfm:Command<selectTableCommand> @milkdown/preset-gfm:Command<deleteSelectedCellsCommand> @milkdown/preset-gfm:Command<addRowBeforeCommand> @milkdown/preset-gfm:Command<addRowAfterCommand> @milkdown/preset-gfm:Command<addColBeforeCommand> @milkdown/preset-gfm:Command<addColAfterCommand> @milkdown/preset-gfm:Command<setAlignCommand> @milkdown/preset-gfm:Command<ToggleStrikethrough> @milkdown/preset-gfm:Prose<keepTableAlignPlugin> @milkdown/preset-gfm:Prose<autoInsertSpanPlugin> @milkdown/preset-gfm:RemarkConfig<remarkGFMPlugin> @milkdown/preset-gfm:Remark<remarkGFMPlugin> @milkdown/preset-gfm:Prose<tableEditingPlugin>",
+      "5× @milkdown/plugin-cursor:Prose<gapCursor> @milkdown/plugin-cursor:Ctx<dropIndicatorConfig> @milkdown/plugin-cursor:Ctx<dropIndicatorState> @milkdown/plugin-cursor:Prose<dropIndicatorDOM> @milkdown/plugin-cursor:Prose<dropIndicator>",
+      "1× plugin",
+      "2× @milkdown/components:Config<list-item-block> @milkdown/components:NodeView<list-item-block>",
+      "6× @milkdown/components:RemarkConfig<remarkImageBlock> @milkdown/components:Remark<remarkImageBlock> plugin @milkdown/components:NodeSchema<image-block> @milkdown/components:NodeView<image-block> @milkdown/components:Config<image-block>",
+      "2× @milkdown/components:Config<image-inline> @milkdown/components:NodeView<image-inline>",
+      "1× plugin",
+      "1× plugin",
+      "2× @milkdown/components:NodeView<code-block> @milkdown/components:Config<code-block>",
+      "2× @milkdown/components:Config<table-block> @milkdown/components:NodeView<table-block>",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× plugin plugin",
+      "2× @milkdown/plugin-tooltip:Ctx<tooltipSpec>|INLINE_LATEX @milkdown/plugin-tooltip:Prose<tooltip>|INLINE_LATEX",
+      "1× plugin",
+      "1× plugin",
+      "2× plugin plugin",
+      "1× plugin",
+      "7× plugin plugin plugin plugin plugin plugin plugin",
+      "13× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin toggleKeymap",
+      "10× @milkdown/plugin-diff:Ctx<diffConfig> @milkdown/plugin-diff:Prose<diff> @milkdown/plugin-diff:Command<startDiffReview> @milkdown/plugin-diff:Command<startDiffReviewFromDoc> @milkdown/plugin-diff:Command<acceptDiffChunk> @milkdown/plugin-diff:Command<acceptDiffRange> @milkdown/plugin-diff:Command<rejectDiffChunk> @milkdown/plugin-diff:Command<rejectDiffRange> @milkdown/plugin-diff:Command<acceptAllDiffs> @milkdown/plugin-diff:Command<clearDiffReview>",
+      "2× @milkdown/components:Ctx<diffComponentConfig> @milkdown/components:Prose<diffDecoration>",
+      "10× plugin plugin plugin plugin plugin plugin plugin plugin plugin plugin",
+      "2× · behavior"
+    ],
+    "pending": [
+      {
+        "fromA": 0,
+        "toA": 5,
+        "fromB": 0,
+        "toB": 5
+      },
+      {
+        "fromA": 13,
+        "toA": 14,
+        "fromB": 13,
+        "toB": 14
+      }
+    ],
+    "controls": [
+      {
+        "action": "accept",
+        "label": "接受此组",
+        "disabled": false
+      },
+      {
+        "action": "reject",
+        "label": "拒绝此组",
+        "disabled": false
+      }
+    ],
+    "titles": [
+      "Inner new"
+    ],
+    "markdownAfterAcceptAll": "> [!toggle] New title\n>\n> > [!tip] Inner new\n> >\n> > <br />\n\nAnchor.\n"
+  }
+}

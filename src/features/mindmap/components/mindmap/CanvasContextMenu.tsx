@@ -33,9 +33,11 @@ import {
   MagnifyingGlassPlus,
   CornersOut,
   Note,
+  BracketsCurly,
+  Cards,
   X,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -48,6 +50,7 @@ import { useMindMapStore } from '../../store';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { findNodeById, findParentNode } from '../../utils/node/find';
 import { countAllDescendants } from '../../utils/layout/countDescendants';
+import { resolveSiblingRangeForSummary } from '../../utils/summaryBraces';
 import type { MindMapNode } from '../../types';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
 import { EmojiPicker } from '../shared/EmojiPicker';
@@ -211,6 +214,9 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const reciteMode = useMindMapStore(s => s.reciteMode);
   const blankBranchNodes = useMindMapStore(s => s.blankBranchNodes);
   const clearBranchBlanks = useMindMapStore(s => s.clearBranchBlanks);
+  const selection = useMindMapStore(s => s.selection);
+  const toggleNodeFlashcard = useMindMapStore(s => s.toggleNodeFlashcard);
+  const addSummaryBrace = useMindMapStore(s => s.addSummaryBrace);
 
   /** 「添加图标」内联展开的 emoji 面板 */
   const [showIconPanel, setShowIconPanel] = useState(false);
@@ -640,10 +646,30 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         }), { keepOpen: true })}
       />
 
-      {/* 背诵：按分支批量挖空 / 清除（背诵进行中隐藏——挖空管理属于编辑态） */}
+      {/* 背诵与闪卡投影 / 归纳总结：编辑态学习增强入口 */}
       {!reciteMode && (
         <>
           <MenuSeparator />
+          <MenuItem
+            icon={<Cards className="w-4 h-4" />}
+            label={t(node.isFlashcard ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
+            onClick={() => exec(() => {
+              toggleNodeFlashcard(nodeId);
+            })}
+          />
+          {resolveSiblingRangeForSummary(
+            document.root,
+            selection.includes(nodeId) ? selection : [...selection, nodeId],
+          ) && (
+            <MenuItem
+              icon={<BracketsCurly className="w-4 h-4" />}
+              label={t('mn5.addSummaryBrace')}
+              onClick={() => exec(() => {
+                const ids = selection.includes(nodeId) ? selection : [...selection, nodeId];
+                addSummaryBrace(ids);
+              })}
+            />
+          )}
           <MenuItem
             icon={<EyeSlash className="w-4 h-4" />}
             label={t('recite.blankBranch', { defaultValue: '挖空整个分支' })}

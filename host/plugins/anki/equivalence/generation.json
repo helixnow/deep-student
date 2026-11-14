@@ -1,0 +1,433 @@
+{
+  "domain": "anki",
+  "commands": [
+    "import_builtin_templates",
+    "get_all_custom_templates",
+    "start_enhanced_document_processing",
+    "trigger_task_processing",
+    "get_document_tasks",
+    "cancel_document_processing",
+    "get_document_processing_state",
+    "list_document_sessions",
+    "set_document_session_source"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.generate.start-cancel-then-retry-task",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "# 传输层协议\n\nTCP 是面向连接的可靠传输协议，建立连接需要三次握手：客户端发送 SYN，服务端回复 SYN-ACK，客户端再发送 ACK。\n\nUDP 是无连接协议，不保证送达与顺序，首部只有 8 字节，适合实时音视频与 DNS 查询。\n\n拥塞控制包括慢启动、拥塞避免、快重传与快恢复四个阶段。",
+            "originalDocumentName": "W233::生成",
+            "options": {
+              "deck_name": "W233::生成",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 50,
+              "max_cards_total": 50,
+              "fsrs_feedback": false,
+              "template_ids": [
+                "design-footnote",
+                "design-exam"
+              ],
+              "template_descriptions": [
+                {
+                  "id": "design-footnote",
+                  "name": "The Footnote (脚注风格)",
+                  "description": "正面可交互：点击展开页脚脚注；正文上标编号，学术脚注排版",
+                  "fields": [
+                    "Question",
+                    "Answer",
+                    "Source"
+                  ],
+                  "generation_prompt": "适用：通用问答（默认首选），答案可多句：定理陈述与证明要点、原理解释、计算思路。不适用：选择题、单纯挖空（定义/关键词填空改用 design-glass 或 design-exam）。字段：Question 以正文陈述的问题（≤200字）；Answer 脚注中的答案与解释，可多句（≤600字）；Source 页眉出处/章节（≤30字）。"
+                },
+                {
+                  "id": "design-exam",
+                  "name": "The Examination (试卷风格)",
+                  "description": "试卷式填空：正面留白横线作答，背面以批阅笔色揭示，无脚本依赖",
+                  "fields": [
+                    "Text",
+                    "Section",
+                    "Extra"
+                  ],
+                  "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
+                }
+              ],
+              "template_id": "design-footnote",
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true,
+              "custom_anki_prompt": "你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。\n\n【你的能力】\n- 识别知识点并选择最合适的卡片模板\n- 生成清晰、准确、易于记忆的卡片内容\n- 确保卡片遵循最小信息原则\n- 支持多种卡片类型：基础问答、填空、代码理解等\n\n【你的限制】\n- 只输出 Anki 卡片数据，不做其他事情\n- 输出的组织方式（如何分隔或包装每张卡片）以请求中的「重要指令」为准，本段不另行约定任何输出格式\n- 不要添加与学习内容无关的信息\n\n【语言规则】\n- 卡片内容（front/back/text/tags）的语言必须与学习材料保持一致：英文材料生成英文卡片，中文材料生成中文卡片，其他语言同理\n- 专业术语可保留原文，不要把材料语言翻译成本提示词的语言\n\n【卡片 JSON 内容规则（与输出组织方式无关，始终适用）】\n1. 每张卡片的 JSON 必须是合法的严格 JSON：键和字符串一律用双引号；禁止尾逗号、注释、单引号\n2. 字符串内的换行必须写成 \\n，双引号必须写成 \\\"；不要输出未转义的控制字符\n3. tags 必须是字符串数组（如 [\"数学\", \"定义\"]），不能是逗号分隔的字符串\n4. 数值字段（如 confidence）直接写数字，不要加引号\n5. 若某张卡片生成到一半发现内容不完整，宁可整张放弃，也不要输出残缺 JSON\n",
+              "template_fields_by_id": {
+                "design-footnote": [
+                  "Question",
+                  "Answer",
+                  "Source"
+                ],
+                "design-exam": [
+                  "Text",
+                  "Section",
+                  "Extra"
+                ]
+              },
+              "field_extraction_rules_by_id": {
+                "design-footnote": {
+                  "Question": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "正文陈述与问题（≤200字）",
+                    "max_length": 200
+                  },
+                  "Answer": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "脚注中的答案/解释，可多句（≤600字）",
+                    "max_length": 600
+                  },
+                  "Source": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "页眉出处/章节（≤30字）",
+                    "max_length": 30
+                  }
+                },
+                "design-exam": {
+                  "Text": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "包含 {{c1::...}} 填空标记的完整陈述（≤250字）",
+                    "max_length": 250
+                  },
+                  "Section": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "科目/试卷标题（≤24字）",
+                    "max_length": 24
+                  },
+                  "Extra": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "评注或一条补充公式（≤80字）",
+                    "max_length": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "trigger_task_processing",
+          "args": {
+            "taskId": "${5.0.id}"
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "${2}"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.generate.selection-source-ref-single-template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "【前文上下文】\nRemote work has reshaped how teams communicate.\n\n【选中内容】\nAsynchronous communication lets colleagues in different time zones contribute without meeting in real time.\n\n【后文上下文】\nManagers now measure output rather than hours.",
+            "originalDocumentName": "划词制卡::外刊精读",
+            "options": {
+              "deck_name": "划词制卡::外刊精读",
+              "note_type": "Cloze",
+              "enable_images": true,
+              "max_cards_per_mistake": 10,
+              "max_cards_total": 10,
+              "fsrs_feedback": false,
+              "template_ids": [
+                "design-exam"
+              ],
+              "template_descriptions": [
+                {
+                  "id": "design-exam",
+                  "name": "The Examination (试卷风格)",
+                  "description": "试卷式填空：正面留白横线作答，背面以批阅笔色揭示，无脚本依赖",
+                  "fields": [
+                    "Text",
+                    "Section",
+                    "Extra"
+                  ],
+                  "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
+                }
+              ],
+              "template_id": "design-exam",
+              "custom_requirements": "根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。",
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true,
+              "custom_anki_prompt": "你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。\n\n【你的能力】\n- 识别知识点并选择最合适的卡片模板\n- 生成清晰、准确、易于记忆的卡片内容\n- 确保卡片遵循最小信息原则\n- 支持多种卡片类型：基础问答、填空、代码理解等\n\n【你的限制】\n- 只输出 Anki 卡片数据，不做其他事情\n- 输出的组织方式（如何分隔或包装每张卡片）以请求中的「重要指令」为准，本段不另行约定任何输出格式\n- 不要添加与学习内容无关的信息\n\n【语言规则】\n- 卡片内容（front/back/text/tags）的语言必须与学习材料保持一致：英文材料生成英文卡片，中文材料生成中文卡片，其他语言同理\n- 专业术语可保留原文，不要把材料语言翻译成本提示词的语言\n\n【卡片 JSON 内容规则（与输出组织方式无关，始终适用）】\n1. 每张卡片的 JSON 必须是合法的严格 JSON：键和字符串一律用双引号；禁止尾逗号、注释、单引号\n2. 字符串内的换行必须写成 \\n，双引号必须写成 \\\"；不要输出未转义的控制字符\n3. tags 必须是字符串数组（如 [\"数学\", \"定义\"]），不能是逗号分隔的字符串\n4. 数值字段（如 confidence）直接写数字，不要加引号\n5. 若某张卡片生成到一半发现内容不完整，宁可整张放弃，也不要输出残缺 JSON\n",
+              "template_fields": [
+                "Text",
+                "Section",
+                "Extra"
+              ],
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "description": "包含 {{c1::...}} 填空标记的完整陈述（≤250字）",
+                  "max_length": 250
+                },
+                "Section": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "description": "科目/试卷标题（≤24字）",
+                  "max_length": 24
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "description": "评注或一条补充公式（≤80字）",
+                  "max_length": 80
+                }
+              },
+              "template_fields_by_id": {
+                "design-exam": [
+                  "Text",
+                  "Section",
+                  "Extra"
+                ]
+              },
+              "field_extraction_rules_by_id": {
+                "design-exam": {
+                  "Text": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "包含 {{c1::...}} 填空标记的完整陈述（≤250字）",
+                    "max_length": 250
+                  },
+                  "Section": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "科目/试卷标题（≤24字）",
+                    "max_length": 24
+                  },
+                  "Extra": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "评注或一条补充公式（≤80字）",
+                    "max_length": 80
+                  }
+                }
+              },
+              "source_ref": {
+                "kind": "resource",
+                "id": "w233-resource-1",
+                "title": "外刊精读.pdf",
+                "page": 3
+              }
+            }
+          }
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "${1}",
+            "sessionId": "w233-chat-session-1"
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "${1}"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "# 传输层协议\n\nTCP 是面向连接的可靠传输协议，建立连接需要三次握手：客户端发送 SYN，服务端回复 SYN-ACK，客户端再发送 ACK。\n\nUDP 是无连接协议，不保证送达与顺序，首部只有 8 字节，适合实时音视频与 DNS 查询。\n\n拥塞控制包括慢启动、拥塞避免、快重传与快恢复四个阶段。",
+            "originalDocumentName": "Default",
+            "options": {
+              "deck_name": "Default",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 50,
+              "max_cards_total": 50,
+              "fsrs_feedback": true,
+              "template_ids": [
+                "design-footnote",
+                "design-exam"
+              ],
+              "template_descriptions": [
+                {
+                  "id": "design-footnote",
+                  "name": "The Footnote (脚注风格)",
+                  "description": "正面可交互：点击展开页脚脚注；正文上标编号，学术脚注排版",
+                  "fields": [
+                    "Question",
+                    "Answer",
+                    "Source"
+                  ],
+                  "generation_prompt": "适用：通用问答（默认首选），答案可多句：定理陈述与证明要点、原理解释、计算思路。不适用：选择题、单纯挖空（定义/关键词填空改用 design-glass 或 design-exam）。字段：Question 以正文陈述的问题（≤200字）；Answer 脚注中的答案与解释，可多句（≤600字）；Source 页眉出处/章节（≤30字）。"
+                },
+                {
+                  "id": "design-exam",
+                  "name": "The Examination (试卷风格)",
+                  "description": "试卷式填空：正面留白横线作答，背面以批阅笔色揭示，无脚本依赖",
+                  "fields": [
+                    "Text",
+                    "Section",
+                    "Extra"
+                  ],
+                  "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
+                }
+              ],
+              "template_id": "design-footnote",
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true,
+              "custom_anki_prompt": "你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。\n\n【你的能力】\n- 识别知识点并选择最合适的卡片模板\n- 生成清晰、准确、易于记忆的卡片内容\n- 确保卡片遵循最小信息原则\n- 支持多种卡片类型：基础问答、填空、代码理解等\n\n【你的限制】\n- 只输出 Anki 卡片数据，不做其他事情\n- 输出的组织方式（如何分隔或包装每张卡片）以请求中的「重要指令」为准，本段不另行约定任何输出格式\n- 不要添加与学习内容无关的信息\n\n【语言规则】\n- 卡片内容（front/back/text/tags）的语言必须与学习材料保持一致：英文材料生成英文卡片，中文材料生成中文卡片，其他语言同理\n- 专业术语可保留原文，不要把材料语言翻译成本提示词的语言\n\n【卡片 JSON 内容规则（与输出组织方式无关，始终适用）】\n1. 每张卡片的 JSON 必须是合法的严格 JSON：键和字符串一律用双引号；禁止尾逗号、注释、单引号\n2. 字符串内的换行必须写成 \\n，双引号必须写成 \\\"；不要输出未转义的控制字符\n3. tags 必须是字符串数组（如 [\"数学\", \"定义\"]），不能是逗号分隔的字符串\n4. 数值字段（如 confidence）直接写数字，不要加引号\n5. 若某张卡片生成到一半发现内容不完整，宁可整张放弃，也不要输出残缺 JSON\n",
+              "template_fields_by_id": {
+                "design-footnote": [
+                  "Question",
+                  "Answer",
+                  "Source"
+                ],
+                "design-exam": [
+                  "Text",
+                  "Section",
+                  "Extra"
+                ]
+              },
+              "field_extraction_rules_by_id": {
+                "design-footnote": {
+                  "Question": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "正文陈述与问题（≤200字）",
+                    "max_length": 200
+                  },
+                  "Answer": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "脚注中的答案/解释，可多句（≤600字）",
+                    "max_length": 600
+                  },
+                  "Source": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "页眉出处/章节（≤30字）",
+                    "max_length": 30
+                  }
+                },
+                "design-exam": {
+                  "Text": {
+                    "field_type": "Text",
+                    "is_required": true,
+                    "description": "包含 {{c1::...}} 填空标记的完整陈述（≤250字）",
+                    "max_length": 250
+                  },
+                  "Section": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "科目/试卷标题（≤24字）",
+                    "max_length": 24
+                  },
+                  "Extra": {
+                    "field_type": "Text",
+                    "is_required": false,
+                    "description": "评注或一条补充公式（≤80字）",
+                    "max_length": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "${6}"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "${6}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

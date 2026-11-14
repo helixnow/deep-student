@@ -1,0 +1,419 @@
+{
+  "source": "src/features/chat/skills/builtin-tools/*.ts @ 9b4b945",
+  "total": 317,
+  "bySchema": {
+    "academic-search": [
+      "builtin-arxiv_search",
+      "builtin-cite_format",
+      "builtin-paper_save",
+      "builtin-scholar_search"
+    ],
+    "ask-user": [
+      "builtin-ask_user"
+    ],
+    "attachment-tools": [
+      "builtin-attachment_extract",
+      "builtin-attachment_list",
+      "builtin-attachment_read",
+      "builtin-attachment_stage"
+    ],
+    "automation-tools": [
+      "builtin-automation_cancel_run",
+      "builtin-automation_delete",
+      "builtin-automation_list",
+      "builtin-automation_propose",
+      "builtin-automation_retry_run",
+      "builtin-automation_run_now",
+      "builtin-automation_runs",
+      "builtin-automation_set_enabled",
+      "builtin-automation_update"
+    ],
+    "browser-tools": [
+      "builtin-browser_back",
+      "builtin-browser_click",
+      "builtin-browser_close",
+      "builtin-browser_downloads",
+      "builtin-browser_file_upload",
+      "builtin-browser_navigate",
+      "builtin-browser_open",
+      "builtin-browser_screenshot",
+      "builtin-browser_scroll",
+      "builtin-browser_snapshot",
+      "builtin-browser_type"
+    ],
+    "canvas-note": [
+      "builtin-note_append",
+      "builtin-note_create",
+      "builtin-note_delete",
+      "builtin-note_list",
+      "builtin-note_read",
+      "builtin-note_replace",
+      "builtin-note_search",
+      "builtin-note_set",
+      "builtin-note_update_tags",
+      "builtin-notes_import"
+    ],
+    "connector-tools": [
+      "builtin-connector_operation_commit",
+      "builtin-connector_operation_confirm",
+      "builtin-connector_operation_draft",
+      "builtin-connector_registry"
+    ],
+    "data-governance-tools": [
+      "builtin-backup_create",
+      "builtin-backup_job_status",
+      "builtin-backup_status",
+      "builtin-sync_run",
+      "builtin-sync_status"
+    ],
+    "document-processing": [
+      "builtin-document_parse",
+      "builtin-document_parse_status"
+    ],
+    "docx-tools": [
+      "builtin-docx_create",
+      "builtin-docx_extract_tables",
+      "builtin-docx_get_metadata",
+      "builtin-docx_read_structured",
+      "builtin-docx_replace_text",
+      "builtin-docx_to_spec"
+    ],
+    "dstu-tools": [
+      "builtin-dstu_delete",
+      "builtin-dstu_folder_create",
+      "builtin-dstu_folder_rename",
+      "builtin-dstu_list_trash",
+      "builtin-dstu_move",
+      "builtin-dstu_purge",
+      "builtin-dstu_rename",
+      "builtin-dstu_restore",
+      "builtin-dstu_set_favorite",
+      "builtin-dstu_upload_file"
+    ],
+    "essay-grading": [
+      "builtin-essay_get_result",
+      "builtin-essay_grade",
+      "builtin-essay_grade_status",
+      "builtin-essay_grade_wait",
+      "builtin-essay_list_modes",
+      "builtin-essay_list_results",
+      "builtin-essay_list_sessions"
+    ],
+    "file-manager-tools": [
+      "builtin-file_manager_commit",
+      "builtin-file_manager_plan",
+      "builtin-file_manager_restore"
+    ],
+    "fsrs-settings-tools": [
+      "builtin-fsrs_get_scheduler_config",
+      "builtin-fsrs_update_scheduler_config"
+    ],
+    "generative-ui": [
+      "builtin-render_generative_ui"
+    ],
+    "goal-tools": [
+      "builtin-goal_create",
+      "builtin-goal_get",
+      "builtin-goal_update"
+    ],
+    "image-generation": [
+      "builtin-ask_user",
+      "builtin-image_generate"
+    ],
+    "index-webpage-tools": [
+      "builtin-index_rebuild",
+      "builtin-index_status",
+      "builtin-webpage_save"
+    ],
+    "insight-recall": [
+      "builtin-insight_recall"
+    ],
+    "knowledge-retrieval": [
+      "builtin-unified_search",
+      "builtin-web_search"
+    ],
+    "learning-overview-tools": [
+      "builtin-learning_overview",
+      "builtin-pomodoro_daily_stats",
+      "builtin-pomodoro_today_stats"
+    ],
+    "learning-resource": [
+      "builtin-folder_list",
+      "builtin-resource_list",
+      "builtin-resource_read",
+      "builtin-resource_search"
+    ],
+    "llm-usage-tools": [
+      "builtin-llm_usage_query"
+    ],
+    "media-tools": [
+      "builtin-media_capabilities",
+      "builtin-media_transcribe"
+    ],
+    "mindmap-tools": [
+      "builtin-mindmap_create",
+      "builtin-mindmap_delete",
+      "builtin-mindmap_diff_versions",
+      "builtin-mindmap_edit_nodes",
+      "builtin-mindmap_import",
+      "builtin-mindmap_update",
+      "builtin-mindmap_versions"
+    ],
+    "office-fidelity-tools": [
+      "builtin-office_fidelity_inspect"
+    ],
+    "pptx-tools": [
+      "builtin-pptx_create",
+      "builtin-pptx_extract_tables",
+      "builtin-pptx_get_metadata",
+      "builtin-pptx_read_structured",
+      "builtin-pptx_replace_text",
+      "builtin-pptx_to_spec"
+    ],
+    "ptc-run": [
+      "builtin-ptc_run"
+    ],
+    "qbank-tools": [
+      "builtin-qbank_ai_grade",
+      "builtin-qbank_batch_import",
+      "builtin-qbank_batch_update_questions",
+      "builtin-qbank_commit_authoring_draft",
+      "builtin-qbank_create_question",
+      "builtin-qbank_delete_group",
+      "builtin-qbank_delete_material",
+      "builtin-qbank_delete_questions",
+      "builtin-qbank_export",
+      "builtin-qbank_generate_mock_exam",
+      "builtin-qbank_generate_paper",
+      "builtin-qbank_generate_questions",
+      "builtin-qbank_generate_variant",
+      "builtin-qbank_get_activity_heatmap",
+      "builtin-qbank_get_authoring_draft",
+      "builtin-qbank_get_check_in_calendar",
+      "builtin-qbank_get_daily_practice",
+      "builtin-qbank_get_generation_task",
+      "builtin-qbank_get_knowledge_stats",
+      "builtin-qbank_get_learning_trend",
+      "builtin-qbank_get_next_question",
+      "builtin-qbank_get_paper",
+      "builtin-qbank_get_question",
+      "builtin-qbank_get_question_history",
+      "builtin-qbank_get_stats",
+      "builtin-qbank_get_submissions",
+      "builtin-qbank_import_document",
+      "builtin-qbank_list",
+      "builtin-qbank_list_authoring_drafts",
+      "builtin-qbank_list_papers",
+      "builtin-qbank_list_practices",
+      "builtin-qbank_list_questions",
+      "builtin-qbank_list_source_images",
+      "builtin-qbank_list_structure",
+      "builtin-qbank_reset_progress",
+      "builtin-qbank_review_authoring_draft",
+      "builtin-qbank_search_questions",
+      "builtin-qbank_start_timed_practice",
+      "builtin-qbank_submit_answer",
+      "builtin-qbank_toggle_bookmark",
+      "builtin-qbank_toggle_favorite",
+      "builtin-qbank_update_group",
+      "builtin-qbank_update_material",
+      "builtin-qbank_update_question"
+    ],
+    "review-planning": [
+      "builtin-review_delete",
+      "builtin-review_get_due",
+      "builtin-review_plan_generate",
+      "builtin-review_resume",
+      "builtin-review_schedule",
+      "builtin-review_stats",
+      "builtin-review_submit",
+      "builtin-review_suspend"
+    ],
+    "role-packs": [
+      "builtin-role_pack_get",
+      "builtin-role_pack_list",
+      "builtin-role_pack_validate"
+    ],
+    "root-request-tools": [
+      "builtin-runtime_root_request"
+    ],
+    "self-service-tools": [
+      "builtin-custom_agent_apply",
+      "builtin-custom_agent_get",
+      "builtin-custom_agent_list",
+      "builtin-custom_agent_propose",
+      "builtin-custom_agent_remove",
+      "builtin-mcp_server_propose",
+      "builtin-mcp_server_remove",
+      "builtin-mcp_server_set_enabled",
+      "builtin-mcp_server_update",
+      "builtin-self_inspect",
+      "builtin-skill_remove",
+      "builtin-skill_set_enabled",
+      "builtin-skill_trust_request",
+      "builtin-skill_workshop_apply",
+      "builtin-skill_workshop_propose"
+    ],
+    "session-manager": [
+      "builtin-group_create",
+      "builtin-group_list",
+      "builtin-group_update",
+      "builtin-session_archive",
+      "builtin-session_batch_move",
+      "builtin-session_batch_ops",
+      "builtin-session_batch_tag",
+      "builtin-session_export",
+      "builtin-session_get",
+      "builtin-session_get_messages",
+      "builtin-session_import",
+      "builtin-session_list",
+      "builtin-session_move",
+      "builtin-session_rename",
+      "builtin-session_restore",
+      "builtin-session_search",
+      "builtin-session_stats",
+      "builtin-session_tag_add",
+      "builtin-session_tag_remove",
+      "builtin-tag_list_all"
+    ],
+    "settings-tools": [
+      "builtin-model_assignments_get",
+      "builtin-model_assignments_set",
+      "builtin-model_profile_add",
+      "builtin-settings_get",
+      "builtin-settings_set"
+    ],
+    "subagent-worker": [
+      "builtin-workspace_get_context",
+      "builtin-workspace_query",
+      "builtin-workspace_send"
+    ],
+    "task-governance-tools": [
+      "builtin-lineage_forget",
+      "builtin-task_audit_export"
+    ],
+    "template-designer": [
+      "builtin-template_create",
+      "builtin-template_delete",
+      "builtin-template_fork",
+      "builtin-template_get",
+      "builtin-template_list",
+      "builtin-template_preview",
+      "builtin-template_set_default",
+      "builtin-template_update",
+      "builtin-template_validate"
+    ],
+    "textbook-pdf-tools": [
+      "builtin-pdf_page_image",
+      "builtin-textbook_bookmarks",
+      "builtin-textbook_highlights"
+    ],
+    "todo-tools": [
+      "builtin-todo_add",
+      "builtin-todo_get",
+      "builtin-todo_init",
+      "builtin-todo_update"
+    ],
+    "tool-pack": [
+      "builtin-tool_pack"
+    ],
+    "translation-tools": [
+      "builtin-translate_text",
+      "builtin-translation_save"
+    ],
+    "user-todo-tools": [
+      "builtin-user_todo_complete_item",
+      "builtin-user_todo_create_item",
+      "builtin-user_todo_create_list",
+      "builtin-user_todo_delete_item",
+      "builtin-user_todo_delete_list",
+      "builtin-user_todo_get_summary",
+      "builtin-user_todo_list_items",
+      "builtin-user_todo_list_lists",
+      "builtin-user_todo_list_trash",
+      "builtin-user_todo_reorder",
+      "builtin-user_todo_restore",
+      "builtin-user_todo_search",
+      "builtin-user_todo_update_item",
+      "builtin-user_todo_update_list"
+    ],
+    "vfs-memory": [
+      "builtin-learner_profile_get",
+      "builtin-learner_profile_update",
+      "builtin-memory_add_relation",
+      "builtin-memory_batch_move",
+      "builtin-memory_delete",
+      "builtin-memory_export_all",
+      "builtin-memory_list",
+      "builtin-memory_log_activity",
+      "builtin-memory_read",
+      "builtin-memory_remove_relation",
+      "builtin-memory_search",
+      "builtin-memory_update_by_id",
+      "builtin-memory_update_tags",
+      "builtin-memory_write",
+      "builtin-memory_write_batch",
+      "builtin-memory_write_smart"
+    ],
+    "web-fetch": [
+      "builtin-web_fetch"
+    ],
+    "workbench-tools": [
+      "builtin-workbench_act",
+      "builtin-workbench_act_high",
+      "builtin-workbench_app_command",
+      "builtin-workbench_close_window",
+      "builtin-workbench_get_capabilities",
+      "builtin-workbench_list_windows",
+      "builtin-workbench_observe",
+      "builtin-workbench_open_app",
+      "builtin-workbench_query_state",
+      "builtin-workbench_undo",
+      "builtin-workbench_wait_for"
+    ],
+    "workspace-tools": [
+      "builtin-coordinator_sleep",
+      "builtin-git_branch",
+      "builtin-git_commit",
+      "builtin-git_diff",
+      "builtin-git_log",
+      "builtin-git_status",
+      "builtin-local_shell_execute",
+      "builtin-local_shell_preflight",
+      "builtin-skill_install",
+      "builtin-skill_scan",
+      "builtin-subagent_call",
+      "builtin-workspace_artifact_write",
+      "builtin-workspace_change_revert",
+      "builtin-workspace_create",
+      "builtin-workspace_create_agent",
+      "builtin-workspace_file_delete",
+      "builtin-workspace_file_edit",
+      "builtin-workspace_file_list",
+      "builtin-workspace_file_move",
+      "builtin-workspace_file_read",
+      "builtin-workspace_file_write",
+      "builtin-workspace_get_context",
+      "builtin-workspace_lsp_definition",
+      "builtin-workspace_lsp_document_symbols",
+      "builtin-workspace_lsp_hover",
+      "builtin-workspace_lsp_references",
+      "builtin-workspace_query",
+      "builtin-workspace_read_document",
+      "builtin-workspace_send",
+      "builtin-workspace_set_context",
+      "builtin-workspace_symbol_outline",
+      "builtin-workspace_text_search",
+      "builtin-workspace_update_document"
+    ],
+    "xlsx-tools": [
+      "builtin-xlsx_create",
+      "builtin-xlsx_edit_cells",
+      "builtin-xlsx_extract_tables",
+      "builtin-xlsx_get_metadata",
+      "builtin-xlsx_read_structured",
+      "builtin-xlsx_replace_text",
+      "builtin-xlsx_to_spec"
+    ]
+  }
+}

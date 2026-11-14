@@ -674,13 +674,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.85 }}
                                 transition={motionSafe(springSnap)}
-                                className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] leading-none text-primary [@media(pointer:coarse)]:py-1.5"
+                                className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground [@media(pointer:coarse)]:py-1.5"
                             >
                                 <span className="max-w-[140px] truncate">{tag}</span>
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.06))] hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}
@@ -736,7 +736,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 aria-autocomplete="list"
                                 aria-invalid={tagError ? true : undefined}
                                 aria-describedby={tagError ? tagErrorId : undefined}
-                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
+                                className="h-6 w-32 rounded-[5px] border border-[var(--notes-hairline,hsl(var(--border)/0.6))] bg-[var(--notes-surface-subtle,transparent)] px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
                                 // 定位交给外层普通 div：OverlayScrollbars 会给宿主强加 position:relative，
@@ -789,7 +789,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                         <button
                             ref={tagTriggerRef}
                             type="button"
-                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
+                            className="inline-flex h-6 items-center gap-0.5 rounded-[5px] border-0 bg-transparent px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.045))] hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                             onClick={() => setTagInputOpen(true)}
                             aria-label={t('notes:header.add_tags')}
                         >

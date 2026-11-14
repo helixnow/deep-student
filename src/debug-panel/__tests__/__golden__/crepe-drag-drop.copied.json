@@ -1,0 +1,1407 @@
+{
+  "notices": [
+    "info: 诊断完成，请查看日志",
+    "success: 已复制 13 条日志",
+    "success: 日志已复制",
+    "success: 已复制 7 条日志"
+  ],
+  "copiedAll": [
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 0,
+      "type": "dragstart",
+      "phase": "capture",
+      "target": "system",
+      "currentTarget": "system",
+      "clientX": 0,
+      "clientY": 0,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "📍 拖放调试插件已激活，等待拖放操作..."
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 82,
+      "type": "mousedown",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 12,
+      "clientY": 40,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ Block handle 不可见",
+        "📍 mousedown 在 block handle 上",
+        "📍 点击的是拖拽手柄（应触发 dragstart）"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 164,
+      "type": "mousedown",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 4,
+      "clientY": 40,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ Block handle 不可见",
+        "📍 mousedown 在 block handle 上",
+        "📍 点击的是加号按钮（会触发 slash menu）"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 205,
+      "type": "mouseup",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 30,
+      "clientY": 40,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "✅ 已设置 NodeSelection"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 246,
+      "type": "dragstart",
+      "phase": "capture",
+      "target": "body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 12,
+      "clientY": 40,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html",
+          "text/plain"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": []
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 287,
+      "type": "dragenter",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "clientX": 40,
+      "clientY": 80,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": []
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 328,
+      "type": "dragover",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 82,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": true,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": []
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 369,
+      "type": "dragover",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 84,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 451,
+      "type": "dragleave",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "clientX": 40,
+      "clientY": 86,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": []
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 492,
+      "type": "drop",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 88,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": true,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ drop 被 preventDefault() 阻止"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 533,
+      "type": "dragend",
+      "phase": "capture",
+      "target": "body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 88,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [],
+        "hasData": false
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": []
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 574,
+      "type": "dragover",
+      "phase": "capture",
+      "target": "html > body",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 900,
+      "clientY": 600,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [],
+        "hasData": false
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 574,
+      "type": "dragstart",
+      "phase": "capture",
+      "target": "diagnosis",
+      "currentTarget": "diagnosis",
+      "clientX": 0,
+      "clientY": 0,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "✅ window.__MILKDOWN_VIEW__ 存在",
+        "   - editable: true",
+        "   - dragging: {\"slice\":{\"size\":1},\"move\":true}",
+        "   - selection: NodeSelection",
+        "   - hasFocus: false",
+        "❌ window.__MILKDOWN_CTX__ 不存在",
+        "❌ window.__MILKDOWN_CREPE__ 不存在",
+        "",
+        "📦 DOM 结构检查:",
+        "   - .crepe-editor-wrapper: ✅",
+        "   - .milkdown: ✅",
+        "   - .ProseMirror: ✅",
+        "   - .milkdown-block-handle: ✅",
+        "   - block handle draggable: true",
+        "   - block handle data-show: true",
+        "   - block handle pointer-events: auto",
+        "   - operation-items: 2",
+        "",
+        "📝 ProseMirror (from DOM):",
+        "   - pmViewDesc: ❌ 不存在",
+        "",
+        "🎯 Draggable 元素: 1 个",
+        "   1. div.milkdown-block-handle"
+      ]
+    }
+  ],
+  "copiedOne": {
+    "keys": [
+      "timestamp",
+      "ts",
+      "type",
+      "phase",
+      "target",
+      "currentTarget",
+      "relatedTarget",
+      "clientX",
+      "clientY",
+      "defaultPrevented",
+      "propagationStopped",
+      "immediatePropagationStopped",
+      "editorState",
+      "blockHandleState",
+      "domState",
+      "issues",
+      "id"
+    ],
+    "offset": 164,
+    "type": "mousedown",
+    "phase": "capture",
+    "target": "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item",
+    "currentTarget": "null",
+    "relatedTarget": "null",
+    "clientX": 4,
+    "clientY": 40,
+    "defaultPrevented": false,
+    "propagationStopped": false,
+    "immediatePropagationStopped": false,
+    "editorState": {
+      "hasFocus": false,
+      "isDragging": false,
+      "hasSelection": false,
+      "selectionType": "NodeSelection",
+      "draggingSlice": true
+    },
+    "blockHandleState": {
+      "visible": false,
+      "activeNodeType": null,
+      "position": null
+    },
+    "domState": {
+      "draggableElements": 1,
+      "blockHandleExists": true,
+      "dataDragging": "false",
+      "blockHandleDraggable": true,
+      "blockHandlePointerEvents": "auto",
+      "blockHandleDataShow": "true",
+      "operationItemCount": 2,
+      "pmViewExists": true,
+      "pmViewDragging": {
+        "slice": true,
+        "move": true
+      },
+      "pmViewEditable": true,
+      "pmSelectionType": "NodeSelection"
+    },
+    "issues": [
+      "⚠️ Block handle 不可见",
+      "📍 mousedown 在 block handle 上",
+      "📍 点击的是加号按钮（会触发 slash menu）"
+    ]
+  },
+  "copiedFiltered": [
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 0,
+      "type": "dragstart",
+      "phase": "capture",
+      "target": "system",
+      "currentTarget": "system",
+      "clientX": 0,
+      "clientY": 0,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "📍 拖放调试插件已激活，等待拖放操作..."
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 123,
+      "type": "pointerdown",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 12,
+      "clientY": 40,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ Block handle 不可见",
+        "📍 mousedown 在 block handle 上",
+        "📍 点击的是拖拽手柄（应触发 dragstart）"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 205,
+      "type": "mouseup",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 30,
+      "clientY": 40,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "✅ 已设置 NodeSelection"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 369,
+      "type": "dragover",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 84,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 492,
+      "type": "drop",
+      "phase": "capture",
+      "target": "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 40,
+      "clientY": 88,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [
+          "text/html"
+        ],
+        "hasData": true
+      },
+      "defaultPrevented": true,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ drop 被 preventDefault() 阻止"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "relatedTarget",
+        "clientX",
+        "clientY",
+        "dataTransfer",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "editorState",
+        "blockHandleState",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 574,
+      "type": "dragover",
+      "phase": "capture",
+      "target": "html > body",
+      "currentTarget": "null",
+      "relatedTarget": "null",
+      "clientX": 900,
+      "clientY": 600,
+      "dataTransfer": {
+        "effectAllowed": "move",
+        "dropEffect": "none",
+        "types": [],
+        "hasData": false
+      },
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "editorState": {
+        "hasFocus": false,
+        "isDragging": false,
+        "hasSelection": false,
+        "selectionType": "NodeSelection",
+        "draggingSlice": true
+      },
+      "blockHandleState": {
+        "visible": false,
+        "activeNodeType": null,
+        "position": null
+      },
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+      ]
+    },
+    {
+      "keys": [
+        "timestamp",
+        "ts",
+        "type",
+        "phase",
+        "target",
+        "currentTarget",
+        "clientX",
+        "clientY",
+        "defaultPrevented",
+        "propagationStopped",
+        "immediatePropagationStopped",
+        "domState",
+        "issues",
+        "id"
+      ],
+      "offset": 574,
+      "type": "dragstart",
+      "phase": "capture",
+      "target": "diagnosis",
+      "currentTarget": "diagnosis",
+      "clientX": 0,
+      "clientY": 0,
+      "defaultPrevented": false,
+      "propagationStopped": false,
+      "immediatePropagationStopped": false,
+      "domState": {
+        "draggableElements": 1,
+        "blockHandleExists": true,
+        "dataDragging": "false",
+        "blockHandleDraggable": true,
+        "blockHandlePointerEvents": "auto",
+        "blockHandleDataShow": "true",
+        "operationItemCount": 2,
+        "pmViewExists": true,
+        "pmViewDragging": {
+          "slice": true,
+          "move": true
+        },
+        "pmViewEditable": true,
+        "pmSelectionType": "NodeSelection"
+      },
+      "issues": [
+        "✅ window.__MILKDOWN_VIEW__ 存在",
+        "   - editable: true",
+        "   - dragging: {\"slice\":{\"size\":1},\"move\":true}",
+        "   - selection: NodeSelection",
+        "   - hasFocus: false",
+        "❌ window.__MILKDOWN_CTX__ 不存在",
+        "❌ window.__MILKDOWN_CREPE__ 不存在",
+        "",
+        "📦 DOM 结构检查:",
+        "   - .crepe-editor-wrapper: ✅",
+        "   - .milkdown: ✅",
+        "   - .ProseMirror: ✅",
+        "   - .milkdown-block-handle: ✅",
+        "   - block handle draggable: true",
+        "   - block handle data-show: true",
+        "   - block handle pointer-events: auto",
+        "   - operation-items: 2",
+        "",
+        "📝 ProseMirror (from DOM):",
+        "   - pmViewDesc: ❌ 不存在",
+        "",
+        "🎯 Draggable 元素: 1 个",
+        "   1. div.milkdown-block-handle"
+      ]
+    }
+  ]
+}

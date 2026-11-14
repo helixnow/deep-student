@@ -221,7 +221,7 @@ export async function preparePaperBlocks(sections: PaperSection[]): Promise<Pape
 let browserFonts: Promise<void> | null = null;
 async function loadBrowserFont(): Promise<void> {
   browserFonts ??= Promise.all([['400', 'Regular'], ['700', 'Bold']].map(async ([weight, name]) => {
-    const face = new FontFace('PaperExport', `url(/fonts/paper-export/NotoSansSC-${name}.ttf)`, { weight });
+    const face = new FontFace('PaperExport', `url(${import.meta.env.BASE_URL}fonts/paper-export/NotoSansSC-${name}.ttf)`, { weight });
     document.fonts.add(await face.load());
   })).then(() => {});
   return browserFonts;
@@ -342,8 +342,8 @@ let fontPromise: Promise<Record<string, string>> | null = null;
 export async function paperPdfBytes(blocks: PaperBlock[], title: string): Promise<Uint8Array> {
   const { default: pdfMake } = await import('pdfmake/build/pdfmake');
   fontPromise ??= Promise.all(['Regular', 'Bold'].map(async name => {
-      const response = await fetch(`/fonts/paper-export/NotoSansSC-${name}.ttf`);
-      if (!response.ok) throw new Error('Paper font unavailable');
+      const response = await fetch(`${import.meta.env.BASE_URL}fonts/paper-export/NotoSansSC-${name}.ttf`);
+      if (!response.ok || response.headers.get('content-type')?.includes('text/html')) throw new Error('Paper font unavailable');
       return [`NotoSansSC-${name}.ttf`, (await blobDataUrl(await response.blob())).split(',')[1]];
     })).then(entries => Object.fromEntries(entries))
     .catch((error) => {

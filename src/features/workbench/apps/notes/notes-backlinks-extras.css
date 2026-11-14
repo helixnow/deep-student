@@ -69,24 +69,27 @@
   transition-delay: 200ms;
 }
 
-.notes-backlinks-panel-empty {
+.notes-backlinks-panel-empty,
+.notes-backlinks-empty-box {
   margin: 6px 2px 2px;
-  padding: 12px 8px 10px;
+  padding: 10px 8px;
   display: grid;
   justify-items: center;
   gap: 6px;
-  border: 1px dashed hsl(var(--border) / 85%);
+  border: 0;
   border-radius: var(--notes-radius-control);
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--background) / 35%);
+  background: transparent;
   text-align: center;
 }
 
-.notes-backlinks-panel-empty > svg {
+.notes-backlinks-panel-empty > svg,
+.notes-backlinks-empty-box > svg {
   opacity: 0.72;
 }
 
-.notes-backlinks-panel-empty p {
+.notes-backlinks-panel-empty p,
+.notes-backlinks-empty-box p {
   padding: 0;
   font-size: 11px;
   line-height: 1.45;
@@ -97,14 +100,17 @@
   gap: 2px;
 }
 
-.notes-backlinks-panel-context {
+.notes-backlinks-panel-context,
+.notes-backlinks-snippet {
   margin: 0 0 4px 28px;
-  padding: 3px 6px;
+  padding: 2px 4px 2px 8px;
   max-height: 3.6em;
   overflow: hidden;
-  border-radius: var(--notes-radius-control);
+  border: 0;
+  border-left: 1.5px solid var(--notes-hairline, hsl(var(--border)));
+  border-radius: 0;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--background) / 48%);
+  background: transparent;
   font-size: 11px;
   line-height: 1.45;
   white-space: pre-wrap;

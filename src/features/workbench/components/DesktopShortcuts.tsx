@@ -15,7 +15,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut, PencilSimple, Trash } from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useLongPress, type LongPressPoint } from '@/hooks/mobile/useLongPress';
@@ -36,7 +35,10 @@ import {
   launchResourceFromDragData,
   registerDesktopResourceDropHandler,
 } from '../apps/files/desktopDragBridge';
-import { ActionItem } from './DesktopContextMenu';
+import { inlineAppMenuSubmenus } from '@/ui-plugins/official/menu/appMenu';
+import { officialDesktopShortcutMenuEntries } from '@/ui-plugins/official/menu/desktopShortcutMenu';
+import { useAppMenuRows } from './appMenuHost';
+import { DeskMenuRow } from './DeskMenuItems';
 import './DesktopShortcuts.css';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
@@ -228,7 +230,8 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
 };
 
 // ---------------------------------------------------------------------------
-// 图标右键菜单（学习桌面玻璃菜单同款外壳）
+// 图标右键菜单（学习桌面玻璃菜单同款外壳；行来自 `app.menu` 的 workbench.desktopShortcut，
+// 官方行见 ui-plugins/official/menu/desktopShortcutMenu.tsx）
 // ---------------------------------------------------------------------------
 
 interface IconMenuState {
@@ -256,10 +259,21 @@ const IconMenu: React.FC<IconMenuProps> = ({
   onRename,
   onRemove,
 }) => {
-  const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: state.x, y: state.y });
   useLiquidGlassLens(menuRef, true);
+  const { shortcut } = state;
+  const { resourceId, resourceType, folderId, quickAccessType, appType } = shortcut.target;
+  const rows = inlineAppMenuSubmenus(useAppMenuRows('workbench.desktopShortcut', {
+    shortcutId: shortcut.id,
+    shortcutType: shortcut.type,
+    name: resolveShortcutName(shortcut),
+    target: { resourceId, resourceType, folderId, quickAccessType, appType },
+    closeMenu: onClose,
+    open: () => onOpen(shortcut),
+    beginRename: () => onRename(shortcut.id),
+    remove: () => onRemove(shortcut.id),
+  }, officialDesktopShortcutMenuEntries));
 
   useLayoutEffect(() => {
     const el = menuRef.current;
@@ -301,32 +315,7 @@ const IconMenu: React.FC<IconMenuProps> = ({
       onContextMenu={(e) => e.preventDefault()}
     >
       <WallpaperReplica hostRef={menuRef} />
-      <ActionItem
-        icon={<ArrowSquareOut size={15} weight="duotone" />}
-        label={t('desktop.open')}
-        onClick={() => {
-          onClose();
-          onOpen(state.shortcut);
-        }}
-      />
-      <div className="wb-desk-menu-sep" role="separator" />
-      <ActionItem
-        icon={<PencilSimple size={15} weight="duotone" />}
-        label={t('desktop.rename')}
-        onClick={() => {
-          onClose();
-          onRename(state.shortcut.id);
-        }}
-      />
-      <ActionItem
-        icon={<Trash size={15} weight="duotone" />}
-        label={t('desktop.remove')}
-        danger
-        onClick={() => {
-          onClose();
-          onRemove(state.shortcut.id);
-        }}
-      />
+      {rows.map((row) => <DeskMenuRow key={row.key} row={row} onDone={onClose} />)}
     </div>,
     document.body,
   );
@@ -420,6 +409,8 @@ export const DesktopShortcutsLayer: React.FC = () => {
   }, [openMenuAt]);
 
   const closeMenu = useCallback(() => {
+    // 插件行可能先调 closeMenu 又按默认执行后关闭；第二次不能再起计时器，否则重新打开的菜单会被前一个计时器关掉
+    if (menuExitTimerRef.current !== null) return;
     setMenuClosing(true);
     menuExitTimerRef.current = window.setTimeout(() => {
       menuExitTimerRef.current = null;

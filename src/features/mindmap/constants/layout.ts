@@ -213,12 +213,11 @@ export const REACTFLOW_CONFIG = {
   maxZoom: 2,
   fitViewPadding: 0.2,
   snapToGrid: false,
-  // 滚轮/触控板语义（默认对齐常见导图软件与 macOS 平台习惯）：
-  // 双指滑动/滚轮 = 平移画布，pinch 或 Cmd/Ctrl+滚轮 = 缩放。
-  // 旧「滚轮直接缩放」保留为用户偏好（useCanvasWheelMode，localStorage），
+  // 滚轮/触控板语义（默认滚轮直接缩放，平移靠拖空白 / Space / 中键）：
+  // 双指平移 + pinch / Cmd/Ctrl+滚轮缩放保留为用户偏好（useCanvasWheelMode，localStorage），
   // MindMapCanvas 按偏好在这两组值之间切换（见 WHEEL_MODE_*_PROPS）。
-  panOnScroll: true,
-  zoomOnScroll: false,
+  panOnScroll: false,
+  zoomOnScroll: true,
   // 触屏双指捏合缩放（捏合手势自带的双指平移由 xyflow 一并处理）
   zoomOnPinch: true,
   // 触点抖动容差：位移超过 ~8px 才认定为节点拖拽，减少触屏误拖
@@ -228,14 +227,14 @@ export const REACTFLOW_CONFIG = {
   elementsSelectable: true,
 };
 
-/** 滚轮偏好 = pan（默认）：双指/滚轮平移，Cmd/Ctrl+滚轮或 pinch 缩放 */
+/** 滚轮偏好 = pan：双指/滚轮平移，Cmd/Ctrl+滚轮或 pinch 缩放 */
 export const WHEEL_MODE_PAN_PROPS = {
   panOnScroll: true,
   zoomOnScroll: false,
   zoomActivationKeyCode: ['Meta', 'Control'] as string[],
 } as const;
 
-/** 滚轮偏好 = zoom（旧行为）：滚轮直接缩放，平移靠拖空白 / Space / 中键 */
+/** 滚轮偏好 = zoom（默认）：滚轮直接缩放，平移靠拖空白 / Space / 中键 */
 export const WHEEL_MODE_ZOOM_PROPS = {
   panOnScroll: false,
   zoomOnScroll: true,

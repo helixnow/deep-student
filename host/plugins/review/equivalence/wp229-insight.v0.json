@@ -1,0 +1,1191 @@
+{
+  "domain": "review",
+  "commands": [
+    "insight_create_draft",
+    "insight_get",
+    "insight_list",
+    "insight_list_revisions",
+    "insight_list_evidence",
+    "insight_list_relations",
+    "insight_confirm",
+    "insight_correct",
+    "insight_record_feedback",
+    "insight_run_jobs",
+    "insight_add_relation",
+    "insight_delete"
+  ],
+  "scenarios": [
+    {
+      "id": "review.insight.draft-confirm-correct-feedback-jobs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "  线段图先行  ",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "无用户证据",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "assistant",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "AI 草稿",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "",
+              "rule": "只有规则",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": {
+                "ai_draft": null
+              },
+              "evidence": []
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "手动证据",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "   ",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "guided",
+              "evidence": [
+                {
+                  "kind": "manual",
+                  "session_id": null,
+                  "message_id": null,
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": null,
+                  "text_end": null,
+                  "speaker": null,
+                  "resource_id": null,
+                  "quote_snapshot": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "最小证据",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": {
+                    "note": null
+                  },
+                  "quote_snapshot": "笔记摘录"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "ins_missing"
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": ""
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {}
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": "active",
+            "limit": 2,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": "Active"
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 0,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": -1,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 9007199254740991,
+            "offset": 3
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 10,
+            "offset": -5
+          }
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_evidence",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_evidence",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {
+            "insightId": "ins_missing"
+          }
+        },
+        {
+          "cmd": "insight_list_evidence",
+          "args": {
+            "insightId": "ins_missing"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "ins_missing"
+          }
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${0.id}",
+            "edits": null
+          }
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${1.id}",
+            "edits": {
+              "title": "  改名后  ",
+              "rule": "边界：仅限一次方程",
+              "edit_note": "确认时修改"
+            }
+          }
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${0.id}",
+            "input": {
+              "situation": "新情境",
+              "edit_note": null
+            }
+          }
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${3.id}",
+            "input": {}
+          }
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${2.id}",
+            "input": {
+              "title": "",
+              "validity_conditions": "   "
+            }
+          }
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "useful",
+            "sessionId": "sess_wp229"
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "useful"
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "not_useful",
+            "sessionId": null
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${1.id}",
+            "feedback": "not_applicable"
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": 0
+          }
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": 1
+          }
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": null
+          }
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": 4294967295
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 100,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.insight.relations-derived-review-and-delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "原则 A",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "例子 B",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "反例 C",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${1.id}",
+            "relationType": "same_method",
+            "scope": null,
+            "evidence": null
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${1.id}",
+            "relationType": "same_method",
+            "scope": "一次方程",
+            "evidence": "同一画图法"
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${1.id}",
+            "toId": "${0.id}",
+            "relationType": "example_of"
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${2.id}",
+            "relationType": "counterexample",
+            "scope": null,
+            "evidence": null
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${2.id}",
+            "toId": "${1.id}",
+            "relationType": "same_trap"
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${2.id}",
+            "toId": "${0.id}",
+            "relationType": "contradict",
+            "scope": "分式方程",
+            "evidence": "画图不适用"
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${1.id}",
+            "toId": "${2.id}",
+            "relationType": "supersede",
+            "scope": " 新版 ",
+            "evidence": " 更新 "
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "abstract_of"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${1.id}",
+            "input": {
+              "rule": "例子已更正",
+              "edit_note": "修正例子"
+            }
+          }
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": 20
+          }
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": "ins_missing"
+          }
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": ""
+          }
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_evidence",
+          "args": {
+            "insightId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${2.id}",
+            "feedback": "useful"
+          }
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${2.id}",
+            "edits": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${2.id}",
+            "input": {
+              "rule": "已删除"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${2.id}",
+            "relationType": "same_method"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${2.id}",
+            "toId": "${0.id}",
+            "relationType": "same_trap"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.insight.input-errors-and-serde",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "校验用卡",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "  \n ",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "无转折无规则",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": " ",
+              "rule": "",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "ins_missing",
+            "edits": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "",
+            "edits": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "ins_missing",
+            "input": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "helpful"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "Useful"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "ins_missing",
+            "feedback": "useful"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "ins_missing",
+            "feedback": "not_applicable",
+            "sessionId": "s"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "related"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "SAME_METHOD"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "contradict",
+            "scope": null,
+            "evidence": "证据"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "contradict",
+            "scope": "范围",
+            "evidence": "  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${0.id}",
+            "relationType": "supersede"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "ins_missing",
+            "toId": "${0.id}",
+            "relationType": "contradict",
+            "scope": "",
+            "evidence": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "ins_missing",
+            "toId": "${0.id}",
+            "relationType": "same_method"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "ins_missing",
+            "relationType": "counterexample"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "",
+            "toId": "",
+            "relationType": "same_trap"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "未知所有权",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "user",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "坏证据",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "video",
+                  "session_id": "sess_wp229",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": "blk_1",
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我发现先画图再列方程更快"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "缺快照",
+              "situation": "  解应用题时  ",
+              "stuck_point": "不会设未知数",
+              "turning_point": "先画线段图",
+              "rule": "数量关系先图示后列式",
+              "validity_conditions": "行程/工程类问题",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "manual"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "缺字段",
+              "rule": "r"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": null,
+            "limit": 1.5,
+            "offset": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_list",
+          "args": {
+            "status": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_run_jobs",
+          "args": {
+            "batchSize": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_get",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_list_evidence",
+          "args": {
+            "insightId": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_list_relations",
+          "args": {
+            "insightId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${0.id}",
+            "edits": {
+              "title": 5
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "insight_get",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_list_revisions",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

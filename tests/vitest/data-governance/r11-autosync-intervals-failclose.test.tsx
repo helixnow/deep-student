@@ -430,11 +430,11 @@ describe('mutual exclusion with manual sync', () => {
   });
 
   const rustCommandsSyncSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/data_governance/commands_sync.rs'),
+    resolve(process.cwd(), 'host/plugins/sync/src/run-sync.ts'),
     'utf-8',
   );
   const rustBackupCommonSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/crates/dstu-storage/src/backup_common.rs'),
+    resolve(process.cwd(), 'host/plugins/backup/src/operations.ts'),
     'utf-8',
   );
 
@@ -463,11 +463,11 @@ describe('mutual exclusion with manual sync', () => {
 
   it('cross-layer contract: the missing-password marker matches the engine wording', () => {
     const rustSyncModSource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs'),
+      resolve(process.cwd(), 'host/plugins/sync/src/payload.ts'),
       'utf-8',
     );
     const rustCloudSource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_storage/mod.rs'),
+      resolve(process.cwd(), 'host/plugins/sync-providers/src/mod.ts'),
       'utf-8',
     );
     for (const marker of AUTO_SYNC_UNCONFIGURED_MARKERS) {

@@ -5,6 +5,8 @@
  *
  * - `DesktopContextMenu`：桌面右键菜单（新建对话 / 资源库 / 整理窗口 / 平铺全部 /
  *   显示桌面 / 窗口俯瞰 / 壁纸预设 / 视觉材质 / 桌面设置），
+ *   行来自 `app.menu` 的 `workbench.desktop`（无 UI 内核时用同一张官方表，见
+ *   ui-plugins/official/menu/desktopMenu.tsx），本文件提供菜单动作并渲染，
  *   自绘玻璃面板（不用 Radix，避免把总装根节点包进 Trigger），
  *   键盘可达（↑↓ 移动、→ 进子菜单、← 退出、Enter 触发、Esc 关闭）；
  * - `useDesktopGestures`：桌面空白区 contextmenu / 双击 show desktop 手势
@@ -13,31 +15,16 @@
  * 不新增 store 字段；设置持久化复用 P10 的 save_setting + 'workbench:settings-changed'
  * 事件契约（非 Tauri 环境回退 localStorage，与 WorkbenchDesktop.readSetting 对称）。
  */
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import {
-  CalendarBlank,
-  CaretRight,
-  ChatCircleDots,
-  Check,
-  CirclesFour,
-  Compass,
-  Desktop,
-  Drop,
-  FolderOpen,
-  GearSix,
-  GridFour,
-  Image,
-  Keyboard,
-  SquaresFour,
-  Stack,
-} from '@phosphor-icons/react';
+import type { AppMenuDesktop } from '@/ui-sdk';
+import { officialDesktopMenuEntries } from '@/ui-plugins/official/menu/desktopMenu';
+import { inlineAppMenuSubmenus } from '@/ui-plugins/official/menu/appMenu';
 import { useWindowStore } from '../core/windowStore';
 import type { DisplayMode } from '../core/types';
 import { getSortedWindows } from '../core/windowListCache';
-import { workbenchBus } from '../core/workbenchBus';
 import {
   WORKBENCH_SHORTCUT_DEFINITIONS,
   formatShortcutBinding,
@@ -49,8 +36,9 @@ import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDeskt
 import { WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
 import { OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
 import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
-import { openAppsPanel } from './appsPanelStore';
 import { replayEmptyDesktopTour } from './EmptyDesktop';
+import { useAppMenuRows } from './appMenuHost';
+import { ActionItem, DeskMenuRow } from './DeskMenuItems';
 import './DesktopContextMenu.css';
 
 // ---------------------------------------------------------------------------
@@ -61,8 +49,6 @@ const WALLPAPER_SETTING_KEY = 'desktop.workbenchWallpaper';
 const MATERIAL_TIER_SETTING_KEY = 'desktop.workbenchMaterialTier';
 /** 桌面组件（日程小组件等）显隐；缺省 = 显示，只有显式 'false' 才隐藏 */
 export const DESKTOP_WIDGETS_SETTING_KEY = 'desktop.workbenchDesktopWidgets';
-/** 桌面右键子菜单展示的壁纸预设数量（完整清单进壁纸管理面板） */
-const MENU_WALLPAPER_PRESET_COUNT = 5;
 
 function isTauriRuntime(): boolean {
   return (
@@ -260,8 +246,6 @@ export function useDesktopGestures(
 // 菜单渲染
 // ---------------------------------------------------------------------------
 
-type SubMenuId = 'wallpaper' | 'tier';
-
 const MENU_FALLBACK_W = 240;
 const MENU_FALLBACK_H = 320;
 const MENU_EDGE_PAD = 8;
@@ -280,101 +264,6 @@ function shortcutHintFor(id: string): string | undefined {
   const def = WORKBENCH_SHORTCUT_DEFINITIONS.find((d) => d.id === id);
   return def ? formatShortcutBinding(def.binding) : undefined;
 }
-
-interface ActionItemProps {
-  icon: React.ReactNode;
-  label: string;
-  disabled?: boolean;
-  /** 危险操作（删除/移除等）：红字 + 红色 hover 高亮 */
-  danger?: boolean;
-  /** 有值 = 子菜单父项（渲染 caret + aria-haspopup） */
-  subId?: SubMenuId;
-  subOpen?: boolean;
-  /** checkbox 菜单项语义 */
-  checked?: boolean;
-  /** 右缘快捷键提示（仅展示，不参与交互） */
-  shortcut?: string;
-  /** 测试/自动化定位（不参与展示） */
-  testId?: string;
-  onClick?: () => void;
-  onPointerEnter?: () => void;
-}
-
-/** 桌面玻璃菜单动作行（StatusBarBrandMenu 同款复用） */
-export const ActionItem: React.FC<ActionItemProps> = ({
-  icon,
-  label,
-  disabled,
-  danger,
-  subId,
-  subOpen,
-  checked,
-  shortcut,
-  testId,
-  onClick,
-  onPointerEnter,
-}) => (
-  <button
-    type="button"
-    className={danger ? 'wb-desk-menu-item wb-desk-menu-item--danger' : 'wb-desk-menu-item'}
-    data-wb-desk-item=""
-    data-wb-desk-sub={subId}
-    data-wb-desk-active={subOpen ? 'true' : undefined}
-    data-testid={testId}
-    role={checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
-    aria-checked={checked !== undefined ? checked : undefined}
-    aria-haspopup={subId ? 'menu' : undefined}
-    aria-expanded={subId ? Boolean(subOpen) : undefined}
-    disabled={disabled}
-    onClick={onClick}
-    onPointerEnter={onPointerEnter}
-  >
-    <span className="wb-desk-menu-item-icon" aria-hidden="true">
-      {icon}
-    </span>
-    <span className="wb-desk-menu-item-label">{label}</span>
-    {shortcut && !subId && (
-      <span className="wb-desk-menu-item-shortcut" aria-hidden="true">
-        {shortcut}
-      </span>
-    )}
-    {checked !== undefined && (
-      <span className="wb-desk-menu-item-check" aria-hidden="true">
-        {checked ? <Check size={13} weight="bold" /> : null}
-      </span>
-    )}
-    {subId && (
-      <span className="wb-desk-menu-item-caret" aria-hidden="true">
-        <CaretRight size={12} weight="bold" />
-      </span>
-    )}
-  </button>
-);
-
-interface RadioItemProps {
-  label: string;
-  /** 稳定选择值（测试/自动化定位用，不参与展示） */
-  value: string;
-  checked: boolean;
-  onSelect: () => void;
-}
-
-const RadioItem: React.FC<RadioItemProps> = ({ label, value, checked, onSelect }) => (
-  <button
-    type="button"
-    className="wb-desk-menu-item"
-    data-wb-desk-item=""
-    data-wb-desk-option={value}
-    role="menuitemradio"
-    aria-checked={checked}
-    onClick={onSelect}
-  >
-    <span className="wb-desk-menu-item-icon" aria-hidden="true">
-      {checked ? <Check size={13} weight="bold" /> : null}
-    </span>
-    <span className="wb-desk-menu-item-label">{label}</span>
-  </button>
-);
 
 export interface DesktopContextMenuProps {
   /** null = 关闭；坐标相对桌面根节点 */
@@ -401,7 +290,10 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   const subPanelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const [pos, setPos] = useState({ left: 0, top: 0 });
-  const [openSub, setOpenSub] = useState<SubMenuId | null>(null);
+  /** 展开的子菜单：父项行的 key */
+  const [openSub, setOpenSub] = useState<string | null>(null);
+  /** 子菜单父项的包裹层（按行 key），定位与键盘回焦用 */
+  const subParentRefs = useRef(new Map<string, HTMLElement>());
   const [submenuPosition, setSubmenuPosition] = useState<SubmenuPosition | null>(null);
   const [tierSetting, setTierSetting] = useState<MaterialTierSetting>('auto');
   const [widgetsVisible, setWidgetsVisible] = useState(true);
@@ -530,9 +422,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
       return;
     }
 
-    const parentItem = panelRef.current?.querySelector<HTMLElement>(
-      `[data-wb-desk-sub="${openSub}"]`,
-    );
+    const parentItem = subParentRefs.current.get(openSub)?.querySelector<HTMLElement>('[data-wb-desk-sub]');
     const submenu = subPanelRef.current;
     if (!parentItem || !submenu) return;
 
@@ -549,18 +439,31 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     });
   }, [desktopSize, openSub, pos, subOpensLeft]);
 
-  // ---- 动作 ----
+  // ---- 动作（菜单行来自 app.menu 的 workbench.desktop；行执行后关闭菜单，closeOnRun: false 的行先关再执行） ----
 
-  const runAndClose = useCallback(
-    (action: () => void) => () => {
-      action();
-      onClose();
+  const desktop: AppMenuDesktop = {
+    hasWindows,
+    hasVisibleWindows,
+    wallpaper,
+    wallpaperPresets: WALLPAPER_PRESETS,
+    materialTier: tierSetting,
+    widgetsVisible,
+    showDesktopShortcut: shortcutHintFor('show-desktop'),
+    exposeShortcut: shortcutHintFor('expose'),
+    closeMenu: onClose,
+    toggleShowDesktop: onShowDesktop,
+    arrangeWindows: arrangeDesktopWindows,
+    tileAllWindows: tileAllDesktopWindows,
+    toggleExpose: () => useWorkbenchOverlay.getState().toggleExpose(),
+    replayTour: replayEmptyDesktopTour,
+    openWallpaperManager: () => {
+      try {
+        window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));
+      } catch {
+        // noop
+      }
     },
-    [onClose],
-  );
-
-  const selectWallpaper = useCallback(
-    (presetId: string) => {
+    setWallpaperPreset: (presetId) => {
       const next: WallpaperConfig = { kind: 'theme', value: presetId };
       logWallpaperDiag('persist', {
         source: 'context-menu',
@@ -568,63 +471,25 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         value: next,
       });
       void persistWorkbenchSetting(WALLPAPER_SETTING_KEY, JSON.stringify(next), next);
-      onClose();
     },
-    [onClose],
-  );
-
-  // 子菜单只放前 N 个预设防止过长，完整清单进壁纸管理面板；
-  // 当前选中项若在截断区之外，追加显示以免丢失选中态。
-  const menuWallpaperPresets = useMemo(() => {
-    const shown = WALLPAPER_PRESETS.slice(0, MENU_WALLPAPER_PRESET_COUNT);
-    if (
-      wallpaper.kind === 'theme' &&
-      !shown.some((preset) => preset.id === wallpaper.value)
-    ) {
-      const current = WALLPAPER_PRESETS.find((preset) => preset.id === wallpaper.value);
-      if (current) return [...shown, current];
-    }
-    return shown;
-  }, [wallpaper]);
-
-  const openWallpaperManager = useCallback(() => {
-    onClose();
-    try {
-      window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));
-    } catch {
-      // noop
-    }
-  }, [onClose]);
-
-  /** 桌面组件显隐：走既有 desktop.* 设置通道，WorkbenchDesktop 经热更新事件收敛 */
-  const toggleDesktopWidgets = useCallback(() => {
-    const next = !widgetsVisible;
-    setWidgetsVisible(next);
-    void persistWorkbenchSetting(DESKTOP_WIDGETS_SETTING_KEY, String(next), next);
-    onClose();
-  }, [onClose, widgetsVisible]);
-
-  const openCheatsheet = useCallback(() => {
-    onClose();
-    useWorkbenchOverlay.getState().openCheatsheet({ sticky: true });
-  }, [onClose]);
-
-  const replayTour = useCallback(() => {
-    onClose();
-    replayEmptyDesktopTour();
-  }, [onClose]);
-
-  const selectTier = useCallback(
-    (next: MaterialTierSetting) => {
+    setMaterialTier: (next) => {
       setTierSetting(next);
       setMaterialTier(next);
       void persistWorkbenchSetting(MATERIAL_TIER_SETTING_KEY, next, next);
       // 桌面菜单单独改材质 → 性能档位记为自定义（与设置页一致）
       void persistWorkbenchSetting('desktop.workbenchPerformanceProfile', 'custom', 'custom');
-      onClose();
     },
-    [onClose],
-  );
+    /** 桌面组件显隐：走既有 desktop.* 设置通道，WorkbenchDesktop 经热更新事件收敛 */
+    setWidgetsVisible: (next) => {
+      setWidgetsVisible(next);
+      void persistWorkbenchSetting(DESKTOP_WIDGETS_SETTING_KEY, String(next), next);
+    },
+  };
+  const rows = useAppMenuRows('workbench.desktop', renderedAnchor ? desktop : null, officialDesktopMenuEntries);
+  const openSubRow = openSub ? rows.find((row) => row.key === openSub) : undefined;
+  const subRows = openSubRow && openSubRow.kind !== 'separator' && openSubRow.submenu
+    ? inlineAppMenuSubmenus(openSubRow.submenu)
+    : null;
 
 
   // ---- 键盘导航 ----
@@ -636,9 +501,9 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     ).filter((el) => !mainPanelOnly || !el.closest('.wb-desk-menu-sub'));
   };
 
-  const focusSubParent = (subId: SubMenuId) => {
-    panelRef.current
-      ?.querySelector<HTMLButtonElement>(`button[data-wb-desk-sub="${subId}"]`)
+  const focusSubParent = (subKey: string) => {
+    subParentRefs.current.get(subKey)
+      ?.querySelector<HTMLButtonElement>('button[data-wb-desk-sub]')
       ?.focus({ preventScroll: true });
   };
 
@@ -668,11 +533,13 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         items[items.length - 1]?.focus({ preventScroll: true });
         break;
       case 'ArrowRight': {
-        const subId = active?.dataset.wbDeskSub as SubMenuId | undefined;
-        if (!inSub && subId) {
+        const subKey = active?.dataset.wbDeskSub !== undefined
+          ? [...subParentRefs.current].find(([, wrap]) => wrap.contains(active))?.[0]
+          : undefined;
+        if (!inSub && subKey) {
           e.preventDefault();
           subOpenedByKeyboardRef.current = true;
-          setOpenSub(subId);
+          setOpenSub(subKey);
         }
         break;
       }
@@ -706,10 +573,6 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
   if (!renderedAnchor) return null;
 
-  const showDesktopLabel = hasVisibleWindows
-    ? t('workbench:desktopMenu.showDesktop')
-    : t('workbench:desktopMenu.restoreWindows');
-
   return (
     <>
       {/* backdrop 在 closing 期间保留（仅拦截，不再触发关闭）：
@@ -737,126 +600,42 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         onContextMenu={(e) => e.preventDefault()}
       >
         <WallpaperReplica hostRef={panelRef} enabled={open} />
-        <ActionItem
-          icon={<ChatCircleDots size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.newChat')}
-          onClick={runAndClose(() => workbenchBus.launch({ typeId: 'chat', reason: 'command' }))}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<FolderOpen size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.openFiles')}
-          onClick={runAndClose(() => workbenchBus.launch({ typeId: 'files', reason: 'command' }))}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<CirclesFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.allApps')}
-          onClick={runAndClose(() => openAppsPanel())}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-
-        <div className="wb-desk-menu-sep" role="separator" />
-
-        <ActionItem
-          icon={<Stack size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.arrange')}
-          disabled={!hasVisibleWindows}
-          onClick={runAndClose(arrangeDesktopWindows)}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<GridFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.tileAll')}
-          disabled={!hasVisibleWindows}
-          onClick={runAndClose(tileAllDesktopWindows)}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<Desktop size={15} weight="duotone" />}
-          label={showDesktopLabel}
-          shortcut={shortcutHintFor('show-desktop')}
-          disabled={!hasWindows}
-          onClick={runAndClose(onShowDesktop)}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<SquaresFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.expose')}
-          shortcut={shortcutHintFor('expose')}
-          disabled={!hasWindows}
-          onClick={runAndClose(() => useWorkbenchOverlay.getState().toggleExpose())}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-
-        <div className="wb-desk-menu-sep" role="separator" />
-
-        <div className="wb-desk-menu-subwrap">
-          <ActionItem
-            icon={<Image size={15} weight="duotone" />}
-            label={t('workbench:desktopMenu.wallpaper')}
-            subId="wallpaper"
-            subOpen={openSub === 'wallpaper'}
-            onClick={() => setOpenSub(openSub === 'wallpaper' ? null : 'wallpaper')}
-            onPointerEnter={() => setOpenSub('wallpaper')}
-          />
-        </div>
-
-        <div className="wb-desk-menu-subwrap">
-          <ActionItem
-            icon={<Drop size={15} weight="duotone" />}
-            label={t('workbench:desktopMenu.materialTier')}
-            subId="tier"
-            subOpen={openSub === 'tier'}
-            onClick={() => setOpenSub(openSub === 'tier' ? null : 'tier')}
-            onPointerEnter={() => setOpenSub('tier')}
-          />
-        </div>
-
-        <ActionItem
-          icon={<CalendarBlank size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.showWidgets')}
-          checked={widgetsVisible}
-          testId="wb-desk-menu-widgets"
-          onClick={toggleDesktopWidgets}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-
-        <div className="wb-desk-menu-sep" role="separator" />
-
-        <ActionItem
-          icon={<Keyboard size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.shortcuts')}
-          shortcut={shortcutHintFor('cheatsheet')}
-          testId="wb-desk-menu-shortcuts"
-          onClick={openCheatsheet}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<Compass size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.replayTour')}
-          testId="wb-desk-menu-replay-tour"
-          onClick={replayTour}
-          onPointerEnter={() => setOpenSub(null)}
-        />
-        <ActionItem
-          icon={<GearSix size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.settings')}
-          onClick={runAndClose(() => workbenchBus.launch({ typeId: 'settings', reason: 'command' }))}
-          onPointerEnter={() => setOpenSub(null)}
-        />
+        {rows.map((row) => {
+          if (row.kind === 'separator' || !row.submenu) {
+            return <DeskMenuRow key={row.key} row={row} onDone={onClose} onPointerEnter={() => setOpenSub(null)} />;
+          }
+          const subKey = row.key;
+          return (
+            <div
+              key={subKey}
+              ref={(el) => {
+                if (el) subParentRefs.current.set(subKey, el);
+                else subParentRefs.current.delete(subKey);
+              }}
+              className="wb-desk-menu-subwrap"
+            >
+              <ActionItem
+                icon={row.icon}
+                label={row.label}
+                disabled={row.disabled}
+                danger={row.danger}
+                testId={row.testId}
+                subId={row.id}
+                subOpen={openSub === subKey}
+                onClick={() => setOpenSub(openSub === subKey ? null : subKey)}
+                onPointerEnter={() => setOpenSub(subKey)}
+              />
+            </div>
+          );
+        })}
       </div>
-      {openSub && typeof document !== 'undefined'
+      {openSubRow && subRows && typeof document !== 'undefined'
         ? createPortal(
             <div
               ref={subPanelRef}
               className={subClassName}
               role="menu"
-              aria-label={
-                openSub === 'wallpaper'
-                  ? t('workbench:desktopMenu.wallpaper')
-                  : t('workbench:desktopMenu.materialTier')
-              }
+              aria-label={openSubRow.label}
               style={{
                 left: submenuPosition?.left ?? 0,
                 top: submenuPosition?.top ?? 0,
@@ -865,52 +644,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
               onKeyDown={onPanelKeyDown}
             >
               <WallpaperReplica hostRef={subPanelRef} enabled={open && openSub !== null} />
-              {openSub === 'wallpaper'
-                ? (
-                    <>
-                      {/* 自定义图片壁纸：显示为选中态项，点击进壁纸管理面板更换 */}
-                      {wallpaper.kind === 'image' ? (
-                        <RadioItem
-                          value="__custom-image__"
-                          label={t('workbench:desktopMenu.customWallpaper', '自定义图片')}
-                          checked
-                          onSelect={openWallpaperManager}
-                        />
-                      ) : null}
-                      {menuWallpaperPresets.map((preset) => (
-                        <RadioItem
-                          key={preset.id}
-                          value={preset.id}
-                          label={t(preset.nameKey, preset.id)}
-                          checked={wallpaper.kind === 'theme' && wallpaper.value === preset.id}
-                          onSelect={() => selectWallpaper(preset.id)}
-                        />
-                      ))}
-                      <div className="wb-desk-menu-sep" role="separator" />
-                      <ActionItem
-                        icon={<Image size={15} weight="duotone" />}
-                        label={t('workbench:desktopMenu.manageWallpaper', '管理壁纸…')}
-                        testId="wb-desk-menu-manage-wallpaper"
-                        onClick={openWallpaperManager}
-                      />
-                    </>
-                  )
-                : (
-                    [
-                      ['auto', t('workbench:settings.materialTier.auto')],
-                      ['full', t('workbench:settings.materialTier.full')],
-                      ['reduced', t('workbench:settings.materialTier.reduced')],
-                      ['minimal', t('workbench:settings.materialTier.minimal')],
-                    ] as Array<[MaterialTierSetting, string]>
-                  ).map(([value, label]) => (
-                    <RadioItem
-                      key={value}
-                      value={value}
-                      label={label}
-                      checked={tierSetting === value}
-                      onSelect={() => selectTier(value)}
-                    />
-                  ))}
+              {subRows.map((row) => <DeskMenuRow key={row.key} row={row} onDone={onClose} />)}
             </div>,
             document.body,
           )

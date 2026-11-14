@@ -1,0 +1,8 @@
+{
+  "$comment": "Existing uses of @deprecated APIs in host/ and electron/ (per file). Only shrink it: bin/heavy node eslint-rules/no-deprecated.baseline.mjs --update",
+  "files": {
+    "electron/shell/minisign.ts": 1,
+    "host/platform/storage/file-deletion-queue.ts": 9,
+    "host/plugins/qbank/src/paper-docx.ts": 1
+  }
+}

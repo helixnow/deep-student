@@ -57,7 +57,7 @@ import {
   type GetState,
 } from './types';
 import { modeRegistry, blockRegistry } from '../../registry';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { logChatV2, logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { createContextActions } from './contextActions';
@@ -241,6 +241,9 @@ export function createBlockInternal(
       const messageUpdate = updateSingleMessage(messageId, (draft) => {
         const blockStartedAt = block.startedAt;
         const existing = draft.blockIds;
+        if (existing.includes(blockId)) {
+          return;
+        }
         const lastBlockId = existing.length > 0 ? existing[existing.length - 1] : undefined;
         const lastBlock = lastBlockId ? s.blocks.get(lastBlockId) : undefined;
         if (!lastBlockId || (lastBlock?.startedAt ?? 0) <= blockStartedAt) {
@@ -305,7 +308,8 @@ export function createChatStore(
       // 创建上下文引用 Actions
       const contextActions = createContextActions(
         set as Parameters<typeof createContextActions>[0],
-        getState
+        getState,
+        scheduleAutoSaveIfReady
       );
 
       // 创建 Skill Actions

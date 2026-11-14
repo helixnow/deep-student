@@ -1,48 +1,24 @@
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║  单独重建 Android APK 并上传到指定 Release                     ║
-# ╠══════════════════════════════════════════════════════════════════╣
-# ║                                                                ║
-# ║  用途: 仅重建 Android APK 并替换指定 Release 中的 APK          ║
-# ║  场景: 修复移动端 Bug 后补发 APK / 某次 Release Android 构建   ║
-# ║        失败需要重试                                             ║
-# ║                                                                ║
-# ║  安全保障 (审查 F6 修复):                                       ║
-# ║    - source_ref 默认使用 tag 本身 (此前默认 main, 会把新代码    ║
-# ║      构出的 APK 以旧版本名义发布, 产物与 tag 可追溯性断裂)     ║
-# ║    - 校验 source_ref 代码中的版本号与 tag 一致; 确需跨版本      ║
-# ║      热修时必须显式勾选 allow_version_mismatch                 ║
-# ║    - 构建走 reusable-build-android.yml, 与主发布共用实现        ║
-# ║      (含 Prepare Android project 权限/软键盘/MainActivity 注入)║
-# ║    - 发布尾部自动刷新 CDN 缓存 (审查 F5: immutable 一年缓存 +  ║
-# ║      同名覆盖, 不刷新则用户长期拿旧 APK)                        ║
-# ║                                                                ║
-# ║  操作: GitHub → Actions → Rebuild Android APK → Run workflow   ║
-# ╚══════════════════════════════════════════════════════════════════╝
-
 name: Rebuild Android APK
 
 on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: '目标 Release 的 tag (如 v0.9.24)，APK 将上传到此 Release'
+        description: 'Target release tag (e.g. v0.20.0)'
         required: true
         type: string
       source_ref:
-        description: '构建代码来源 (分支/tag/commit SHA)，留空则使用 tag 本身'
+        description: 'Source ref (branch/tag/commit SHA); defaults to tag itself'
         required: false
         default: ''
         type: string
       allow_version_mismatch:
-        description: '允许 source_ref 版本号与 tag 不一致 (跨版本热修时显式确认)'
+        description: 'Allow source_ref version to differ from tag'
         required: false
         default: false
         type: boolean
 
 concurrency:
-  # Keep retries for the same workflow revision serialized, but do not let a
-  # runner that is permanently stuck on an older revision block a recovery
-  # workflow after its fix has been merged.
   group: rebuild-android-${{ github.event.inputs.tag_name }}-${{ github.workflow_sha }}
   cancel-in-progress: false
 
@@ -53,9 +29,6 @@ env:
   R2_BUCKET: deepstudent
 
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 预检: 确认目标 Release 存在 + source_ref 版本一致性校验
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -64,7 +37,7 @@ jobs:
       tag_name: ${{ steps.info.outputs.tag_name }}
       source_ref: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Validate inputs & fetch release info
+      - name: Validate inputs and fetch release info
         id: info
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,7 +45,7 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag_name }}"
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid tag format: '${TAG}'. Expected: v0.9.24"
+            echo "::error::Invalid tag format: '${TAG}'. Expected: v0.20.0"
             exit 1
           fi
 
@@ -93,67 +66,39 @@ jobs:
             echo "version=${VERSION}"
             echo "source_ref=${SOURCE_REF}"
           } >> "$GITHUB_OUTPUT"
-          echo "✅ Target release: ${TAG} (id=${RELEASE_ID}), building from: ${SOURCE_REF}"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ steps.info.outputs.source_ref }}
 
-      # F6: 产物以 tag 版本命名发布，但代码来自 source_ref —— 两者版本号
-      # 不一致时（例如手滑用 main 最新代码构旧 tag 的 APK）默认硬失败。
       - name: Freeze source ref for the build job
         id: source
         run: |
           SHA=$(git rev-parse HEAD)
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Android rebuild source SHA: $SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify source_ref version matches tag
         run: |
           TAG_VERSION="${{ steps.info.outputs.version }}"
           SRC_VERSION=$(jq -r '.version' package.json)
-          echo "tag version:        ${TAG_VERSION}"
-          echo "source_ref version: ${SRC_VERSION}"
           if [[ "$SRC_VERSION" != "$TAG_VERSION" ]]; then
             if [[ "${{ github.event.inputs.allow_version_mismatch }}" == "true" ]]; then
               echo "::warning::source_ref version (${SRC_VERSION}) != tag (${TAG_VERSION}) — proceeding because allow_version_mismatch=true"
             else
               echo "::error::source_ref version (${SRC_VERSION}) does not match tag (${TAG_VERSION})."
-              echo "::error::如确需用其他版本的代码补发此 tag 的 APK，请勾选 allow_version_mismatch 重新触发。"
               exit 1
             fi
-          else
-            echo "✅ source_ref version matches tag"
           fi
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 构建 Android APK (与 release.yml 共用 reusable workflow)
-  #
-  # WI-4 兼容性说明：这里有意不传 frontend_dist_artifact。GitHub Actions
-  # 的 artifact 只在同一 workflow run 内可见 —— 本 workflow 没有
-  # build-frontend job，无法引用 release.yml 那次 run 上传的 frontend-dist。
-  # 留空让 reusable-build-android.yml 走回退路径：beforeBuildCommand 在
-  # 构建 job 内完成前端构建，产物与主发布路径等价（门禁一致，只是慢一些）。
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build-android:
     needs: [preflight]
     uses: ./.github/workflows/reusable-build-android.yml
     with:
       ref: ${{ needs.preflight.outputs.source_ref }}
       version: ${{ needs.preflight.outputs.version }}
-      # ★ 2026-08-06：不再允许 lean 恢复构建作为正式发布。
-      # v0.9.43 曾用 lean_recovery=true（opt-level=0）重建，产物
-      # libdeep_student_lib.so 达 330MB，低内存设备启动 OOM 闪退。
-      # 恢复构建改为始终使用正常 release profile（WI-6 R3 起为
-      # opt-level=z / codegen-units=16，见 reusable-build-android.yml）；
-      # 若确需 lean 抢救 CI，请先修复构建时间问题，不要发版。
-      lean_recovery: false
     secrets: inherit
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 发布: 替换 Release 中的 APK 并更新 R2 + 刷新 CDN
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   publish:
     concurrency:
       group: release-assets-${{ github.repository }}
@@ -164,45 +109,22 @@ jobs:
     permissions:
       contents: write
     steps:
-      # workflow ref 的 checkout：提供 scripts/ci/*
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Download APK artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-arm64
           path: android-output
 
-      # ── 发布守卫：拒绝 lean 恢复构建产物 ──
-      # v0.9.43 曾用 lean_recovery=true（opt-level=0 + codegen-units=256）重建，
-      # 产物 libdeep_student_lib.so 高达 330MB（正常优化构建约 116MB），
-      # 低内存设备启动时 dlopen/重定位 OOM → APK 闪退。lean 恢复构建
-      # 只用于救活 CI，绝不能作为正式发布分发。
-      - name: Guard — refuse to publish lean recovery build
+      - name: Guard — verify signed APK structure
         run: |
           APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
-          if [ -z "$APK_FILE" ]; then
-            echo "::error::No APK artifact found for publish"
+          if [ -z "$APK_FILE" ] || [ ! -s "$APK_FILE" ]; then
+            echo "::error::No non-empty APK artifact found for publish"
             exit 1
           fi
-          if ! command -v unzip >/dev/null 2>&1; then
-            echo "::error::unzip not available for APK guard"
-            exit 1
-          fi
-          SO_SIZE=$(unzip -l "$APK_FILE" | awk '/libdeep_student_lib\.so/ {print $1; exit}')
-          echo "APK: $APK_FILE, libdeep_student_lib.so size: ${SO_SIZE:-unknown} bytes"
-          if [ -z "$SO_SIZE" ]; then
-            echo "::error::libdeep_student_lib.so missing from APK"
-            exit 1
-          fi
-          # 正常优化构建约 116MB（v0.9.42）；lean opt-level=0 产物 330MB。
-          # 阈值 250MB：超过即判定为 lean 恢复构建，禁止发布。
-          if [ "$SO_SIZE" -gt 262144000 ]; then
-            echo "::error::refusing to publish: libdeep_student_lib.so is ${SO_SIZE} bytes (>250MB) — this is a lean recovery build (opt-level=0)."
-            echo "::error::Rebuild with lean_recovery=false using the normal release profile, then retry publish."
-            exit 1
-          fi
-          echo "✅ APK passes lean-build guard"
+          unzip -l "$APK_FILE" | grep -q 'classes\.dex' || { echo "::error::Invalid APK archive (missing classes.dex)"; exit 1; }
 
       - name: Delete old APK from Release
         env:
@@ -210,19 +132,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
-          echo "🗑️ Removing old APK assets from release ${TAG}..."
-
           ASSET_IDS=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" \
             --jq '.assets[] | select(.name | endswith(".apk")) | .id' 2>/dev/null || echo "")
-
           if [ -n "$ASSET_IDS" ]; then
             echo "$ASSET_IDS" | while read -r AID; do
-              NAME=$(gh api "repos/${GH_REPO}/releases/assets/${AID}" --jq '.name')
-              echo "  Deleting: ${NAME} (id=${AID})"
               gh api -X DELETE "repos/${GH_REPO}/releases/assets/${AID}"
             done
-          else
-            echo "  No existing APK assets found"
           fi
 
       - name: Upload new APK to Release
@@ -232,15 +147,12 @@ jobs:
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
           APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
-          APK_NAME=$(basename "$APK_FILE")
-          echo "📤 Uploading ${APK_NAME} to release ${TAG}..."
           gh release upload "${TAG}" "$APK_FILE" --repo "${GH_REPO}" --clobber
-          echo "✅ APK uploaded to GitHub Release"
 
       - name: Setup Node.js for wrangler
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: 22
+          node-version: '24'
 
       - name: Mark the GitHub release manifest Android asset available
         env:
@@ -251,7 +163,6 @@ jobs:
         run: |
           COUNT=$(gh api "repos/${GH_REPO}/releases/tags/${RELEASE_TAG}" --jq '[.assets[] | select(.name == "latest.json")] | length')
           if [ "$COUNT" = 0 ]; then
-            echo '::notice::This historical release has no updater manifest; leaving its existing distribution contract unchanged.'
             exit 0
           fi
           DIR="$RUNNER_TEMP/android-release-manifest"
@@ -273,22 +184,17 @@ jobs:
           APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
           APK_NAME=$(basename "$APK_FILE")
 
-          echo "📤 Uploading APK to R2..."
           bash scripts/ci/r2-put.sh \
             "${R2_BUCKET}/releases/${TAG}/${APK_NAME}" \
             "$APK_FILE" \
             "application/vnd.android.package-archive" \
             "public, max-age=31536000, immutable"
-          echo "✅ APK uploaded to R2"
 
-          echo "📝 Updating R2 latest.json with new apk_url..."
-          npx wrangler r2 object get "${R2_BUCKET}/releases/latest.json" \
+          npx --yes "wrangler@4.112.0" r2 object get "${R2_BUCKET}/releases/latest.json" \
             --file /tmp/current-latest.json --remote 2>/dev/null || true
 
           if [ -f /tmp/current-latest.json ]; then
             APK_URL="${R2_BASE}/${APK_NAME}"
-            # 版本校验：latest.json 指向的 version 必须与目标 tag 一致，
-            # 防止在更新版本已发布后重建旧 tag 时把更新版 latest.json 指向旧包。
             LATEST_VERSION=$(jq -r '.version // empty' /tmp/current-latest.json)
             TAG_VERSION="${{ needs.preflight.outputs.version }}"
             if [[ ! "$LATEST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -296,28 +202,20 @@ jobs:
               exit 1
             fi
             if [ "$LATEST_VERSION" != "$TAG_VERSION" ]; then
-              echo "::notice::Updated the versioned APK, but left global latest (${LATEST_VERSION}) unchanged. CDN purge will still run."
+              echo "::notice::Updated the versioned APK, but left global latest (${LATEST_VERSION}) unchanged."
               exit 0
             fi
             jq --arg apk "$APK_URL" \
-               '.apk_url = $apk | .android = (.android // {} | .status = "available" | .url = $apk)' \
+               '.apk_url = $apk | .android = ((.android // {}) + {status: "available", url: $apk})' \
                /tmp/current-latest.json > /tmp/updated-latest.json
-
-            echo "Updated latest.json:"
-            cat /tmp/updated-latest.json
 
             bash scripts/ci/r2-put.sh \
               "${R2_BUCKET}/releases/latest.json" \
               "/tmp/updated-latest.json" \
               "application/json" \
               "public, max-age=300"
-            echo "✅ R2 latest.json updated with apk_url: ${APK_URL}"
-          else
-            echo "⚠️ Could not fetch current latest.json from R2, skipping update"
           fi
 
-      # F5: APK 与旧文件同名同 key、immutable 一年缓存 —— 不 purge 则
-      # 走 CDN 的用户继续拿被替换前的旧 APK。
       - name: Purge Cloudflare CDN cache
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

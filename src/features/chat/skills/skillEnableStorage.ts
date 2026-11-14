@@ -7,6 +7,7 @@
  */
 
 import type { SkillDefinition } from './types';
+import { saveSkillUiSetting } from './skillSettingsMirror';
 
 const STORAGE_KEY = 'deep-student.skill-enable-overrides';
 
@@ -31,7 +32,10 @@ function readMap(): EnableOverrideMap {
 
 function writeMap(map: EnableOverrideMap): void {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  const serialized = JSON.stringify(map);
+  localStorage.setItem(STORAGE_KEY, serialized);
+  // 镜像到主库 settings：换设备 / 移动端重装后仍能恢复停用状态。
+  saveSkillUiSetting('enable', serialized);
 }
 
 /** 该 skill 是否被用户停用。无覆盖时默认启用（返回 false）。 */

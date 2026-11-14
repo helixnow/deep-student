@@ -150,12 +150,12 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     const charCounter = (
         <span
             className={cn(
-                'text-xs tabular-nums whitespace-nowrap transition-colors',
+                'text-xs font-mono tabular-nums whitespace-nowrap transition-colors',
                 isSourceOverLimit
                     ? 'text-destructive font-medium'
                     : isNearLimit
                         ? 'text-warning'
-                        : 'text-muted-foreground'
+                        : 'text-muted-foreground/75'
             )}
             title={isNearLimit || isSourceOverLimit ? t('translation:panel_ux.near_limit') : undefined}
         >
@@ -205,21 +205,9 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     );
 
     return (
-        <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 border-b lg:border-b-0 lg:border-r relative group/source">
-            {/* 桌面工具栏：标题 + 常驻字数 + 清空 */}
-            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
-                <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
-                    <TextAa size={14} className="shrink-0 text-muted-foreground" />
-                    {t('translation:source_section.title')}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                    {charCounter}
-                    {clearControl}
-                </div>
-            </div>
-
-            {/* 移动端工具栏：字数 + 清空 + 翻译/取消 */}
-            <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+        <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 border-b lg:border-b-0 lg:border-r border-border/35 bg-background relative group/source">
+            {/* 移动端紧凑操作行（桌面端不设独立面板小顶栏，与底部操作栏合一） */}
+            <div className="md:hidden flex items-center justify-between px-3 h-9 border-b border-border/25 bg-background/60 shrink-0">
                 <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                     <TextAa size={13} className="shrink-0" />
                     {charCounter}
@@ -287,7 +275,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                     type="button"
                                     onClick={() => handleSampleClick(sample)}
                                     // truncate 的 overflow-hidden 会裁掉 ::after 外扩，coarse 直接抬 min-h 到 44px
-                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
+                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/35 bg-foreground/[0.025] px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border/60 hover:bg-foreground/[0.05] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                                 >
                                     {sample}
                                 </button>
@@ -302,29 +290,35 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
 
                 {/* 粘贴即翻提示 */}
                 {showPasteHint && !isTranslating && sourceText.trim() && (
-                    <div data-wb-blur-surface className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border bg-background/90 backdrop-blur px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap ui-fade-in">
+                    <div data-wb-blur-surface className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-border/35 bg-background/85 backdrop-blur-md px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap ui-fade-in">
                         {t('translation:panel_ux.paste_hint', { shortcut: TRANSLATE_SHORTCUT })}
                     </div>
                 )}
             </div>
 
-            {/* 桌面主操作栏 */}
-            <div data-wb-blur-surface className="hidden md:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
+            {/* 桌面底部单栏：合并字数统计、清空按钮与翻译主操作，消除上下双横栏夹击 */}
+            <div data-wb-blur-surface className="hidden md:flex px-4 py-2 border-t border-border/25 bg-background/60 backdrop-blur items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                    {charCounter}
+                    {clearControl}
+                </div>
                 {isTranslating ? (
                     <DsButton
                         variant="default"
+                        size="sm"
                         onClick={onCancelTranslation}
-                        className="min-w-[120px]"
+                        className="min-w-[108px]"
                     >
-                        <X size={14} className="mr-2" />
+                        <X size={14} className="mr-1.5" />
                         {t('common:cancel')}
                     </DsButton>
                 ) : (
                     <DsButton
                         variant="primary"
+                        size="sm"
                         onClick={onTranslate}
                         disabled={!sourceText.trim()}
-                        className="min-w-[120px]"
+                        className="min-w-[108px]"
                         title={`${t('translation:actions.translate')} · ${TRANSLATE_SHORTCUT}`}
                     >
                         {t('translation:actions.translate')}

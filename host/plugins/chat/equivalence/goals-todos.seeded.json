@@ -1,0 +1,444 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_goal_get",
+    "chat_v2_goal_pause",
+    "chat_v2_goal_resume",
+    "chat_v2_goal_edit",
+    "chat_v2_goal_clear",
+    "chat_v2_continue_message"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.seeded.goal.pause_resume_states",
+      "seed": "l04-wp226-goal-todo",
+      "steps": [
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "sess_wp226_goal_active"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_active"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_active"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_active"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_active"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_waiting"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_blocked"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_budget"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_budget"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_usage"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "sess_wp226_goal_orphan"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_orphan"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.seeded.goal.edit_clear",
+      "seed": "l04-wp226-goal-todo",
+      "steps": [
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit",
+            "objective": "  掌握第三章 牛顿定律  ",
+            "tokenBudget": 5000
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit",
+            "objective": "只改描述"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit",
+            "objective": "清除预算?",
+            "tokenBudget": null
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit",
+            "objective": "最大预算",
+            "tokenBudget": 9007199254740991
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_paused",
+            "objective": "暂停态可编辑",
+            "tokenBudget": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete",
+            "objective": "已完成不可编辑"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete",
+            "objective": "",
+            "tokenBudget": 10
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete",
+            "objective": "预算先于完成态",
+            "tokenBudget": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_goal_edit"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "sess_wp226_goal_complete"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.seeded.continue.mock_llm_success",
+      "seed": "l04-wp226-goal-todo",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp226-model",
+                "name": "WP226 wp226-continue",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/v1",
+                "model": "wp226-continue",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_open",
+            "messageId": "msg_wp226_todo_open",
+            "variantId": null,
+            "options": {
+              "modelId": "wp226-model",
+              "enableThinking": false,
+              "memoryEnabled": false,
+              "ragEnabled": false,
+              "webSearchEnabled": false,
+              "autoMemoryExtraction": false
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_wp226_todo_open"
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_open2",
+            "messageId": "msg_wp226_not_the_persisted_one",
+            "options": {
+              "modelId": "wp226-model",
+              "enableThinking": false,
+              "memoryEnabled": false,
+              "ragEnabled": false,
+              "webSearchEnabled": false,
+              "autoMemoryExtraction": false
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_wp226_todo_open2"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.seeded.continue.errors_and_conflicts",
+      "seed": "l04-wp226-goal-todo",
+      "steps": [
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_alldone",
+            "messageId": "msg_wp226_todo_alldone"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_flagged",
+            "messageId": "msg_wp226_todo_flagged"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_badjson",
+            "messageId": "msg_wp226_todo_badjson"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": "wp226 continue 阻断"
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_open",
+            "messageId": "msg_wp226_todo_open"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_alldone",
+            "messageId": "msg_wp226_todo_alldone"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_resume_automations",
+          "args": {}
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp226-model",
+                "name": "WP226 wp226-hang",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/v1",
+                "model": "wp226-hang",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_open",
+            "messageId": "msg_wp226_todo_open",
+            "options": {
+              "modelId": "wp226-model",
+              "enableThinking": false,
+              "memoryEnabled": false,
+              "ragEnabled": false,
+              "webSearchEnabled": false,
+              "autoMemoryExtraction": false
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": "sess_wp226_todo_open"
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "sess_wp226_todo_open",
+            "messageId": "msg_wp226_todo_open",
+            "options": {
+              "modelId": "wp226-model",
+              "enableThinking": false,
+              "memoryEnabled": false,
+              "ragEnabled": false,
+              "webSearchEnabled": false,
+              "autoMemoryExtraction": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_cancel_stream",
+          "args": {
+            "sessionId": "sess_wp226_todo_open",
+            "messageId": "msg_wp226_todo_open"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_wp226_todo_open"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

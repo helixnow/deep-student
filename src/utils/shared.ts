@@ -181,16 +181,6 @@ export const withSessionId = (sessionId: string) => ({ session_id: sessionId, se
 // Build args that include both snake_case and camelCase graph id keys to be robust
 export const withGraphId = (graphId: string) => ({ graph_id: graphId, graphId });
 
-// ======================== Token估算（精确优先，tiktoken可用时） ========================
-export async function estimateTokens(
-  texts: string[],
-  model?: string,
-): Promise<{ total: number; per_message: number[]; precise: boolean; tokenizer: string }> {
-  const payload: any = { texts };
-  if (model) payload.model = model;
-  return await invokeWithDebug('estimate_tokens', payload, { tag: 'estimate_tokens' });
-}
-
 // ======================== 统一参数处理工具函数 ========================
 
 /**

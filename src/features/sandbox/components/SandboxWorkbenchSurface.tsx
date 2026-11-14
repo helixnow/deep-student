@@ -1,13 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { SidebarSimple } from '@phosphor-icons/react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FolderSimplePlus, SidebarSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { cn } from '@/lib/utils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
+import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
+import {
+  getArtifactRenderer,
+  subscribeArtifactRendererRegistry,
+} from '@/components/previews/artifactRendererRegistry';
+import {
+  hasLiveWidgetModelState,
+  hasMeaningfulModelContent,
+} from '@/components/previews/pinnedArtifactContextBridge';
+import { subscribeWidgetLocalState } from '@/components/previews/widgetLocalState';
+import { usePinnedArtifactStore } from '@/stores/pinnedArtifactStore';
+import { cn } from '@/utils/cn';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
@@ -28,11 +41,8 @@ export interface SandboxWorkbenchSurfaceProps {
   ownerKey?: SandboxOwnerKey;
   /**
    * 隐藏自绘的 SandboxToolbar。
-   * ★ 2026-07-08（移动端审计 D-6）：独立视图形态下移动端已有统一顶栏
-   * （UnifiedMobileHeader），再渲染 SandboxToolbar 会形成第二条顶栏；
-   * 由 SandboxWorkbenchPage 在小屏时传入。chat-v2 移动端右屏嵌入形态
-   * 同样有统一顶栏（useChatPageLayout mobileSandboxOpen 分支），也传 true；
-   * 桌面端嵌入保持默认 false。
+   * 独立视图形态下移动端已有统一顶栏（UnifiedMobileHeader），
+   * 再渲染 SandboxToolbar 会形成第二条顶栏；由 SandboxWorkbenchPage 在小屏时传入。
    */
   hideToolbar?: boolean;
 }
@@ -52,24 +62,159 @@ export function SandboxWorkbenchSurface({
 }: SandboxWorkbenchSurfaceProps) {
   const { t } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
-  const activeSession = useSandboxWorkbenchStore((state) => ownerKey
-    ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession
-    : state.activeSession);
-  const isOpen = useSandboxWorkbenchStore((state) => ownerKey
-    ? selectSandboxWorkbenchOwnerState(state, ownerKey).isOpen
-    : state.isOpen);
-  const inspectorOpen = useSandboxWorkbenchStore((state) => ownerKey
-    ? selectSandboxWorkbenchOwnerState(state, ownerKey).inspectorOpen
-    : state.inspectorOpen);
-  const viewportPreset = useSandboxWorkbenchStore((state) => ownerKey
-    ? selectSandboxWorkbenchOwnerState(state, ownerKey).viewportPreset
-    : state.viewportPreset);
-  const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
+  const activeSession = useSandboxWorkbenchStore((state) =>
+    ownerKey ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession : state.activeSession,
+  );
+  const isOpen = useSandboxWorkbenchStore((state) =>
+    ownerKey ? selectSandboxWorkbenchOwnerState(state, ownerKey).isOpen : state.isOpen,
+  );
+  const inspectorOpen = useSandboxWorkbenchStore((state) =>
+    ownerKey ? selectSandboxWorkbenchOwnerState(state, ownerKey).inspectorOpen : state.inspectorOpen,
+  );
+  const viewportPreset = useSandboxWorkbenchStore((state) =>
+    ownerKey
+      ? selectSandboxWorkbenchOwnerState(state, ownerKey).viewportPreset
+      : state.viewportPreset,
+  );
+  const activeOwnerKey = useSandboxWorkbenchStore((state) => state.activeOwnerKey);
   const closeSession = useSandboxWorkbenchStore((state) => state.closeSession);
   const openWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
   const closeWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
   const setViewportPreset = useSandboxWorkbenchStore((state) => state.setViewportPreset);
+
+  const effectiveOwnerKey = ownerKey?.trim() || activeOwnerKey;
+
+  const pinnedRecord = usePinnedArtifactStore((state) => {
+    if (activeSession?.artifactId && state.recordsById[activeSession.artifactId]) {
+      return state.recordsById[activeSession.artifactId];
+    }
+    const byOwner = state.activeArtifactByOwnerKey[effectiveOwnerKey];
+    if (byOwner && state.recordsById[byOwner]) {
+      return state.recordsById[byOwner];
+    }
+    if (activeSession?.sessionId) {
+      const bySession = state.activeArtifactBySessionId[activeSession.sessionId];
+      if (bySession && state.recordsById[bySession]) {
+        return state.recordsById[bySession];
+      }
+    }
+    return null;
+  });
+
+  const selectArtifactVersion = usePinnedArtifactStore((state) => state.selectArtifactVersion);
+  const applyPatchToArtifact = usePinnedArtifactStore((state) => state.applyPatchToArtifact);
+  const saveArtifactToStudySpace = usePinnedArtifactStore(
+    (state) => state.saveArtifactToStudySpace,
+  );
+
+  const [registryTick, setRegistryTick] = useState(0);
+  useEffect(() => {
+    return subscribeArtifactRendererRegistry(() => {
+      setRegistryTick((v) => v + 1);
+    });
+  }, []);
+
+  const revisions = useMemo(() => {
+    if (pinnedRecord && pinnedRecord.revisions.length > 0) {
+      return pinnedRecord.revisions;
+    }
+    if (activeSession) {
+      return [
+        {
+          version: 1,
+          content: activeSession.content,
+          createdAt: activeSession.createdAt,
+        },
+      ];
+    }
+    return [];
+  }, [pinnedRecord, activeSession]);
+
+  const activeVersion = pinnedRecord?.activeVersion ?? 1;
+  const activeRevision = useMemo(
+    () =>
+      revisions.find((rev) => rev.version === activeVersion) ??
+      revisions[revisions.length - 1] ??
+      null,
+    [revisions, activeVersion],
+  );
+
+  const effectiveContent = activeRevision?.content ?? activeSession?.content ?? '';
+  const effectiveKind = pinnedRecord?.kind ?? activeSession?.artifactKind;
+  const effectiveWidgetId =
+    pinnedRecord?.widgetId ??
+    activeSession?.widgetId ??
+    pinnedRecord?.artifactId ??
+    activeSession?.id ??
+    '';
+  const effectiveTitle = pinnedRecord?.title || activeSession?.title || t('sandbox.title');
+
+  const [hasSyncedWidgetState, setHasSyncedWidgetState] = useState<boolean>(() =>
+    effectiveWidgetId
+      ? hasLiveWidgetModelState({ widgetId: effectiveWidgetId, source: effectiveContent })
+      : false,
+  );
+
+  useEffect(() => {
+    if (!effectiveWidgetId) {
+      setHasSyncedWidgetState(false);
+      return undefined;
+    }
+    setHasSyncedWidgetState(
+      hasLiveWidgetModelState({ widgetId: effectiveWidgetId, source: effectiveContent }),
+    );
+    return subscribeWidgetLocalState(
+      { widgetId: effectiveWidgetId, source: effectiveContent },
+      (snapshot) => {
+        setHasSyncedWidgetState(hasMeaningfulModelContent(snapshot?.modelContent));
+      },
+    );
+  }, [effectiveWidgetId, effectiveContent]);
+
+  const [savingToSpace, setSavingToSpace] = useState(false);
+
+  const handleSaveToSpace = useCallback(async () => {
+    if (!activeSession || savingToSpace) return;
+    setSavingToSpace(true);
+    try {
+      const result = await saveArtifactToStudySpace({
+        artifactId: pinnedRecord?.artifactId ?? activeSession.artifactId,
+        title: effectiveTitle,
+        kind: effectiveKind ?? 'html',
+        language: pinnedRecord?.language ?? activeSession.language,
+        content: effectiveContent,
+        sessionId: pinnedRecord?.sessionId ?? activeSession.sessionId,
+        groupId: pinnedRecord?.groupId ?? activeSession.groupId,
+      });
+      try {
+        showGlobalNotification(
+          'success',
+          result.pinnedToGroup ? t('sandbox.savedToSpace') : t('sandbox.savedAsNote'),
+        );
+      } catch {
+        // ignore notification errors in headless environments
+      }
+    } catch (error) {
+      const message = getErrorMessage(error);
+      try {
+        showGlobalNotification('error', t('sandbox.saveFailed', { message }));
+      } catch {
+        // ignore notification errors in headless environments
+      }
+    } finally {
+      setSavingToSpace(false);
+    }
+  }, [
+    activeSession,
+    effectiveContent,
+    effectiveKind,
+    effectiveTitle,
+    pinnedRecord,
+    saveArtifactToStudySpace,
+    savingToSpace,
+    t,
+  ]);
 
   const handleClose = useCallback(() => {
     onClose?.();
@@ -84,11 +229,6 @@ export function SandboxWorkbenchSurface({
     setInspectorOpen(!inspectorOpen, ownerKey);
   }, [inspectorOpen, ownerKey, setInspectorOpen]);
 
-  // Android 返回键：检查器在小屏是叠在预览区上的底部面板（overlay 语义），
-  // 返回键先收起检查器，再轮到右屏/视图级返回（MobileSlidingLayout 同为
-  // overlay 档，后注册者先执行，检查器打开时本 handler 注册在后）。
-  // 可见性守卫：keep-alive 隐藏层（如后台 sandbox-workbench 视图，
-  // visibility:hidden 不清除布局盒）不得吞掉其他页面的返回键。
   const rootRef = useRef<HTMLElement | null>(null);
   const hasActiveSession = activeSession !== null;
   useEffect(() => {
@@ -103,9 +243,6 @@ export function SandboxWorkbenchSurface({
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, inspectorOpen, hasActiveSession, ownerKey, setInspectorOpen]);
 
-  // ACR 4.0（A6 演出）：viewport 切换 / refresh 后给画布一次轻量反馈。
-  // 画布 max-width 无 transition（宽度瞬时落位），用一次 scale/opacity 脉冲确认
-  // 切换发生；refresh 用 ::after 覆层 flash。皆有 reduced-motion 静态路径（CSS）。
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const prevViewportRef = useRef<string | null>(null);
   const prevSessionStampRef = useRef<{ id: string; updatedAt: number } | null>(null);
@@ -116,7 +253,6 @@ export function SandboxWorkbenchSurface({
     const el = canvasRef.current;
     if (!el || prev === null || prev === viewportPreset) return;
     el.removeAttribute('data-sandbox-viewport-pulse');
-    // 强制重排，确保连续切换能重启动画
     void el.offsetWidth;
     el.setAttribute('data-sandbox-viewport-pulse', '');
     const timer = window.setTimeout(
@@ -152,15 +288,37 @@ export function SandboxWorkbenchSurface({
   }, [activeSession]);
 
   const subtitle = activeSession
-    ? `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`
+    ? `${activeSession.language.toUpperCase()} · ${
+        effectiveKind ? t('sandbox.pinnedCanvas') : t('sandbox.safePreview')
+      }`
     : t('sandbox.emptyHint');
 
   const lineCount = useMemo(() => {
-    if (!activeSession?.content) return 0;
-    return activeSession.content.split(/\r\n|\r|\n/).length;
-  }, [activeSession]);
+    if (!effectiveContent) return 0;
+    return effectiveContent.split(/\r\n|\r|\n/).length;
+  }, [effectiveContent]);
 
-  const charCount = activeSession?.content.length ?? 0;
+  const charCount = effectiveContent.length;
+
+  const customRenderer = useMemo(() => {
+    void registryTick;
+    if (effectiveKind === 'openui' || effectiveKind === 'generative-ui') {
+      return getArtifactRenderer(effectiveKind);
+    }
+    return null;
+  }, [effectiveKind, registryTick]);
+
+  const sessionForInspector = useMemo(
+    () =>
+      activeSession
+        ? {
+            ...activeSession,
+            title: effectiveTitle,
+            content: effectiveContent,
+          }
+        : null,
+    [activeSession, effectiveContent, effectiveTitle],
+  );
 
   if (!activeSession) {
     if (embedded) {
@@ -168,24 +326,26 @@ export function SandboxWorkbenchSurface({
     }
 
     return (
-      <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
+      <section
+        className={cn(
+          'flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]',
+          className,
+        )}
+      >
         {!hideToolbar && (
           <SandboxToolbar
             title={t('sandbox.title')}
             subtitle={subtitle}
             inspectorOpen={inspectorOpen}
-            onReload={() => refreshSession(ownerKey)}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
           />
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
-          <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
+          <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border/35 bg-card/60 p-8 text-center">
             <p className="text-sm text-muted-foreground">{t('sandbox.emptyHint')}</p>
             {isSmallScreen && (
-              <p className="mt-2 text-xs text-muted-foreground/70">
-                {t('sandbox.mobileHint')}
-              </p>
+              <p className="mt-2 text-xs text-muted-foreground/70">{t('sandbox.mobileHint')}</p>
             )}
           </div>
         </div>
@@ -195,13 +355,17 @@ export function SandboxWorkbenchSurface({
 
   if (!isOpen && !embedded) {
     return (
-      <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
+      <section
+        className={cn(
+          'flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]',
+          className,
+        )}
+      >
         {!hideToolbar && (
           <SandboxToolbar
-            title={activeSession.title}
+            title={effectiveTitle}
             meta={t('sandbox.closed')}
             inspectorOpen={inspectorOpen}
-            onReload={() => refreshSession(ownerKey)}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
           />
@@ -216,14 +380,14 @@ export function SandboxWorkbenchSurface({
               aria-label={t('sandbox.open')}
               title={t('sandbox.open')}
               data-wb-blur-surface
-              className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
+              className="!h-12 !w-12 rounded-2xl border border-border/35 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
             >
               <SidebarSimple size={18} />
             </DsButton>
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-full border border-border px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
+              className="rounded-full border border-border/35 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('sandbox.clearSession')}
             </button>
@@ -233,33 +397,117 @@ export function SandboxWorkbenchSurface({
     );
   }
 
-  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`;
+  const useInteractiveHtmlCanvas =
+    effectiveKind === 'html' ||
+    (activeSession.language.toLowerCase().startsWith('html') &&
+      activeSession.mode === 'sandbox-run');
+
+  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · ${
+    effectiveKind || useInteractiveHtmlCanvas
+      ? t('sandbox.pinnedCanvas')
+      : t('sandbox.safePreview')
+  }`;
 
   const previewShell = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            {t('sandbox.preview')}
-          </p>
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-b border-border/35 px-4 py-2.5"
+        data-testid="sandbox-artifact-header"
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span
+            data-testid="sandbox-artifact-status-dot"
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 rounded-full',
+              hasSyncedWidgetState ? 'bg-[hsl(var(--success))]' : 'bg-primary',
+            )}
+            aria-hidden="true"
+          />
+          <span
+            className="max-w-[220px] truncate text-xs font-medium text-foreground"
+            data-testid="sandbox-artifact-title"
+          >
+            {effectiveTitle}
+          </span>
+          {hasSyncedWidgetState && (
+            <span
+              className="rounded-full border border-border/35 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
+              data-testid="sandbox-state-synced-badge"
+            >
+              {t('sandbox.stateSynced')}
+            </span>
+          )}
+          <div
+            className="flex items-center gap-1"
+            role="group"
+            aria-label={t('sandbox.versionHistory')}
+            data-testid="sandbox-version-pills"
+          >
+            {revisions.map((rev) => {
+              const isCurrent = rev.version === activeVersion;
+              return (
+                <button
+                  key={rev.version}
+                  type="button"
+                  data-testid={`sandbox-version-pill-v${rev.version}`}
+                  aria-pressed={isCurrent}
+                  onClick={() => {
+                    if (pinnedRecord) {
+                      selectArtifactVersion(pinnedRecord.artifactId, rev.version);
+                    }
+                  }}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 font-mono text-xs tabular-nums transition-colors',
+                    isCurrent
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-border/35 bg-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  v{rev.version}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={savingToSpace}
+            onClick={() => void handleSaveToSpace()}
+            data-testid="sandbox-save-to-space-button"
+            className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+          >
+            <FolderSimplePlus size={13} className="shrink-0" />
+            <span>{savingToSpace ? t('sandbox.savingToSpace') : t('sandbox.saveToSpace')}</span>
+          </button>
+
           {(['desktop', 'tablet', 'mobile'] as const).map((preset) => (
             <button
               key={preset}
               type="button"
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                // 触屏（coarse 指针）下药丸放大到 ≥44px 触控目标
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-4',
+                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
-                  ? 'border-foreground/25 bg-foreground/5 text-foreground'
-                  : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-border/35 bg-transparent text-muted-foreground hover:text-foreground',
               )}
-              aria-label={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
-              title={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
+              aria-label={
+                preset === 'desktop'
+                  ? t('sandbox.desktop')
+                  : preset === 'tablet'
+                    ? t('sandbox.tablet')
+                    : t('sandbox.mobile')
+              }
+              title={
+                preset === 'desktop'
+                  ? t('sandbox.desktop')
+                  : preset === 'tablet'
+                    ? t('sandbox.tablet')
+                    : t('sandbox.mobile')
+              }
             >
-              {/* 文案走 i18n（此前硬编码「桌/平/手」，英文界面不可读） */}
               {preset === 'desktop'
                 ? t('sandbox.desktopShort', '桌')
                 : preset === 'tablet'
@@ -279,17 +527,54 @@ export function SandboxWorkbenchSurface({
           ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'relative mx-auto h-full min-h-[360px] overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
-            viewportClasses[viewportPreset]
+            'relative mx-auto min-h-[360px] overflow-hidden rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
+            !useInteractiveHtmlCanvas &&
+              effectiveKind !== 'openui' &&
+              effectiveKind !== 'generative-ui' &&
+              'h-full',
+            viewportClasses[viewportPreset],
           )}
         >
-          <HtmlSandboxPreview
-            mode="chat-safe"
-            htmlContent={activeSession.content}
-            height="100%"
-            title={activeSession.title}
-            className="h-full w-full"
-          />
+          {useInteractiveHtmlCanvas ? (
+            <InteractiveHtmlCanvas
+              html={effectiveContent}
+              widgetId={effectiveWidgetId || undefined}
+              workTitle={effectiveTitle}
+              title={effectiveTitle}
+              expanded
+              externalVersion={activeVersion}
+              onHtmlChange={(nextHtml) => {
+                if (pinnedRecord) {
+                  applyPatchToArtifact(pinnedRecord.artifactId, { content: nextHtml });
+                }
+              }}
+            />
+          ) : effectiveKind === 'openui' || effectiveKind === 'generative-ui' ? (
+            customRenderer ? (
+              <div className="p-4" data-testid={`sandbox-custom-artifact-${effectiveKind}`}>
+                {React.createElement(customRenderer, {
+                  content: effectiveContent,
+                  widgetId: effectiveWidgetId || undefined,
+                  title: effectiveTitle,
+                })}
+              </div>
+            ) : (
+              <div className="p-4 text-xs text-muted-foreground" data-testid="sandbox-renderer-fallback">
+                <p className="mb-2">{t('sandbox.rendererUnavailable')}</p>
+                <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-foreground">
+                  {effectiveContent}
+                </pre>
+              </div>
+            )
+          ) : (
+            <HtmlSandboxPreview
+              mode="chat-safe"
+              htmlContent={effectiveContent}
+              height="100%"
+              title={effectiveTitle}
+              className="h-full w-full"
+            />
+          )}
         </div>
       </CustomScrollArea>
     </div>
@@ -297,7 +582,7 @@ export function SandboxWorkbenchSurface({
 
   const inspectorShell = (
     <SandboxInspectorPanel
-      session={activeSession}
+      session={sessionForInspector ?? activeSession}
       viewportPreset={viewportPreset}
       lineCount={lineCount}
       charCount={charCount}
@@ -308,13 +593,18 @@ export function SandboxWorkbenchSurface({
   );
 
   return (
-    <section ref={rootRef} className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
+    <section
+      ref={rootRef}
+      className={cn(
+        'flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]',
+        className,
+      )}
+    >
       {!hideToolbar && (
         <SandboxToolbar
-          title={activeSession.title}
+          title={effectiveTitle}
           subtitle={toolbarSubtitle}
           inspectorOpen={inspectorOpen}
-          onReload={() => refreshSession(ownerKey)}
           onToggleInspector={handleToggleInspector}
           onClose={handleClose}
         />
@@ -324,8 +614,6 @@ export function SandboxWorkbenchSurface({
         {isSmallScreen ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="min-h-0 flex-1">{previewShell}</div>
-            {/* ★ 2026-07-08（移动端审计 D-7）：原先无条件渲染，
-                工具栏的检查器开关与面板内 X 按钮在小屏上形同虚设 */}
             {inspectorOpen ? inspectorShell : null}
           </div>
         ) : (
@@ -338,7 +626,7 @@ export function SandboxWorkbenchSurface({
               <>
                 <PanelResizeHandle
                   hitAreaMargins={{ coarse: 19, fine: 5 }}
-                  className="w-1.5 bg-border transition-colors hover:bg-primary/30 active:bg-primary/50"
+                  className="w-px bg-border/35 transition-colors hover:bg-primary/30 active:bg-primary/50"
                 />
                 <Panel defaultSize={26} minSize={20} maxSize={36}>
                   {inspectorShell}

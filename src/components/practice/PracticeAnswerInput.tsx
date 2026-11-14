@@ -94,19 +94,21 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
   return (
     <div className="space-y-3">
       {question.options?.length ? (
-        <div className="space-y-2" data-practice-choice>
+        <div className="space-y-2.5" data-practice-choice>
           {question.options.map((option) => {
             const checked = multiple ? text.includes(option.key) : text === option.key;
             return (
               <label
                 key={option.key}
                 className={cn(
-                  'flex min-h-11 cursor-pointer items-start gap-3 rounded-md border px-3 py-2',
-                  checked ? 'border-primary bg-primary/5' : 'border-border',
+                  'group flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-all',
+                  checked
+                    ? 'border-primary/45 bg-primary/[0.06]'
+                    : 'border-border/45 bg-card/60 hover:border-border/80 hover:bg-foreground/[0.03]',
                 )}
               >
                 <input
-                  className="mt-1"
+                  className="sr-only"
                   type={multiple ? 'checkbox' : 'radio'}
                   name={`answer-${question.id}`}
                   checked={checked}
@@ -120,25 +122,59 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
                     }
                   }}
                 />
-                <span className="shrink-0 text-sm">{option.key}.</span>
-                <div className="min-w-0 text-sm"><MarkdownRenderer content={option.content} /></div>
+                <span
+                  className={cn(
+                    'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border font-mono text-xs font-medium transition-colors',
+                    checked
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border/60 bg-background/80 text-muted-foreground group-hover:border-border',
+                  )}
+                >
+                  {option.key}
+                </span>
+                <div className="min-w-0 flex-1 pt-0.5 text-sm leading-relaxed text-foreground">
+                  <MarkdownRenderer content={option.content} />
+                </div>
               </label>
             );
           })}
         </div>
       ) : question.questionType === 'true_false' ? (
         <div className="flex gap-3" data-practice-choice>
-          {['true', 'false'].map((answer) => (
-            <label key={answer} className="flex min-h-11 items-center gap-2 rounded-md border px-4">
-              <input
-                type="radio"
-                name={`answer-${question.id}`}
-                checked={text === answer}
-                onChange={() => updateText(answer)}
-              />
-              {t(`batch.${answer}`)}
-            </label>
-          ))}
+          {['true', 'false'].map((answer) => {
+            const checked = text === answer;
+            return (
+              <label
+                key={answer}
+                className={cn(
+                  'flex min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-xl border px-4 py-2.5 text-sm transition-all',
+                  checked
+                    ? 'border-primary/45 bg-primary/[0.06] font-medium text-foreground'
+                    : 'border-border/45 bg-card/60 text-foreground/85 hover:border-border/80 hover:bg-foreground/[0.03]',
+                )}
+              >
+                <input
+                  className="sr-only"
+                  type="radio"
+                  name={`answer-${question.id}`}
+                  checked={checked}
+                  onChange={() => updateText(answer)}
+                />
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border font-mono text-xs font-medium transition-colors',
+                    checked
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border/60 bg-background/80 text-muted-foreground',
+                  )}
+                >
+                  {answer === 'true' ? 'T' : 'F'}
+                </span>
+                <span>{t(`batch.${answer}`)}</span>
+              </label>
+            );
+          })}
         </div>
       ) : question.questionType === 'fill_blank' && !images.length ? (
         <FillBlankAnswer
@@ -170,7 +206,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           onKeyDown={onPrimaryAction}
           inputMode="decimal"
           autoComplete="off"
-          className="h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring"
+          className="h-11 w-full rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 font-mono text-base tabular-nums outline-none transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0"
         />
       ) : (
         <textarea
@@ -178,7 +214,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           value={text}
           onChange={(event) => updateText(event.target.value)}
           rows={question.questionType === 'numeric' ? 2 : 7}
-          className="w-full resize-y rounded-md border border-input bg-background p-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring"
+          className="w-full resize-y rounded-xl border border-border/50 bg-foreground/[0.02] p-3.5 text-sm leading-relaxed outline-none transition-colors focus:border-primary/45 focus:bg-background"
         />
       )}
       {!!images.length && <AnswerImageStrip images={images} readOnly />}

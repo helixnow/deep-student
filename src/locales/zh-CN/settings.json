@@ -1277,15 +1277,14 @@
       "expand": "展开 {{category}}",
       "collapse": "收起 {{category}}",
       "categories": {
-        "coreStack": "核心框架与构建",
-        "uiAndInteraction": "界面与交互",
-        "contentEditing": "内容与编辑",
-        "stateAndData": "状态管理与数据协作",
-        "visualization": "拖拽与可视化",
-        "utilities": "工具与体验增强",
-        "aiAndAgents": "AI 与协议能力",
-        "rustEcosystem": "Tauri 与 Rust 生态",
-        "testingAndTooling": "测试与工程工具"
+        "runtimesAndFrameworks": "运行时与核心框架",
+        "backendAndStorage": "后端存储、向量检索与密码学",
+        "f7WasiEngines": "F7 WASI 沙箱引擎",
+        "documentsAndArchives": "文档解析与归档压缩",
+        "editorsAndScience": "编辑器、科学计算与数据可视化",
+        "uiAndInteraction": "界面与交互组件",
+        "stateAndLearning": "状态管理、记忆算法与国际化",
+        "fontsAndAssets": "字体与内置资源"
       }
     },
     "partners": {
@@ -1583,6 +1582,60 @@
     "save_failed": "保存API配置失败，请重试",
     "delete_failed": "删除API配置失败，请重试"
   },
+  "deepseek_capabilities": {
+    "title": "应用能力",
+    "description": "在这里管理 DeepSeek 的对话和独立接口。测试会发送固定样例，可能产生费用。",
+    "chat": "对话能力",
+    "standalone": "独立接口",
+    "enabled": "已启用",
+    "disabled": "未启用",
+    "loading": "正在读取",
+    "status_unavailable": "无法读取设置",
+    "missing_key": "未配置 API Key",
+    "untested": "未测试",
+    "running": "正在测试…",
+    "passed": "测试通过 · {{time}} 毫秒",
+    "failed": "测试未通过",
+    "test": "测试",
+    "test_named": "测试{{name}}",
+    "empty_result": "DeepSeek 没有返回有效结果",
+    "chat_search": {
+      "label": "对话联网搜索",
+      "description": "官方 Flash 单模型对话允许联网时生效，支持网页和图片搜索；开启思考时使用深度搜索。"
+    },
+    "chat_read_url": {
+      "label": "对话读链接",
+      "description": "允许模型读取消息里的链接。若同时开启联网搜索和思考，DeepSeek 会暂停独立读链接。"
+    },
+    "chat_files": {
+      "label": "对话文件解析",
+      "description": "解析主动添加的受支持附件，供官方 Flash 单模型对话使用。"
+    },
+    "chat_safety": {
+      "label": "对话内容审核",
+      "description": "使用 DeepSeek 审核输入和输出，审核通过后显示回复。测试使用普通文本。"
+    },
+    "search": {
+      "label": "Search 网页搜索",
+      "description": "在聊天的外部搜索列表中启用 DeepSeek，不影响其他引擎。可在「外部搜索」配置独立密钥。"
+    },
+    "fetch": {
+      "label": "Fetch 网页抓取",
+      "description": "优先用 DeepSeek 提取网页正文。正常使用时，失败会回退到本地抓取。"
+    },
+    "ocr": {
+      "label": "OCR 文字识别",
+      "description": "启用后加入现有 OCR 引擎列表，优先级仍由「模型分配」管理。"
+    },
+    "asr": {
+      "label": "ASR 语音识别",
+      "description": "将语音输入分配给 DeepSeek ASR。测试使用预置录音，不访问麦克风。"
+    },
+    "tts": {
+      "label": "TTS 朗读语音",
+      "description": "为聊天与翻译选择朗读音色。使用系统语音时，测试使用 Stella。"
+    }
+  },
   "external_search": {
     "apply_google_cse": "申请 Google CSE API",
     "create_custom_search": "创建自定义搜索引擎",
@@ -1647,13 +1700,12 @@
     "bocha_apply": "申请博查 API 密钥",
     "deepseek_name": "DeepSeek 官方搜索",
     "deepseek_key_label": "DeepSeek API Key",
-    "deepseek_key_desc": "与 DeepSeek 对话共用同一把 API Key；搜索按成功请求计费（约 ¥0.005/次），无结果不计费",
+    "deepseek_key_desc": "可为独立 Search 和 Fetch 单独配置。留空时使用模型服务里的 DeepSeek API Key。",
     "deepseek_desc": "DeepSeek 自研搜索引擎，返回带相关性评分与权威性分级的结构化结果，原生支持 site:/lang:/after:/before: 精确语法。",
     "deepseek_apply": "申请 DeepSeek API Key",
     "deepseek_need_content_label": "搜索时返回网页正文",
     "deepseek_need_content_desc": "官方 need_content：结果附带网页正文（Markdown），减少二次抓取；计费仍按成功搜索请求，不额外收费",
-    "deepseek_fetch_label": "网页抓取使用 DeepSeek Fetch",
-    "deepseek_fetch_desc": "抓取网页时优先调用 DeepSeek 官方 Fetch API（返回干净 Markdown，约 ¥0.005/次成功请求，5 QPS）；失败时自动回退本地抓取"
+    "deepseek_tts_system": "系统语音"
   },
   "model_presets": {
     "title": "模型分配预设",
@@ -3177,5 +3229,61 @@
     "busy": "浏览器正在处理上一项操作",
     "navigationBlocked": "导航被阻止：{{detail}}",
     "securityPolicy": "目标不符合浏览器安全策略"
+  },
+  "byok": {
+    "cardTitle": "一键 API Key 自动配置",
+    "cardSubtitle": "粘贴单个 API Key，自动识别服务商、探测可用模型并配置知识库向量索引",
+    "collapsedPrompt": "粘贴单个 API Key，10 秒自动填满模型槽位与向量维度",
+    "expandAction": "快速配置",
+    "collapseAction": "收起",
+    "keyInputAriaLabel": "API Key",
+    "keyPlaceholder": "粘贴 API Key（如 sk-... / AIzaSy... / sk-ant-...）",
+    "showKey": "显示密钥",
+    "hideKey": "隐藏密钥",
+    "baseUrlLabel": "自定义接口地址（可选）",
+    "baseUrlPlaceholder": "https://api.example.com/v1",
+    "toggleCustomUrl": "自定义接口地址",
+    "detectedProvider": "已识别：{{provider}}",
+    "disambiguatePrompt": "检测到通用 sk- 前缀，可指定服务商或直接自动探测：",
+    "autoDetectPill": "自动探测",
+    "provisionCta": "一键探测并配置",
+    "provisioningBusy": "正在探测配置...",
+    "resetAction": "配置其他密钥",
+    "vectorReadyBadge": "向量索引已就绪 · {{dimension}} 维",
+    "vectorPreservedHint": "已保留现有默认向量维度（{{existingDimension}} 维），同时已为 {{dimension}} 维绑定新模型。",
+    "latencyBadge": "{{ms}} ms",
+    "probedCountBadge": "发现 {{count}} 个模型",
+    "steps": {
+      "detect": "识别服务商",
+      "probe": "探测模型与维度",
+      "assign": "分配 8 项槽位"
+    },
+    "roles": {
+      "primary_chat": "主力对话与推理",
+      "fast_utility": "轻量快速响应",
+      "summary_memory": "总结与记忆提炼",
+      "coding_agent": "代码与出题编排",
+      "vision_parse": "视觉与拍题解析",
+      "document_ocr": "文档 OCR 识别",
+      "text_embedding": "知识库文本向量",
+      "rag_reranker": "检索重排序"
+    },
+    "roleUnassigned": "未分配",
+    "result": {
+      "fullReadyTitle": "已完成全部模型与向量索引配置",
+      "fullReadySummary": "已启用 {{modelCount}} 个核心模型，填满 {{slotCount}} 个能力槽位，并绑定 {{dimension}} 维文本向量索引。",
+      "chatOnlyTitle": "对话与学习模型已就绪（未检测到向量模型）",
+      "chatOnlyDescription": "已自动分配 {{slotCount}} 个对话与专项槽位。当前服务商未提供 Embeddings 接口，知识库将以关键词检索（FTS）运行；您可随时补充硅基流动或 OpenAI Key 开启语义向量检索。",
+      "enterAppCta": "开始使用"
+    },
+    "errors": {
+      "emptyKey": "请先粘贴有效的 API Key",
+      "authFailed": "密钥校验未通过（HTTP {{status}}），请检查 API Key 或接口地址",
+      "noModels": "连接成功但未返回可用对话模型，请检查服务商权限或手动添加模型",
+      "networkTimeout": "连接服务商超时，请检查网络或展开填写自定义接口地址",
+      "probeFailed": "探测或保存配置失败：{{message}}",
+      "safeDetail": "请检查连接与配置后重试。"
+    },
+    "fullSettingsLink": "前往完整高级设置"
   }
 }

@@ -29,28 +29,39 @@ export const WindowControls: React.FC = () => {
   const windowRef = useRef(getCurrentWindowPoly());
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    let unlisten: (() => void | Promise<void>) | undefined;
+    let querying = false;
+    let stale = false;
 
-    const updateInitialState = async () => {
+    // resize 在拖动缩放时是高频事件：同一时刻只发一次 isMaximized，期间到达的事件合并成结束后的一次补查。
+    const refreshMaximized = async () => {
+      if (querying) {
+        stale = true;
+        return;
+      }
+      querying = true;
       try {
-        const maximized = await windowRef.current.isMaximized();
-        setIsMaximized(maximized);
+        do {
+          stale = false;
+          const maximized = await windowRef.current.isMaximized();
+          if (!disposed) setIsMaximized(maximized);
+        } while (stale && !disposed);
       } catch (error: unknown) {
         console.error('Failed to get maximized state:', error);
+      } finally {
+        querying = false;
       }
     };
 
     const initWindow = async () => {
-      await updateInitialState();
+      await refreshMaximized();
       try {
-        // 仅监听最大化/还原两个离散事件，避免高频 resize 事件
-        const unlistenMax = await guardedListen('tauri://window-maximized', () => setIsMaximized(true));
-        const unlistenUnmax = await guardedListen('tauri://window-unmaximized', () => setIsMaximized(false));
-        // 合并两个卸载函数
-        unlisten = () => {
-          unlistenMax();
-          unlistenUnmax();
-        };
+        // RUST-FIX(RF-W09-window-controls-maximize-follows-resize): Rust 版监听的 tauri://window-maximized/unmaximized
+        // 没有任何发射端，最大化不经本按钮时图标不变；改为在 tauri://resize 后重新查询。
+        const stop = await guardedListen('tauri://resize', () => void refreshMaximized());
+        if (disposed) void stop();
+        else unlisten = stop;
       } catch (error: unknown) {
         console.error('Failed to listen to window events:', error);
       }
@@ -59,9 +70,8 @@ export const WindowControls: React.FC = () => {
     initWindow();
 
     return () => {
-      if (unlisten) {
-        unlisten();
-      }
+      disposed = true;
+      if (unlisten) void unlisten();
     };
   }, []);
 

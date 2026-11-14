@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, SidebarSimple } from '@phosphor-icons/react';
+import { SidebarSimple } from '@phosphor-icons/react';
 
 import { useMobileHeader } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -22,7 +22,6 @@ export function SandboxWorkbenchPage() {
   const inspectorOpen = useSandboxWorkbenchStore((state) => (
     selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).inspectorOpen
   ));
-  const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
 
   // D-1: 移动端顶栏标题（sandbox-workbench 独立视图形态；
@@ -42,16 +41,6 @@ export function SandboxWorkbenchPage() {
           size="sm"
           iconOnly
           className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          aria-label={t('sandbox.refresh')}
-          onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
-        >
-          <ArrowClockwise size={18} />
-        </DsButton>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
           onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
         >
@@ -59,7 +48,7 @@ export function SandboxWorkbenchPage() {
         </DsButton>
       </>
     ) : undefined,
-  }, [t, hasSession, inspectorOpen, refreshSession, setInspectorOpen]);
+  }, [t, hasSession, inspectorOpen, setInspectorOpen]);
 
   return (
     <SandboxWorkbenchSurface

@@ -27,6 +27,7 @@ import {
 import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
 import { DeepSeekBalanceSection } from './DeepSeekBalanceSection';
+import { DeepSeekCapabilities, type DeepSeekCapabilitySettings } from './DeepSeekCapabilities';
 import { isOfficialDeepSeekVendor } from './deepSeekBalance';
 import { OpenCodeGoUsageSection } from './OpenCodeGoUsageSection';
 import { OpenCodeGoPlanQuotaSection } from './OpenCodeGoPlanQuotaSection';
@@ -267,9 +268,10 @@ export const getProviderWebsiteUrl = (providerType?: string | null): string | nu
 
 interface VendorDetailPanelProps {
   scrollElement?: HTMLElement | null;
+  deepseekCapabilities?: DeepSeekCapabilitySettings;
 }
 
-export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElement = null }) => {
+export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElement = null, deepseekCapabilities }) => {
   const { t } = useTranslation(['settings', 'common']);
   const { isXl } = useBreakpoint();
   const {
@@ -922,8 +924,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   {/* Base URL */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
+                      <div className="text-xs font-medium text-muted-foreground">
                         <span>{t('settings:vendor_panel.base_url')}</span>
                       </div>
                       <SaveIndicator status={baseUrlSaveStatus} />
@@ -947,8 +948,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
 
                   {/* API Key */}
                   <div className="space-y-1.5">
-                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      <Key className="h-3.5 w-3.5" aria-hidden="true" />
+                    <div className="text-xs font-medium text-muted-foreground">
                       <span>{t('settings:vendor_panel.api_key')}</span>
                     </div>
                     <div>
@@ -980,8 +980,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   {/* Notes */}
                   {selectedVendor.notes && (
                     <div className="space-y-1.5">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
+                      <div className="text-xs font-medium text-muted-foreground">
                         <span>{t('settings:vendor_panel.notes')}</span>
                       </div>
                       <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
@@ -1018,6 +1017,12 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
         )}
       </div>
 
+      {deepseekCapabilities && selectedVendor.id === 'builtin-deepseek'
+        && URL.parse(selectedVendor.baseUrl)?.origin === 'https://api.deepseek.com' && (
+        <DeepSeekCapabilities key={`${selectedVendor.id}:${selectedVendor.baseUrl}`} vendor={selectedVendor}
+          models={selectedVendorModels} settings={deepseekCapabilities} />
+      )}
+
       {/* 模型管理区 */}
       <div className="w-full pt-4">
         <div className="space-y-6">
@@ -1033,9 +1038,9 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 'flex flex-wrap items-center justify-between gap-2'
               )}
             >
-              <div className="min-w-0 flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <h3 className="text-base font-semibold text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
-                <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground/70">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
               </div>
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-shrink-0">
                 {!isCodexOAuthVendor && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (

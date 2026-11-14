@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useLayoutEffect, useState, useRef, Component } from 'react';
+import React, { useContext, useEffect, useId, useLayoutEffect, useMemo, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import {
   Copy,
@@ -12,7 +12,10 @@ import {
   Code,
   DownloadSimple,
   Eye,
+  FolderSimplePlus,
   ImageSquare,
+  Play,
+  PushPinSimple,
   Warning,
 } from '@phosphor-icons/react';
 import { BlockRenderSkipContext } from './blockRenderSkip';
@@ -26,8 +29,19 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { CodeBlockShell } from '../ui/CodeBlockShell';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChatHtmlPreview } from '@/components/previews/ChatHtmlPreview';
+import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
+import { registerArtifactRenderer } from '@/components/previews/artifactRendererRegistry';
+import { DiagramAndLiveSvgView } from '@/components/previews/DiagramAndLiveSvgView';
 import { htmlUsesScripts, shouldAutoPreviewHtml } from '@/components/previews/chatHtmlPreviewDocument';
-import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
+import { OpenUILangRenderer } from '@/features/generative-ui';
+import { ReplyCommandActionButton } from '@/features/chat/utils/replyCommandAndSecretLoop';
+import {
+  launchSandboxWorkbench,
+  pinArtifactToCanvas,
+} from '@/features/sandbox/launchSandboxWorkbench';
+import { usePinnedArtifactStore } from '@/stores/pinnedArtifactStore';
+import { sessionManager } from '../../core/session/sessionManager';
+import { useSessionListStore } from '../../stores/sessionListStore';
 import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
@@ -36,6 +50,9 @@ import { CodeBlockMoreMenu, type CodeBlockMenuAction } from './CodeBlockMoreMenu
 import { sanitizeSvgMarkup } from './progressiveSvg';
 import { useProgressiveSvg } from './useProgressiveSvg';
 import { downloadHtmlSource, downloadSvgSource, saveSvgAsPng, type SaveResult } from './codeBlockExport';
+import { useOptionalSlot } from '@/ui-kernel/react';
+import type { ContentCodeBlockContribution } from '@/ui-kernel/contracts/content';
+import { officialMarkdownEntries } from '@/ui-plugins/official/content/entries';
 // The blocked renderer needs the shared token palette without loading FlowToken.
 import '../../styles/flowtoken-patched.css';
 
@@ -44,6 +61,10 @@ import '../../styles/flowtoken-patched.css';
 const LazySyntaxHighlighter = React.lazy(() => import('react-syntax-highlighter/dist/esm/prism'));
 
 const HighlightContent: React.FC<{ children?: ReactNode }> = ({ children }) => <>{children}</>;
+
+registerArtifactRenderer('openui', function OpenUIPinnedArtifactRenderer({ content }) {
+  return <OpenUILangRenderer source={content} isStreaming={false} />;
+});
 
 const HighlightedCode = React.memo(function HighlightedCode({
   children,
@@ -327,6 +348,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   rendererCapabilities = DEFAULT_RENDERER_CAPABILITIES,
 }) => {
   const { t } = useTranslation('chatV2');
+  const { t: tGenUi } = useTranslation('generativeUi');
+  const reactBlockId = useId();
+  const blockWidgetId = useMemo(
+    () => `widget-cb-${reactBlockId.replace(/[^a-zA-Z0-9_-]/g, '')}`,
+    [reactBlockId],
+  );
+  const hostLookupRef = useRef<HTMLDivElement | null>(null);
   const renderSkipEnabled = useContext(BlockRenderSkipContext);
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
@@ -349,6 +377,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const [htmlExpanded, setHtmlExpanded] = useState(false);
   /** HTML 内容高度超出收起态上限（才需要"展开"按钮） */
   const [htmlOverflowing, setHtmlOverflowing] = useState(false);
+  /** 普通 HTML 代码块检测到含脚本时，用户点击「内联运行交互」后切换为 InteractiveHtmlCanvas */
+  const [htmlInlineInteractive, setHtmlInlineInteractive] = useState(false);
+  /** openui-lang 代码块：默认预览，菜单可切到源码 */
+  const [openuiView, setOpenuiView] = useState<'preview' | 'source'>('preview');
+  /** html-interactive / html-canvas 代码块：默认交互预览，菜单可切到源码 */
+  const [interactiveHtmlView, setInteractiveHtmlView] = useState<'preview' | 'source'>('preview');
   /** 图形预览视窗高度（按宽高比计算）；null 时用 CSS 默认 */
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   /** 用户手动缩放/平移过：之后的新帧与容器尺寸变化不再自动适配，尊重用户视角 */
@@ -379,25 +413,30 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   // 兼容 children 为数组或字符串
   const rawChildren = Array.isArray(children) ? (children as any[]).join('') : String(children ?? '');
   const codeContent = rawChildren.replace(/\n$/, '');
+  const mermaidRequestRef = useRef(0);
+  useEffect(() => {
+    mermaidRequestRef.current += 1;
+    setRunning(false);
+  }, [codeContent, isStreaming]);
 
   // 提取语言信息
   const language = className?.replace('language-', '') || 'text';
   const langLower = language.toLowerCase();
-  const canRunMermaid = langLower === 'mermaid';
-  const canRenderSvg = langLower === 'svg';
-  const canRenderHtml = langLower === 'html' || langLower === 'htm';
-  const canRenderXml = langLower === 'xml';
-  const richRendererKind: RichCodeRendererKind | null =
-    rendererCapabilities.charts && (langLower === 'vega-lite' || langLower === 'vega') ? 'vega-lite' :
-    rendererCapabilities.graphviz && langLower === 'dot' ? 'dot' :
-    rendererCapabilities.music && langLower === 'abc' ? 'abc' :
-    rendererCapabilities.timing && langLower === 'wavedrom' ? 'wavedrom' :
-    rendererCapabilities.chemicalFiles && ['mol', 'molfile', 'sdf'].includes(langLower) ? 'molecule-2d' :
-    rendererCapabilities.molecular3d && langLower === 'pdb' ? 'molecule-3d' :
-    rendererCapabilities.geojson && langLower === 'geojson' ? 'geojson' : null;
+  const codeBlocks = useOptionalSlot<ContentCodeBlockContribution>('markdown.codeBlocks') ?? officialMarkdownEntries;
+  const entry = codeBlocks.find(item => item.key === langLower);
+  const definition = entry && 'codeBlock' in entry.value ? entry.value.codeBlock : undefined;
+  const enabledDefinition = definition && (!definition.capability || rendererCapabilities[definition.capability]) ? definition : undefined;
+  const canRunMermaid = enabledDefinition?.kind === 'mermaid';
+  const canRenderSvg = enabledDefinition?.kind === 'svg';
+  const canRenderHtml = enabledDefinition?.kind === 'html';
+  const canRenderXml = enabledDefinition?.kind === 'xml';
+  const canRenderOpenUI = langLower === 'openui-lang' || langLower === 'openui';
+  const canRenderDiagram = langLower === 'diagram' || langLower === 'json-diagram';
+  const canRenderInteractiveHtml = langLower === 'html-interactive' || langLower === 'html-canvas';
+  const richRendererKind: RichCodeRendererKind | null = enabledDefinition?.richRendererKind ?? null;
   const canRenderRich = richRendererKind !== null;
-  /** SVG / HTML 走自动预览 + 「…」菜单；其余可视化保持手动「运行」 */
-  const hasLivePreview = canRenderSvg || canRenderHtml;
+  /** SVG / HTML / OpenUI / Diagram / InteractiveHTML 走自动预览 + 「…」菜单；其余可视化保持手动「运行」 */
+  const hasLivePreview = canRenderSvg || canRenderHtml || canRenderOpenUI || canRenderDiagram || canRenderInteractiveHtml;
 
   // ---- SVG：流式渐进渲染 ----
   const progressiveSvg = useProgressiveSvg(codeContent, !!isStreaming, canRenderSvg && svgView === 'preview');
@@ -409,6 +448,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     ? htmlViewOverride ?? (shouldAutoPreviewHtml(codeContent) ? 'preview' : 'source')
     : 'source';
   const htmlPreviewActive = canRenderHtml && htmlView === 'preview';
+
+  // ---- OpenUI-Lang / Diagram & Interactive HTML 画板 ----
+  const openuiPreviewActive = canRenderOpenUI && openuiView === 'preview';
+  const diagramPreviewActive = canRenderDiagram && openuiView === 'preview';
+  const interactiveHtmlPreviewActive =
+    (canRenderInteractiveHtml && interactiveHtmlView === 'preview') ||
+    (htmlPreviewActive && htmlInlineInteractive);
 
   /** 当前在图形预览视窗（缩放/平移）里显示的标记 */
   const previewMarkup = canRenderSvg ? (svgPreviewActive ? progressiveSvg : null) : (showRendered ? renderedSvg : null);
@@ -484,15 +530,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 
   const handleRunMermaid = async () => {
     if (!canRunMermaid || isStreaming) return;
+    const request = ++mermaidRequestRef.current;
+    const isCurrentRequest = () => isMountedRef.current && request === mermaidRequestRef.current;
     const id = `mermaid-${Math.random().toString(36).slice(2)}`;
     try {
       setRunning(true);
       setMermaidError(null);
       // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
       await waitForShellGestureIdle();
+      if (!isCurrentRequest()) return;
       const lib: any = await import('mermaid');
 
-      if (!isMountedRef.current) return;
+      if (!isCurrentRequest()) return;
 
       const mermaid = lib?.default ?? lib;
 
@@ -532,7 +581,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       }
 
       // 异步操作完成后再次检查组件是否已卸载
-      if (!isMountedRef.current) return;
+      if (!isCurrentRequest()) return;
 
       setRenderedSvg(svg);
       setShowRendered(true);
@@ -545,7 +594,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       } catch {}
 
       // 组件卸载后不更新状态
-      if (!isMountedRef.current) return;
+      if (!isCurrentRequest()) return;
 
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] Mermaid render failed:', errorMsg);
@@ -555,7 +604,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       setShowRendered(true);
     } finally {
       // 组件卸载后不更新状态
-      if (isMountedRef.current) {
+      if (isCurrentRequest()) {
         setRunning(false);
       }
     }
@@ -602,13 +651,122 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   };
 
+  const resolveChatSessionContext = () => {
+    const domSessionId = hostLookupRef.current
+      ?.closest('[data-wb-chat-session]')
+      ?.getAttribute('data-wb-chat-session')
+      ?.trim();
+    const sessionId = domSessionId || sessionManager.getCurrentSessionId() || undefined;
+    const groupId = sessionId
+      ? useSessionListStore.getState().sessions.find((s) => s.id === sessionId)?.groupId
+      : undefined;
+    return { sessionId, groupId };
+  };
+
+  const extractHtmlArtifactTitle = (source: string): string => {
+    const parsedTitle = /<title[^>]*>([^<]{1,80})<\/title>/i.exec(source)?.[1]?.trim();
+    return parsedTitle || tGenUi('artifact.defaultHtmlTitle');
+  };
+
+  const handlePinHtmlToCanvas = (payload: { html: string; title: string; widgetId: string }) => {
+    if (isStreaming) return;
+    const { sessionId, groupId } = resolveChatSessionContext();
+    const resolvedTitle =
+      payload.title && payload.title !== t('codeBlock.htmlPreviewTitle')
+        ? payload.title
+        : extractHtmlArtifactTitle(payload.html);
+    pinArtifactToCanvas({
+      kind: 'html',
+      language: canRenderInteractiveHtml ? langLower : 'html',
+      title: resolvedTitle,
+      content: payload.html,
+      widgetId: payload.widgetId || blockWidgetId,
+      sessionId,
+      groupId,
+    });
+  };
+
+  const handleSaveHtmlToSpace = async (payload: {
+    html: string;
+    title: string;
+    widgetId: string;
+  }) => {
+    if (isStreaming) return;
+    const { sessionId, groupId } = resolveChatSessionContext();
+    const resolvedTitle =
+      payload.title && payload.title !== t('codeBlock.htmlPreviewTitle')
+        ? payload.title
+        : extractHtmlArtifactTitle(payload.html);
+    try {
+      const result = await usePinnedArtifactStore.getState().saveArtifactToStudySpace({
+        title: resolvedTitle,
+        kind: 'html',
+        language: canRenderInteractiveHtml ? langLower : 'html',
+        content: payload.html,
+        sessionId,
+        groupId,
+      });
+      try {
+        showGlobalNotification(
+          'success',
+          result.pinnedToGroup ? tGenUi('artifact.savedToSpace') : tGenUi('artifact.savedAsNote'),
+        );
+      } catch {}
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      try {
+        showGlobalNotification('error', tGenUi('artifact.saveFailed', { message }));
+      } catch {}
+    }
+  };
+
+  const handlePinOpenuiToCanvas = () => {
+    if (isStreaming) return;
+    const { sessionId, groupId } = resolveChatSessionContext();
+    pinArtifactToCanvas({
+      kind: 'openui',
+      language: 'openui-lang',
+      title: tGenUi('artifact.defaultOpenuiTitle'),
+      content: codeContent,
+      widgetId: blockWidgetId,
+      sessionId,
+      groupId,
+    });
+  };
+
+  const handleSaveOpenuiToSpace = async () => {
+    if (isStreaming) return;
+    const { sessionId, groupId } = resolveChatSessionContext();
+    try {
+      const result = await usePinnedArtifactStore.getState().saveArtifactToStudySpace({
+        title: tGenUi('artifact.defaultOpenuiTitle'),
+        kind: 'openui',
+        language: 'openui-lang',
+        content: codeContent,
+        sessionId,
+        groupId,
+      });
+      try {
+        showGlobalNotification(
+          'success',
+          result.pinnedToGroup ? tGenUi('artifact.savedToSpace') : tGenUi('artifact.savedAsNote'),
+        );
+      } catch {}
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      try {
+        showGlobalNotification('error', tGenUi('artifact.saveFailed', { message }));
+      } catch {}
+    }
+  };
+
   const handleOpenSandbox = () => {
-    if (!canRenderHtml || isStreaming) return;
+    if ((!canRenderHtml && !canRenderInteractiveHtml) || isStreaming) return;
 
     launchSandboxWorkbench({
       sourceType: 'chat-code-block',
       sourceMessageId: 'chat-code-block',
-      language: langLower,
+      language: 'html',
       title: t('codeBlock.sandboxTitle'),
       content: codeContent,
     });
@@ -871,22 +1029,30 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     return () => ro.disconnect();
   }, [previewVisible]);
 
-  // ---- 「…」更多菜单（SVG / HTML） ----
-  const showingSource = canRenderSvg ? !svgPreviewActive : !htmlPreviewActive;
+  // ---- 「…」更多菜单（SVG / HTML / OpenUI / InteractiveHTML） ----
+  const showingSource = canRenderSvg
+    ? !svgPreviewActive
+    : canRenderOpenUI
+      ? !openuiPreviewActive
+      : canRenderInteractiveHtml
+        ? !interactiveHtmlPreviewActive
+        : !htmlPreviewActive;
   const moreActions: CodeBlockMenuAction[] = [];
   if (hasLivePreview) {
-    moreActions.push({
-      key: 'download',
-      label: t('codeBlock.download'),
-      icon: <DownloadSimple size={16} />,
-      disabled: !!isStreaming,
-      onSelect: () => {
-        void runSaveAction(
-          () => (canRenderSvg ? downloadSvgSource(codeContent) : downloadHtmlSource(codeContent, htmlFileNameFor(codeContent))),
-          'codeBlock.saveFailed',
-        );
-      },
-    });
+    if (!canRenderOpenUI) {
+      moreActions.push({
+        key: 'download',
+        label: t('codeBlock.download'),
+        icon: <DownloadSimple size={16} />,
+        disabled: !!isStreaming,
+        onSelect: () => {
+          void runSaveAction(
+            () => (canRenderSvg ? downloadSvgSource(codeContent) : downloadHtmlSource(codeContent, htmlFileNameFor(codeContent))),
+            'codeBlock.saveFailed',
+          );
+        },
+      });
+    }
     if (canRenderSvg) {
       moreActions.push({
         key: 'save-image',
@@ -911,12 +1077,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       onSelect: () => {
         if (canRenderSvg) {
           setSvgView(showingSource ? 'preview' : 'source');
+        } else if (canRenderOpenUI) {
+          setOpenuiView(showingSource ? 'preview' : 'source');
+        } else if (canRenderInteractiveHtml) {
+          setInteractiveHtmlView(showingSource ? 'preview' : 'source');
         } else {
           setHtmlViewOverride(showingSource ? 'preview' : 'source');
         }
       },
     });
-    if (canRenderHtml) {
+    if (canRenderHtml || canRenderInteractiveHtml) {
       moreActions.push({
         key: 'open-sandbox',
         label: t('codeBlock.openSandbox'),
@@ -944,19 +1114,67 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     </>
   );
 
-  const scriptsIgnored = htmlPreviewActive && htmlUsesScripts(codeContent);
+  const hasHtmlScripts = htmlPreviewActive && htmlUsesScripts(codeContent);
+  const scriptsIgnored = hasHtmlScripts && !htmlInlineInteractive;
 
   const liveHeader = (
-    <div className="code-block-header">
+    <div className="code-block-header" ref={hostLookupRef}>
       <span className="code-block-lang">{language}</span>
       {scriptsIgnored && (
-        <span className="code-block-badge" title={t('codeBlock.scriptsDisabledHint')}>
-          {t('codeBlock.scriptsDisabled')}
-        </span>
+        <>
+          <span className="code-block-badge" title={t('codeBlock.scriptsDisabledHint')}>
+            {t('codeBlock.scriptsDisabled')}
+          </span>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="code-block-copy"
+            onClick={() => setHtmlInlineInteractive(true)}
+            title={t('codeBlock.runInlineInteractive')}
+          >
+            <Play size={12} />
+            <span>{t('codeBlock.runInlineInteractive')}</span>
+          </DsButton>
+        </>
+      )}
+      {hasHtmlScripts && htmlInlineInteractive && (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="code-block-copy"
+          onClick={() => setHtmlInlineInteractive(false)}
+          title={t('codeBlock.scriptsDisabled')}
+        >
+          <span>{t('codeBlock.exitInlineInteractive')}</span>
+        </DsButton>
       )}
       <div className="code-block-actions">
+        {openuiPreviewActive && !isStreaming && (
+          <>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="code-block-copy"
+              onClick={handlePinOpenuiToCanvas}
+              data-testid="openui-pin-button"
+            >
+              <PushPinSimple size={13} />
+              <span>{tGenUi('artifact.pinToCanvas')}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="code-block-copy"
+              onClick={() => void handleSaveOpenuiToSpace()}
+              data-testid="openui-save-space-button"
+            >
+              <FolderSimplePlus size={13} />
+              <span>{tGenUi('artifact.saveToSpace')}</span>
+            </DsButton>
+          </>
+        )}
         {svgPreviewActive && progressiveSvg !== null && zoomControls}
-        {htmlPreviewActive && (htmlOverflowing || htmlExpanded) && (
+        {(htmlPreviewActive || interactiveHtmlPreviewActive) && (htmlOverflowing || htmlExpanded) && (
           <DsButton
             variant="ghost"
             size="icon"
@@ -979,6 +1197,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
+        <ReplyCommandActionButton
+          isStreaming={!!isStreaming}
+          language={language}
+          command={codeContent}
+          onRun={handleCopy}
+        />
         <DsButton variant="ghost" size="sm" className="code-block-copy [@media(pointer:coarse)]:!min-h-11" onClick={handleCopy}>
           <IconSwap
             active={copied}
@@ -1039,6 +1263,59 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   let body: ReactNode;
   if (showRichRenderer && richRendererKind) {
     body = <RichCodeRenderer kind={richRendererKind} source={codeContent} />;
+  } else if (diagramPreviewActive) {
+    body = (
+      <MermaidErrorBoundary
+        key={errorBoundaryKey.current}
+        fallbackCode={codeContent}
+        language={language}
+        onReset={handleErrorBoundaryReset}
+      >
+        <div className="p-3">
+          <DiagramAndLiveSvgView mode="diagram" code={codeContent} isStreaming={!!isStreaming} />
+        </div>
+      </MermaidErrorBoundary>
+    );
+  } else if (openuiPreviewActive) {
+    body = (
+      <MermaidErrorBoundary
+        key={errorBoundaryKey.current}
+        fallbackCode={codeContent}
+        language={language}
+        onReset={handleErrorBoundaryReset}
+      >
+        <div className="p-3">
+          <OpenUILangRenderer source={codeContent} isStreaming={!!isStreaming} />
+        </div>
+      </MermaidErrorBoundary>
+    );
+  } else if (interactiveHtmlPreviewActive) {
+    body = (
+      <MermaidErrorBoundary
+        key={errorBoundaryKey.current}
+        fallbackCode={codeContent}
+        language={language}
+        onReset={handleErrorBoundaryReset}
+      >
+        <InteractiveHtmlCanvas
+          className="chat-html-preview-stage"
+          html={codeContent}
+          streaming={!!isStreaming}
+          expanded={htmlExpanded}
+          onOverflowChange={setHtmlOverflowing}
+          title={t('codeBlock.htmlPreviewTitle')}
+          widgetId={blockWidgetId}
+          onPinToCanvas={isStreaming ? undefined : handlePinHtmlToCanvas}
+          onSaveToSpace={
+            isStreaming
+              ? undefined
+              : (payload) => {
+                  void handleSaveHtmlToSpace(payload);
+                }
+          }
+        />
+      </MermaidErrorBoundary>
+    );
   } else if (htmlPreviewActive) {
     body = (
       <MermaidErrorBoundary

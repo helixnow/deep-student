@@ -15,7 +15,7 @@ import {
   useUnifiedSidebar,
 } from '@/components/ui/unified-sidebar';
 import { DsButton } from '@/components/ui/DsButton';
-import { Lightning, Globe, FolderOpen, Package, Pencil, Trash, Check } from '@phosphor-icons/react';
+import { Lightning, Globe, FolderOpen, Package, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
@@ -46,7 +46,6 @@ interface SkillsSidebarProps {
   /** 删除技能回调 */
   onDeleteSkill: (skill: SkillDefinition) => void;
   /** 刷新技能列表回调 */
-  onRefresh?: () => Promise<void>;
   /** 技能总数摘要 */
   skillSummary?: {
     total: number;
@@ -260,7 +259,6 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
   onCreateSkill,
   onEditSkill,
   onDeleteSkill,
-  onRefresh,
   skillSummary,
   className,
   autoResponsive = true,
@@ -274,18 +272,8 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
 
   // 本地状态：位置过滤
   const [locationFilter, setLocationFilter] = useState<LocationFilter>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 处理刷新
-  const handleRefresh = async () => {
-    if (!onRefresh || isRefreshing) return;
-    setIsRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
   // 位置过滤标签
   const locationTabs = useMemo(() => [
@@ -338,9 +326,6 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
         createTitle={t('skills:management.create')}
         onCreateClick={onCreateSkill}
         showCollapse
-        showRefresh={!!onRefresh}
-        onRefreshClick={handleRefresh}
-        isRefreshing={isRefreshing}
 />
 
       <SidebarContentComponent

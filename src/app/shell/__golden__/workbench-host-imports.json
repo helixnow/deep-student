@@ -1,0 +1,31 @@
+{
+  "$comment": "W38 host → src/features/workbench import baseline. Static imports may only be removed; update this file in the same commit. Dynamic imports are recorded separately and are allowed.",
+  "files": {
+    "src/app/hooks/useClassicToWorkbenchHandoff.ts": {
+      "static": [],
+      "dynamic": [
+        "features/workbench/apps/chat/newSession",
+        "features/workbench/apps/registerAll"
+      ]
+    },
+    "src/app/workbench/lazyDesktop.ts": {
+      "static": [],
+      "dynamic": [
+        "features/workbench/agent/AgentBridge",
+        "features/workbench/components/WorkbenchDesktop"
+      ]
+    },
+    "src/command-palette/hooks/useResourceSearch.ts": {
+      "static": [
+        "features/workbench/search/globalSearchProviders"
+      ],
+      "dynamic": ["features/workbench/apps/content/typeMap"]
+    },
+    "src/main.tsx": {
+      "static": [
+        "features/workbench/core/materialTier"
+      ],
+      "dynamic": []
+    }
+  }
+}

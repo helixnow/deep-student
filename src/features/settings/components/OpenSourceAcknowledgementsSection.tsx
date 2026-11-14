@@ -18,62 +18,64 @@ import { GroupTitle } from './settingsTabPrimitives';
 
 const ACKNOWLEDGEMENT_GROUPS = [
   {
-    key: 'coreStack',
-    items: ['React 18', 'TypeScript 5', 'Vite 6', 'Tailwind CSS', 'PostCSS', 'Vite React Plugin'],
+    key: 'runtimesAndFrameworks',
+    items: ['Electron', 'Chromium', 'Node.js', 'Capacitor', 'Cordis', 'React 18', 'TypeScript 5', 'Vite 6'],
+  },
+  {
+    key: 'backendAndStorage',
+    items: [
+      'better-sqlite3', 'SQLite WASM', 'LanceDB', 'Apache Arrow',
+      'Koffi', 'esbuild', 'undici', 'AWS SDK S3',
+      'Argon2', 'Keyring', 'Noble Crypto', 'tiktoken', 'Sentry', 'Ajv',
+    ],
+  },
+  {
+    key: 'f7WasiEngines',
+    items: [
+      'Starlark', 'Symphonia', 'fsrs-rs', 'image-rs',
+      'regex', 'roxmltree', 'docx-rs', 'Calamine',
+      'pptx-to-md', 'rtf-parser', 'html2text', 'priority-queue',
+    ],
+  },
+  {
+    key: 'documentsAndArchives',
+    items: [
+      'PDF.js', 'PDFium', 'OpenJPEG & qcms', 'pdf-lib', 'pdfmake',
+      'docx', 'docx-preview', 'ExcelJS', 'pptxgenjs', 'pptx-preview',
+      'JSZip', 'pako', 'tar', 'DOMPurify',
+    ],
+  },
+  {
+    key: 'editorsAndScience',
+    items: [
+      'Milkdown', 'ProseMirror', 'CodeMirror', 'KaTeX', 'FlowToken',
+      'Mermaid', 'Apache ECharts', 'Vega / Vega-Lite', 'Recharts',
+      'React Flow', 'Cytoscape.js', 'Graphviz', 'D3',
+      '3Dmol.js', 'abcjs', 'OpenChemLib', 'SmilesDrawer', 'WaveDrom',
+    ],
   },
   {
     key: 'uiAndInteraction',
     items: [
-      'Radix UI', 'Framer Motion', 'Lucide React', 'Phosphor Icons',
-      'cmdk', 'React Complex Tree', 'React Resizable Panels',
+      'Tailwind CSS', 'Radix UI', 'Framer Motion', 'Phosphor Icons',
+      'LobeHub Icons', 'DnD Kit', 'OverlayScrollbars',
+      'TanStack Virtual', 'React Resizable Panels',
     ],
   },
   {
-    key: 'contentEditing',
+    key: 'stateAndLearning',
     items: [
-      'Milkdown', 'CodeMirror', 'ProseMirror', 'Mermaid', 'KaTeX',
-      'React Markdown', 'React PDF', 'PDF.js', 'docx-preview',
-      'pptx-preview', 'ExcelJS',
+      'Zustand', 'Immer', 'Zod', 'ts-fsrs', 'i18next',
+      'react-i18next', 'date-fns', 'MCP SDK', 'YAML', 'diff',
     ],
   },
   {
-    key: 'stateAndData',
+    key: 'fontsAndAssets',
     items: [
-      'Zustand', 'Immer', 'i18next', 'react-i18next',
-      'i18next Browser LanguageDetector', 'date-fns', 'nanoid',
-      'uuid', 'YAML', 'diff', 'DOMPurify',
+      'Noto Sans SC (OFL-1.1)', 'Liberation Sans (OFL-1.1)',
+      'Foxit Standard Fonts', 'Study OS Wallpapers (CC0)',
+      'AI Provider Brand Icons',
     ],
-  },
-  {
-    key: 'visualization',
-    items: ['DnD Kit', 'Hello Pangea DnD', 'React Flow', 'Recharts', 'React Heat Map'],
-  },
-  {
-    key: 'utilities',
-    items: [
-      'Class Variance Authority', 'Tailwind Merge', 'Mustache',
-      'React Textarea Autosize', 'SnapDOM',
-    ],
-  },
-  {
-    key: 'aiAndAgents',
-    items: [
-      'MCP SDK', 'LanceDB', 'Apache Arrow', 'tiktoken-rs',
-      'EventSource Stream', 'Reqwest EventSource',
-    ],
-  },
-  {
-    key: 'rustEcosystem',
-    items: [
-      'Tauri 2', 'Tauri Plugin Suite', 'Tokio', 'Serde', 'Rusqlite',
-      'Reqwest', 'Rayon', 'Moka', 'Chrono', 'docx-rs',
-      'pdfium-render', 'Calamine', 'ppt-rs', 'pptx-to-md',
-      'Umya Spreadsheet', 'encoding_rs', 'anyhow', 'tracing', 'Sentry',
-    ],
-  },
-  {
-    key: 'testingAndTooling',
-    items: ['Vitest', 'Playwright', 'Testing Library', 'ESLint', 'JSDOM', 'Vite Static Copy'],
   },
 ] as const;
 
@@ -84,29 +86,49 @@ const LEGAL_DOCUMENT_PATHS: Record<LegalDocument, string> = {
   thirdParty: './legal/THIRD_PARTY_NOTICES.txt',
 };
 
-/** 安装包 resources/ 内的权威副本（tauri.conf.json bundle.resources 映射目标） */
-const THIRD_PARTY_NOTICES_RESOURCE_PATH = 'licenses/THIRD_PARTY_NOTICES.txt';
+/** Electron packaged extraResources paths (`BaseDirectory.Resource = 11`). */
+const DESKTOP_RESOURCE_PATHS: Record<LegalDocument, string> = {
+  project: 'licenses/DeepStudent-AGPL-3.0.txt',
+  thirdParty: 'licenses/THIRD_PARTY_NOTICES.txt',
+};
+const RESOURCE_BASE_DIR = 11;
 
-const isTauriRuntime = (): boolean =>
-  typeof window !== 'undefined' &&
-  ((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined ||
-    (window as { __TAURI_IPC__?: unknown }).__TAURI_IPC__ !== undefined);
+interface DesktopShellInternals {
+  invoke?: (cmd: string, payload?: unknown) => Promise<unknown>;
+}
+
+const getDesktopInvoke = (): DesktopShellInternals['invoke'] | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  return (window as { __TAURI_INTERNALS__?: DesktopShellInternals }).__TAURI_INTERNALS__?.invoke;
+};
+
+const decodeDesktopTextPayload = (payload: unknown): string => {
+  if (typeof payload === 'string') return payload;
+  if (payload instanceof ArrayBuffer || Object.prototype.toString.call(payload) === '[object ArrayBuffer]') {
+    return new TextDecoder().decode(new Uint8Array(payload as ArrayBuffer));
+  }
+  if (ArrayBuffer.isView(payload)) {
+    return new TextDecoder().decode(new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength));
+  }
+  if (Array.isArray(payload)) return new TextDecoder().decode(Uint8Array.from(payload));
+  throw new Error('Unexpected desktop legal document payload');
+};
 
 /**
- * WI-9 legal 去重后 THIRD_PARTY_NOTICES.txt 只随 Tauri resources 分发一份，
- * 不再进 frontendDist：Tauri 环境经 resolveResource + readTextFile 读取，
- * 纯 web（vite dev 中间件代理 legal/ 目录）沿用 fetch。
+ * Electron 桌面端打包后 `THIRD_PARTY_NOTICES.txt` 随 `extraResources` 放在 `resources/licenses/`，
+ * 优先经桌面壳 IPC 读取；开发模式、Web 与 Mobile 端统一走 `fetch('./legal/...')`。
  */
-const loadLegalDocumentText = async (document: LegalDocument): Promise<string> => {
-  if (document === 'thirdParty' && isTauriRuntime()) {
+export const loadLegalDocumentText = async (document: LegalDocument): Promise<string> => {
+  const desktopInvoke = getDesktopInvoke();
+  if (desktopInvoke) {
     try {
-      const [{ resolveResource }, { readTextFile }] = await Promise.all([
-        import('@tauri-apps/api/path'),
-        import('@tauri-apps/plugin-fs'),
-      ]);
-      return await readTextFile(await resolveResource(THIRD_PARTY_NOTICES_RESOURCE_PATH));
+      const payload = await desktopInvoke('plugin:fs|read_text_file', {
+        path: DESKTOP_RESOURCE_PATHS[document],
+        options: { baseDir: RESOURCE_BASE_DIR },
+      });
+      return decodeDesktopTextPayload(payload);
     } catch {
-      // 资源读取失败（如旧安装包）时回退 fetch，让统一的错误态处理兜底
+      // 开发环境下 resources/licenses/ 尚未打包时回退到 Vite/Web/Mobile 静态资源 fetch
     }
   }
   const response = await fetch(LEGAL_DOCUMENT_PATHS[document]);
@@ -265,16 +287,17 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
 
   return (
     <>
-      <div className="flex flex-col mb-4">
-        <div className="flex items-start justify-between gap-3">
-          <GroupTitle title={t('acknowledgements.openSource.title')} />
+      <GroupTitle
+        title={t('acknowledgements.openSource.title')}
+        description={t('acknowledgements.openSource.description')}
+        actions={
           <DsButton
             variant="outline"
             size="sm"
             onClick={() => handleOpenChange(!open)}
             aria-label={t('acknowledgements.openSource.openDialog')}
             aria-expanded={isSmallScreen ? open : undefined}
-            className="mr-1 [@media(pointer:coarse)]:!min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             {isSmallScreen ? (
@@ -283,11 +306,8 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
               <ListChecks size={14} />
             )}
           </DsButton>
-        </div>
-        <p className="mt-2 mb-1 px-1 text-[12.5px] leading-relaxed text-muted-foreground/70">
-          {t('acknowledgements.openSource.description')}
-        </p>
-      </div>
+        }
+      />
 
       {/* 移动端：About 页内联展开（P1-9）；桌面端保留 Dialog */}
       {isSmallScreen ? (

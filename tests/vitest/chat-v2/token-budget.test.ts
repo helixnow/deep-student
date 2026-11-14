@@ -145,7 +145,11 @@ const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
 // docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
 // 2026-10-04：qbank_import_document 支持 resource_id 后实测 76554，先精简一轮至 76520，
 // 剩余属合理功能增长，有意识上调至 76600；记录同上。
-const MAX_TOTAL_TOKENS = 76_600;
+// 2026-11-07：Rust 同版本快照（21c9d808）实测 total = 76600。translation-tools 补上 Rust translate_text
+// 返回提示里要求调用、Rust/host 执行器都已实现、但前端从未声明的 translation_result_read
+// （RF-W09-translation-result-read-undeclared）。先精简一轮 +240→+193：该组 1448→1641（schema 977→1126，
+// 其中新工具 149；content 471→515），其余各组与 Rust 同版本逐字一致。有意识上调至 76800。
+const MAX_TOTAL_TOKENS = 76_800;
 
 // ============================================================================
 // 测试

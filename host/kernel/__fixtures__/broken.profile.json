@@ -1,0 +1,6 @@
+{
+  "plugins": [
+    { "id": "fixture.greeter", "module": "./greeter.plugin.ts" },
+    { "id": "fixture.broken", "module": "./broken.plugin.ts" }
+  ]
+}

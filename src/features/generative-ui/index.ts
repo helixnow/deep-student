@@ -18,6 +18,7 @@ export type {
   GenerativeUIRendererProps,
 } from './types';
 
+export * from './openui-lang';
 export { generativeUIRegistry } from './registry';
 export {
   generativeUIIntentSchema,

@@ -16,7 +16,7 @@
  *   }
  * }
  *
- * 前置：npm run ui:lab  （或 ui:bridge + VITE_DS_UI_BRIDGE=1 dev:tauri）
+ * 前置：npm run ui:lab  （或 ui:bridge + VITE_DS_UI_BRIDGE=1 npm run dev:electron）
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

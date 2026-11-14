@@ -1,0 +1,1395 @@
+{
+  "domain": "notes",
+  "commands": [
+    "dstu_create",
+    "dstu_delete",
+    "notes_editor_begin",
+    "notes_editor_flush",
+    "notes_editor_freeze_ack",
+    "notes_editor_register",
+    "notes_editor_release",
+    "notes_editor_unregister",
+    "notes_enable_columns",
+    "notes_get_format",
+    "notes_history_current",
+    "notes_history_set_retention",
+    "notes_migrate_blocks",
+    "notes_review_save_as",
+    "notes_transfer_blocks",
+    "notes_undo_transfer",
+    "notes_update"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.format.get_and_enable_columns_under_lease",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "列格式",
+              "content": "# 列\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "note_missing_format"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "stale-token"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "note_missing_format",
+            "expectedUpdatedAt": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${8.participant_id}",
+            "operationId": "wp230-columns",
+            "noteIds": [
+              "${1.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_freeze_ack",
+          "args": {
+            "lease": {
+              "participant_id": "${8.participant_id}",
+              "token": "${9.token}"
+            },
+            "draft": {
+              "markdown": "${10.content_md}",
+              "expected_updated_at": "${10.updated_at}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_flush",
+          "args": {
+            "lease": {
+              "participant_id": "${8.participant_id}",
+              "token": "${9.token}"
+            },
+            "noteId": "${1.id}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${10.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${10.updated_at}",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${10.updated_at}",
+            "lease": {
+              "participant_id": "${8.participant_id}",
+              "token": "${9.token}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_release",
+          "args": {
+            "lease": {
+              "participant_id": "${8.participant_id}",
+              "token": "${9.token}"
+            },
+            "cancel": true
+          }
+        },
+        {
+          "cmd": "notes_editor_unregister",
+          "args": {
+            "participantId": "${8.participant_id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${18.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": ":::ds-columns{version=1 layout=cornell}\n\n:::column\n\n## Cues\n\nQuestion\n\n:::end-column\n\n:::column\n\n## Notes\n\nAnswer\n\n:::end-column\n\n:::end-ds-columns\n",
+              "expected_updated_at": "${21.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "列格式-块",
+              "content": "# M\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${24.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${24.id}",
+            "expectedUpdatedAt": "${25.updated_at}",
+            "content": "<!-- ds:block-id=ma -->\n# M\n\n<!-- ds:block-id=mb -->\nBody\n"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${24.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${24.id}",
+            "expectedUpdatedAt": "${27.updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${24.id}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${18.updated_at}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.format.migrate_blocks_validation_and_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移笔记",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "stale-token",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "note_missing_migrate",
+            "expectedUpdatedAt": "x",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "# Heading\n\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=a -->\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n\n<!-- ds:block-id=z -->\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nChanged\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${2.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          }
+        },
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${14.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${14.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.transfer.move_replay_undo_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "搬移源",
+              "content": "Move me\n\nKeep\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "搬移目标",
+              "content": "Target\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${3.updated_at}",
+              "expected_target_updated_at": "${4.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "content": "<!-- ds:block-id=a -->\nMove me\n\n<!-- ds:block-id=b -->\nKeep\n"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${2.id}",
+            "expectedUpdatedAt": "${4.updated_at}",
+            "content": "<!-- ds:block-id=c -->\nTarget\n"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "  ",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-stale",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "stale-token",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-missing",
+              "source_note_id": "${1.id}",
+              "target_note_id": "note_missing_transfer",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-empty",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-dup",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a",
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-absent",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "zz"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-order",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=a -->\nMove me\n\n<!-- ds:block-id=c -->\nTarget\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-body",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMoved and edited\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-parse",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "Keep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-lease",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            },
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-extra",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ],
+              "extra": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-nokey",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=a -->\nMove me\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=b -->\nKeep\n",
+              "block_ids": [
+                "b"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-none",
+            "expectedSourceUpdatedAt": "x",
+            "expectedTargetUpdatedAt": "y"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-1",
+            "expectedSourceUpdatedAt": "${8.updated_at}",
+            "expectedTargetUpdatedAt": "${24.target_updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-1",
+            "expectedSourceUpdatedAt": "${24.source_updated_at}",
+            "expectedTargetUpdatedAt": "${24.target_updated_at}",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-1",
+            "expectedSourceUpdatedAt": "${24.source_updated_at}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-1",
+            "expectedSourceUpdatedAt": "${24.source_updated_at}",
+            "expectedTargetUpdatedAt": "${24.target_updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "wp230-move-1",
+            "expectedSourceUpdatedAt": "${24.source_updated_at}",
+            "expectedTargetUpdatedAt": "${24.target_updated_at}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-move-1",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${8.updated_at}",
+              "expected_target_updated_at": "${9.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\nKeep\n",
+              "target_content": "<!-- ds:block-id=c -->\nTarget\n\n<!-- ds:block-id=a -->\nMove me\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.transfer.id_collision_present_block_and_deleted_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "碰撞源",
+              "content": "One\n\nTwo\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "碰撞目标",
+              "content": "Other\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "content": "<!-- ds:block-id=x -->\nOne\n\n<!-- ds:block-id=y -->\nTwo\n"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${2.id}",
+            "expectedUpdatedAt": "${4.updated_at}",
+            "content": "<!-- ds:block-id=y -->\nOther\n"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-collide",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${7.updated_at}",
+              "expected_target_updated_at": "${8.updated_at}",
+              "source_content": "<!-- ds:block-id=y -->\nTwo\n",
+              "target_content": "<!-- ds:block-id=y -->\nOther\n\n<!-- ds:block-id=x -->\nOne\n",
+              "block_ids": [
+                "x"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-present",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${7.updated_at}",
+              "expected_target_updated_at": "${8.updated_at}",
+              "source_content": "<!-- ds:block-id=x -->\nOne\n",
+              "target_content": "<!-- ds:block-id=y -->\nOther\n",
+              "block_ids": [
+                "y"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "wp230-deleted",
+              "source_note_id": "${1.id}",
+              "target_note_id": "${2.id}",
+              "expected_source_updated_at": "${7.updated_at}",
+              "expected_target_updated_at": "${8.updated_at}",
+              "source_content": "<!-- ds:block-id=y -->\nTwo\n",
+              "target_content": "<!-- ds:block-id=y -->\nOther\n\n<!-- ds:block-id=x -->\nOne\n",
+              "block_ids": [
+                "x"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "expectedSourceUpdatedAt": "x",
+            "expectedTargetUpdatedAt": "y"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.review.save_as_replay_update_and_conflicts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "# 审阅源\n\n原文\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源（AI 审阅副本）",
+              "content": "占位\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n不同\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写二\n",
+            "expectedUpdatedAt": "${3.updatedAt}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写三\n",
+            "expectedUpdatedAt": "stale-token",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源二",
+              "content": "# 二\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${8.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-new",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": "${6.updatedAt}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "  ",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-empty",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": "",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-missing",
+            "sourceNoteId": "note_missing_review",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-cols",
+            "sourceNoteId": "${1.id}",
+            "markdown": ":::ds-columns{version=1 layout=cornell}\n\n:::column\n\n## Cues\n\nQuestion\n\n:::end-column\n\n:::column\n\n## Notes\n\nAnswer\n\n:::end-column\n\n:::end-ds-columns\n",
+            "expectedUpdatedAt": null,
+            "capabilities": []
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-cols-ok",
+            "sourceNoteId": "${1.id}",
+            "markdown": ":::ds-columns{version=1 layout=cornell}\n\n:::column\n\n## Cues\n\nQuestion\n\n:::end-column\n\n:::column\n\n## Notes\n\nAnswer\n\n:::end-column\n\n:::end-ds-columns\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-marker",
+            "sourceNoteId": "${1.id}",
+            "markdown": "<!-- ds:schema=v9 -->\n正文\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-lease",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ],
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-nokey",
+            "sourceNoteId": "${1.id}",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-deleted",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写一\n",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "wp230-review-1",
+            "sourceNoteId": "${1.id}",
+            "markdown": "# 审阅\n\n改写二\n",
+            "expectedUpdatedAt": "${3.updatedAt}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

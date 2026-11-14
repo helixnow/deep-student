@@ -183,24 +183,22 @@ describe('SystemPermissionsSection', () => {
     })).not.toBeInTheDocument();
   });
 
-  it('maps unavailable permissions to a refresh action', async () => {
-    permissionMocks.getSystemAuthorizationSnapshot.mockResolvedValue({
+  it('automatically checks unavailable permissions again when the window regains focus', async () => {
+    permissionMocks.getSystemAuthorizationSnapshot.mockResolvedValueOnce({
       notifications: 'unavailable',
+      microphone: 'granted',
+    }).mockResolvedValueOnce({
+      notifications: 'granted',
       microphone: 'granted',
     });
     render(<SystemPermissionsSection />);
 
+    expect(await screen.findByText('system_authorization.status.unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'system_authorization.refresh' })).toBeNull();
+    fireEvent.focus(window);
     await waitFor(() => {
-      expect(screen.getAllByRole('button', {
-        name: 'system_authorization.refresh',
-      })).toHaveLength(2);
-    });
-    const refreshButtons = screen.getAllByRole('button', {
-      name: 'system_authorization.refresh',
-    });
-    fireEvent.click(refreshButtons[0]);
-    await waitFor(() => {
-      expect(permissionMocks.getSystemAuthorizationSnapshot).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('system_authorization.status.unavailable')).not.toBeInTheDocument();
+      expect(screen.getAllByText('system_authorization.status.granted')).toHaveLength(2);
     });
   });
 

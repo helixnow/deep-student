@@ -1,0 +1,89 @@
+<div>
+  <div class="h-full flex flex-col p-3 gap-3">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M53.92,34.62A8,8,0,1,0,4" class="mr-1">
+          "暂停"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0" class="mr-1">
+          "清空"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M215.79,118.17a8,8,0,0,0" class="mr-1">
+          "Store"
+      <div class="flex items-center gap-1">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          "全部"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+          "PDF"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=12 icon="M110.66,147.56a8,8,0,0,0" class="mr-1">
+          "图片"
+    <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none flex-shrink-0">
+      <div class="p-4 pt-0 py-2 px-3">
+        <div class="flex flex-wrap gap-3 text-xs">
+          <span class="text-muted-foreground">
+            "事件:"
+            <span class="font-medium text-foreground">
+              "0"
+          <span class="text-blue-600 dark:text-blue-400">
+            "进度:"
+            "0"
+          <span class="text-green-600 dark:text-green-400">
+            "完成:"
+            "0"
+          <span class="text-red-600 dark:text-red-400">
+            "错误:"
+            "0"
+          <span class="text-purple-600 dark:text-purple-400">
+            "模式:"
+            "0"
+          <span class="text-teal-600 dark:text-teal-400">
+            "注入:"
+            "0"
+          <span class="text-muted-foreground">
+            "移除/清理:"
+            "0"
+          <span class="border-l border-border pl-3 text-muted-foreground">
+            "PDF:"
+            "0"
+            "| 图片:"
+            "0"
+          <span class="border-l border-border pl-3 text-muted-foreground">
+            "Store:"
+            <span class="font-medium text-foreground">
+              "0"
+            "条"
+    <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none flex-1 overflow-hidden flex flex-col">
+      <div class="flex flex-col space-y-1.5 p-4 py-2 px-3 flex-shrink-0">
+        <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+          <svg size=16 icon="M128,24A104,104,0,1,0,23">
+          "事件流 ("
+          "0"
+          ")"
+      <div class="p-4 pt-0 flex-1 p-0 overflow-hidden">
+        <div class="relative min-h-0 min-w-0 min-h-0 min-w-0 h-full h-full pr-1">
+          <div class="os-size-observer">
+            <div class="os-size-observer-listener">
+          <div class="h-full min-h-0 w-full min-w-0 h-full max-h-[inherit] min-h-0 w-full min-w-0 min-h-0 min-w-0 max-h-[420px]" style="margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;">
+            <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+              "暂无事件，上传 PDF 或图片附件开始监控..."
+          <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+          <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+    <div class="text-[10px] text-muted-foreground">
+      <strong>
+        "提示："
+      "此插件监听媒体预处理的完整生命周期：后端处理事件 + 注入模式选择 + 实际内容注入。"
+      <br>
+      <strong>
+        "事件类型："
+      "🔄进度 ✅完成 ❌错误 🖱️模式选择 📤实际注入 🗑️移除/清理"
+      <br>
+      <strong>
+        "关键检查点："
+      "1) fileId 应为 sourceId (att_xxx) 2) Stage 应按顺序流转 3) 模式选择应正确反映用户点击 4) 注入内容应与选择的模式一致"

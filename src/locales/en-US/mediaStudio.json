@@ -69,10 +69,13 @@
   },
   "empty": {
     "title": "Import your first lecture",
-    "transcribe": "Transcripts: turn a lecture into timed subtitles, search while you watch and tap a line to jump there.",
-    "ask": "Ask as you watch: ask about this course and get answers with [Media@time] citations that jump back.",
-    "review": "Handouts and practice: build an illustrated handout note, then make flashcards and questions from what was taught.",
-    "subtitleNote": "Already have subtitles (.srt / .vtt / Bilibili .json)? Import the media, then pick “Import subtitle file” in its row menu and skip the transcription cost."
+    "transcribeTitle": "Transcripts",
+    "transcribe": "Search timestamped captions and jump to the right moment.",
+    "askTitle": "Ask as you watch",
+    "ask": "Ask about the lesson and jump back from cited answers.",
+    "reviewTitle": "Notes and practice",
+    "review": "Turn the lesson into notes, flashcards and practice questions.",
+    "subtitleNote": "Already have subtitles? Use the item menu to add an .srt, .vtt, or Bilibili .json file after importing."
   },
   "drawer": {
     "recent": "Recently watched",
@@ -200,5 +203,13 @@
   },
   "chapters": {
     "title": "Chapters {{current}}/{{total}}"
+  },
+  "interop": {
+    "auto_excerpt": "Auto-Excerpt",
+    "auto_excerpt_hint": "Automatically send selected transcript cues to the active mindmap or note",
+    "drag_cue": "Drag transcript excerpt",
+    "backlink_mindmap": "{{count}} Map",
+    "backlink_flashcard": "{{count}} Card",
+    "backlink_note": "{{count}} Note"
   }
 }

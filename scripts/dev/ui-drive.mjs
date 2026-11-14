@@ -6,7 +6,7 @@
  *   npm run ui:lab          （一键：桥 + 手机比例 dev 窗口）
  *   或手动：
  *     node scripts/dev/ui-bridge-server.mjs
- *     VITE_DS_UI_BRIDGE=1 npm run dev:tauri -- --config config/dev-phone-window.json
+ *     VITE_DS_UI_BRIDGE=1 DS_ELECTRON_DEV_CONFIG=config/dev-phone-window.json npm run dev:electron
  *
  * Cursor 里更推荐启用 MCP server「dstu-ui-drive」，工具名 ui_*，用法与 Playwright MCP 接近。
  *

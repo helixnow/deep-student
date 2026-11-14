@@ -1,0 +1,1410 @@
+[
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "basic",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "indented",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "citations",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Needle in a haystack: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Needle in a HAYSTACK: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a haystack: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a HAYSTACK: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Needle in a haystack: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Needle in a HAYSTACK: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a haystack: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": false,
+    "fixture": "search",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a HAYSTACK: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "basic",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><h1>Title</h1>\n<p>Paragraph with <strong>bold</strong>, <em>em</em>, <code class=\"inline-code\">code</code> and a <a href=\"https://example.com\" class=\"text-primary underline cursor-pointer\">link</a>.</p>\n<blockquote>\n<p>quote</p>\n</blockquote></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "indented",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Text</p>\n<pre data-codeblock=\"true\">indented line stays a paragraph\n</pre>\n<p>After</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "fullWidth",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>*强调* 与 #标题 ~删除~ _下划线_</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathInline",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Euler <span><b data-display=\"false\">e^{i\\pi}+1=0</b></span> and <span><b data-display=\"false\">a^2+b^2</b></span> inline.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathBlock",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 math-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><span><b data-display=\"true\">\\int_0^1 x\\,dx</b></span></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div>\n<p><span><b data-display=\"false\">x^2</b></span></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "mathCodeBlocks",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\\frac{a}{b}\nx+y\n<pre data-codeblock=\"true\" class=\"language-ts\">const a = 1;\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "gfm",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\">\n\n\n\n\n\n\n\n\n\n\n\n\n<div class=\"table-wrapper\"><div data-slot=\"scroll-area\" data-orientation=\"horizontal\" data-scroll-axes=\"horizontal\" data-native-scrollbars=\"false\" data-overlayscrollbars-initialize=\"\" class=\"relative min-h-0 min-w-0 table-scroll-area\" data-overlayscrollbars=\"host\"><div class=\"os-size-observer\"><div class=\"os-size-observer-listener\"></div></div><div class=\"h-full min-h-0 w-full min-w-0\" data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\" style=\"margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;\"><table class=\"markdown-table\"><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div><div class=\"os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div><div class=\"os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable\" style=\"--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;\"><div class=\"os-scrollbar-track\"><div class=\"os-scrollbar-handle\"></div></div></div></div></div>\n<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\" checked=\"\"> done</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled=\"\"> todo</li>\n</ul>\n<p><del>strike</del> <a href=\"https://auto.example.com\" class=\"text-primary underline cursor-pointer\">https://auto.example.com</a></p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "smiles",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Benzene <i data-inline-smiles=\"c1ccccc1\"></i> ring and <code class=\"inline-code\">\\smiles{CC}</code> in code.</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "rawHtml",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><div><i data-citation-badge=\"undefined:0\"></i><a class=\"text-primary underline cursor-pointer\">bad</a></div></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料[知识库-1]和[图片-2]，以及[记忆-3]、[题目集:exam_1#q2:期中]。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "citations",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>根据资料<i data-citation-badge=\"rag:1\"></i>和<i data-citation-badge=\"multimodal:2\"></i>，以及<i data-citation-badge=\"memory:3\"></i>、<i data-qbank-badge=\"true\"></i>。</p></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": false,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Needle in a haystack: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": false,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Needle in a HAYSTACK: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": false,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a haystack: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": false,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a HAYSTACK: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": true,
+    "query": "",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p>Needle in a haystack: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": true,
+    "query": "",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p>Needle in a HAYSTACK: needle, NEEDLE and needles.</p>\n<pre data-codeblock=\"true\">needle in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": true,
+    "query": "needle",
+    "extra": false,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a haystack: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  },
+  {
+    "provider": true,
+    "fixture": "search",
+    "citations": true,
+    "query": "needle",
+    "extra": true,
+    "html": "<div class=\"markdown-content\"><p><mark class=\"chat-search-match\" data-chat-search-match=\"true\">Needle</mark> in a HAYSTACK: <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>, <mark class=\"chat-search-match\" data-chat-search-match=\"true\">NEEDLE</mark> and <mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark>s.</p>\n<pre data-codeblock=\"true\"><mark class=\"chat-search-match\" data-chat-search-match=\"true\">needle</mark> in code\n</pre></div>"
+  }
+]

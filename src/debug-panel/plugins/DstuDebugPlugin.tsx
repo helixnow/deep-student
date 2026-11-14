@@ -9,6 +9,8 @@ import { Copy, Trash, Funnel, Download, CheckCircle, XCircle, Clock } from '@pho
 import { Button } from '@/components/ui/shad/Button';
 import { cn } from '@/lib/utils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { DSTU_DEBUG_CHANNEL } from '@/shared/debug/channels/dstu';
 
 // ============================================================================
 // 类型定义
@@ -331,5 +333,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
     </div>
   );
 };
+
+serveDebugChannel(DSTU_DEBUG_CHANNEL, dstuDebugLog);
 
 export default DstuDebugPlugin;

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandPaletteProvider, useCommandPalette } from '@/command-palette';
 import { notesCommands } from '@/command-palette/modules/notes.commands';
 import { resetWindowStoreForTests, useWindowStore } from '@/features/workbench/core/windowStore';
+import { installWorkbenchHost, uninstallWorkbenchHost } from '@/app/workbench/host-runtime';
 import type { WorkbenchWindow } from '@/features/workbench/core/types';
 
 function makeWindow(id: string, typeId: string): WorkbenchWindow {
@@ -36,9 +37,11 @@ function ScopeProbe() {
 describe('CommandPaletteProvider Workbench scope', () => {
   beforeEach(() => {
     resetWindowStoreForTests();
+    installWorkbenchHost();
   });
 
   afterEach(() => {
+    uninstallWorkbenchHost();
     resetWindowStoreForTests();
   });
 

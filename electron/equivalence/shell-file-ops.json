@@ -1,0 +1,798 @@
+{
+  "domain": "shell",
+  "commands": [
+    "get_app_data_dir",
+    "save_text_to_file",
+    "read_file_text",
+    "read_file_bytes",
+    "get_file_size",
+    "copy_file",
+    "pdfstream_check_access"
+  ],
+  "scenarios": [
+    {
+      "id": "shell.file.write_read_copy.roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt",
+            "content": "第一行 line one\n第二行 line two\n"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt"
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src/note.txt",
+            "destPath": "${0}/w0-f2/dst/deep/copy.txt",
+            "source_path": "${0}/w0-f2/src/note.txt",
+            "dest_path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/src/long.txt",
+            "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src/long.txt",
+            "destPath": "${0}/w0-f2/dst/deep/copy.txt",
+            "source_path": "${0}/w0-f2/src/long.txt",
+            "dest_path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src/note.txt",
+            "destPath": "${0}/w0-f2/dst/deep/copy.txt",
+            "source_path": "${0}/w0-f2/src/note.txt",
+            "dest_path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/dst/deep/copy.txt"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt",
+            "content": "overwritten"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/src/note.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.save_text.content_boundaries",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/empty.txt",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/empty.txt"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/empty.txt"
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/empty.txt",
+            "maxBytes": 0
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/特殊 名称/a%20b.txt",
+            "content": "nul\u0000 tab\t emoji 😀 crlf\r\n"
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/特殊 名称/a b.txt"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/特殊 名称/a%20b.txt"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.read_bytes.max_bytes_bounds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "content": "abcde"
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": 5
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": 4
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": null
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": 9007199254740991
+          }
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/five.bin",
+            "maxBytes": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.read_bytes.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "/etc/.w0-hidden/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "/etc/%2Ew0-hidden/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/../../../../../../../../../../../../../../../../../../../../../../../../etc/.w0-hidden-escape/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "${0}/w0-f2/missing.bin"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "content%3A%2F%2Fcom.example%2Fdoc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_bytes",
+          "args": {
+            "path": "foo://bar/baz"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.read_text.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "/etc/.w0-hidden/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/../../../../../../../../../../../../../../../../../../../../../../../../etc/.w0-hidden-escape/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/missing.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "/usr/bin/true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "file:///usr/bin/true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "content%3A%2F%2Fcom.example%2Fdoc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "foo://bar/baz"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.get_size.errors_and_outside_app_dir",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "/etc/.w0-hidden/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/../../../../../../../../../../../../../../../../../../../../../../../../etc/.w0-hidden-escape/x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/missing.bin"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "content%3A%2F%2Fcom.example%2Fdoc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "foo://bar/baz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "/usr/bin/true"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.copy.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/src.txt",
+            "content": "source"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/blocker",
+            "content": "i am a file"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "",
+            "destPath": "${0}/w0-f2/out.txt",
+            "source_path": "",
+            "dest_path": "${0}/w0-f2/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/missing.txt",
+            "destPath": "${0}/w0-f2/out.txt",
+            "source_path": "${0}/w0-f2/missing.txt",
+            "dest_path": "${0}/w0-f2/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "${0}",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": "${0}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "${0}/w0-f2/blocker/out.txt",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": "${0}/w0-f2/blocker/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "${0}/w0-f2/blocker/sub/out.txt",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": "${0}/w0-f2/blocker/sub/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "content%3A%2F%2Fcom.example%2Fdoc",
+            "destPath": "${0}/w0-f2/out.txt",
+            "source_path": "content%3A%2F%2Fcom.example%2Fdoc",
+            "dest_path": "${0}/w0-f2/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "foo://bar/out.txt",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": "foo://bar/out.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2",
+            "destPath": "${0}/w0-f2/from-dir.txt",
+            "source_path": "${0}/w0-f2",
+            "dest_path": "${0}/w0-f2/from-dir.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/from-dir.txt"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "${0}/w0-f2/src.txt",
+            "destPath": "${0}/w0-f2/src.txt",
+            "source_path": "${0}/w0-f2/src.txt",
+            "dest_path": "${0}/w0-f2/src.txt"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/src.txt"
+          }
+        },
+        {
+          "cmd": "copy_file",
+          "args": {
+            "sourcePath": "/usr/bin/true",
+            "destPath": "${0}/w0-f2/true.bin",
+            "source_path": "/usr/bin/true",
+            "dest_path": "${0}/w0-f2/true.bin"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${0}/w0-f2/true.bin"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.save_text.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/blocker",
+            "content": "i am a file"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/blocker/out.txt",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/blocker/sub/out.txt",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "content%3A%2F%2Fcom.example%2Fdoc",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "foo://bar/out.txt",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/no-content.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${0}/w0-f2/blocker"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.file.pdfstream_check_access.branches",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/pdf/sample.pdf",
+            "content": "%PDF-1.4\n%%EOF\n"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/sample.pdf"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/pdf/UPPER.PDF",
+            "content": "%PDF-1.4\n%%EOF\n"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/UPPER.PDF"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/../pdf/./sample.pdf"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/pdf/folder.pdf/inner.txt",
+            "content": "not a pdf"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/folder.pdf"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/folder.pdf/inner.txt"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "${0}/w0-f2/pdf/missing.pdf"
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": ""
+          }
+        },
+        {
+          "cmd": "pdfstream_check_access",
+          "args": {
+            "path": "/etc/passwd"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

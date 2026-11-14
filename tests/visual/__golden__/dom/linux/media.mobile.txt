@@ -1,0 +1,252 @@
+<body .light-theme>
+  <div data-demo-app="media" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .bg-background.h-full.min-w-0.overflow-hidden.relative.w-full data-wb-sys-app="media" data-wb-sys-h="tall" data-wb-sys-size="compact">
+        <div .wb-sys-fade>
+          <div .bg-background.flex.flex-col.h-full.min-w-0.overflow-hidden.w-full data-media-studio="library">
+            <div .flex.flex-col.h-full.min-h-0.min-w-0.study-shell-page data-media-library>
+              <div .flex.flex-1.flex-col.min-h-0.relative.unified-drag-drop-zone data-dragging="false" data-processing="false" data-zone-id="media-studio-library">
+                <div .lg:px-10.pt-3.pt-4.px-3.px-5.shrink-0.sm:px-8.space-y-3.study-shell-toolbar.study-shell-toolbar--seamless>
+                  <p .leading-relaxed.text-muted-foreground.text-xs>
+                    "把网课、讲座、录音变成可检索、可提问、可复习的学习材料"
+                  <div .flex.flex-col.gap-2.gap-3.items-center.items-stretch>
+                    <div .flex.flex-1.gap-2.items-center.min-w-0>
+                      <div .flex-1.min-w-0.relative>
+                        <svg .-translate-y-1/2.absolute.left-2.5.pointer-events-none.text-muted-foreground/50.top-1/2 aria-hidden="true" viewBox="0 0 256 256" />
+                        <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].bg-[color:var(--surface-muted)].border.border-[color:var(--input-shell-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-50.ds-search-input.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:outline-none.focus:ring-0.h-11.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].pl-8.placeholder:text-muted-foreground/50.pr-3.px-3.py-2.rounded-[var(--radius-shell-control)].text-foreground.text-sm.transition-colors.w-full aria-label="搜索音视频…" placeholder="搜索音视频…" type="search" value />
+                      <div .[&_.study-shell-segmented-thumb]:border-transparent.bg-[color:var(--surface-muted)].p-[3px].rounded-[var(--radius-shell-control)].shrink-0.study-shell-segmented aria-label="列表显示方式" data-size="compact" role="radiogroup">
+                        <span .study-shell-segmented-thumb aria-hidden="true" />
+                        <button .!h-auto.!min-h-11.!min-w-11.!px-3.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-xs aria-checked="false" aria-label="列表" data-selected="false" role="radio" tabindex="-1" title="列表" type="button">
+                          <span .study-shell-segmented-label>
+                            <svg aria-hidden="true" viewBox="0 0 256 256" />
+                        <button .!h-auto.!min-h-11.!min-w-11.!px-3.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-xs aria-checked="true" aria-label="按分组" data-selected="true" role="radio" tabindex="0" title="按分组" type="button">
+                          <span .study-shell-segmented-label>
+                            <svg aria-hidden="true" viewBox="0 0 256 256" />
+                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="选择" aria-pressed="false" data-media-select-toggle title="选择" type="button">
+                        <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    <div .!flex-nowrap.!w-auto.-mx-1.[&_.study-shell-segmented-thumb]:border-transparent.bg-[color:var(--surface-muted)].overflow-x-auto.p-[3px].px-1.rounded-[var(--radius-shell-control)].scrollbar-none.study-shell-segmented aria-label="按状态筛选" data-size="compact" role="radiogroup">
+                      <span .study-shell-segmented-thumb aria-hidden="true" />
+                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="true" data-selected="true" role="radio" tabindex="0" type="button">
+                        <span .study-shell-segmented-label>
+                          <span>
+                            "全部"
+                          <span .ml-1.opacity-100.opacity-60.tabular-nums.text-2xs>
+                            "8"
+                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                        <span .study-shell-segmented-label>
+                          <span>
+                            "在看"
+                          <span .ml-1.opacity-60.tabular-nums.text-2xs>
+                            "2"
+                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                        <span .study-shell-segmented-label>
+                          <span>
+                            "未转写"
+                          <span .ml-1.opacity-60.tabular-nums.text-2xs>
+                            "1"
+                      <button .!h-auto.!px-3.!py-2.[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-sm.text-xs.whitespace-nowrap aria-checked="false" data-selected="false" role="radio" tabindex="-1" type="button">
+                        <span .study-shell-segmented-label>
+                          <span>
+                            "已转写"
+                          <span .ml-1.opacity-60.tabular-nums.text-2xs>
+                            "7"
+                <div .flex-1.h-full.min-h-0.min-w-0.pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))].relative.sm:pb-6 data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                  <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                    <div .lg:px-10.pt-3.pt-4.px-3.px-5.sm:px-8>
+                      <div .flex.flex-col.gap-4 data-media-groups>
+                        <section aria-label="线性代数 · 第五讲" data-media-group="fld_demo_la5">
+                          <div .flex.gap-1.items-center.mb-2.min-w-0>
+                            <button .!h-auto.!justify-start.!px-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-controls="@2" aria-expanded="true" aria-label="展开或收起「线性代数 · 第五讲」" data-media-group-toggle="fld_demo_la5" type="button">
+                              <svg .motion-reduce:transition-none.rotate-90.shrink-0.text-muted-foreground.transition-transform aria-hidden="true" viewBox="0 0 256 256" />
+                              <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
+                              <span .font-semibold.min-w-0.text-foreground.text-xs.truncate>
+                                "线性代数 · 第五讲"
+                              <span .shrink-0.tabular-nums.text-2xs.text-muted-foreground>
+                                "5"
+                          <ul .flex.flex-col.gap-2 aria-label="线性代数 · 第五讲" id="@2">
+                            <li data-media-row="file_demo_la5_p4">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「线性代数第五讲 特征值与对角化 P4 对角化的条件」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.font-medium.leading-4.left-1.px-1.rounded.text-[10px].text-white.top-1 data-media-link-badge>
+                                      "B 站"
+                                    <span .absolute.bg-black/25.block.bottom-0.h-[3px].inset-x-0 aria-label="观看进度" aria-valuemax="100" aria-valuemin="0" aria-valuenow="36" role="progressbar">
+                                      <span .bg-primary.block.h-full />
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "线性代数第五讲 特征值与对角化 P4 对角化的条件"
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "22:48 · 25分钟前看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「线性代数第五讲 特征值与对角化 P4 对角化的条件」的更多操作" id="@3" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_la5_p3">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「线性代数第五讲 特征值与对角化 P3 相似矩阵」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.font-medium.leading-4.left-1.px-1.rounded.text-[10px].text-white.top-1 data-media-link-badge>
+                                      "B 站"
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "线性代数第五讲 特征值与对角化 P3 相似矩阵"
+                                      <svg .shrink-0.text-success aria-label="已看完" viewBox="0 0 256 256" />
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "16:42 · 昨天看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「线性代数第五讲 特征值与对角化 P3 相似矩阵」的更多操作" id="@4" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_la5_p2">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「线性代数第五讲 特征值与对角化 P2 特征多项式」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.font-medium.leading-4.left-1.px-1.rounded.text-[10px].text-white.top-1 data-media-link-badge>
+                                      "B 站"
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "线性代数第五讲 特征值与对角化 P2 特征多项式"
+                                      <svg .shrink-0.text-success aria-label="已看完" viewBox="0 0 256 256" />
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "18:05 · 3天前看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「线性代数第五讲 特征值与对角化 P2 特征多项式」的更多操作" id="@5" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_la5_p1">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「线性代数第五讲 特征值与对角化 P1 特征值与特征向量」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.font-medium.leading-4.left-1.px-1.rounded.text-[10px].text-white.top-1 data-media-link-badge>
+                                      "B 站"
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "线性代数第五讲 特征值与对角化 P1 特征值与特征向量"
+                                      <svg .shrink-0.text-success aria-label="已看完" viewBox="0 0 256 256" />
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "21:36 · 4天前看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「线性代数第五讲 特征值与对角化 P1 特征值与特征向量」的更多操作" id="@6" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_la5_p5">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「线性代数第五讲 特征值与对角化 P5 例题精讲」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.font-medium.leading-4.left-1.px-1.rounded.text-[10px].text-white.top-1 data-media-link-badge>
+                                      "B 站"
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "线性代数第五讲 特征值与对角化 P5 例题精讲"
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "25:10 · 未开始 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「线性代数第五讲 特征值与对角化 P5 例题精讲」的更多操作" id="@7" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                        <section aria-label="未分组" data-media-group="__ungrouped__">
+                          <div .flex.gap-1.items-center.mb-2.min-w-0>
+                            <button .!h-auto.!justify-start.!px-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-controls="@8" aria-expanded="true" aria-label="展开或收起「未分组」" data-media-group-toggle="__ungrouped__" type="button">
+                              <svg .motion-reduce:transition-none.rotate-90.shrink-0.text-muted-foreground.transition-transform aria-hidden="true" viewBox="0 0 256 256" />
+                              <span .font-semibold.min-w-0.text-foreground.text-xs.truncate>
+                                "未分组"
+                              <span .shrink-0.tabular-nums.text-2xs.text-muted-foreground>
+                                "3"
+                          <ul .flex.flex-col.gap-2 aria-label="未分组" id="@8">
+                            <li data-media-row="file_demo_chem_sn">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「有机化学 亲核取代反应演示.mp4」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "有机化学 亲核取代反应演示.mp4"
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--muted data-transcript-chip="none">
+                                        "未转写"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "18:24 · 未开始 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「有机化学 亲核取代反应演示.mp4」的更多操作" id="@9" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_prob7">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「概率论 第 7 讲 课堂录音.m4a」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                    <span .absolute.bg-black/25.block.bottom-0.h-[3px].inset-x-0 aria-label="观看进度" aria-valuemax="100" aria-valuemin="0" aria-valuenow="42" role="progressbar">
+                                      <span .bg-primary.block.h-full />
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "概率论 第 7 讲 课堂录音.m4a"
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="completed">
+                                        "已转写"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "1:32:<ss> · 前天看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「概率论 第 7 讲 课堂录音.m4a」的更多操作" id="@10" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            <li data-media-row="file_demo_english_u5">
+                              <div .flex.gap-3.items-center.min-h-16.px-3.py-2.5.study-shell-secondary-card>
+                                <button .!h-auto.!justify-start.!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-3.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="学习「英语听力 Unit 5 精讲.mp3」" type="button">
+                                  <span .bg-[color:var(--surface-muted)].flex.h-12.items-center.justify-center.overflow-hidden.relative.rounded-[var(--radius-shell-control)].shrink-0.text-muted-foreground.w-[86px]>
+                                    <span aria-hidden="true">
+                                      <svg viewBox="0 0 256 256" />
+                                  <span .flex.flex-1.flex-col.gap-1.min-w-0>
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .font-medium.min-w-0.text-foreground.text-sm.truncate>
+                                        "英语听力 Unit 5 精讲.mp3"
+                                      <svg .shrink-0.text-success aria-label="已看完" viewBox="0 0 256 256" />
+                                    <span .flex.gap-2.items-center.min-w-0>
+                                      <span .shrink-0.study-shell-badge.study-shell-badge--borderless.study-shell-badge--success data-transcript-chip="imported">
+                                        "已导入字幕"
+                                      <span .min-w-0.tabular-nums.text-muted-foreground.text-xs.truncate>
+                                        "46:05 · 5天前看过 · 卡 3 · 题 2"
+                                <div .app-menu-root.inline-flex.relative>
+                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="「英语听力 Unit 5 精讲.mp3」的更多操作" id="@11" title="更多" type="button">
+                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+              <div .border-t.pt-2.px-3.shrink-0.study-shell-toolbar data-media-import-bar>
+                <div .flex.gap-2.items-center>
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap data-media-import type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    "导入音视频"
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap data-media-bilibili type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    "B 站链接"
+  <div id="@12" />

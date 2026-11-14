@@ -1,0 +1,229 @@
+{
+  "domain": "vfs-handlers",
+  "commands": [
+    "pomodoro_create_record",
+    "pomodoro_delete_record",
+    "pomodoro_list_range"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs-handlers.pomodoro_create_record.invalid_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-07-19T01:00:00.000Z",
+              "endTime": "2026-07-19T01:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "nap",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_create_record.invalid_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-07-19T01:00:00.000Z",
+              "endTime": "2026-07-19T01:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "paused"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_create_record.negative_duration",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-07-19T01:00:00.000Z",
+              "endTime": "2026-07-19T01:25:00.000Z",
+              "duration": -1,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_create_record.negative_actual_duration",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-07-19T01:00:00.000Z",
+              "endTime": "2026-07-19T01:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": -1,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_create_record.todo_item_fk_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-07-19T01:00:00.000Z",
+              "endTime": "2026-07-19T01:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "tdi_missing_g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_delete_record.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "pomo_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_list_range.invalid_start_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026/07/01",
+            "endDate": "2026-07-19"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_list_range.invalid_end_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-07-01",
+            "endDate": "19-07-2026"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.pomodoro_list_range.start_after_end",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-07-19",
+            "endDate": "2026-07-01"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

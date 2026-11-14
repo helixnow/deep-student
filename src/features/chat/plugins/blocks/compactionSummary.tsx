@@ -183,29 +183,35 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
   const contentId = `compaction-summary-${block.id}`;
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-warning/5 border-warning/30',
-        'transition-colors'
-      )}
-    >
+    <div className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80 transition-colors">
       <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg [@media(pointer:coarse)]:!min-h-11 text-warning"
+        className="w-full !h-auto !justify-between gap-2 !px-3 !py-2.5 !rounded-none hover:bg-muted/20 [@media(pointer:coarse)]:!min-h-11"
       >
-        {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
-        <Archive size={16} />
-        <span className="font-medium">{t('blocks.compactionSummary.title')}</span>
-        {!isExpanded && (
-          <span className="ml-auto text-xs text-warning/80">
-            {t('blocks.compactionSummary.expandHint')}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-warning/10 text-warning">
+            <Archive size={16} />
           </span>
-        )}
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {t('blocks.compactionSummary.title')}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {!isExpanded && (
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning">
+              {t('blocks.compactionSummary.expandHint')}
+            </span>
+          )}
+          {isExpanded ? (
+            <CaretDown size={14} className="text-muted-foreground shrink-0" />
+          ) : (
+            <CaretRight size={14} className="text-muted-foreground shrink-0" />
+          )}
+        </span>
       </DsButton>
 
       {isExpanded && (
@@ -213,7 +219,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
           id={contentId}
           className={cn(
             'px-3 pb-3 thinking-content',
-            'border-t border-warning/20',
+            'border-t border-border/30',
             'text-foreground/90'
           )}
         >

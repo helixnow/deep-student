@@ -1,0 +1,17 @@
+{
+  "lane": "_shared",
+  "generator": "hand-written fixture",
+  "commands": [],
+  "events": [],
+  "$defs": {
+    "Point": {
+      "type": "object",
+      "x-rust": "dstu_fixture::geometry::Point",
+      "properties": {
+        "x": { "type": "integer", "x-int": "i32" },
+        "y": { "type": "integer", "x-int": "i32" }
+      },
+      "required": ["x", "y"]
+    }
+  }
+}

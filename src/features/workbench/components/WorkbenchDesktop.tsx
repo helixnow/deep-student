@@ -24,15 +24,24 @@ import '../styles/workbench-drag-pause.css';
 import '../styles/a11y-cursor.css';
 import '../apps/registerAll';
 import { DEFAULT_DOCK_PINNED } from '../apps/registerAll';
-import { useWindowStore } from '../core/windowStore';
+import {
+  STUDY_SPACE_CHANGED_EVENT,
+  type StudySpaceChangedEventDetail,
+} from '@/shared/study-space/types';
+import { setPendingRestoreDesktopSize, useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
 import { startScheduler } from '../core/scheduler';
 import {
   flushSnapshot,
-  loadSnapshot,
   registerDockPinnedProvider,
   saveSnapshot,
 } from '../core/snapshot';
+import {
+  bootInitialSpaceWorkbench,
+  getSpaceSwitchGeneration,
+  handleStudySpaceChanged,
+  installSpaceSnapshotMirror,
+} from '../core/spaceSnapshots';
 import { resyncProjections } from '../core/projection';
 import { registerSystemProjections } from '../apps/system/projections';
 import { setMaterialTier, useMaterialTier, type MaterialTierSetting } from '../core/materialTier';
@@ -441,30 +450,55 @@ export const WorkbenchDesktop: React.FC = () => {
     };
   }, []);
 
-  // ---- 启动链路 + 持久化订阅 + 卸载清理 ----
+  // ---- 启动链路 + 持久化订阅 + 空间隔离协调 + 卸载清理 ----
   useEffect(() => {
     let disposed = false;
+    let bootReady = false;
+    const bootGeneration = getSpaceSwitchGeneration();
+    const bootCancelled = () => disposed || bootGeneration !== getSpaceSwitchGeneration();
     const stopScheduler = startScheduler();
     const disposeProjections = registerSystemProjections();
+    const disposeSpaceMirror = installSpaceSnapshotMirror();
     registerDockPinnedProvider(getDockPinned);
-    const unsubscribePinned = subscribeDockPinned(() => saveSnapshot());
+    const unsubscribePinned = subscribeDockPinned(() => { if (bootReady) saveSnapshot(); });
     const unsubscribeStore = useWindowStore.subscribe((state, prev) => {
-      if (state.windows !== prev.windows || state.tilingRatios !== prev.tilingRatios) {
+      if (bootReady && (state.windows !== prev.windows || state.tilingRatios !== prev.tilingRatios)) {
         saveSnapshot();
       }
     });
+    const onStudySpaceChanged = (event: Event) => {
+      const detail = (event as CustomEvent<StudySpaceChangedEventDetail>).detail;
+      if (!detail) return;
+      void handleStudySpaceChanged(detail, {
+        captureOutgoing: bootReady,
+        pruneWindows: pruneSnapshotWindows,
+        setDockPinned,
+        isDisposed: () => disposed,
+        onApplied: () => {
+          bootReady = true;
+          setHydrated(true);
+          setRestorableSnapshot(null);
+          resyncProjections();
+        },
+      });
+    };
+    window.addEventListener(STUDY_SPACE_CHANGED_EVENT, onStudySpaceChanged);
+
     void (async () => {
       // 默认不恢复上次窗口布局（冷启动更快）；开启后才 hydrate 快照
       const restoreSessionVal = await readSetting(SETTING_KEYS.restoreSession);
       const shouldRestoreSession = String(restoreSessionVal ?? '') === 'true';
-      if (disposed) return;
+      if (bootCancelled()) return;
 
+      // Read before any default Dock write can schedule an empty snapshot save.
+      const bootResult = await bootInitialSpaceWorkbench();
+      if (bootCancelled()) return;
       if (shouldRestoreSession) {
-        const snapshot = await loadSnapshot();
-        if (disposed) return;
+        const snapshot = bootResult.snapshot;
         if (snapshot) {
           const windows = await pruneSnapshotWindows(snapshot.windows);
-          if (disposed) return;
+          if (bootCancelled()) return;
+          setPendingRestoreDesktopSize(snapshot.desktopSize ?? null);
           useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
             preserveExisting: true,
           });
@@ -477,25 +511,29 @@ export const WorkbenchDesktop: React.FC = () => {
       } else if (getDockPinned().length === 0) {
         setDockPinned([...DEFAULT_DOCK_PINNED]);
       }
+      bootReady = true;
       setHydrated(true);
       // 快照恢复完成后补投运行中的长活实例（番茄钟等）
       resyncProjections();
 
-      // 未开启自动恢复时探测一次快照：有内容就在空桌面上给一个显式的
+      // 未开启自动恢复时探测一次当前空间的快照：有内容就在空桌面上给一个显式的
       // 「恢复上次桌面」入口（首屏之后再读，不拖慢冷启动）
       if (!shouldRestoreSession) {
-        const snapshot = await loadSnapshot();
-        if (disposed) return;
-        if (snapshot && snapshot.windows.length > 0) setRestorableSnapshot(snapshot);
+        if (bootResult.snapshot && bootResult.snapshot.windows.length > 0) {
+          setRestorableSnapshot(bootResult.snapshot);
+        }
       }
     })();
 
     return () => {
       disposed = true;
+      window.removeEventListener(STUDY_SPACE_CHANGED_EVENT, onStudySpaceChanged);
       unsubscribeStore();
       unsubscribePinned();
-      // 先落盘（buildSnapshot 同步采集，provider 仍在）再注销
-      void flushSnapshot();
+      // 先落盘（buildSnapshot 同步采集，provider 与空间镜像钩子仍在）再注销
+      void (bootReady ? flushSnapshot() : Promise.resolve()).finally(() => {
+        disposeSpaceMirror();
+      });
       registerDockPinnedProvider(null);
       disposeProjections();
       stopScheduler();
@@ -507,8 +545,10 @@ export const WorkbenchDesktop: React.FC = () => {
     const snapshot = restorableSnapshot;
     if (!snapshot) return;
     setRestorableSnapshot(null);
+    const generation = getSpaceSwitchGeneration();
     void (async () => {
       const windows = await pruneSnapshotWindows(snapshot.windows);
+      if (!rootRef.current || generation !== getSpaceSwitchGeneration()) return;
       useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
         preserveExisting: true,
       });

@@ -1,13 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { readOfficialShellEntries } from '@/app/__tests__/officialShellEntries';
 
 /**
  * 移动端可达性契约（2026-08 移动端 UI/UX 统一）
  *
  * 每个 CurrentView 必须至少落入以下三桶之一，杜绝“进不去/出不来”的孤岛视图：
- * 1) F1 抽屉导航：config/navigation.ts 共享导航项 + MOBILE_APP_LAUNCHER_VIEWS
- *    （2026-09 启动器收口后的移动抽屉二行三列入口）+ MobileSidebarNavigation 手工项；
+ * 1) F1 抽屉导航：官方 nav slot 条目（桌面侧栏与移动抽屉的共同来源；
+ *    mobile.placement === 'launcher' 即 2026-09 启动器收口后的移动抽屉二行三列入口）
+ *    + MobileSidebarNavigation 手工项；
  * 2) 命令面板：src/command-palette 各 module 中 deps.navigate('view') 的跳转目标；
  * 3) 上下文/DEV 入口 allowlist：由其他视图内的按钮或 DEV 工具跳转抵达。
  *
@@ -69,12 +71,6 @@ const PALETTE_NAVIGATE_LITERAL = /deps\.navigate\(\s*'([a-z0-9-]+)'/g;
 const collectMatches = (source: string, pattern: RegExp): string[] =>
   [...source.matchAll(pattern)].map((match) => match[1]);
 
-/** 解析 config/navigation.ts 的 MOBILE_APP_LAUNCHER_VIEWS 数组（移动抽屉启动器入口） */
-const parseLauncherViews = (sharedNavSource: string): string[] => {
-  const block = sharedNavSource.match(/MOBILE_APP_LAUNCHER_VIEWS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
-  return collectMatches(block, /'([a-z0-9-]+)'/g);
-};
-
 /**
  * 解析 canonicalView.ts 的 DEPRECATED_VIEW_MAP：仍留在 CurrentView 联合里的
  * 废弃别名 → 重定向目标。键可能不带引号（analysis: 'chat-v2'）或带引号
@@ -92,15 +88,17 @@ const parseDeprecatedViewMap = (canonicalSource: string): Map<string, string> =>
 describe('mobile reachability contract', () => {
   const currentViews = parseCurrentViews();
 
-  const sharedNavSource = readSource('src/config/navigation.ts');
   const mobileSidebarSource = readSource('src/components/layout/MobileSidebarNavigation.tsx');
   const canonicalSource = readSource('src/app/navigation/canonicalView.ts');
 
-  const drawerViews = new Set([
-    ...collectMatches(sharedNavSource, NAV_ITEM_VIEW_LITERAL),
-    ...parseLauncherViews(sharedNavSource),
-    ...collectMatches(mobileSidebarSource, NAV_ITEM_VIEW_LITERAL),
-  ]);
+  const drawerViews = new Set(collectMatches(mobileSidebarSource, NAV_ITEM_VIEW_LITERAL));
+  let mobileLauncherViews: string[] = [];
+
+  beforeAll(async () => {
+    const { nav } = await readOfficialShellEntries();
+    for (const item of nav) drawerViews.add(item.viewId);
+    mobileLauncherViews = nav.filter((item) => item.mobile?.placement === 'launcher').map((item) => item.viewId);
+  });
 
   const deprecatedViewMap = parseDeprecatedViewMap(canonicalSource);
 
@@ -116,8 +114,10 @@ describe('mobile reachability contract', () => {
   it('keeps the mobile drawer launcher entry for data-management (dashboard deprecated)', () => {
     // F1 后续（2026-09 启动器收口 86212dbbd）：dashboard 视图已废弃，
     // canonicalizeView 字符串级重定向到 data-management；移动端入口统一收口进
-    // MOBILE_APP_LAUNCHER_VIEWS，抽屉只保留「数据」一格，不再有独立「总览」入口。
-    expect(mobileSidebarSource).toContain('MOBILE_APP_LAUNCHER_VIEWS');
+    // nav slot 的 mobile.placement === 'launcher' 条目，抽屉只保留「数据」一格，不再有独立「总览」入口。
+    expect(mobileSidebarSource).toContain("navItems.filter(item => item.mobile?.placement === 'launcher')");
+    expect(mobileLauncherViews).toContain('data-management');
+    expect(mobileLauncherViews).not.toContain('dashboard');
     expect(deprecatedViewMap.get('dashboard')).toBe('data-management');
     expect(drawerViews.has('data-management')).toBe(true);
     expect(drawerViews.has('dashboard')).toBe(false);

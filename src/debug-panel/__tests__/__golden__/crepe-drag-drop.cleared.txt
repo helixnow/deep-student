@@ -1,0 +1,127 @@
+<div>
+  <div class="p-4 space-y-4">
+    <div class="flex items-center justify-between gap-4 flex-wrap">
+      <h2 class="text-lg font-semibold flex items-center gap-2">
+        <svg size=20 icon="M104,60A12,12,0,1,1,92,4">
+        "Crepe 拖放调试"
+      <div class="flex items-center gap-2 flex-wrap">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded flex items-center gap-1 bg-red-500 text-white">
+          <svg size=16 icon="M200,32H160a16,16,0,0,0-">
+          "录制中"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-orange-500 text-white">
+          <svg size=16 icon="M236.8,188.09,149.35,36.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-gray-200 text-gray-700">
+          "自动滚动"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center gap-1">
+          <svg size=16 icon="M221.87,83.16A104.1,104.">
+          "运行诊断"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600" disabled="">
+          <svg size=16 icon="M200,32H163.74a47.92,47.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="border rounded-lg p-3 bg-gradient-to-r from-slate-50 to-blue-50">
+      <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+        <svg size=16 icon="M247.31,124.76c-.35-.79-">
+        "实时诊断"
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div class="p-2 rounded text-xs bg-yellow-100 border-yellow-300 border">
+          <div class="font-medium flex items-center gap-1">
+            <svg size=12 icon="M236.8,188.09,149.35,36." class="text-yellow-600">
+            "dragstart"
+          <div class="text-gray-700 mt-0.5">
+            "未检测到 dragstart 事件"
+          <div class="text-gray-500 mt-0.5">
+            "请尝试拖拽 block handle（六个点图标）"
+    <div class="flex flex-wrap gap-2">
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+        "mousedown"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+        "mouseup"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(168, 85, 247, 0.125); color: rgb(168, 85, 247);">
+        "pointerdown"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(192, 132, 252, 0.125); color: rgb(192, 132, 252);">
+        "pointerup"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(34, 197, 94, 0.125); color: rgb(34, 197, 94);">
+        "dragstart"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(132, 204, 22, 0.125); color: rgb(132, 204, 22);">
+        "drag"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(234, 179, 8, 0.125); color: rgb(234, 179, 8);">
+        "dragover"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(249, 115, 22, 0.125); color: rgb(249, 115, 22);">
+        "dragenter"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+        "dragleave"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(16, 185, 129, 0.125); color: rgb(16, 185, 129);">
+        "drop"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(6, 182, 212, 0.125); color: rgb(6, 182, 212);">
+        "dragend"
+        ":"
+        "0"
+    <div class="flex items-center gap-4 text-sm">
+      <span class="text-gray-500">
+        "总计:"
+        "0"
+      <span class="text-gray-500">
+        "已过滤:"
+        "0"
+      <span class="text-gray-500">
+        "问题:"
+        "0"
+    <div class="border rounded-lg overflow-hidden">
+      <div class="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
+        "事件日志"
+      <div class="max-h-[400px] overflow-auto">
+        <div class="p-8 text-center text-gray-500">
+          <div class="mb-2">
+            "暂无日志"
+          <div class="text-xs text-gray-400">
+            "尝试拖拽编辑器中的 block handle（六个点图标）"
+    <div class="text-xs text-gray-500 p-3 bg-gray-50 rounded-lg">
+      <div class="font-medium mb-1">
+        "调试步骤："
+      <ol class="list-decimal list-inside space-y-0.5">
+        <li>
+          "在笔记编辑器中输入几行文本"
+        <li>
+          "将鼠标悬停在某一行左侧，等待 block handle（+ 和 ⋮⋮）出现"
+        <li>
+          "按住拖拽手柄（六个点），开始拖动"
+        <li>
+          "观察日志中的"
+          <code class="bg-gray-200 px-1 rounded">
+            "dragstart"
+          "事件"
+        <li>
+          "拖动到目标位置，观察"
+          <code class="bg-gray-200 px-1 rounded">
+            "dragover"
+          "是否有"
+          <code class="bg-gray-200 px-1 rounded">
+            "prevented"
+        <li>
+          "松开鼠标，观察是否有"
+          <code class="bg-gray-200 px-1 rounded">
+            "drop"
+          "事件"
+        <li>
+          "检查「实时诊断」面板中的问题提示"

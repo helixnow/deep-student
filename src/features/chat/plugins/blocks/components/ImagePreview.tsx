@@ -63,6 +63,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   className,
   showActions = true,
 }) => {
+  // RUST-FIX(RF-W09-english-hardcoded-labels-localized): Rust 在没有 alt 时用英文 “Generated image” 兜底，中文界面也是英文
   const { t } = useTranslation('chatV2');
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -206,7 +207,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         >
           <img
             src={src}
-            alt={alt || 'Generated image'}
+            alt={alt || t('blocks.imageGen.generatedImage')}
             className="max-w-none cursor-zoom-out"
             onClick={handleCollapse}
             draggable={false}
@@ -237,7 +238,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       {/* 图片 */}
       <img
         src={src}
-        alt={alt || 'Generated image'}
+        alt={alt || t('blocks.imageGen.generatedImage')}
         className={cn(
           'w-full h-auto rounded-lg object-contain',
           'cursor-zoom-in transition-transform hover:scale-[1.02]',

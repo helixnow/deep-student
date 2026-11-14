@@ -8,14 +8,15 @@
 import i18n from 'i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
-import { modeRegistry } from '../../registry';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
+import { modeRegistry, resolveSessionFeatureFlags } from '../../registry';
 import { getTestModeConfig } from '@/utils/testMode';
 import type { SendOptions } from '../types';
 import { getModelInfoByConfigId } from '../../hooks/useAvailableModels';
 import { collectSchemaToolIds } from '../../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../../skills/registry';
+import { ensureHostSkillContent, hostSkillSchemaToolIds } from '../../skills/hostResources';
 import { renderSkillContentWithArtifact } from '../../skills/artifactSkeleton';
 import { groupCache } from '../../core/store/groupCache';
 import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
@@ -26,6 +27,9 @@ import {
   preloadAutoLoadSkillsForSession,
 } from '../../skills/progressiveDisclosure';
 import { PROACTIVE_KB_SYSTEM_PROMPT } from '../../skills/builtin-tools/knowledge-retrieval';
+import { STUDY_SPACE_DEFAULTS } from '@/shared/study-space/types';
+import { useStudySpaceStore } from '@/stores/studySpaceStore';
+import { buildStudySpaceMemoryPromptBlock } from '@/shared/study-space/memoryPrompt';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
 import { inferInputContextBudget } from '@/utils/modelCapabilities';
@@ -33,6 +37,8 @@ import { LOG_PREFIX, adapterConsole as console } from './diagnostics';
 import { getCanvasNoteIdFromModeState } from './requestHelpers';
 import type { TauriAdapterHost, BuildSendOptionsSnapshot } from './adapterHost';
 import { getRegisteredSkillRuntimeAdmission } from './skillRuntime';
+
+export { buildStudySpaceMemoryPromptBlock };
 
 export function resolveInputContextLimit(
   host: TauriAdapterHost,
@@ -134,24 +140,13 @@ export async function buildSendOptions(host: TauriAdapterHost, snapshot?: BuildS
     }
   }
 
-  // 获取模式启用的工具
-  let modeEnabledTools: string[] = [];
-  if (modePlugin?.getEnabledTools) {
-    try {
-      modeEnabledTools = modePlugin.getEnabledTools(currentState);
-    } catch (error) {
+  // 根据模式工具配置与会话 features 覆写解析功能开关（与 InputBarV2 共用）
+  const { ragEnabled, memoryEnabled, webSearchEnabled, ankiEnabled } = resolveSessionFeatureFlags(
+    currentState,
+    (error) => {
       console.error(LOG_PREFIX, 'Error getting enabled tools:', getErrorMessage(error));
-    }
-  } else if (modePlugin?.config.enabledTools) {
-    // 如果没有 getEnabledTools 方法，使用配置中的静态工具列表
-    modeEnabledTools = modePlugin.config.enabledTools;
-  }
-
-  // 根据模式工具配置覆盖功能开关
-  const ragEnabled = features.get('rag') ?? modeEnabledTools.includes('rag');
-  const memoryEnabled = features.get('userMemory') ?? modeEnabledTools.includes('memory');
-  const webSearchEnabled = features.get('webSearch') ?? modeEnabledTools.includes('web_search');
-  const ankiEnabled = features.get('anki') ?? modeEnabledTools.includes('anki');
+    },
+  );
 
   // 3) 知识库主动检索提示词（加号菜单 → 知识库 → 主动检索）
   // 仅在 RAG 未被关闭时注入，否则模型会被引导去调用注定被拦截的工具
@@ -159,6 +154,23 @@ export async function buildSendOptions(host: TauriAdapterHost, snapshot?: BuildS
     systemPromptOverride = systemPromptOverride
       ? `${systemPromptOverride}\n\n${PROACTIVE_KB_SYSTEM_PROMPT}`
       : PROACTIVE_KB_SYSTEM_PROMPT;
+  }
+
+  // 4) 学习空间长期记忆隔离/偏好范围指令（在 buildSystemPromptWithSkills 前确定性注入，保持会话前缀缓存稳定）
+  if (memoryEnabled && groupId) {
+    const spaceState = useStudySpaceStore.getState();
+    const spaceProfile = spaceState.profilesBySpaceId[groupId];
+    const memoryScope = spaceProfile?.memoryScope ?? STUDY_SPACE_DEFAULTS.memoryScope;
+    const spaceName =
+      groupCache.get(groupId)?.name ??
+      spaceState.groupsById[groupId]?.name ??
+      groupId;
+    const memoryPromptBlock = buildStudySpaceMemoryPromptBlock(memoryScope, spaceName);
+    if (memoryPromptBlock) {
+      systemPromptOverride = systemPromptOverride
+        ? `${systemPromptOverride}\n\n${memoryPromptBlock}`
+        : memoryPromptBlock;
+    }
   }
 
   // pendingParallelModelIds 也从 currentState 获取（保持一致性）
@@ -240,6 +252,7 @@ export async function buildSendOptions(host: TauriAdapterHost, snapshot?: BuildS
     }
   }
   const authoritativeToolSkillIds = Array.from(enabledSkillIdSet);
+  await Promise.all(authoritativeToolSkillIds.map(ensureHostSkillContent));
 
   const options = {
     // ChatParams
@@ -351,6 +364,9 @@ export async function buildSendOptions(host: TauriAdapterHost, snapshot?: BuildS
   const schemaToolResult = collectSchemaToolIds({
     pendingContextRefs,
   });
+  schemaToolResult.schemaToolIds = [...new Set([
+    ...schemaToolResult.schemaToolIds, ...hostSkillSchemaToolIds(authoritativeToolSkillIds),
+  ])];
   if (schemaToolResult.schemaToolIds.length > 0) {
     options.schemaToolIds = schemaToolResult.schemaToolIds;
     console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);

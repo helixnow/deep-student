@@ -21,6 +21,23 @@
     "heading_not_found": "未找到标题「{{heading}}」",
     "paused_user_editing": "已暂停：你正在编辑此笔记，停下输入后继续"
   },
+  "ai_hunk_review": {
+    "accept_all": "全部采纳",
+    "revert_all": "全部撤回",
+    "accept_hunk": "采纳",
+    "reject_hunk": "拒绝",
+    "tweak_hunk": "微调",
+    "confirm_tweak": "确认微调",
+    "cancel_tweak": "取消",
+    "mode_hunks": "Hunk 微调",
+    "mode_rich": "富文本逐组",
+    "tweak_placeholder": "编辑当前变更块正文（留空即删除该段）",
+    "tweak_aria": "微调变更块 {{index}}",
+    "status_pending": "待审阅",
+    "status_accepted": "已采纳",
+    "status_rejected": "已拒绝",
+    "status_tweaked": "已微调"
+  },
   "ocr": {
     "system_engine_description": "调用操作系统内置 OCR 引擎"
   }

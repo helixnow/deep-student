@@ -324,7 +324,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
     render(<DataGovernanceDashboard embedded />);
 
     // 找到备份标签并点击
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -337,7 +337,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -352,7 +352,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -383,6 +383,26 @@ describe('DataGovernanceDashboard audit log rendering (Issue #15)', () => {
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.getAuditLogs).toHaveBeenCalled();
+    });
+  });
+
+  it('refreshes audit logs on focus using the selected status filter', async () => {
+    mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
+    render(<DataGovernanceDashboard embedded />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /^(?:审计|data:governance\.tab_audit)$/i }));
+    const [operationSelect, statusSelect] = screen.getAllByRole('button', { name: /select_app|选择应用/i });
+    expect(operationSelect).toBeInTheDocument();
+    fireEvent.click(statusSelect);
+    fireEvent.click(await screen.findByRole('menuitem', { name: /失败|data:governance\.status_failed/i }));
+
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.getAuditLogs).toHaveBeenLastCalledWith(undefined, 'Failed', expect.any(Number), 0);
+    });
+    mockDataGovernanceApi.getAuditLogs.mockClear();
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.getAuditLogs).toHaveBeenLastCalledWith(undefined, 'Failed', expect.any(Number), 0);
     });
   });
 
@@ -503,7 +523,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -544,7 +564,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -594,7 +614,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -623,7 +643,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -651,7 +671,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = await screen.findByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -678,9 +698,9 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
       expect(mockDataGovernanceApi.deleteBackup).toHaveBeenCalled();
     });
 
-    // 组件不应崩溃，刷新按钮应恢复可用
+    // 组件不应崩溃，导入入口应恢复可用
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /导入|data:governance\.import_button/i })).toBeEnabled();
     });
   });
 });

@@ -32,6 +32,9 @@ const SESSION_MANAGER_TOOL_NAMES = [
   'builtin-session_rename',
   'builtin-group_create',
   'builtin-group_update',
+  'builtin-group_archive',
+  'builtin-group_restore',
+  'builtin-group_delete',
   'builtin-session_archive',
   'builtin-session_restore',
   'builtin-session_batch_move',
@@ -68,7 +71,7 @@ export const sessionManagerSkill: SkillDefinition = {
 ## 安全规则（必须严格遵守）
 
 ### 🔴 绝对禁止
-- 永远不要硬删除会话，只能归档；不暴露会话硬删除工具
+- 永远不要硬删除会话或消息；会话只能归档，分组只能软删除（group_delete）且须先归档
 - 不编辑消息，也不创建、切换或删除消息变体；这些操作当前没有 Agent 工具
 - 不要修改当前正在进行的会话
 - 不要在没有用户明确同意的情况下执行批量操作
@@ -76,6 +79,7 @@ export const sessionManagerSkill: SkillDefinition = {
 ### 🟡 需要确认（使用 ask_user 工具）
 以下操作**必须**先调用 \`builtin-ask_user\` 获取用户确认后再执行：
 - **归档会话**（session_archive）
+- **删除分组**（group_delete，仅在归档后允许）
 - **批量移动**（session_batch_move，涉及 3 个以上会话时）
 - **批量打标**（session_batch_tag，涉及 5 个以上会话时）
 - **统一批量操作**（session_batch_ops，涉及 3 个以上会话或包含 archive 时）
@@ -96,6 +100,7 @@ export const sessionManagerSkill: SkillDefinition = {
 - \`session_export\`：Medium。即使 \`format=markdown\` 只返回文本，该工具按统一后端策略仍为 Medium；\`format=note\` 会创建资源库笔记。
 - \`session_import\`：Medium。把导出的会话 JSON（UI「导出会话」的 json 格式）导入为**新会话**，所有 ID 重映射，绝不覆盖既有会话。JSON 附件先用 workspace-tools 的 builtin-attachment_stage 物化，再传 root_id+relative_path；小体量也可直接传 json_content。
 - 单项组织写操作与恢复操作：Medium；归档和达到阈值的批量操作按上面的确认规则执行。
+- \`group_archive\` / \`group_restore\`：Medium，整组归档/恢复；\`group_delete\`：High，仅能删除已归档分组。
 
 ## 工作流程
 
@@ -511,6 +516,45 @@ export const sessionManagerSkill: SkillDefinition = {
             type: 'string',
             description: '新颜色',
           },
+        },
+        required: ['group_id'],
+      },
+    },
+    {
+      name: 'builtin-group_archive',
+      description:
+        '归档会话分组及其活跃会话（Medium）。归档后组内会话从活跃列表隐藏；可用 group_restore 撤销。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          group_id: { type: 'string', minLength: 1, description: '要归档的分组 ID' },
+        },
+        required: ['group_id'],
+      },
+    },
+    {
+      name: 'builtin-group_restore',
+      description:
+        '恢复已归档的分组及其会话（Medium）。已删除的分组无法恢复。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          group_id: { type: 'string', minLength: 1, description: '要恢复的分组 ID' },
+        },
+        required: ['group_id'],
+      },
+    },
+    {
+      name: 'builtin-group_delete',
+      description:
+        '删除已归档的分组（High，软删除）。组内会话保留但不再归属该分组；活跃分组须先归档。调用前必须用 ask_user 获得明确确认。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          group_id: { type: 'string', minLength: 1, description: '要删除的已归档分组 ID' },
         },
         required: ['group_id'],
       },

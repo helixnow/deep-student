@@ -1,0 +1,30 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_schema_registry",
+    "data_governance_get_maintenance_status"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.metadata.seeded.integrity_issues",
+      "seed": "l21-live-integrity-issues",
+      "steps": [
+        {
+          "cmd": "data_governance_get_schema_registry",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_maintenance_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

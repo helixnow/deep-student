@@ -1,0 +1,44 @@
+not activated: (not rendered), timers 0
+activated: 日志记录 (2 / 2) [Crepe 编辑器调试插件已激活, 激活后], timers 1
+master switch off: 日志记录 (2 / 2) [Crepe 编辑器调试插件已激活, 激活后], timers 1
+visible=false (ignored): 日志记录 (2 / 2) [Crepe 编辑器调试插件已激活, 激活后], timers 1
+deactivated: (not rendered), timers 0
+activated again: 日志记录 (3 / 3) [Crepe 编辑器调试插件已激活, 激活后, Crepe 编辑器调试插件已激活], timers 1
+unmounted: (not rendered), timers 0
+----
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div class="border rounded-lg p-3 bg-slate-50">
+    <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+      <svg size=16 icon="M247.31,124.76c-.35-.79-">
+      "实时 DOM 快照"
+    <div class="text-xs font-mono space-y-1">
+      <div class="text-green-600">
+        "wrapper:"
+        "✓"
+      <div class="text-green-600">
+        "data-ready:"
+        "true"
+      <div class="text-green-600">
+        ".milkdown:"
+        "✓"
+      <div class="text-green-600">
+        ".ProseMirror:"
+        "✓"
+      <div class="text-green-600">
+        "contentEditable:"
+        "true"
+      <div class="text-green-600">
+        "pointer-events:"
+        "auto"
+      <div class="text-gray-500">
+        "opacity:"
+      <div class="text-gray-500">
+        "children:"
+        "2"
+  <div class="border rounded-lg p-3 bg-green-50 border-green-200">
+    <div class="text-sm font-medium mb-2 flex items-center gap-2">
+      <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-600">
+      <span class="text-green-700">
+        "状态正常"
+    <div class="text-xs text-green-600">
+      "编辑器各项指标正常"

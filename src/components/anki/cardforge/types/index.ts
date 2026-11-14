@@ -36,6 +36,7 @@ export interface CardSourceRef {
   id: string;
   title?: string;
   page?: number;
+  quote?: string;
 }
 
 export interface GenerateCardsInput {

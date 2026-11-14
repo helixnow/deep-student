@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import { DsButton } from '@/components/ui/DsButton';
 import { EmbeddingReadinessBanner } from '../components/EmbeddingReadinessBanner';
 import { pLimit } from '@/utils/concurrency';
@@ -478,6 +479,8 @@ export const IndexStatusView: React.FC = () => {
 
   // ★ 通过 ref 调用最新 loadData：事件监听只订阅一次，
   // 不再随筛选条件变化反复注销/重建（消除订阅间隙丢事件的窗口）
+  useRefreshOnReturn(loadData, !isLoading);
+
   const loadDataRef = useRef(loadData);
   useEffect(() => {
     loadDataRef.current = loadData;
@@ -1783,67 +1786,81 @@ export const IndexStatusView: React.FC = () => {
 
               {/* 文本块详情（内联） */}
               {inspectingResourceId === resource.resourceId && inspectMode === 'chunks' && (
-                <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/30">
-                  {inspectLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <CircleNotch className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : textChunks.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-xs text-muted-foreground">
-                        {t('indexStatus.detail.indexUnitCount', { count: textChunks.length })}
-                      </div>
-                      {textChunks.map((chunk) => (
-                        <div key={chunk.unitId} className="border rounded-lg border-border/50">
-                          <div className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-border/30 bg-muted/20">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{t('indexStatus.detail.unitLabel', { n: chunk.unitIndex })}</span>
-                              {chunk.textSource && (
-                                <span className={cn(
-                                  'px-1.5 py-0.5 rounded text-2xs font-medium',
-                                  chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
-                                )}>
-                                  {chunk.textSource === 'ocr' ? 'OCR' : t('indexStatus.detail.extractedText')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <span className="tabular-nums">{t('indexStatus.detail.chars', { count: chunk.charCount })}</span>
-                              <span className={cn(
-                                'px-1.5 py-0.5 rounded text-2xs',
-                                chunk.textState === 'indexed' ? 'bg-success/10 text-success' :
-                                chunk.textState === 'pending' ? 'bg-warning/10 text-warning' :
-                                'bg-muted text-muted-foreground'
-                              )}>
-                                {STATE_CONFIG[chunk.textState as IndexState] ? t(STATE_CONFIG[chunk.textState as IndexState].labelKey) : chunk.textState}
-                              </span>
-                            </div>
-                          </div>
-                          {chunk.textContent ? (
-                            <CustomScrollArea className="max-h-40 min-h-0" fullHeight={false}>
-                              <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words font-sans leading-relaxed text-foreground/80">
-                                {chunk.textContent}
-                              </pre>
-                            </CustomScrollArea>
-                          ) : (
-                            <div className="px-3 py-2 text-xs text-muted-foreground italic">{t('indexStatus.detail.noTextContent')}</div>
-                          )}
+                <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/35">
+                  <InlineExpand>
+                    <div className="rounded-lg border border-border/50 bg-muted/10">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-border/35">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Database className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span className="font-medium text-xs truncate">
+                            {t('indexStatus.detail.indexUnitCount', { count: textChunks.length })}
+                          </span>
                         </div>
-                      ))}
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
+                          <X className="h-3.5 w-3.5" />
+                        </DsButton>
+                      </div>
+                      <div className="p-3">
+                        {inspectLoading ? (
+                          <div className="flex items-center justify-center py-6">
+                            <CircleNotch className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : textChunks.length > 0 ? (
+                          <div className="space-y-2">
+                            {textChunks.map((chunk) => (
+                              <div key={chunk.unitId} className="border rounded-lg border-border/50 bg-background/40">
+                                <div className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-border/35 bg-muted/20">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{t('indexStatus.detail.unitLabel', { n: chunk.unitIndex })}</span>
+                                    {chunk.textSource && (
+                                      <span className={cn(
+                                        'px-1.5 py-0.5 rounded text-2xs font-medium',
+                                        chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
+                                      )}>
+                                        {chunk.textSource === 'ocr' ? 'OCR' : t('indexStatus.detail.extractedText')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <span className="tabular-nums">{t('indexStatus.detail.chars', { count: chunk.charCount })}</span>
+                                    <span className={cn(
+                                      'px-1.5 py-0.5 rounded text-2xs',
+                                      chunk.textState === 'indexed' ? 'bg-success/10 text-success' :
+                                      chunk.textState === 'pending' ? 'bg-warning/10 text-warning' :
+                                      'bg-muted text-muted-foreground'
+                                    )}>
+                                      {STATE_CONFIG[chunk.textState as IndexState] ? t(STATE_CONFIG[chunk.textState as IndexState].labelKey) : chunk.textState}
+                                    </span>
+                                  </div>
+                                </div>
+                                {chunk.textContent ? (
+                                  <CustomScrollArea className="max-h-40 min-h-0" fullHeight={false}>
+                                    <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words font-sans leading-relaxed text-foreground/80">
+                                      {chunk.textContent}
+                                    </pre>
+                                  </CustomScrollArea>
+                                ) : (
+                                  <div className="px-3 py-2 text-xs text-muted-foreground italic">{t('indexStatus.detail.noTextContent')}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 text-muted-foreground text-xs">{t('indexStatus.detail.noDataFound')}</div>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-center py-4 text-muted-foreground text-xs">{t('indexStatus.detail.noDataFound')}</div>
-                  )}
+                  </InlineExpand>
                 </div>
               )}
 
               {/* OCR / 提取文本详情（内联展开面板，替代原 fixed 模态浮层） */}
               {inspectingResourceId === resource.resourceId && inspectMode === 'ocr' && (
-                <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/30">
+                <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/35">
                   <InlineExpand>
                     <div className="rounded-lg border border-border/50 bg-muted/10">
                       {/* 面板头部 */}
-                      <div className="flex items-center justify-between px-3 py-2 border-b border-border/30">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-border/35">
                         <div className="flex items-center gap-2 min-w-0">
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
@@ -2085,10 +2102,6 @@ export const IndexStatusView: React.FC = () => {
               {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </DsButton>
-            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} className="[@media(pointer:coarse)]:!min-h-11">
-              <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
-              {t('indexStatus.action.refresh')}
-            </DsButton>
             {/* 更多操作下拉 */}
             <div className="relative" ref={mobileMoreRef}>
               <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', mobileMoreOpen && 'bg-accent text-accent-foreground')}>
@@ -2219,17 +2232,17 @@ export const IndexStatusView: React.FC = () => {
           <div className="flex-1 min-w-0 grid gap-3 lg:gap-4 content-center">
             {/* 关键指标卡片 */}
             <div className="grid grid-cols-4 gap-2">
-              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-xl border border-black/[0.03] dark:border-white/[0.05] flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
+              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-lg border border-border/35 flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
                 <span className="text-2xs text-muted-foreground font-medium flex items-center gap-1.5">
                   <Database className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.totalVectors')}</span>
                 </span>
-                <span className="text-md lg:text-base font-semibold tabular-nums tracking-tight text-foreground/90">
+                <span className="text-base font-semibold font-mono tabular-nums tracking-tight text-foreground/90">
                   {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
                 </span>
               </div>
               
-              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-xl border border-black/[0.03] dark:border-white/[0.05] flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
+              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-lg border border-border/35 flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
                 <span className="text-2xs text-muted-foreground font-medium flex items-center gap-1.5">
                   <FlowArrow className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.dimensions')}</span>
@@ -2237,7 +2250,7 @@ export const IndexStatusView: React.FC = () => {
                 <div className="flex items-center gap-1.5 overflow-hidden">
                   {dimensions.length > 0 ? (
                     dimensions.slice(0, 2).map(d => (
-                      <span key={d.dimension} className="text-xs font-mono bg-background px-1.5 py-0.5 rounded border border-border/50">
+                      <span key={d.dimension} className="text-xs font-mono tabular-nums bg-background px-1.5 py-0.5 rounded border border-border/50">
                         {d.dimension}
                       </span>
                     ))
@@ -2245,26 +2258,26 @@ export const IndexStatusView: React.FC = () => {
                     <span className="text-sm text-muted-foreground">-</span>
                   )}
                   {dimensions.length > 2 && (
-                    <span className="text-2xs text-muted-foreground">+{dimensions.length - 2}</span>
+                    <span className="text-2xs font-mono tabular-nums text-muted-foreground">+{dimensions.length - 2}</span>
                   )}
                 </div>
               </div>
 
               <div className={cn(
-                "p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors",
+                "p-2.5 rounded-lg border flex flex-col justify-between gap-1 group transition-colors",
                 summary.failedCount + summary.mmFailedCount > 0 
-                  ? "bg-danger/5" 
-                  : "bg-muted/30"
+                  ? "bg-danger/5 border-danger/20" 
+                  : "bg-muted/40 dark:bg-muted/25 border-border/35 hover:bg-muted/55"
               )}>
                 <span className={cn(
-                  "text-2xs uppercase tracking-wider font-medium flex items-center gap-1.5",
+                  "text-2xs font-medium flex items-center gap-1.5",
                   summary.failedCount + summary.mmFailedCount > 0 ? "text-danger/80" : "text-muted-foreground"
                 )}>
-                  <WarningCircle className="h-3 w-3" />
+                  <WarningCircle className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.errors')}</span>
                 </span>
                 <span className={cn(
-                  "text-base lg:text-lg font-semibold tabular-nums",
+                  "text-base font-semibold font-mono tabular-nums tracking-tight",
                   summary.failedCount + summary.mmFailedCount > 0 ? "text-danger" : "text-foreground/90"
                 )}>
                   {summary.failedCount + summary.mmFailedCount}
@@ -2272,20 +2285,20 @@ export const IndexStatusView: React.FC = () => {
               </div>
 
               <div className={cn(
-                "p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors",
+                "p-2.5 rounded-lg border flex flex-col justify-between gap-1 group transition-colors",
                 summary.staleCount > 0 
-                  ? "bg-warning/5" 
-                  : "bg-muted/30"
+                  ? "bg-warning/5 border-warning/20" 
+                  : "bg-muted/40 dark:bg-muted/25 border-border/35 hover:bg-muted/55"
               )}>
                 <span className={cn(
-                  "text-2xs uppercase tracking-wider font-medium flex items-center gap-1.5",
+                  "text-2xs font-medium flex items-center gap-1.5",
                   summary.staleCount > 0 ? "text-warning" : "text-muted-foreground"
                 )}>
-                  <Clock className="h-3 w-3" />
+                  <Clock className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.stale')}</span>
                 </span>
                 <span className={cn(
-                  "text-base lg:text-lg font-semibold tabular-nums",
+                  "text-base font-semibold font-mono tabular-nums tracking-tight",
                   summary.staleCount > 0 ? "text-warning" : "text-foreground/90"
                 )}>
                   {summary.staleCount}
@@ -2306,11 +2319,11 @@ export const IndexStatusView: React.FC = () => {
             <div className="space-y-2">
               {/* 批量索引进度条 */}
               {(batchIndexing || batchProgress > 0) && (
-                <div className="space-y-1.5 bg-muted/30 p-2 rounded-md">
+                <div className="space-y-1.5 bg-muted/30 p-2.5 rounded-lg border border-border/35">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium truncate">
                       {batchTotal > 0 && (
-                        <span className="text-info tabular-nums mr-1.5">
+                        <span className="text-info font-mono tabular-nums mr-1.5">
                           {t('indexStatus.progress.indexingCount', { current: batchCurrent, total: batchTotal })}
                         </span>
                       )}
@@ -2327,7 +2340,7 @@ export const IndexStatusView: React.FC = () => {
 
               {/* 原生多模态索引进度条 */}
               {MULTIMODAL_INDEX_SUPPORTED && (mmIndexing || mmProgress > 0) && (
-                <div className="space-y-1.5 bg-purple-500/5 p-2.5 rounded-xl border border-purple-500/10">
+                <div className="space-y-1.5 bg-purple-500/5 p-2.5 rounded-lg border border-purple-500/20">
                   <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
                     <span className="font-medium truncate">{mmMessage}</span>
                     <span className="font-mono tabular-nums shrink-0 ml-2">{mmProgress}%</span>
@@ -2364,17 +2377,6 @@ export const IndexStatusView: React.FC = () => {
             </DsButton>
             
             <div className="grid grid-cols-2 gap-1.5">
-              <DsButton
-                variant="default"
-                size="sm"
-                onClick={() => { loadData(); }}
-                disabled={isLoading || batchIndexing}
-                title={t('indexStatus.action.refreshTitle')}
-                className="!h-8 !rounded-lg !px-2 text-xs bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11"
-              >
-                <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
-                {t('indexStatus.action.refresh')}
-              </DsButton>
               <DsButton
                 variant="default"
                 size="sm"

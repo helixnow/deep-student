@@ -1221,7 +1221,16 @@
     "mobileHint": "Mobile focuses on preview; use the desktop app for the full workbench.",
     "closed": "Closed",
     "open": "Open sandbox workbench",
-    "clearSession": "Clear session"
+    "clearSession": "Clear session",
+    "stateSynced": "State synced",
+    "versionHistory": "Version history",
+    "saveToSpace": "Save to space",
+    "savingToSpace": "Saving…",
+    "savedToSpace": "Saved to study space",
+    "savedAsNote": "Saved as study note",
+    "saveFailed": "Failed to save to space: {{message}}",
+    "pinnedCanvas": "Pinned study canvas",
+    "rendererUnavailable": "Interactive renderer is not ready yet"
   },
   "tagTreeMarkdownPlaceholder": "# Root tag\n### Subtopic A\n#### Concept 1\n##### Method A\n###### Question type I",
   "filePreview": {
@@ -1293,5 +1302,19 @@
   "desktopWidgets": {
     "collapse": "Collapse",
     "expand": "Expand"
+  },
+  "stagePresets": {
+    "groupLabel": "Study stage presets",
+    "deepReadingMap": "Read & Map",
+    "deepReadingMapHint": "Read PDFs or lectures on the left while building a mind map on the right",
+    "noteCocreation": "Note & AI",
+    "noteCocreationHint": "Write notes or mind maps on the left with AI co-creation on the right",
+    "practiceCorrection": "Practice & Fix",
+    "practiceCorrectionHint": "Practice flashcards or exams on the left with mistake review on the right",
+    "freeformDesktop": "Freeform",
+    "freeformDesktopHint": "Restore freeform floating window positions",
+    "toggleSidecar": "Toggle AI companion sidecar",
+    "toggleDualReader": "Toggle dual-reader split (2 sources + MindMap hub)",
+    "spaceRestored": "Restored study space layout"
   }
 }

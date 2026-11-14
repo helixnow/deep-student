@@ -17,12 +17,12 @@ import {
   DANGER_RULES,
   LOCK_REL,
   MIGRATIONS_REL,
-  RUST_DEF_REL,
+  NODE_DEF_REL,
   auditDangers,
   buildManifest,
   checkAgainstBaseRef,
   checkManifest,
-  checkRustCorrespondence,
+  checkNodeCorrespondence,
   detectDangers,
   parseDangerAcks,
   runAudit,
@@ -37,19 +37,19 @@ import {
 // ----------------------------------------------------------------------------
 
 const DBS = ['vfs', 'chat_v2', 'mistakes', 'llm_usage', 'browser'];
-const RUST_FILES = { vfs: 'vfs.rs', chat_v2: 'chat_v2.rs', mistakes: 'mistakes.rs', llm_usage: 'llm_usage.rs' };
+const NODE_FILES = { vfs: 'vfs.ts', chat_v2: 'chat_v2.ts', mistakes: 'mistakes.ts', llm_usage: 'llm_usage.ts' };
 
 /**
  * 创建临时仓库。
  * @param {Object<string, Object<string,string>>} migrations db -> {fileName: sql}
- * @param {Object<string,string>} [rustOverrides] db -> rust 源码（缺省自动生成一一对应的 MigrationDef）
+ * @param {Object<string,object[]>} [nodeOverrides] db -> Host 迁移定义（缺省自动生成）
  */
-function makeRepo(migrations, rustOverrides = {}) {
+function makeRepo(migrations, nodeOverrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-gate-'));
   for (const db of DBS) {
     fs.mkdirSync(path.join(root, MIGRATIONS_REL, db), { recursive: true });
   }
-  fs.mkdirSync(path.join(root, RUST_DEF_REL), { recursive: true });
+  fs.mkdirSync(path.join(root, NODE_DEF_REL), { recursive: true });
 
   for (const [db, files] of Object.entries(migrations)) {
     for (const [fileName, sql] of Object.entries(files)) {
@@ -57,21 +57,16 @@ function makeRepo(migrations, rustOverrides = {}) {
     }
   }
 
-  for (const [db, rustFile] of Object.entries(RUST_FILES)) {
-    if (rustOverrides[db] !== undefined) {
-      fs.writeFileSync(path.join(root, RUST_DEF_REL, rustFile), rustOverrides[db]);
-      continue;
-    }
-    // 自动生成与 SQL 文件一一对应的 MigrationDef
-    let src = '// auto-generated fixture\n';
+  for (const [db, nodeFile] of Object.entries(NODE_FILES)) {
+    const specs = [];
     for (const fileName of Object.keys(migrations[db] ?? {})) {
       const m = fileName.match(/^V(\d+)__(\w+)\.sql$/);
       if (!m) continue;
-      src += `pub const X_${m[1]}: MigrationDef = MigrationDef::new(\n`;
-      src += `    ${m[1]},\n    "${m[2]}",\n`;
-      src += `    include_str!("../../../../migrations/${db}/${fileName}"),\n);\n`;
+      specs.push({ refineryVersion: Number(m[1]), name: m[2], file: `${db}/${fileName}` });
     }
-    fs.writeFileSync(path.join(root, RUST_DEF_REL, rustFile), src);
+    const exportName = db === 'mistakes' ? 'MISTAKES_MIGRATIONS_LIST' : `${db.toUpperCase()}_MIGRATIONS`;
+    fs.writeFileSync(path.join(root, NODE_DEF_REL, nodeFile),
+      `export const ${exportName} = ${JSON.stringify(nodeOverrides[db] ?? specs)};\n`);
   }
   return root;
 }
@@ -486,61 +481,55 @@ test('runUpdate 对新增危险迁移不自动豁免（需文件内注解）', (
 
 // ----------------------------------------------------------------------------
 // 场景 6: Rust MigrationDef 对应
+// Node 版直接读取 Host 的 MigrationDefSpec，保留原有一一对应检查。
 // ----------------------------------------------------------------------------
 
-test('SQL 缺少对应 MigrationDef 必须失败', () => {
-  const root = makeRepo(BASE_REPO, { vfs: '// 没有任何 MigrationDef\n' });
+test('SQL 缺少对应 Host MigrationDefSpec 必须失败', () => {
+  const root = makeRepo(BASE_REPO, { vfs: [] });
   const { files } = scanMigrationFiles(root);
-  const errors = checkRustCorrespondence(root, files);
-  assert.ok(errors.some((e) => e.includes('缺少对应的 Rust MigrationDef') && e.includes('vfs/V20260130__init.sql')));
+  const errors = checkNodeCorrespondence(root, files);
+  assert.ok(errors.some((e) => e.includes('缺少对应的 Host MigrationDefSpec') && e.includes('vfs/V20260130__init.sql')));
 });
 
 test('MigrationDef 版本号与文件名版本不一致必须失败', () => {
-  const rust = `pub const X: MigrationDef = MigrationDef::new(
-    20260999,
-    "init",
-    include_str!("../../../../migrations/vfs/V20260130__init.sql"),
-);
-pub const Y: MigrationDef = MigrationDef::new(
-    20260131,
-    "add_flag",
-    include_str!("../../../../migrations/vfs/V20260131__add_flag.sql"),
-);
-`;
-  const root = makeRepo(BASE_REPO, { vfs: rust });
+  const root = makeRepo(BASE_REPO, { vfs: [
+    { refineryVersion: 20260999, name: 'init', file: 'vfs/V20260130__init.sql' },
+    { refineryVersion: 20260131, name: 'add_flag', file: 'vfs/V20260131__add_flag.sql' },
+  ] });
   const { files } = scanMigrationFiles(root);
-  const errors = checkRustCorrespondence(root, files);
+  const errors = checkNodeCorrespondence(root, files);
   assert.ok(errors.some((e) => e.includes('版本号 20260999') && e.includes('文件名版本 20260130')));
 });
 
 test('MigrationDef 引用不存在的 SQL 必须失败', () => {
-  const rust = `pub const X: MigrationDef = MigrationDef::new(
-    20260130,
-    "init",
-    include_str!("../../../../migrations/vfs/V20260130__init.sql"),
-);
-pub const Y: MigrationDef = MigrationDef::new(
-    20260131,
-    "add_flag",
-    include_str!("../../../../migrations/vfs/V20260131__add_flag.sql"),
-);
-pub const Z: MigrationDef = MigrationDef::new(
-    20260999,
-    "ghost",
-    include_str!("../../../../migrations/vfs/V20260999__ghost.sql"),
-);
-`;
-  const root = makeRepo(BASE_REPO, { vfs: rust });
+  const root = makeRepo(BASE_REPO, { vfs: [
+    { refineryVersion: 20260130, name: 'init', file: 'vfs/V20260130__init.sql' },
+    { refineryVersion: 20260131, name: 'add_flag', file: 'vfs/V20260131__add_flag.sql' },
+    { refineryVersion: 20260999, name: 'ghost', file: 'vfs/V20260999__ghost.sql' },
+  ] });
   const { files } = scanMigrationFiles(root);
-  const errors = checkRustCorrespondence(root, files);
+  const errors = checkNodeCorrespondence(root, files);
   assert.ok(errors.some((e) => e.includes('不存在的 SQL 文件') && e.includes('vfs/V20260999__ghost.sql')));
 });
 
 test('browser 目录豁免 MigrationDef 对应检查', () => {
   const root = makeRepo(BASE_REPO);
   const { files } = scanMigrationFiles(root);
-  const errors = checkRustCorrespondence(root, files);
+  const errors = checkNodeCorrespondence(root, files);
   assert.ok(!errors.some((e) => e.includes('browser/')));
+});
+
+test('SQL 目录迁出后仍核对旧基线 manifest，不跳过不可变性检查', () => {
+  const root = makeRepo(BASE_REPO);
+  const manifest = writeLockFromCurrent(root);
+  fs.appendFileSync(path.join(root, MIGRATIONS_REL, 'vfs/V20260130__init.sql'), 'SELECT 2;\n');
+  const { files } = scanMigrationFiles(root);
+  const result = checkAgainstBaseRef(root, files, 'main', { gitShow: (_ref, file) => {
+    if (file === 'src-tauri/migrations/migration-lock.json') return JSON.stringify(manifest);
+    throw new Error('not at the new path yet');
+  } });
+  assert.equal(result.skipped, false);
+  assert.ok(result.errors.some(error => error.includes('已锁定迁移内容被修改')));
 });
 
 // ----------------------------------------------------------------------------

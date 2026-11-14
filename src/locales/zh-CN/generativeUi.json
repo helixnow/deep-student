@@ -410,5 +410,44 @@
     "diff_title": "与上一快照差异",
     "diff_none": "无变更",
     "diff_summary": "新增 {{added}} · 删除 {{removed}} · 变更 {{changed}}"
+  },
+  "canvas": {
+    "back": "返回",
+    "undoEdit": "撤销修改",
+    "localEdit": "局部修改",
+    "source": "源码",
+    "expand": "展开",
+    "htmlSource": "HTML 源码",
+    "charCount": "{{count}} 字",
+    "localEditHeader": "就地局部修改（仅作用于当前画板）",
+    "editInstructionPlaceholder": "输入修改要求，或粘贴 { search, replace } JSON 补丁",
+    "editInstructionAria": "修改要求",
+    "patchSearchPlaceholder": "查找原片段 (search)",
+    "patchSearchAria": "查找片段",
+    "patchReplacePlaceholder": "替换为新片段 (replace)",
+    "patchReplaceAria": "替换片段",
+    "collapse": "收起",
+    "applying": "正在应用…",
+    "applyEdit": "应用修改",
+    "pinToCanvas": "固定到画布",
+    "saveToSpace": "存入空间"
+  },
+  "artifact": {
+    "pinToCanvas": "固定到画布",
+    "saveToSpace": "存入空间",
+    "pinnedToCanvas": "已固定到右侧画布",
+    "savedToSpace": "已存入当前学习空间",
+    "savedAsNote": "已保存为学习笔记",
+    "saveFailed": "存入空间失败：{{message}}",
+    "defaultHtmlTitle": "交互画布工件",
+    "defaultOpenuiTitle": "交互图表工件",
+    "defaultGenuiTitle": "AI 交互视图"
+  },
+  "openuiLang": {
+    "lineChartAria": "折线图",
+    "generating": "正在生成界面…",
+    "empty": "空白 OpenUI 组件块",
+    "notePlaceholder": "补充说明（可选）",
+    "confirm": "确认"
   }
 }

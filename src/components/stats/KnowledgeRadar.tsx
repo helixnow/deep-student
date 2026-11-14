@@ -12,11 +12,11 @@
  * - ResizeObserver 自适应宽度，卸载时清理；维度 <3 时降级为条形列表
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Brain, ArrowsClockwise, BookOpen } from '@phosphor-icons/react';
+import { Brain, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   useKnowledgeStats,
@@ -407,7 +407,7 @@ const RadarSkeleton: React.FC = () => (
 // 空状态组件
 // ============================================================================
 
-const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
+const EmptyState: React.FC = () => {
   const { t } = useTranslation('stats');
 
   return (
@@ -415,17 +415,6 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       <Brain size={28} className="mb-3 opacity-40" weight="light" />
       <p className="text-sm">{t('knowledgeRadar.noData')}</p>
       <p className="mt-1 text-xs text-muted-foreground/70">{t('knowledgeRadar.noDataHint')}</p>
-      {onRefresh && (
-        <DsButton
-          variant="ghost"
-          size="sm"
-          className="mt-3 [@media(pointer:coarse)]:!min-h-11"
-          onClick={onRefresh}
-        >
-          <ArrowsClockwise size={14} />
-          {t('knowledgeRadar.refreshData')}
-        </DsButton>
-      )}
     </div>
   );
 };
@@ -454,14 +443,13 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   // 加载数据
+  useRefreshOnReturn(() => { void loadKnowledgeStats(examId).catch(console.error); });
+
   useEffect(() => {
     loadKnowledgeStats(examId).catch(console.error);
   }, [examId, loadKnowledgeStats]);
 
   // 刷新数据
-  const handleRefresh = () => {
-    loadKnowledgeStats(examId).catch(console.error);
-  };
 
   // 准备雷达图数据
   const radarData = useMemo<RadarDatum[]>(() => {
@@ -521,15 +509,6 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
           <span className="font-medium text-foreground">{t('knowledgeRadar.title')}</span>
         </div>
 
-        <DsButton
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
-          onClick={handleRefresh}
-          aria-label={t('knowledgeRadar.refreshData')}
-        >
-          <ArrowsClockwise size={14} />
-        </DsButton>
       </div>
 
       {/* 总体统计 */}
@@ -556,7 +535,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
 
       {/* 雷达图（维度不足 3 个时不画雷达，仅展示图例与详情列表） */}
       {!hasData ? (
-        <EmptyState onRefresh={handleRefresh} />
+        <EmptyState />
       ) : radarData.length >= 3 ? (
         <div className="mb-2">
           <RadarSvg

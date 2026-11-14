@@ -36,11 +36,11 @@ interface QuestionFavoritesViewProps {
   onBrowseQuestions?: () => void;
 }
 
-const statusColors: Record<QuestionStatus, string> = {
-  new: 'bg-muted text-muted-foreground',
-  in_progress: 'bg-primary/10 text-primary',
-  mastered: 'bg-success/10 text-success',
-  review: 'bg-warning/10 text-warning',
+const statusDots: Record<QuestionStatus, string> = {
+  new: 'bg-muted-foreground/35',
+  in_progress: 'bg-primary',
+  mastered: 'bg-success',
+  review: 'bg-warning',
 };
 
 const statusLabelKeys: Record<QuestionStatus, string> = {
@@ -48,13 +48,6 @@ const statusLabelKeys: Record<QuestionStatus, string> = {
   in_progress: 'practice:questionBank.status.inProgress',
   mastered: 'practice:questionBank.status.mastered',
   review: 'practice:questionBank.status.review',
-};
-
-const difficultyPills: Record<Difficulty, string> = {
-  easy: 'bg-success/10 text-success',
-  medium: 'bg-warning/10 text-warning',
-  hard: 'bg-warning/15 text-warning',
-  very_hard: 'bg-destructive/10 text-destructive',
 };
 
 const difficultyLabelKeys: Record<Difficulty, string> = {
@@ -190,7 +183,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     }
   }, [onToggleFavorite, favorites, totalCount, loadFavorites, t]);
 
-  // 简洁风格卡片：与题库列表视图统一（hover 浮起 + 微阴影 + stagger 入场）
+  // 简洁风格卡片：与题库列表视图统一（单层轻卡片 + 6px 状态圆点 + 单色胶囊）
   const renderQuestionCard = (question: ApiQuestion, index: number) => (
     <div
       key={question.id}
@@ -200,23 +193,22 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       onClick={() => onSelectQuestion?.(question)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectQuestion?.(question); } }}
       className={cn(
-        'ui-rise-in group relative cursor-pointer rounded-lg border border-border/60 bg-card p-3',
+        'ui-rise-in group relative cursor-pointer rounded-xl border border-border/40 bg-card/30 p-3.5',
         // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
         '[content-visibility:auto] [contain-intrinsic-size:auto_88px]',
-        'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
-        'hover:border-border hover:bg-[var(--interactive-hover)] hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5',
-        'motion-reduce:transition-none motion-reduce:hover:translate-y-0'
+        'transition-colors duration-150',
+        'hover:border-border/70 hover:bg-foreground/[0.03]'
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <Star size={13} weight="fill" className="flex-shrink-0 text-warning" />
-            <span className="truncate text-sm font-medium">
+            <span className="truncate font-mono text-xs font-medium tabular-nums text-foreground/90">
               {question.questionLabel || question.cardId}
             </span>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+          <p className="mt-1 line-clamp-2 text-sm text-foreground/85 leading-relaxed">
             {question.content.slice(0, 80)}
             {question.content.length > 80 && '...'}
           </p>
@@ -257,18 +249,19 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           </DsButton>
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <Badge className={cn('text-xs', statusColors[question.status])}>
-            {t(statusLabelKeys[question.status])}
-          </Badge>
+      <div className="mt-2.5 flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDots[question.status])} aria-hidden="true" />
+            <span>{t(statusLabelKeys[question.status])}</span>
+          </span>
           {question.difficulty && (
-            <span className={cn('rounded px-1.5 py-0.5 font-medium', difficultyPills[question.difficulty])}>
+            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
               {t(difficultyLabelKeys[question.difficulty])}
             </span>
           )}
           {question.questionType && question.questionType !== 'other' && (
-            <span className={cn('rounded px-1.5 py-0.5 font-medium', getQuestionTypeMeta(question.questionType).pill)}>
+            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
               {t(getQuestionTypeMeta(question.questionType).labelKey)}
             </span>
           )}
@@ -279,7 +272,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             <XCircle size={14} className="text-destructive" />
           )}
         </div>
-        <CaretRight size={16} className="text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+        <CaretRight size={14} className="text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
       </div>
     </div>
   );

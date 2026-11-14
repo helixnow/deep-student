@@ -52,11 +52,24 @@ export const learningOverviewToolsSkill: SkillDefinition = {
 - \`media.recentCourses\`：最近在看的课，\`positionRef\` 为看到的位置，\`wrongCheckpoints\` 为答错的课中
   检查点。提到时刻时原样写出 \`[媒体@…]\` 引用；字段为空时不要编造观看记录。
 - 番茄钟时长统一为秒；需要分钟或小时时由 Agent 在回答中换算，并保留合理精度。
+
+## 番茄钟记录管理
+
+- \`builtin-pomodoro_record_create\`（Medium，串行）：补录一次已完成的专注记录，返回真实记录 ID。
+  \`duration\` 为计划秒数；\`mode\` 仅区分倒计时/正计时；\`todo_id\` 关联待办。
+  当前数据表只保存时长与时间，\`mode\`/\`note\` 会回显但不会持久化。
+- \`builtin-pomodoro_record_list\`（Low，只读）：按本地日期范围读取记录，默认最近 7 天，
+  最多 90 天；可按 \`todo_id\` 过滤，\`limit\` 默认 20、最多 100，\`has_more=true\` 表示还有更多。
+- \`builtin-pomodoro_record_delete\`（High，串行）：按 \`id\` 删除记录；这是高风险操作，
+  调用前必须获得用户明确确认。
 `,
   allowedTools: [
     'builtin-learning_overview',
     'builtin-pomodoro_today_stats',
     'builtin-pomodoro_daily_stats',
+    'builtin-pomodoro_record_create',
+    'builtin-pomodoro_record_list',
+    'builtin-pomodoro_record_delete',
   ],
   embeddedTools: [
     {
@@ -132,6 +145,99 @@ export const learningOverviewToolsSkill: SkillDefinition = {
           },
           ...paginationProperties,
         },
+      },
+    },
+    {
+      name: 'builtin-pomodoro_record_create',
+      description:
+        '补录一次已完成的番茄钟专注记录（Medium）。返回真实记录 ID 与计划/实际秒数；mode/note 仅回显，当前数据表不持久化。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          duration: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 86400,
+            description: '计划专注时长（秒）。',
+          },
+          mode: {
+            type: 'string',
+            enum: ['countdown', 'stopwatch'],
+            default: 'countdown',
+            description: '计时方式：倒计时或正计时。',
+          },
+          todo_id: {
+            type: 'string',
+            minLength: 1,
+            description: '可选，关联的待办 ID。',
+          },
+          note: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 2000,
+            description: '可选备注（当前不持久化）。',
+          },
+          started_at: {
+            type: 'string',
+            description: '可选，开始时间（ISO 8601）；省略为当前时间。',
+          },
+          completed_at: {
+            type: 'string',
+            description: '可选，完成时间（ISO 8601）；省略按开始时间 + duration 计算。',
+          },
+        },
+        required: ['duration'],
+      },
+    },
+    {
+      name: 'builtin-pomodoro_record_list',
+      description:
+        '按本地日期范围读取番茄钟记录（Low，只读），最新在前。默认最近 7 天、最多 90 天；可按待办过滤并按 has_more 判断是否还有更多。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          start_date: {
+            type: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: '开始日期 YYYY-MM-DD；省略时默认最近 7 天。',
+          },
+          end_date: {
+            type: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: '结束日期 YYYY-MM-DD，不得晚于今天；省略为今天。',
+          },
+          todo_id: {
+            type: 'string',
+            minLength: 1,
+            description: '可选，仅返回该待办关联的记录。',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 100,
+            default: 20,
+            description: '返回条数上限。',
+          },
+        },
+      },
+    },
+    {
+      name: 'builtin-pomodoro_record_delete',
+      description:
+        '按记录 ID 删除番茄钟记录（High）。不可撤销，调用前必须获得用户明确确认；不确定 ID 时先用 pomodoro_record_list 查询。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: {
+            type: 'string',
+            minLength: 1,
+            description: 'pomodoro_record_list 返回的真实记录 ID。',
+          },
+        },
+        required: ['id'],
       },
     },
   ],

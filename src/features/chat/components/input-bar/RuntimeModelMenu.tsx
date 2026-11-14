@@ -10,7 +10,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { pinnedVendorRank } from '@/utils/modelSorting';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -23,6 +22,10 @@ import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ChatStore } from '../../core/types';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
+import {
+  invalidateModelConfigSnapshot,
+  loadModelConfigSnapshot,
+} from '../../utils/modelConfigSnapshot';
 
 // ============================================================================
 // Types
@@ -92,12 +95,13 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
   // Load models
   const loadModels = useCallback(async () => {
     try {
-      const configs = await invoke<ModelConfig[]>('get_api_configurations');
+      const snapshot = await loadModelConfigSnapshot<ModelConfig, VendorConfigSlim>();
+      const configs = snapshot.configs;
       const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
-      try {
-        const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
+      {
+        const vendorConfigs = snapshot.vendorConfigs;
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
@@ -115,17 +119,9 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
         });
         setVendorOrderMap(orderMap);
         setVendorNameMap(nameMap);
-      } catch {
-        setVendorOrderMap(new Map());
-        setVendorNameMap(new Map());
       }
 
-      try {
-        const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
-        setDefaultModelId(assignments?.['model2_config_id'] || null);
-      } catch {
-        setDefaultModelId(null);
-      }
+      setDefaultModelId(snapshot.assignments?.['model2_config_id'] || null);
 
       setLoaded(true);
     } catch (error: unknown) {
@@ -146,7 +142,10 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
 
   // Listen for config changes
   useEffect(() => {
-    const reload = () => { void loadModels(); };
+    const reload = () => {
+      invalidateModelConfigSnapshot();
+      void loadModels();
+    };
     window.addEventListener('api_configurations_changed', reload as EventListener);
     window.addEventListener('model_assignments_changed', reload as EventListener);
     return () => {

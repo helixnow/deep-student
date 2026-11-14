@@ -120,17 +120,19 @@ function openInChatPanel(file: FilePreview): void {
 /**
  * 获取类型对应的 ResourceIcon 组件
  */
-function getResourceIconComponent(typeId: string): React.FC<ResourceIconProps> {
-  switch (typeId) {
-    case 'note': return NoteIcon;
-    case 'textbook': return TextbookIcon;
-    case 'exam': return ExamIcon;
-    case 'essay': return EssayIcon;
-    case 'translation': return TranslationIcon;
-    case 'mindmap': return MindmapIcon;
-    case 'file': return GenericFileIcon;
-    default: return GenericFileIcon;
-  }
+const RESOURCE_ICONS: Readonly<Record<string, React.FC<ResourceIconProps>>> = {
+  note: NoteIcon,
+  textbook: TextbookIcon,
+  exam: ExamIcon,
+  essay: EssayIcon,
+  translation: TranslationIcon,
+  mindmap: MindmapIcon,
+  file: GenericFileIcon,
+  image: GenericFileIcon,
+};
+
+export function getResourceIconComponent(typeId: string): React.FC<ResourceIconProps> {
+  return Object.hasOwn(RESOURCE_ICONS, typeId) ? RESOURCE_ICONS[typeId] : GenericFileIcon;
 }
 
 // ============================================================================

@@ -1,0 +1,3 @@
+[[permission]]
+identifier = "allow-fixture"
+commands.allow = ["fixture_greet", "fixture_struct", "fixture_unit", "fixture_slow", "fixture_echo", "fixture_headers", "fixture_binary", "fixture_binary_envelope", "fixture_raw_json"]

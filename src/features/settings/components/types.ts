@@ -69,6 +69,11 @@ export interface SystemConfig {
   webSearchDeepseekNeedContent: boolean;
   /** Web Fetch 工具是否优先走 DeepSeek Fetch API（按成功请求计费） */
   webSearchDeepseekFetchEnabled: boolean;
+  deepseekChatWebSearch?: boolean;
+  deepseekChatReadUrl?: boolean;
+  deepseekChatSafetyCheck?: boolean;
+  deepseekChatFiles?: boolean;
+  deepseekTtsVoice?: string;
   webSearchWhitelist: string;
   webSearchBlacklist: string;
   webSearchInjectSnippetMax?: number;

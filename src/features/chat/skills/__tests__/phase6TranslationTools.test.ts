@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -25,8 +27,48 @@ describe('phase 6 translation tool surface', () => {
     expect(allowed).toEqual(embedded);
     expect(allowed).toEqual([
       'builtin-translate_text',
+      'builtin-translation_result_read',
       'builtin-translation_save',
     ]);
+  });
+
+  it.each([
+    ['host', 'host/plugins/translation/src/tool_executor.ts', /export const \w+_TOOL = '(\w+)';/g],
+  ])('exposes exactly the tools the %s executor handles', (_label, file, pattern) => {
+    const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+    const executorTools = [...source.matchAll(pattern)].map((m) => `builtin-${m[1]}`).sort();
+    expect(executorTools.length).toBeGreaterThan(0);
+    const embedded = (translationToolsSkill.embeddedTools ?? []).map((tool) => tool.name).sort();
+    expect(embedded).toEqual(executorTools);
+  });
+
+  it('RF-W09-translation-result-read-undeclared: every tool the translate_text result tells the model to call is declared', () => {
+    // Rust translation_executor.rs answers long translations with "Use builtin-translation_result_read …", while the
+    // Rust-era skill only declared translate_text and translation_save, so the model was sent to a tool it could not call.
+    const host = readFileSync(resolve(process.cwd(), 'host/plugins/translation/src/tool_executor.ts'), 'utf8');
+    const advertised = [...new Set([...host.matchAll(/Use (builtin-\w+)/g)].map((m) => m[1]))];
+    expect(advertised).toContain('builtin-translation_result_read');
+    const declared = (translationToolsSkill.embeddedTools ?? []).map((tool) => tool.name);
+    for (const name of advertised) expect(declared).toContain(name);
+  });
+
+  it('declares translation_result_read with the executor argument bounds', () => {
+    const read = getTool('builtin-translation_result_read');
+    expect(read.inputSchema).toEqual({
+      type: 'object',
+      properties: {
+        translation_result_id: expect.objectContaining({ type: 'string', minLength: 1, maxLength: 80 }),
+        offset_chars: expect.objectContaining({ type: 'integer', minimum: 0, maximum: 2000000 }),
+        limit_chars: expect.objectContaining({ type: 'integer', minimum: 1, maximum: 5000 }),
+      },
+      required: ['translation_result_id'],
+      additionalProperties: false,
+    });
+    expect(read.description).toContain('Low');
+    for (const field of ['chunk', 'has_more', 'next_offset_chars', 'partial', 'TRANSLATION_RESULT_NOT_FOUND']) {
+      expect(read.description).toContain(field);
+    }
+    expect(translationToolsSkill.content).toContain('builtin-translation_result_read');
   });
 
   it('declares a strict bounded translate_text schema', () => {

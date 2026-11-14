@@ -62,14 +62,14 @@ describe('FlowToken code dependency boundary', () => {
     expect(container.textContent).toContain('const answer = 42;');
     await waitFor(() => expect(container.querySelector('.ft-code-container')).not.toBeNull(), {
       // The lazy Prism chunk may need a cold transform during a full CI shard.
-      timeout: 5000,
+      timeout: 10_000,
     });
     expect(container.querySelector('.ft-code-language')).toHaveTextContent('js');
     expect(container.querySelector('.ft-code-content .token')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Copy code' }));
     expect(writeText).toHaveBeenCalledWith('const answer = 42;\n');
     expect(getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('highlights and copies default main-content code while preserving its node through streaming', async () => {
     const content = '<thinking>检查代码</thinking>\n正文\n\n```js\nconst answer = 42;';

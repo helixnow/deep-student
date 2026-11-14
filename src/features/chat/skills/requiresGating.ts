@@ -58,8 +58,7 @@ export async function refreshRequiresGates(skills: SkillDefinition[]): Promise<v
       const probe = await invoke<SkillRequiresProbeResult>('skill_probe_requires', {
         bins,
         env,
-        // Tauri command args use snake_case (`python_packages`).
-        python_packages: pythonPackages,
+        pythonPackages,
       });
       const missingBins = probe.bins.filter((b) => !b.found).map((b) => b.name);
       const missingEnv = probe.env.filter((e) => !e.set).map((e) => e.name);

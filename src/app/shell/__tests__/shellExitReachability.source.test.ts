@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { CANONICAL_VIEWS, canonicalizeView } from '@/app/navigation/canonicalView';
 import { createNavItems } from '@/config/navigation';
+import { createOfficialUiTestKernel } from '@/ui-plugins/testing/render';
+import { consumerEvidence } from '@/ui-plugins/official/shell/__tests__/consumerEvidence';
 
 /**
  * 「进得去就出得来」契约：任何视图在任何壳形态下都要留一个可见可点的出口。
@@ -12,7 +14,7 @@ import { createNavItems } from '@/config/navigation';
  */
 const appSource = readAppShellSource();
 const viewContentsSource = readFileSync(
-  resolve(process.cwd(), 'src/app/hooks/useViewLayerContents.tsx'),
+  resolve(process.cwd(), 'src/app/shell/useViewLayer.tsx'),
   'utf8',
 );
 
@@ -33,8 +35,17 @@ describe('shell exit reachability', () => {
     expect(createNavItems(t, true).map((item) => item.view)).not.toContain('super-agent');
   });
 
-  it('keeps the mobile header back fallback for every non-home view', () => {
-    expect(appSource).toContain("const mobileHeaderCanGoBack = unifiedCanGoBack || currentView !== 'chat-v2';");
+  it('keeps the mobile header back fallback for every non-home view', async () => {
+    const kernel = await createOfficialUiTestKernel();
+    try {
+      const entries = kernel.slots.list('views');
+      expect(entries.map(entry => entry.key)).toEqual(expect.arrayContaining([...CANONICAL_VIEWS]));
+      const consumer = consumerEvidence();
+      for (const entry of entries) {
+        expect(consumer.chrome(entry.key!, entries, false, false).mobileBack).toBe(entry.key !== 'chat-v2');
+        expect(consumer.chrome(entry.key!, entries, false, true).mobileBack).toBe(true);
+      }
+    } finally { await kernel.dispose(); }
     expect(appSource).toContain("if (isSmallScreenRef.current && currentViewRef.current !== 'chat-v2') {");
   });
 
@@ -43,7 +54,7 @@ describe('shell exit reachability', () => {
     // desktopCollapsedControlCount 决定工作区标题的左侧让位（desktopTitlebarLeadingInset），
     // 少算会让标题/工具栏与控件（以及 macOS 红绿灯右侧）重叠。
     const navControlsStart = appSource.indexOf('function DesktopHeaderNavControls(');
-    const navControlsEnd = appSource.indexOf('type CurrentView = NavigationCurrentView;', navControlsStart);
+    const navControlsEnd = appSource.indexOf('\n}\n', navControlsStart);
     expect(navControlsStart).toBeGreaterThan(-1);
     expect(navControlsEnd).toBeGreaterThan(navControlsStart);
     const navButtons = appSource.slice(navControlsStart, navControlsEnd).match(/<DsButton\b/g) ?? [];

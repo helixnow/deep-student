@@ -10,6 +10,8 @@ import { gfm } from '@milkdown/preset-gfm';
 import { getMarkdown } from '@milkdown/utils';
 import type { EditorView } from '@milkdown/prose/view';
 import { describe, expect, it } from 'vitest';
+import { setupMilkdownTimers } from '../../__tests__/milkdownTimers';
+setupMilkdownTimers();
 
 import { calloutPlugin } from '../callout';
 import { TOGGLE_TYPE, togglePlugin } from '../toggle';

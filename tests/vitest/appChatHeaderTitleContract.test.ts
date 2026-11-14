@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 describe('app chat header title contract', () => {
   const appSource = readAppShellSource();
+  const chromeSource = readFileSync(resolve(process.cwd(), 'src/app/shell/AppShellChrome.tsx'), 'utf-8');
   const sessionManagerSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/core/session/sessionManager.ts'),
     'utf-8'
@@ -39,7 +40,7 @@ describe('app chat header title contract', () => {
   });
 
   it('subscribes the chat header to current-session changes and active-session title updates', () => {
-    expect(appSource).toContain("import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';");
+    expect(appSource).toContain("import { getHiddenDraftSessionScope } from '@/features/chat/pages/draftSession';");
     expect(appSource).toContain('const getChatHeaderTitleFromStoreState = useCallback((state?: ChatStore | null) => {');
     expect(appSource).toContain('if (getHiddenDraftSessionScope(state?.sessionMetadata)) {');
     expect(appSource).toContain("return '';");
@@ -127,9 +128,7 @@ describe('app chat header title contract', () => {
     const accessoryEnd = appSource.indexOf('function DesktopHeaderNavControls', accessoryStart);
     const accessorySource = appSource.slice(accessoryStart, accessoryEnd);
 
-    const navControlsStart = appSource.indexOf('function DesktopHeaderNavControls');
-    const navControlsEnd = appSource.indexOf('type CurrentView = NavigationCurrentView;', navControlsStart);
-    const navControlsSource = appSource.slice(navControlsStart, navControlsEnd);
+    const navControlsSource = chromeSource.slice(chromeSource.indexOf('function DesktopHeaderNavControls'));
 
     const navControlsUsageStart = appSource.indexOf('<DesktopHeaderNavControls');
     const navControlsUsageEnd = appSource.indexOf('/>', navControlsUsageStart);
@@ -155,12 +154,12 @@ describe('app chat header title contract', () => {
   });
 
   it('keeps a visible desktop toolbar button for creating a chat session after the history controls', () => {
-    const navControlsStart = appSource.indexOf('function DesktopHeaderNavControls');
-    const navControlsEnd = appSource.indexOf('type CurrentView = NavigationCurrentView;');
+    const navControlsStart = chromeSource.indexOf('function DesktopHeaderNavControls');
+    const navControlsEnd = chromeSource.length;
     expect(navControlsStart).toBeGreaterThanOrEqual(0);
     expect(navControlsEnd).toBeGreaterThan(navControlsStart);
 
-    const navControlsSource = appSource.slice(navControlsStart, navControlsEnd);
+    const navControlsSource = chromeSource.slice(navControlsStart, navControlsEnd);
     const forwardButtonIndex = navControlsSource.indexOf('aria-label={forwardLabel}');
     const newSessionButtonIndex = navControlsSource.indexOf('aria-label={newSessionLabel}');
 
@@ -185,11 +184,11 @@ describe('app chat header title contract', () => {
     expect(accessorySource).toContain('<CommonTooltip content={label} position="bottom">');
     expect(accessorySource).not.toContain('title={label}');
 
-    const navControlsStart = appSource.indexOf('function DesktopHeaderNavControls');
-    const navControlsEnd = appSource.indexOf('type CurrentView = NavigationCurrentView;');
+    const navControlsStart = chromeSource.indexOf('function DesktopHeaderNavControls');
+    const navControlsEnd = chromeSource.length;
     expect(navControlsStart).toBeGreaterThanOrEqual(0);
     expect(navControlsEnd).toBeGreaterThan(navControlsStart);
-    const navControlsSource = appSource.slice(navControlsStart, navControlsEnd);
+    const navControlsSource = chromeSource.slice(navControlsStart, navControlsEnd);
 
     expect(navControlsSource).toContain('<CommonTooltip content={backTitle} position="bottom">');
     expect(navControlsSource).toContain('<CommonTooltip content={forwardTitle} position="bottom">');
@@ -198,7 +197,7 @@ describe('app chat header title contract', () => {
   });
 
   it('labels desktop new-session affordances with the active chat group name when available', () => {
-    expect(appSource).toContain("import { groupCache } from './features/chat/core/store/groupCache';");
+    expect(appSource).toContain("import { groupCache } from '@/features/chat/core/store/groupCache';");
     expect(appSource).toContain("const [currentChatHeaderGroupName, setCurrentChatHeaderGroupName] = useState('');");
     expect(appSource).toContain('const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {');
     expect(appSource).toContain("return groupCache.get(state.groupId)?.name ?? '';");

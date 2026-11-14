@@ -1,10 +1,5 @@
 # 手动刷新 Cloudflare CDN 缓存（兜底工具）
 #
-# 正常发布/重建/热修流程已自动 purge（见 reusable-publish.yml /
-# rebuild-android.yml / hotfix-linux-release.yml / upload-r2.yml）。
-# 本 workflow 保留为手动兜底：secrets 缺失导致自动 purge 跳过、或
-# 需要刷新任意额外 URL 时使用。
-
 name: Purge Cloudflare Cache (Manual)
 
 on:

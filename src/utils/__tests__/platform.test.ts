@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { isMobilePlatform } from '../platform';
+import { isMobilePlatform, isWebUiShell, supportsStreamProtocol } from '../platform';
 
 function stubNavigator(platform: string, userAgent: string, maxTouchPoints = 0): void {
   vi.stubGlobal('navigator', {
@@ -31,5 +31,17 @@ describe('isMobilePlatform', () => {
 
     stubNavigator('iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)', 5);
     expect(isMobilePlatform()).toBe(true);
+  });
+
+  it.each([
+    ['iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)'],
+    ['Linux armv8l', 'Mozilla/5.0 (Linux; Android 15)'],
+  ])('enables HTTP streaming on %s WebUI but not the native mobile shell', (platform, ua) => {
+    stubNavigator(platform, ua, 5);
+    vi.stubGlobal('__DS_WEBUI__', false);
+    expect(supportsStreamProtocol()).toBe(false);
+    vi.stubGlobal('__DS_WEBUI__', true);
+    expect(isWebUiShell()).toBe(true);
+    expect(supportsStreamProtocol()).toBe(true);
   });
 });

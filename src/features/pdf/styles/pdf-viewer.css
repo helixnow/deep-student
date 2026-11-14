@@ -1,0 +1,144 @@
+/* PDF 阅读器跨插件互操作样式（Interop Protocol v1）：定位脉冲、页边反向链接、划选即入图开关 */
+
+/* 定位脉冲：只做视觉提示，pointer-events: none，绝不挡住下方划词 / 点击 / 高亮 */
+.ds-pdf__anchor-pulse {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 3px;
+  background: hsl(var(--primary) / 0.12);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.45);
+  animation: ds-pdf-anchor-pulse 1800ms ease-out forwards;
+}
+
+@keyframes ds-pdf-anchor-pulse {
+  0% {
+    opacity: 0;
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.45), 0 0 0 0 hsl(var(--primary) / 0.35);
+  }
+  12% {
+    opacity: 1;
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.6), 0 0 0 6px hsl(var(--primary) / 0.18);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0), 0 0 0 10px hsl(var(--primary) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__anchor-pulse {
+    animation: ds-pdf-anchor-pulse-static 1800ms linear forwards;
+  }
+
+  @keyframes ds-pdf-anchor-pulse-static {
+    0%,
+    90% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+@media (forced-colors: active) {
+  .ds-pdf__anchor-pulse {
+    background: transparent;
+    box-shadow: none;
+    outline: 2px solid Highlight;
+  }
+}
+
+/* 页边反向链接：胶囊本身可点，周围页面区域不受影响 */
+.ds-pdf__margin-backlinks {
+  pointer-events: auto;
+}
+
+/* 划选即入图：宽工具栏显示图标 + 短标签，中等宽度只留图标 + 状态点 */
+.ds-pdf__auto-excerpt-btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1023.98px) {
+  .ds-pdf__auto-excerpt-label {
+    display: none;
+  }
+}
+
+/* 正文持久联动微染层（C7 §2.1）：外层与底色严格 pointer-events: none，不拦截 .textLayer 选词 */
+.ds-pdf__excerpt-tint-layer {
+  --ds-pdf-tint-opacity: 0.14;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.dark .ds-pdf__excerpt-tint-layer,
+.dark-mode .ds-pdf__excerpt-tint-layer,
+.dark-reading .ds-pdf__excerpt-tint-layer,
+[data-theme='dark'] .ds-pdf__excerpt-tint-layer,
+.ds-pdf__excerpt-tint-layer[data-dark='true'] {
+  --ds-pdf-tint-opacity: 0.18;
+}
+
+.ds-pdf__excerpt-tint-item {
+  position: absolute;
+  pointer-events: none;
+}
+
+.ds-pdf__excerpt-tint-rect {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: var(--ds-pdf-tint-opacity, 0.14);
+  transition: opacity 150ms ease, box-shadow 150ms ease;
+}
+
+.ds-pdf__excerpt-tint-rect--hovered {
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.28);
+}
+
+/* 角部反向跳转微胶囊：仅此热区开启 pointer-events: auto，承载 6px 分支圆点 */
+.ds-pdf__excerpt-tint-pill {
+  position: absolute;
+  z-index: 5;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border) / 0.35);
+  background: hsl(var(--card) / 0.94);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ds-pdf__excerpt-tint-pill:hover,
+.ds-pdf__excerpt-tint-pill:focus-visible {
+  background: hsl(var(--card));
+  border-color: hsl(var(--foreground) / 0.35);
+  outline: none;
+}
+
+.ds-pdf__excerpt-tint-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__excerpt-tint-rect,
+  .ds-pdf__excerpt-tint-pill {
+    transition: none;
+  }
+}

@@ -1,0 +1,627 @@
+{
+  "domain": "memory",
+  "commands": ["memory_write", "memory_read", "memory_list", "memory_get_tree", "memory_update_by_id", "memory_delete", "memory_move_to_folder", "memory_batch_delete", "memory_get_config", "memory_create_root_folder", "memory_set_root_folder", "memory_set_default_category", "memory_set_auto_create_subfolders", "memory_add_relation", "memory_get_related", "memory_get_tags"],
+  "scenarios": [
+    {
+      "id": "memory.write.create_then_read",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "喜欢的颜色", "content": "用户喜欢蓝色"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.frontend_shape_omitted_optionals",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "早起", "content": "用户习惯六点起床"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.explicit_nulls",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"noteId": null, "folderPath": null, "title": "夜读", "content": "用户晚上读书", "mode": null}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.empty_folder_path_default_category",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "空路径", "content": "内容一"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_set_default_category", "args": {"category": "经历"}},
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "空路径二", "content": "内容二"}},
+        {"cmd": "memory_write", "args": {"title": "缺省路径", "content": "内容三"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.folder_path_normalization",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "经历/旅行", "title": "p1", "content": "c1"}},
+        {"cmd": "memory_write", "args": {"folderPath": "/经历/旅行/", "title": "p2", "content": "c2"}},
+        {"cmd": "memory_write", "args": {"folderPath": "记忆/经历/旅行", "title": "p3", "content": "c3"}},
+        {"cmd": "memory_write", "args": {"folderPath": "记忆/记忆/经历/旅行", "title": "p4", "content": "c4"}},
+        {"cmd": "memory_write", "args": {"folderPath": "经历\\旅行", "title": "p5", "content": "c5"}},
+        {"cmd": "memory_write", "args": {"folderPath": "经历／旅行", "title": "p6", "content": "c6"}},
+        {"cmd": "memory_write", "args": {"folderPath": "经历＼旅行", "title": "p7", "content": "c7"}},
+        {"cmd": "memory_write", "args": {"folderPath": " 经历 /./ 旅行 ", "title": "p8", "content": "c8"}},
+        {"cmd": "memory_write", "args": {"folderPath": "///", "title": "p9", "content": "c9"}},
+        {"cmd": "memory_write", "args": {"folderPath": "记忆", "title": "p10", "content": "c10"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_list", "args": {"folderPath": "经历/旅行", "limit": 100, "offset": 0}},
+        {"cmd": "memory_list", "args": {"folderPath": "经历", "limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.whitespace_default_category",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_set_default_category", "args": {"category": "   "}},
+        {"cmd": "memory_write", "args": {"title": "ws", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "ws2", "content": "c2"}},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.auto_create_disabled",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "已有", "title": "先建根", "content": "c0"}},
+        {"cmd": "memory_set_auto_create_subfolders", "args": {"enabled": false}},
+        {"cmd": "memory_write", "args": {"folderPath": "已有", "title": "已有目录", "content": "c1"}},
+        {"cmd": "memory_write", "args": {"folderPath": "不存在", "title": "缺失目录", "content": "c2"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"folderPath": "不存在", "title": "缺失目录更新", "content": "c3", "mode": "update"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "缺省默认分类", "content": "c4"}},
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "空路径", "content": "c5"}},
+        {"cmd": "memory_set_default_category", "args": {"category": "已有"}},
+        {"cmd": "memory_write", "args": {"title": "默认分类已存在", "content": "c6"}},
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "空路径已存在", "content": "c7"}},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.reserved_names",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "__secret", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "  __lead", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "a__b__", "content": "合法标题含双下划线"}},
+        {"cmd": "memory_write", "args": {"folderPath": "__system__", "title": "ok", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"folderPath": "经历/__x", "title": "ok2", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"folderPath": "经历\\ __x", "title": "ok3", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"folderPath": "经历/a__b", "title": "ok4", "content": "c"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.empty_title_content",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "", "content": ""}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "  ", "content": "\n\t"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "", "content": "只有内容"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "   ", "content": "只有内容"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "只有标题", "content": ""}},
+        {"cmd": "memory_write", "args": {"title": "只有标题空白", "content": "   "}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.sensitive_patterns",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "电话", "content": "手机号13812345678相关"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "电话边界", "content": "编号13812345678a"}},
+        {"cmd": "memory_write", "args": {"title": "电话十位", "content": "编号1381234567"}},
+        {"cmd": "memory_write", "args": {"title": "号码12", "content": "号码12812345678"}},
+        {"cmd": "memory_write", "args": {"title": "身份证", "content": "证件110101199001011234"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "身份证X", "content": "证件11010119900101123X"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "十四位", "content": "编号12345678901234"}},
+        {"cmd": "memory_write", "args": {"title": "二十位", "content": "编号12345678901234567890"}},
+        {"cmd": "memory_write", "args": {"title": "邮箱", "content": "联系 a.b@example.com"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "密码", "content": "密码：abc"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "password", "content": "my password=abc"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "密钥", "content": "-----BEGIN RSA PRIVATE KEY-----"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "零宽​", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "软连字符", "content": "a­b"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "13812345678", "content": "标题含电话"}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.fact_length_boundary",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "len200", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}},
+        {"cmd": "memory_write", "args": {"title": "len201", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "emoji200", "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"}},
+        {"cmd": "memory_write", "args": {"title": "emoji201", "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.modes_by_title",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v1"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v2", "mode": "update"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v3", "mode": "append"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v4", "mode": "UPDATE"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v5", "mode": "Append"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v6", "mode": "create"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v7", "mode": "bogus"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名", "content": "v8", "mode": ""}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "同名 ", "content": "v9", "mode": "update"}},
+        {"cmd": "memory_write", "args": {"folderPath": "其他", "title": "同名", "content": "v10", "mode": "update"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "新标题", "content": "v11", "mode": "append"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.append_empty_content",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "空内容", "content": ""}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "空内容", "content": "追加", "mode": "append"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "空内容二", "content": ""}},
+        {"cmd": "memory_write", "args": {"noteId": "${3.noteId}", "title": "空内容二", "content": "追加", "mode": "append"}},
+        {"cmd": "memory_read", "args": {"noteId": "${3.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.by_note_id",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "偏好", "title": "原标题", "content": "原内容"}},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "新标题", "content": "新内容"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "新标题", "content": "追加内容", "mode": "append"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "", "content": "仅内容"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "新标题", "content": ""}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_write", "args": {"noteId": "note_missing", "title": "t", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"noteId": "note_missing", "title": "t", "content": "c", "mode": "append"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "__x", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"noteId": "${0.noteId}", "title": "t", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"noteId": "note_missing", "title": "", "content": ""}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.folder_depth_limit",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "d1/d2/d3/d4/d5/d6/d7/d8/d9", "title": "深9", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "d1/d2/d3/d4/d5/d6/d7/d8/d9/d10", "title": "深10", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.write.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "t"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": 1, "content": "c"}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "t", "content": "c", "mode": 1}, "expect": "error"},
+        {"cmd": "memory_write", "args": {"title": "t", "content": "c", "folderPath": 1}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.read.missing_and_outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_read", "args": {"noteId": "note_missing"}},
+        {"cmd": "memory_read", "args": {"noteId": ""}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_write", "args": {"title": "A中记忆", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_read", "args": {"noteId": "${4.noteId}"}},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${3.memoryRootFolderId}"}},
+        {"cmd": "memory_read", "args": {"noteId": "${4.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.read.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_read", "args": {}, "expect": "error"},
+        {"cmd": "memory_read", "args": {"noteId": null}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.list.empty_bootstrap",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.list.pagination_clamp",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "n1", "content": "c1"}},
+        {"cmd": "memory_write", "args": {"title": "n2", "content": "c2"}},
+        {"cmd": "memory_write", "args": {"title": "n3", "content": "c3"}},
+        {"cmd": "memory_list", "args": {"limit": 0}},
+        {"cmd": "memory_list", "args": {"limit": 1, "offset": 1}},
+        {"cmd": "memory_list", "args": {"limit": 1000}},
+        {"cmd": "memory_list", "args": {"offset": 2}},
+        {"cmd": "memory_list", "args": {"offset": 3}},
+        {"cmd": "memory_list", "args": {"offset": 4294967295}},
+        {"cmd": "memory_list", "args": {"limit": 4294967295}},
+        {"cmd": "memory_list", "args": {"folderPath": null, "limit": null, "offset": null}},
+        {"cmd": "memory_list", "args": {"folderPath": ""}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.list.folder_filter",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "经历/旅行", "title": "旅行1", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "经历", "title": "经历1", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "其他", "title": "其他1", "content": "c"}},
+        {"cmd": "memory_list", "args": {"folderPath": "经历"}},
+        {"cmd": "memory_list", "args": {"folderPath": "记忆/经历/旅行"}},
+        {"cmd": "memory_list", "args": {"folderPath": "经历\\旅行"}},
+        {"cmd": "memory_list", "args": {"folderPath": "不存在"}},
+        {"cmd": "memory_list", "args": {"folderPath": "经历/不存在"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.list.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_list", "args": {"limit": -1}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"offset": 4294967296}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": 1.5}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"limit": "10"}, "expect": "error"},
+        {"cmd": "memory_list", "args": {"folderPath": 1}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tree.fresh_bootstrap",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tree.nested_after_writes",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "b/c", "title": "t1", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "a", "title": "t2", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "b", "title": "t3", "content": "c"}},
+        {"cmd": "memory_write", "args": {"folderPath": "", "title": "t4", "content": "c"}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.update_by_id.frontend_content_only",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "原", "content": "原内容"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "新内容"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.update_by_id.title_only_and_empty_content",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "原", "content": "原内容"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "新标题"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": ""}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "新标题", "content": null}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.update_by_id.validation",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "原", "content": "原内容"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": null, "content": null}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "note_missing", "content": "c"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "  "}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "__x"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "a@example.com"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "密码: x"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "title": "__x", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记记"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${0.noteId}", "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"}, "expect": "error"},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.update_by_id.outside_root_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${2.noteId}", "content": "x"}, "expect": "error"},
+        {"cmd": "memory_set_root_folder", "args": {"folderId": "${1.memoryRootFolderId}"}},
+        {"cmd": "memory_delete", "args": {"noteId": "${2.noteId}"}},
+        {"cmd": "memory_update_by_id", "args": {"noteId": "${2.noteId}", "content": "x"}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.update_by_id.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_update_by_id", "args": {"content": "c"}, "expect": "error"},
+        {"cmd": "memory_update_by_id", "args": {"noteId": 1, "content": "c"}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.delete.basic_and_repeat",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "删", "content": "c"}},
+        {"cmd": "memory_delete", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_delete", "args": {"noteId": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_delete", "args": {"noteId": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_delete", "args": {"noteId": ""}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.delete.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_delete", "args": {"noteId": "${1.noteId}"}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.delete.cleans_incoming_refs",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "丙", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${2.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_delete", "args": {"noteId": "${1.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${2.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.delete.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_delete", "args": {}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.move.paths",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"folderPath": "原处", "title": "动", "content": "c"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "经历/旅行"}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "记忆/经历/旅行"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": ""}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "///"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "记忆"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.move.ignores_auto_create_flag",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "动", "content": "c"}},
+        {"cmd": "memory_set_auto_create_subfolders", "args": {"enabled": false}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "新目录"}},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.move.errors",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "动", "content": "c"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "__system__"}, "expect": "error"},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "note_missing", "targetFolderPath": "__x"}, "expect": "error"},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "note_missing", "targetFolderPath": "不应创建"}, "expect": "error"},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${0.noteId}", "targetFolderPath": "d1/d2/d3/d4/d5/d6/d7/d8/d9/d10"}, "expect": "error"},
+        {"cmd": "memory_get_tree", "args": {}},
+        {"cmd": "memory_read", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.move.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "${1.noteId}", "targetFolderPath": "x"}, "expect": "error"},
+        {"cmd": "memory_get_tree", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.move.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "n"}, "expect": "error"},
+        {"cmd": "memory_move_to_folder", "args": {"targetFolderPath": "x"}, "expect": "error"},
+        {"cmd": "memory_move_to_folder", "args": {"noteId": "n", "targetFolderPath": null}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_delete.mixed",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "b1", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "b2", "content": "c"}},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": ["${0.noteId}", "note_missing", "${1.noteId}", "${0.noteId}"]}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_delete.empty_and_all_fail",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_batch_delete", "args": {"noteIds": []}},
+        {"cmd": "memory_get_config", "args": {}},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]}},
+        {"cmd": "memory_get_config", "args": {}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_delete.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_write", "args": {"title": "B中", "content": "c"}},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": ["${1.noteId}", "${3.noteId}"]}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_delete.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_batch_delete", "args": {}, "expect": "error"},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": "n1"}, "expect": "error"},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": [1]}, "expect": "error"},
+        {"cmd": "memory_batch_delete", "args": {"noteIds": null}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

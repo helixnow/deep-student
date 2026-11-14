@@ -28,37 +28,46 @@ import {
 // ============================================================================
 // 预设颜色（统一引用共享常量）
 // ============================================================================
-import { FULL_TEXT_COLORS, FULL_BG_COLORS } from '../../constants';
+import { getFullTextColors, getFullBgColors } from '../../constants';
+import { useMindMapDarkMode } from '../../hooks/useMindMapTheme';
 import type { IStyleTheme } from '../../registry/types';
 
-const PRESET_COLORS = FULL_BG_COLORS as unknown as string[];
-const TEXT_COLORS = FULL_TEXT_COLORS as unknown as string[];
-
 // ============================================================================
-// 子组件：主题缩略预览（画布底色 + 根节点色块 + 分支色板圆点）
+// 子组件：主题缩略预览（画布底色 + 核心锚点 + 连线 + 一级分支卡片几何关系）
 // ============================================================================
 const ThemeThumbnail: React.FC<{ theme: IStyleTheme }> = ({ theme }) => {
   const canvasBg = theme.canvas?.background || theme.canvasStyle?.background || 'var(--mm-bg)';
   const rootBg = theme.node?.root?.background || 'var(--mm-primary)';
-  const palette = (theme.palette ?? []).slice(0, 4);
+  const branchBg = theme.node?.branch?.background || 'var(--mm-bg-elevated)';
+  const branchBorder = theme.node?.branch?.border || '1px solid var(--mm-border)';
+  const edgeStroke = theme.edge?.stroke || 'var(--mm-edge)';
   return (
     <span
       aria-hidden
-      className="inline-flex items-center gap-1 h-5 w-11 shrink-0 rounded-[4px] border border-[var(--mm-border)] px-1 overflow-hidden"
+      className="inline-flex items-center justify-between h-5 w-11 shrink-0 rounded-[5px] border border-[var(--mm-border)] px-1.5 overflow-hidden"
       style={{ background: canvasBg }}
     >
       <span
-        className="h-2 w-3.5 shrink-0 rounded-[2px]"
+        className="h-2.5 w-3.5 shrink-0 rounded-[3px]"
         style={{ background: rootBg }}
       />
-      <span className="flex items-center gap-0.5 min-w-0">
-        {palette.map((color, index) => (
-          <span
-            key={`${color}-${index}`}
-            className="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ background: color }}
-          />
-        ))}
+      <svg className="w-2 h-3.5 shrink-0 overflow-visible" viewBox="0 0 8 14" fill="none">
+        <path
+          d="M0 7 C3 7, 4 3.5, 8 3.5 M0 7 C3 7, 4 10.5, 8 10.5"
+          stroke={edgeStroke}
+          strokeWidth="1.15"
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="flex flex-col gap-0.5 min-w-0">
+        <span
+          className="h-1.5 w-3.5 shrink-0 rounded-[2px]"
+          style={{ background: branchBg, border: branchBorder }}
+        />
+        <span
+          className="h-1.5 w-3.5 shrink-0 rounded-[2px]"
+          style={{ background: branchBg, border: branchBorder }}
+        />
       </span>
     </span>
   );
@@ -110,6 +119,9 @@ export const StyleSettings: React.FC<{
   onOpenChange?: (open: boolean) => void;
 }> = ({ className, trigger, placement = 'bottom-right', open: controlledOpen, onOpenChange }) => {
   const { t } = useTranslation('mindmap');
+  const isDark = useMindMapDarkMode();
+  const textColors = useMemo(() => getFullTextColors(isDark) as unknown as string[], [isDark]);
+  const presetColors = useMemo(() => getFullBgColors(isDark) as unknown as string[], [isDark]);
   const isMindMapActive = useMindMapIsActive();
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -368,7 +380,7 @@ export const StyleSettings: React.FC<{
           {/* 文本颜色 */}
           <ColorPicker 
             label={t('style.textColor')}
-            colors={TEXT_COLORS}
+            colors={textColors}
             value={focusedNode.style?.textColor || 'inherit'}
             onChange={(color) => handleNodeStyleUpdate({ textColor: color })}
           />
@@ -376,7 +388,7 @@ export const StyleSettings: React.FC<{
           {/* 背景颜色 */}
           <ColorPicker 
             label={t('style.bgColor')}
-            colors={PRESET_COLORS}
+            colors={presetColors}
             value={focusedNode.style?.bgColor || 'transparent'}
             onChange={(color) => handleNodeStyleUpdate({ bgColor: color })}
           />

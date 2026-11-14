@@ -51,7 +51,7 @@ describe('phase 9 essay and orchestration contracts', () => {
     );
   });
 
-  it('makes subagent_call discoverable inside the workspace three-piece contract', () => {
+  it('makes subagent_call discoverable inside the task-style subagent contract without legacy workspace tools', () => {
     expect(workspaceToolsSkill.allowedTools).toEqual(
       workspaceToolsSkill.embeddedTools?.map((entry) => entry.name),
     );
@@ -67,8 +67,10 @@ describe('phase 9 essay and orchestration contracts', () => {
     expect(subagent.inputSchema.properties.wait?.default).toBe(true);
     expect(subagent.inputSchema.properties.skill_id?.description).toContain('subagent-worker');
     expect(subagent.inputSchema.properties.skill_id?.description).not.toContain("'translation'");
-    expect(workspaceToolsSkill.content).toContain('Workspace 三件套');
     expect(workspaceToolsSkill.content).toContain('subagent_call');
-    expect(workspaceToolsSkill.content).toContain('workspace_create_agent');
+    expect(workspaceToolsSkill.content).toContain('coordinator_sleep');
+    expect(workspaceToolsSkill.content).not.toContain('Workspace 三件套');
+    expect(workspaceToolsSkill.content).not.toContain('workspace_create');
+    expect(workspaceToolsSkill.content).not.toContain('workspace_create_agent');
   });
 });

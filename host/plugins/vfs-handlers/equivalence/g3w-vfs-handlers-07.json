@@ -1,0 +1,612 @@
+{
+  "domain": "vfs-handlers",
+  "commands": [
+    "vfs_get_mindmap_version",
+    "vfs_update_mindmap",
+    "vfs_create_mindmap",
+    "vfs_delete_mindmap",
+    "vfs_set_mindmap_favorite",
+    "vfs_multimodal_search",
+    "vfs_multimodal_search_detailed",
+    "vfs_multimodal_index_resource",
+    "vfs_get_pdf_processing_status",
+    "vfs_cancel_pdf_processing",
+    "vfs_retry_pdf_processing",
+    "vfs_start_pdf_processing",
+    "vfs_get_resource_ocr_info"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs-handlers.vfs_get_mindmap_version.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": "mm_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_update_mindmap.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "note_g3w",
+            "params": {
+              "title": "g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_update_mindmap.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "mm_missing_g3w",
+            "params": {
+              "title": "g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_update_mindmap.conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "g3w",
+              "defaultView": "mindmap"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "title": "g3w2",
+              "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_delete_mindmap.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "note_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_delete_mindmap.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "mm_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_set_mindmap_favorite.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "note_g3w",
+            "isFavorite": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_set_mindmap_favorite.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "mm_missing_g3w",
+            "isFavorite": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search.text_mode_missing_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "",
+              "queryText": "",
+              "queryMode": "text"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search.image_mode_missing_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "g3w",
+              "queryText": "g3w",
+              "queryMode": "image"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search.mixed_mode_missing_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "",
+              "queryText": "",
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgo=",
+              "queryImageMediaType": "image/png"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search.mixed_mode_missing_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "g3w",
+              "queryText": "g3w",
+              "queryMode": "mixed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search_detailed.text_mode_missing_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "",
+              "queryText": "",
+              "queryMode": "text"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search_detailed.image_mode_missing_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "g3w",
+              "queryText": "g3w",
+              "queryMode": "image"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search_detailed.mixed_mode_missing_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "",
+              "queryText": "",
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgo=",
+              "queryImageMediaType": "image/png"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_search_detailed.mixed_mode_missing_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "query": "g3w",
+              "queryText": "g3w",
+              "queryMode": "mixed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_multimodal_index_resource.source_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "textbook",
+            "sourceId": "tb_missing_g3w",
+            "folderId": null,
+            "forceRebuild": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_pdf_processing_status.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "res_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_pdf_processing_status.invalid_unicode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "file_​g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_cancel_pdf_processing.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "res_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_retry_pdf_processing.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "res_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_retry_pdf_processing.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "file_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_start_pdf_processing.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "res_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_start_pdf_processing.file_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "file_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_resource_ocr_info.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": "res_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

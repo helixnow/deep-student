@@ -1,0 +1,411 @@
+{
+  "domain": "memory",
+  "commands": ["memory_batch_move","memory_restore_stale","memory_restore_archived","memory_export_all","memory_get_profile","memory_get_audit_logs","memory_to_anki_document","memory_search","memory_get_config","memory_get_tree"],
+  "scenarios": [
+    {
+      "id": "memory.batch_move.basic",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"m1","content":"用户喜欢跑步"}},
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"m2","content":"用户住在杭州"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${0.noteId}","${1.noteId}"],"targetFolderPath":"经历/旅行"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}},
+        {"cmd":"memory_get_tree","args":{}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${0.noteId}"],"targetFolderPath":""}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${1.noteId}"],"targetFolderPath":"记忆/偏好"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_move.empty_and_all_fail",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_batch_move","args":{"noteIds":[],"targetFolderPath":"偏好"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["n1","n2","n3","n4","n5","n6","n7"],"targetFolderPath":"偏好"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":[""],"targetFolderPath":"偏好"}},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_move.mixed_and_reserved",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"m1","content":"用户喜欢绿茶"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["missing_note","${0.noteId}","${0.noteId}"],"targetFolderPath":"经历"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${0.noteId}"],"targetFolderPath":"__system__"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${0.noteId}"],"targetFolderPath":"经历/__x"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${0.noteId}"],"targetFolderPath":"a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_move.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_create_root_folder","args":{"title":"A"}},
+        {"cmd":"memory_get_config","args":{}},
+        {"cmd":"memory_write","args":{"title":"A中记忆","content":"用户喜欢猫"}},
+        {"cmd":"memory_create_root_folder","args":{"title":"B"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${2.noteId}"],"targetFolderPath":"偏好"}},
+        {"cmd":"memory_get_tree","args":{}},
+        {"cmd":"memory_set_root_folder","args":{"folderId":"${1.memoryRootFolderId}"}},
+        {"cmd":"memory_batch_move","args":{"noteIds":["${2.noteId}"],"targetFolderPath":"偏好"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.batch_move.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_batch_move","args":{"targetFolderPath":"偏好"},"expect":"error"},
+        {"cmd":"memory_batch_move","args":{"noteIds":[]},"expect":"error"},
+        {"cmd":"memory_batch_move","args":{"noteIds":"n1","targetFolderPath":"偏好"},"expect":"error"},
+        {"cmd":"memory_batch_move","args":{"noteIds":[1],"targetFolderPath":"偏好"},"expect":"error"},
+        {"cmd":"memory_batch_move","args":{"noteIds":[],"targetFolderPath":null},"expect":"error"},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.restore.not_marked_returns_false",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"普通记忆","content":"用户每天喝咖啡"}},
+        {"cmd":"memory_restore_stale","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_restore_archived","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_get_tags","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_get_audit_logs","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.restore.user_underscore_tags_dropped",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"title":"标签记忆","content":"用户喜欢下雨天"}},
+        {"cmd":"memory_update_tags","args":{"noteId":"${0.noteId}","tags":["_stale","_archived","天气"]}},
+        {"cmd":"memory_get_tags","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_restore_stale","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_restore_archived","args":{"noteId":"${0.noteId}"}},
+        {"cmd":"memory_get_tags","args":{"noteId":"${0.noteId}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.restore.missing_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_restore_stale","args":{"noteId":"note_missing"},"expect":"error"},
+        {"cmd":"memory_restore_stale","args":{"noteId":""},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{"noteId":"note_missing"},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{"noteId":""},"expect":"error"},
+        {"cmd":"memory_write","args":{"title":"将删除","content":"用户养了一条狗"}},
+        {"cmd":"memory_delete","args":{"noteId":"${4.noteId}"}},
+        {"cmd":"memory_restore_stale","args":{"noteId":"${4.noteId}"},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{"noteId":"${4.noteId}"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.restore.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_create_root_folder","args":{"title":"A"}},
+        {"cmd":"memory_get_config","args":{}},
+        {"cmd":"memory_write","args":{"title":"A中记忆","content":"用户喜欢爬山"}},
+        {"cmd":"memory_create_root_folder","args":{"title":"B"}},
+        {"cmd":"memory_restore_stale","args":{"noteId":"${2.noteId}"},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{"noteId":"${2.noteId}"},"expect":"error"},
+        {"cmd":"memory_set_root_folder","args":{"folderId":"${1.memoryRootFolderId}"}},
+        {"cmd":"memory_restore_stale","args":{"noteId":"${2.noteId}"}},
+        {"cmd":"memory_restore_archived","args":{"noteId":"${2.noteId}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.restore.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_restore_stale","args":{},"expect":"error"},
+        {"cmd":"memory_restore_stale","args":{"noteId":1},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{},"expect":"error"},
+        {"cmd":"memory_restore_archived","args":{"noteId":null},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.export_all.empty",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_export_all","args":{}},
+        {"cmd":"memory_get_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.export_all.with_notes",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_write","args":{"folderPath":"经历/居住","title":"城市","content":"用户住在杭州"}},
+        {"cmd":"memory_write","args":{"title":"只有标题","content":""}},
+        {"cmd":"memory_export_all","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.export_all.only_current_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_create_root_folder","args":{"title":"A"}},
+        {"cmd":"memory_write","args":{"title":"A中记忆","content":"用户喜欢猫"}},
+        {"cmd":"memory_create_root_folder","args":{"title":"B"}},
+        {"cmd":"memory_write","args":{"title":"B中记忆","content":"用户喜欢狗"}},
+        {"cmd":"memory_export_all","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.get_profile.no_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_get_profile","args":{}},
+        {"cmd":"memory_get_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.get_profile.root_without_profile",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_list","args":{}},
+        {"cmd":"memory_get_profile","args":{}},
+        {"cmd":"memory_create_root_folder","args":{"title":"新根"}},
+        {"cmd":"memory_get_profile","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.get_profile.after_writes",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"作息","content":"用户习惯六点起床"}},
+        {"cmd":"memory_get_profile","args":{}},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.get_profile.privacy_mode_after_writes",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_get_profile","args":{}},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.audit_logs.empty_and_clamp",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_get_audit_logs","args":{}},
+        {"cmd":"memory_get_audit_logs","args":{"limit":0,"offset":0}},
+        {"cmd":"memory_get_audit_logs","args":{"limit":1000}},
+        {"cmd":"memory_get_audit_logs","args":{"limit":null,"offset":null,"sourceFilter":null,"operationFilter":null,"successFilter":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.audit_logs.filters_after_writes",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_write_smart","args":{"title":"错题记录","content":"三角函数诱导公式记反了","memoryType":"study"}},
+        {"cmd":"memory_write_smart","args":{"title":"电话","content":"手机号13812345678"}},
+        {"cmd":"memory_write_smart","args":{"title":"饮品","content":"用户喜欢喝乌龙茶"}},
+        {"cmd":"memory_get_audit_logs","args":{}},
+        {"cmd":"memory_get_audit_logs","args":{"limit":1}},
+        {"cmd":"memory_get_audit_logs","args":{"limit":1,"offset":1}},
+        {"cmd":"memory_get_audit_logs","args":{"offset":1000}},
+        {"cmd":"memory_get_audit_logs","args":{"sourceFilter":"handler"}},
+        {"cmd":"memory_get_audit_logs","args":{"sourceFilter":"tool_call"}},
+        {"cmd":"memory_get_audit_logs","args":{"sourceFilter":"HANDLER"}},
+        {"cmd":"memory_get_audit_logs","args":{"operationFilter":"write_smart"}},
+        {"cmd":"memory_get_audit_logs","args":{"operationFilter":"filtered"}},
+        {"cmd":"memory_get_audit_logs","args":{"successFilter":true}},
+        {"cmd":"memory_get_audit_logs","args":{"successFilter":false}},
+        {"cmd":"memory_get_audit_logs","args":{"sourceFilter":"handler","successFilter":true,"limit":200}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.audit_logs.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_get_audit_logs","args":{"limit":-1},"expect":"error"},
+        {"cmd":"memory_get_audit_logs","args":{"limit":4294967296},"expect":"error"},
+        {"cmd":"memory_get_audit_logs","args":{"offset":1.5},"expect":"error"},
+        {"cmd":"memory_get_audit_logs","args":{"limit":"10"},"expect":"error"},
+        {"cmd":"memory_get_audit_logs","args":{"successFilter":"true"},"expect":"error"},
+        {"cmd":"memory_get_audit_logs","args":{"sourceFilter":1},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.to_anki.empty",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_to_anki_document","args":{}},
+        {"cmd":"memory_to_anki_document","args":{"folderPath":null,"purposeFilter":null,"limit":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.to_anki.with_notes_and_filters",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_write","args":{"title":"只有标题","content":""}},
+        {"cmd":"memory_write","args":{"folderPath":"经历","title":"城市","content":"用户住在杭州"}},
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_write_smart","args":{"folderPath":"学习","title":"错题","content":"三角函数诱导公式记反了","memoryType":"study","memoryPurpose":"memorized"}},
+        {"cmd":"memory_to_anki_document","args":{}},
+        {"cmd":"memory_to_anki_document","args":{"folderPath":"偏好"}},
+        {"cmd":"memory_to_anki_document","args":{"folderPath":"不存在的目录"}},
+        {"cmd":"memory_to_anki_document","args":{"purposeFilter":"memorized"}},
+        {"cmd":"memory_to_anki_document","args":{"purposeFilter":"internalized"}},
+        {"cmd":"memory_to_anki_document","args":{"purposeFilter":"unknown"}},
+        {"cmd":"memory_to_anki_document","args":{"limit":1}},
+        {"cmd":"memory_to_anki_document","args":{"limit":0}},
+        {"cmd":"memory_to_anki_document","args":{"limit":5000}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.to_anki.skips_system_notes",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"作息","content":"用户习惯六点起床"}},
+        {"cmd":"memory_get_tree","args":{}},
+        {"cmd":"memory_to_anki_document","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.to_anki.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_to_anki_document","args":{"limit":-1},"expect":"error"},
+        {"cmd":"memory_to_anki_document","args":{"limit":4294967296},"expect":"error"},
+        {"cmd":"memory_to_anki_document","args":{"folderPath":1},"expect":"error"},
+        {"cmd":"memory_to_anki_document","args":{"purposeFilter":true},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.search.privacy_mode_short_circuit",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_search","args":{"query":"蓝色"}},
+        {"cmd":"memory_search","args":{"query":"蓝色","topK":0}},
+        {"cmd":"memory_search","args":{"query":""}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.search.basic",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"颜色","content":"用户喜欢蓝色"}},
+        {"cmd":"memory_write","args":{"folderPath":"经历","title":"城市","content":"用户住在杭州"}},
+        {"cmd":"memory_search","args":{"query":"蓝色"}},
+        {"cmd":"memory_search","args":{"query":"杭州","topK":1}},
+        {"cmd":"memory_search","args":{"query":"蓝色","topK":0}},
+        {"cmd":"memory_search","args":{"query":"蓝色","topK":1000}},
+        {"cmd":"memory_search","args":{"query":"蓝色","topK":null}},
+        {"cmd":"memory_search","args":{"query":""}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.search.empty_store",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_search","args":{"query":"任何内容"}},
+        {"cmd":"memory_get_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.search.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_search","args":{},"expect":"error"},
+        {"cmd":"memory_search","args":{"query":null},"expect":"error"},
+        {"cmd":"memory_search","args":{"query":1},"expect":"error"},
+        {"cmd":"memory_search","args":{"query":"q","topK":-1},"expect":"error"},
+        {"cmd":"memory_search","args":{"query":"q","topK":"5"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.config.get.bad_shape_ignored",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_get_config","args":{"folderId":1,"enabled":"x"}},
+        {"cmd":"memory_get_config","args":{"memoryRootFolderId":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.tree.unexpected_args_ignored",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_get_tree","args":{"folderPath":"偏好"}},
+        {"cmd":"memory_get_tree","args":{"rootId":1}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

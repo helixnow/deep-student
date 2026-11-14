@@ -16,13 +16,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Books, ChatCircleText, Cards, Sparkle } from '@phosphor-icons/react';
+import { Books, ChatCircleText, Cards } from '@phosphor-icons/react';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { QuickByokProvisionerCard } from './byok';
 import type { ApiConfig } from '@/types';
 
 // ============================================================================
@@ -257,7 +258,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         className={cn(
           'outline-none',
           'relative flex flex-col overflow-hidden',
-          'w-full max-w-[520px]',
+          'w-full max-w-[480px]',
           'bg-background rounded-lg',
           'shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]',
           'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.3)]',
@@ -271,7 +272,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         }}
       >
         {/* 标题区 */}
-        <div className="flex-shrink-0 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
+        <div className="flex-shrink-0 border-b border-border/35 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
@@ -308,12 +309,17 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
         </div>
 
-        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
-
         {/* 内容区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6 space-y-4">
+          {/* 10 秒单 Key 自动配置面板 */}
+          <QuickByokProvisionerCard
+            mode="onboarding"
+            onCompleted={() => onSkip()}
+            onOpenFullSettings={onConfigure}
+          />
+
           {/* 三大能力速览 */}
-          <div className="space-y-3">
+          <div className="space-y-3 border-t border-border/35 pt-4">
             {features.map((f) => (
               <div key={f.titleKey} className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-foreground/[0.04]">
@@ -330,39 +336,24 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               </div>
             ))}
           </div>
-
-          {/* AI 接入提示卡 */}
-          <div className="mt-4 rounded-md bg-foreground/[0.03] px-3.5 py-3">
-            <div className="flex items-start gap-2">
-              <Sparkle size={15} weight="fill" className="mt-[2px] flex-shrink-0 text-primary/70" />
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-foreground/85 leading-snug">
-                  {t('welcome_onboarding.ai_setup_title')}
-                </p>
-                <p className="mt-1 text-[12px] text-foreground/50 leading-[1.6]">
-                  {t('welcome_onboarding.ai_setup_desc')}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
-
         {/* 底部操作栏 */}
-        <div className="flex-shrink-0 space-y-2 px-4 py-4 sm:px-6">
+        <div className="flex-shrink-0 flex items-center justify-between gap-2 border-t border-border/35 px-4 py-3.5 sm:px-6">
           <DsButton
-            variant="primary"
-            size="lg"
-            className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+            variant="ghost"
+            size="md"
+            className="text-[13px] [@media(pointer:coarse)]:!min-h-11"
             onClick={onConfigure}
           >
-            {t('welcome_onboarding.cta_configure')}
+            {t('settings:byok.fullSettingsLink', {
+              defaultValue: t('welcome_onboarding.cta_configure'),
+            })}
           </DsButton>
           <DsButton
             variant="ghost"
-            size="lg"
-            className="w-full justify-center text-[13px] text-foreground/55 [@media(pointer:coarse)]:!min-h-11"
+            size="md"
+            className="text-[13px] text-foreground/55 [@media(pointer:coarse)]:!min-h-11"
             onClick={onSkip}
           >
             {t('welcome_onboarding.cta_skip')}

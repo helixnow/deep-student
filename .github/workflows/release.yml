@@ -1,4 +1,5 @@
-# Heavy publication starts only after CI completed on the exact main commit.
+# Heavy publication starts only after CI completed on the exact main commit,
+# on a pushed semver tag (vX.Y.Z), or via manual workflow_dispatch.
 # Release PR maintenance lives in release-please.yml and never waits for builds.
 name: Release
 on:
@@ -6,6 +7,21 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.20.0); leave empty to use package.json version on the dispatched ref'
+        required: false
+        default: ''
+        type: string
+      allow_unsigned_desktop:
+        description: 'Allow building without Apple/Windows signing certificates (updater signatures remain required)'
+        required: false
+        default: false
+        type: boolean
 concurrency:
   group: release-desktop-${{ github.repository }}
   cancel-in-progress: false
@@ -16,41 +32,75 @@ permissions:
 jobs:
   candidate:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      allow_unsigned_desktop: ${{ steps.resolve.outputs.allow_unsigned_desktop }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 2
       - name: Resolve verified release commit and draft
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag_name }}
+          INPUT_UNSIGNED: ${{ github.event.inputs.allow_unsigned_desktop }}
+          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          VERSION=$(jq -r .version package.json)
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          TAG="v$VERSION"
+          SOURCE_SHA="${WORKFLOW_RUN_SHA:-$GITHUB_SHA}"
+          ALLOW_UNSIGNED="false"
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$INPUT_UNSIGNED" = true ]; then
+            ALLOW_UNSIGNED="true"
+          fi
+
+          if [ "$EVENT_NAME" = push ]; then
+            TAG="$REF_NAME"
+          elif [ "$EVENT_NAME" = workflow_dispatch ] && [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+            if git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | grep -q .; then
+              git fetch --no-tags origin "refs/tags/$TAG"
+              SOURCE_SHA=$(git rev-parse 'FETCH_HEAD^{commit}')
+              git checkout --force "$SOURCE_SHA"
+            fi
+          else
+            VERSION=$(jq -r .version package.json)
+            [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+            TAG="v$VERSION"
+          fi
+
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid release tag: $TAG"; exit 1; }
+          VERSION="${TAG#v}"
+          PKG_VERSION=$(jq -r .version package.json)
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match tag ($TAG)"
+            exit 1
+          fi
+
           PR=$(gh api "repos/$GH_REPO/commits/$SOURCE_SHA/pulls" --jq \
-            ".[] | select(.merged_at != null and .merge_commit_sha == \"$SOURCE_SHA\" and (.head.ref | startswith(\"release-please--\"))) | .number" | head -1)
+            ".[] | select(.merged_at != null and .merge_commit_sha == \"$SOURCE_SHA\" and (.head.ref | startswith(\"release-please--\"))) | .number" 2>/dev/null | head -1 || true)
           SUBJECT=$(git log -1 --format=%s)
           EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+
           if [ -z "$EXISTING" ]; then
-            # Ordinary green development commits do not become releases.
-            if [ -z "$PR" ] && [[ ! "$SUBJECT" =~ ^chore\(main\):\ release\ $VERSION ]]; then
+            if [ "$EVENT_NAME" = workflow_run ] && [ -z "$PR" ] && [[ ! "$SUBJECT" =~ ^chore\(main\):\ release\ $VERSION ]]; then
               echo 'No release commit; CI is green.'
               exit 0
             fi
             gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
-          else
+          elif [ "$EVENT_NAME" = workflow_run ]; then
             git fetch --no-tags origin "refs/tags/$TAG"
             TAG_SHA=$(git rev-parse 'FETCH_HEAD^{commit}')
             if [ "$TAG_SHA" != "$SOURCE_SHA" ]; then
@@ -58,20 +108,28 @@ jobs:
               exit 0
             fi
           fi
+
           STATE=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq \
-            ".[] | select(.tag_name == \"$TAG\") | if .draft then \"draft\" else \"published\" end")
-          if [ "$STATE" = published ]; then exit 0; fi
+            ".[] | select(.tag_name == \"$TAG\") | if .draft then \"draft\" else \"published\" end" | head -1 || true)
+          if [ "$STATE" = published ] && [ "$EVENT_NAME" != workflow_dispatch ]; then
+            echo "Release $TAG is already published."
+            exit 0
+          fi
           if [ -z "$STATE" ]; then
             gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes
           fi
           if [ -n "$PR" ]; then
-            gh pr edit "$PR" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
+            gh pr edit "$PR" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged' || true
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "allow_unsigned_desktop=$ALLOW_UNSIGNED"
+          } >> "$GITHUB_OUTPUT"
   release:
     needs: candidate
     if: needs.candidate.outputs.tag != ''
     uses: ./.github/workflows/reusable-release-pipeline.yml
     with:
       tag_name: ${{ needs.candidate.outputs.tag }}
+      allow_unsigned_desktop: ${{ needs.candidate.outputs.allow_unsigned_desktop == 'true' }}
     secrets: inherit

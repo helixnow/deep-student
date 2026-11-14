@@ -459,7 +459,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-11"
             >
               <Bug size={14} className="mr-1" />
-              Lance Schema
+              {t('learningHub:diagnostic.lanceSchema')}
             </DsButton>
             <div className="flex-1" />
             <DsButton

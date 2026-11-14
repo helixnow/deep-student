@@ -18,9 +18,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { noteNeedsColumnsWriter } from '@/features/notes/noteEditorHost';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { NoteLearningPropertiesSection } from '@/features/notes/components/NoteLearningPropertiesSection';
-import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
+import { reportError, toVfsError, VfsError, VfsErrorCode, type Result } from '@/shared/result';
 import i18n from '@/i18n';
-import { dstu, updatedAtToVersionToken } from '@/dstu';
+import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { syncWikiLinksAfterNoteRename } from '@/features/workbench/apps/notes/wikilinkRenameSync';
 import { getWikilinkNotesCache } from '@/features/notes/wikilinkNotesCache';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -91,6 +91,29 @@ async function readOccSafeNoteSnapshot(path: string) {
 }
 
 /**
+ * 标题/标签写回。在途的正文自动保存会先推进 updated_at，拿旧基线的元数据写回必然 CONFLICT；
+ * 磁盘上该字段仍是修改前的值时冲突与它无关，以最新基线重试一次。字段已被别处改过则照常返回冲突。
+ * `retried` 为真时，调用方不得据此推进正文的乐观锁基线：重试只核对了这一个字段，
+ * 越过的那次写入可能是别处的正文，要由下一次正文保存的冲突路径比对磁盘正文。
+ */
+async function setNoteMetadataWithOcc(
+  path: string,
+  metadata: Record<string, unknown>,
+  expectedUpdatedAt: number | null,
+  untouchedOnDisk: (latest: DstuNode) => boolean,
+) {
+  const first = await dstu.setMetadata(path, metadata, updatedAtToVersionToken(expectedUpdatedAt));
+  if (first.ok || first.error.code !== VfsErrorCode.CONFLICT) return { result: first, retried: false };
+  // RUST-FIX(RF-W09-note-metadata-conflict-retry): the Tauri frontend surfaced this conflict and rolled the title/tags input back
+  const latest = await dstu.get(path);
+  if (!latest.ok || !latest.value || !untouchedOnDisk(latest.value)) return { result: first, retried: false };
+  const result = await dstu.setMetadata(path, metadata, updatedAtToVersionToken(latest.value.updatedAt ?? null));
+  return { result, retried: true };
+}
+
+const sameTags = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((tag, i) => tag === b[i]);
+
+/**
  * 笔记编辑器骨架屏。
  * 模拟真实编辑器的标题 + 工具栏 + 正文行结构，并与 NotesCrepeEditor 的
  * 与编辑器可读内容列完全对齐，加载完成时内容原位淡入、无布局跳动
@@ -143,9 +166,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const { t } = useTranslation(['notes', 'common']);
   const focusOnActiveRef = useRef(focusOnActive);
   const isActiveRef = useRef(isActive);
+  const readOnlyRef = useRef(readOnly);
   const onSaveStateChangeRef = useRef(onSaveStateChange);
   focusOnActiveRef.current = focusOnActive;
   isActiveRef.current = isActive;
+  readOnlyRef.current = readOnly;
   onSaveStateChangeRef.current = onSaveStateChange;
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
   const contentHostRef = useRef<HTMLDivElement>(null);
@@ -231,6 +256,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const titleRef = useRef(title);
   titleRef.current = title;
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
+  const tagsRef = useRef(tags);
+  tagsRef.current = tags;
   const editorApiRef = useRef<CrepeEditorApi | null>(null);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
@@ -596,25 +623,23 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       }
     };
 
+    const writeContent = async (expectedUpdatedAtMs: number | undefined): Promise<Result<{ updatedAt: number | undefined }>> => {
+      if (noteNeedsColumnsWriter(savedNoteId)) {
+        try {
+          const saved = await invoke<{ updated_at: string }>('notes_update', { note: {
+            id: savedNoteId, content_md: saveContent,
+            expected_updated_at: updatedAtToVersionToken(expectedUpdatedAtMs), capabilities: ['ds-columns-v1'],
+          } });
+          return { ok: true, value: { updatedAt: new Date(saved.updated_at).getTime() } };
+        } catch (error) {
+          return { ok: false, error: toVfsError(error) };
+        }
+      }
+      return dstu.update(node.path, saveContent, node.type, { expectedUpdatedAtMs });
+    };
     savingContentNoteIdRef.current = savedNoteId;
     try {
-      if (noteNeedsColumnsWriter(savedNoteId)) {
-        const saved = await invoke<{ updated_at: string }>('notes_update', { note: {
-          id: savedNoteId, content_md: saveContent,
-          expected_updated_at: updatedAtToVersionToken(lastKnownUpdatedAtRef.current), capabilities: ['ds-columns-v1'],
-        } }).catch(error => {
-          const failure = toVfsError(error);
-          throw Object.assign(new Error(failure.toUserMessage()), {
-            isNoteConflict: failure.code === VfsErrorCode.CONFLICT,
-            isNonRetryable: failure.code === VfsErrorCode.CONFLICT,
-          });
-        });
-        applySuccess(new Date(saved.updated_at).getTime());
-        return;
-      }
-      const result = await dstu.update(node.path, saveContent, node.type, {
-        expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
-      });
+      const result = await writeContent(lastKnownUpdatedAtRef.current ?? undefined);
       if (result.ok) {
         applySuccess(result.value.updatedAt);
         return;
@@ -643,9 +668,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setTitle(latestNode.value.name || '');
             setTags((latestNode.value.metadata?.tags as string[]) || []);
           }
-          const retry = await dstu.update(node.path, saveContent, node.type, {
-            expectedUpdatedAtMs: latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current ?? undefined,
-          });
+          const retry = await writeContent(latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current ?? undefined);
           if (retry.ok) {
             applySuccess(retry.value.updatedAt);
             return;
@@ -657,7 +680,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
         const conflictNoteId = savedNoteId;
         const conflictNotePath = node.path;
-        const conflictNoteType = node.type;
         const userVersionFull = saveContent;
         const restoreMine = () => {
           if (isViewStillCurrent()) {
@@ -681,9 +703,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           void (async () => {
             const latest = await dstu.get(conflictNotePath);
             const expected = latest.ok && latest.value ? latest.value.updatedAt : undefined;
-            const restore = await dstu.update(conflictNotePath, userVersionFull, conflictNoteType, {
-              expectedUpdatedAtMs: expected ?? undefined,
-            });
+            const restore = await writeContent(expected ?? undefined);
             if (restore.ok) showGlobalNotification('success', t('notes:actions.save_success'));
             else showGlobalNotification('error', restore.error.toUserMessage());
           })();
@@ -737,10 +757,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const previousTitle = titleRef.current;
     // C14：重命名前快照标题表（含本篇旧标题），供 [[旧标题]] 解析消歧
     const knownNotes = getWikilinkNotesCache().map((entry) => ({ id: entry.id, title: entry.title }));
-    const result = await dstu.setMetadata(
+    const { result, retried } = await setNoteMetadataWithOcc(
       node.path,
       { title: newTitle },
-      updatedAtToVersionToken(lastKnownUpdatedAtRef.current),
+      lastKnownUpdatedAtRef.current,
+      (latest) => (latest.name || '') === (previousTitle || ''),
     );
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update title:', result.error);
@@ -751,11 +772,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     if (loadingNoteIdRef.current !== savedNoteId) return;
     setTitle(newTitle);
     // C13：元数据写回也会推进 updated_at，刷新 OCC 基线避免后续正文保存误判冲突
-    void dstu.get(node.path).then((refreshed) => {
-      if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
-        updateKnownBaseline(refreshed.value.updatedAt ?? null);
-      }
-    });
+    if (!retried) {
+      void dstu.get(node.path).then((refreshed) => {
+        if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
+          updateKnownBaseline(refreshed.value.updatedAt ?? null);
+        }
+      });
+    }
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
     // C14：正文标题改名与文件树改名走同一双链维护路径（此前标题入口完全不做回写）
@@ -792,10 +815,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const handleTagsChange = useCallback(async (newTags: string[]) => {
     if (readOnly) return;
     const savedNoteId = node.id;
-    const result = await dstu.setMetadata(
+    const previousTags = tagsRef.current;
+    const { result, retried } = await setNoteMetadataWithOcc(
       node.path,
       { tags: newTags },
-      updatedAtToVersionToken(lastKnownUpdatedAtRef.current),
+      lastKnownUpdatedAtRef.current,
+      (latest) => sameTags((latest.metadata?.tags as string[] | undefined) ?? [], previousTags),
     );
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update tags:', result.error);
@@ -804,11 +829,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     }
     if (loadingNoteIdRef.current !== savedNoteId) return;
     setTags(newTags);
-    void dstu.get(node.path).then((refreshed) => {
-      if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
-        updateKnownBaseline(refreshed.value.updatedAt ?? null);
-      }
-    });
+    if (!retried) {
+      void dstu.get(node.path).then((refreshed) => {
+        if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
+          updateKnownBaseline(refreshed.value.updatedAt ?? null);
+        }
+      });
+    }
   }, [node.id, node.path, readOnly, updateKnownBaseline]);
 
   // ★ 关键修复：onEditorReady 必须是稳定引用。
@@ -817,7 +844,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 都把 editorApiRef 清空，Ctrl+S 强制保存与插入类命令随即静默失效。
   const handleEditorReady = useCallback((api: CrepeEditorApi | null) => {
     editorApiRef.current = api;
-    if (api && focusOnActiveRef.current && isActiveRef.current) {
+    // 可写的空白笔记由 NotesEditorHeader 在正文就绪后自动聚焦标题；这里先聚焦正文，标题会看到正文已有焦点而放弃。
+    // RUST-FIX(RF-W09-new-note-title-focus-yield): the Tauri frontend focused the body here unconditionally
+    const titleTakesFocus = !readOnlyRef.current && !fullContentRef.current.trim();
+    if (api && focusOnActiveRef.current && isActiveRef.current && !titleTakesFocus) {
       window.requestAnimationFrame(() => api.focus());
     }
   }, []);
@@ -1154,7 +1184,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
       {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
         <aside
-          className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background border-l border-border",
+          className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background border-l border-[var(--notes-hairline,hsl(var(--border)))]",
             propertiesOverlay ? "notes-properties-panel--overlay absolute inset-y-0 right-0 z-30 w-[min(320px,100%)] shadow-[-8px_0_24px_hsl(var(--shadow-base)/0.12)]" : "w-72 shrink-0")}
           aria-label={t('notes:contextPanel.title')}
           onKeyDown={propertiesOverlay ? (event) => {
@@ -1165,7 +1195,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setRightPanelVisible(false);
           } : undefined}
         >
-          <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
+          <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-[var(--notes-hairline,hsl(var(--border)))] px-2.5">
             <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
             <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
               <X size={13} aria-hidden="true" />

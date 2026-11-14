@@ -30,7 +30,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(
-  path.join(process.cwd(), 'src/features/learning-hub/LearningHubPage.tsx'),
+  path.join(process.cwd(), 'src/features/learning-hub/useLearningHubPageController.tsx'),
   'utf8',
 );
 
@@ -68,7 +68,7 @@ const validationLoop = section('for (const tab of restored) {', 'if (invalidIds.
 // 提交步：按归类结果重建 tabs
 const commitStep = section('setTabs(prev => {', 'return () => { cancelled = true; };', restoreEffect);
 // savePersistedTabs（P8-1）函数体（到组件定义为止，段内 localStorage.setItem 唯一）
-const saveSection = section('const savePersistedTabs', 'export const LearningHubPage');
+const saveSection = section('const savePersistedTabs', 'export function useLearningHubPageController');
 
 describe('P8-2 恢复校验：按稳定 resourceId 请求（移动/重命名不误删）', () => {
   it('requests dstu.get by /${resourceId}, never by the stale dstuPath', () => {

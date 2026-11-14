@@ -1,4 +1,18 @@
+/**
+ * 平台判定的唯一实现（FE-A5）：外壳桥（`globalThis.__DS_PLATFORM__`，见 ui-kernel/services/shell-platform.ts）
+ * 给出平台时以它为准；没有外壳桥（浏览器开发、单元测试）时按 userAgent 判定。UI 内核的平台服务读同一份外壳信息。
+ * userAgent / navigator.platform 只允许在这里和 src/platform/ 读取（ui-boundaries 门禁的 ua-sniffing 棘轮）。
+ */
+import { readShellPlatform } from '../ui-kernel/services/shell-platform';
+
+const navigatorText = (): [ua: string, pf: string] | undefined =>
+  typeof navigator === 'undefined'
+    ? undefined
+    : [(navigator.userAgent || '').toLowerCase(), (navigator.platform || '').toLowerCase()];
+
 export const getPlatform = (): string => {
+  const shellOs = readShellPlatform()?.os;
+  if (shellOs && shellOs !== 'unknown') return shellOs;
   // 检测运行环境
   if (typeof window !== 'undefined') {
     // 在浏览器环境中，使用userAgent检测
@@ -21,16 +35,18 @@ export const isMacOS = (): boolean => getPlatform() === 'macos';
 export const isWindows = (): boolean => getPlatform() === 'windows';
 export const isLinux = (): boolean => getPlatform() === 'linux';
 export const isAndroid = (): boolean => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = (navigator.userAgent || '').toLowerCase();
-  const pf = (navigator.platform || '').toLowerCase();
-  return ua.includes('android') || pf.includes('android');
+  const shell = readShellPlatform();
+  if (shell) return shell.os === 'android';
+  const text = navigatorText();
+  return !!text && (text[0].includes('android') || text[1].includes('android'));
 };
 
 export const isIOS = (): boolean => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = (navigator.userAgent || '').toLowerCase();
-  const pf = (navigator.platform || '').toLowerCase();
+  const shell = readShellPlatform();
+  if (shell) return shell.os === 'ios';
+  const text = navigatorText();
+  if (!text) return false;
+  const [ua, pf] = text;
   // iPadOS 13+ 桌面站点模式伪装成 Macintosh / MacIntel，
   // 与 isMobilePlatform 同款 maxTouchPoints 区分（真 Mac 触点数为 0）
   const isIPadOS = pf === 'macintel' && (navigator.maxTouchPoints ?? 0) > 1;
@@ -127,6 +143,67 @@ export interface AndroidSafeAreaInsets {
   native: boolean;
 }
 
+/** `env(safe-area-inset-*)` 的当前值（CSS px）。Android 15/16 的 edge-to-edge WebView 只在这里给出真实值。 */
+export interface EnvironmentSafeAreaInsets {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * 读取当前页面环境里的安全区：
+ * 1. 优先用 `env(safe-area-inset-*)`（`viewport-fit=cover` 时 Android 15/16 edge-to-edge 有值；iOS 一直有）；
+ * 2. 其次读 `:root` 上原生/壳写入的 `--safe-area-inset-*`；
+ * 3. 顶栏兜底用 `visualViewport.offsetTop`（浏览器 UI 占位时）。
+ * 四项全为 0 时返回 `null`：说明环境没有提供信息，保留调用方的固定 fallback。
+ */
+export const readEnvironmentSafeAreaInsets = (): EnvironmentSafeAreaInsets | null => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return null;
+  const parse = (value: string): number => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const env = { top: 0, bottom: 0, left: 0, right: 0 };
+  const host = document.documentElement;
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:0',
+    'width:0',
+    'height:0',
+    'visibility:hidden',
+    'pointer-events:none',
+    'padding-top:env(safe-area-inset-top,0px)',
+    'padding-bottom:env(safe-area-inset-bottom,0px)',
+    'padding-left:env(safe-area-inset-left,0px)',
+    'padding-right:env(safe-area-inset-right,0px)',
+  ].join(';');
+  try {
+    host.appendChild(probe);
+    const style = window.getComputedStyle(probe);
+    env.top = parse(style.paddingTop);
+    env.bottom = parse(style.paddingBottom);
+    env.left = parse(style.paddingLeft);
+    env.right = parse(style.paddingRight);
+  } catch {
+    // 取证失败时退回下面的 CSS 变量 / visualViewport。
+  } finally {
+    probe.remove();
+  }
+
+  const rootStyle = window.getComputedStyle(host);
+  const cssVar = (name: string): number => parse(rootStyle.getPropertyValue(name));
+  const top = Math.max(env.top, cssVar('--safe-area-inset-top'), cssVar('--safe-area-inset-block-start'), window.visualViewport?.offsetTop ?? 0);
+  const bottom = Math.max(env.bottom, cssVar('--safe-area-inset-bottom'), cssVar('--safe-area-inset-block-end'));
+  const left = Math.max(env.left, cssVar('--safe-area-inset-left'));
+  const right = Math.max(env.right, cssVar('--safe-area-inset-right'));
+  if (top === 0 && bottom === 0 && left === 0 && right === 0) return null;
+  return { top, bottom, left, right };
+};
+
 let androidSafeAreaInsets: AndroidSafeAreaInsets | null = null;
 const androidSafeAreaListeners = new Set<() => void>();
 
@@ -216,24 +293,55 @@ export const initAndroidSafeArea = (): void => {
   // - 三键导航：48dp;手势导航（小横条）：20-24dp;全面屏手势：约 34dp
   // 使用 15px 作为安全值，平衡视觉效果和系统栏遮挡;状态栏取 24px
   applySafeArea(24, 15, 0, 0, false);
+
+  // Android 15/16 的 edge-to-edge 屏幕由 WebView 的 env(safe-area-inset-*) 给出真实值；没有原生
+  // MainActivity 注入时（Capacitor 外壳）用它覆盖固定 fallback。四项全 0 说明环境还没准备好，
+  // 保留 fallback，并在下一帧再试一次（样式表/视口可能晚于脚本）。
+  const applyEnvironment = (env: EnvironmentSafeAreaInsets | null): void => {
+    if (env === null) return;
+    window.__DEEP_STUDENT_SET_SAFE_AREA__?.(
+      env.top > 0 ? env.top : 24,
+      env.bottom > 0 ? env.bottom : 15,
+      env.left,
+      env.right,
+    );
+  };
+  const environment = readEnvironmentSafeAreaInsets();
+  if (environment !== null) {
+    applyEnvironment(environment);
+    return;
+  }
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => applyEnvironment(readEnvironmentSafeAreaInsets()));
+  }
 };
 
-// 统一的移动端检测（供前端功能降级使用）
-export const isMobilePlatform = (): boolean => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = (navigator.userAgent || '').toLowerCase();
-  const pf = (navigator.platform || '').toLowerCase();
-  // iPadOS 13+ 的桌面站点模式会伪装成 Macintosh / MacIntel。
-  const isIPadOS = pf === 'macintel' && navigator.maxTouchPoints > 1;
-  return (
-    ua.includes('android') ||
-    ua.includes('iphone') ||
-    ua.includes('ipad') ||
-    ua.includes('ipod') ||
-    pf.includes('android') ||
-    pf.includes('iphone') ||
-    pf.includes('ipad') ||
-    pf.includes('ipod') ||
-    isIPadOS
-  );
-};
+// 统一的移动端检测（供前端功能降级使用）：Android 或 iOS / iPadOS（含伪装成 MacIntel 的 iPadOS 桌面站点模式）。
+export const isMobilePlatform = (): boolean => isAndroid() || isIOS();
+
+/**
+ * 是否运行在 WebUI（浏览器 / PWA）外壳里。
+ *
+ * `web/client/bootstrap.ts` 启动时写入 `globalThis.__DS_WEBUI__ = true`；
+ * `src/` 禁止 import `web/`，这是唯一的跨层信号。
+ */
+export const isWebUiShell = (): boolean =>
+  Boolean((globalThis as { __DS_WEBUI__?: unknown }).__DS_WEBUI__ === true);
+
+/**
+ * 能否用自定义流式协议读文件（`pdfstream://` / `filestream://`）。
+ *
+ * 移动端原生外壳（iOS WKWebView / Android WebView）没有这些协议；
+ * 但 WebUI 里它们落到标准 HTTP 206 端点（`/api/protocol/<scheme>/<path>`），
+ * 移动浏览器同样支持 Range 流式播放/预览。
+ */
+export const supportsStreamProtocol = (): boolean => !isMobilePlatform() || isWebUiShell();
+
+/**
+ * 原样的 navigator.userAgent / navigator.platform（不转小写、不经外壳桥），只用于诊断报告记录运行环境；
+ * 平台判定一律用上面的函数。没有 navigator 时两项都是空串。
+ */
+export const getRawUserAgentInfo = (): { userAgent: string; platform: string } =>
+  typeof navigator === 'undefined'
+    ? { userAgent: '', platform: '' }
+    : { userAgent: navigator.userAgent ?? '', platform: navigator.platform ?? '' };

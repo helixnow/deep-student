@@ -48,6 +48,7 @@ describe('exportResourceById platform handling', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('treats Android as supported and iOS as unsupported', () => {
@@ -55,6 +56,22 @@ describe('exportResourceById platform handling', () => {
     expect(isExportUnsupportedPlatform()).toBe(false);
     setUserAgent(IOS_UA);
     expect(isExportUnsupportedPlatform()).toBe(true);
+  });
+
+  it('supports browser downloads on iOS WebUI', () => {
+    setUserAgent(IOS_UA);
+    vi.stubGlobal('__DS_WEBUI__', true);
+    expect(isExportUnsupportedPlatform()).toBe(false);
+  });
+
+  it('recognizes native iPadOS desktop-mode UA while allowing the same browser in WebUI', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15',
+      platform: 'MacIntel', maxTouchPoints: 5,
+    });
+    expect(isExportUnsupportedPlatform()).toBe(true);
+    vi.stubGlobal('__DS_WEBUI__', true);
+    expect(isExportUnsupportedPlatform()).toBe(false);
   });
 
   it('exports a folder ZIP on Android through saveFromSource to a content:// target', async () => {

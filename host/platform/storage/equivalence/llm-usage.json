@@ -1,0 +1,935 @@
+{
+  "domain": "storage",
+  "commands": [
+    "llm_usage_get_trends",
+    "llm_usage_by_model",
+    "llm_usage_by_caller",
+    "llm_usage_summary",
+    "llm_usage_session_summary",
+    "llm_usage_recent",
+    "llm_usage_daily",
+    "llm_usage_cleanup"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.llm_usage.trends.granularities",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": "day"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 7,
+            "granularity": "hour"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 90,
+            "granularity": "week"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 365,
+            "granularity": "month"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.trends.unknown_granularity_defaults_day",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": "year"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": "Day"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.trends.days_bounds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 0,
+            "granularity": "day"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 4294967295,
+            "granularity": "day"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.trends.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "granularity": "day"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": -1,
+            "granularity": "day"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 4294967296,
+            "granularity": "day"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 1.5,
+            "granularity": "day"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": "30",
+            "granularity": "day"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.by_model.empty_ranges",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-10-07"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "",
+            "endDate": ""
+          }
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "not-a-date",
+            "endDate": "9999-99-99"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.by_model.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-10-07"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": null,
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": 20261106
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "start_date": "2026-10-07",
+            "end_date": "2026-11-06"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.by_caller.empty_ranges",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-10-07"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "",
+            "endDate": ""
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "not-a-date",
+            "endDate": "9999-99-99"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.by_caller.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-10-07"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": null,
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": 20261106
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "start_date": "2026-10-07",
+            "end_date": "2026-11-06"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.daily.empty_ranges",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-10-07"
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "",
+            "endDate": ""
+          }
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "not-a-date",
+            "endDate": "9999-99-99"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.daily.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-10-07"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": null,
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": 20261106
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_daily",
+          "args": {
+            "start_date": "2026-10-07",
+            "end_date": "2026-11-06"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.both_dates",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2024-02-29",
+            "endDate": "2024-02-29"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.only_start",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-10-07"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.only_end",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": null,
+            "endDate": "2026-11-06"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.no_dates_empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {}
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": null,
+            "endDate": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.unparseable_dates_fall_back",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026/10/07",
+            "endDate": "2026-02-30"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "",
+            "endDate": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.summary.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": 20261007
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "endDate": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": [
+              "2026-10-07"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.session_summary.empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": "sess_wp236_missing"
+          }
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": ""
+          }
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": "it's \"quoted\" 会话"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.session_summary.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "sessionId": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_session_summary",
+          "args": {
+            "session_id": "sess_wp236_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.recent.limits",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 20
+          }
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {}
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": null
+          }
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 4294967295
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.recent.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 2.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": "20"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.cleanup.empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": "2026-08-08"
+          }
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": ""
+          }
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": "9999-12-31"
+          }
+        },
+        {
+          "cmd": "llm_usage_summary",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.cleanup.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "beforeDate": 20260808
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "llm_usage_cleanup",
+          "args": {
+            "before_date": "2026-08-08"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.llm_usage.stats_page_load",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "llm_usage_summary",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_get_trends",
+          "args": {
+            "days": 30,
+            "granularity": "day"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_model",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_by_caller",
+          "args": {
+            "startDate": "2026-10-07",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "llm_usage_recent",
+          "args": {
+            "limit": 20
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

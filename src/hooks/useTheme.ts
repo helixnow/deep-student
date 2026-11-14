@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useEventRegistry } from './useEventRegistry';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -170,6 +171,33 @@ const LEGACY_STORAGE_KEYS = {
 
 const DEFAULT_CUSTOM_COLOR = '#6366f1';
 
+/**
+ * SQLite `settings` 中的自选色号副本。
+ *
+ * localStorage 仍是运行时权威源；SQLite 副本用于 Tauri→Electron origin 变更、
+ * Android WebView 缓存清理等 localStorage 整块丢失后的回填。
+ */
+const THEME_CUSTOM_COLOR_SETTING_KEY = 'theme_custom_color';
+
+/** 校验 #RRGGBB（回填只接受与 color input 同格式的值） */
+const isHexColor = (value: unknown): value is string =>
+  typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+
+/** 全页共享一次 SQLite 读取（多个 useTheme 实例复用同一 Promise） */
+let customColorSqliteRead: Promise<string | null> | null = null;
+
+function readCustomColorFromSettings(): Promise<string | null> {
+  if (!customColorSqliteRead) {
+    customColorSqliteRead = getSetting(THEME_CUSTOM_COLOR_SETTING_KEY)
+      .then((stored) => (isHexColor(stored) ? stored : null))
+      .catch((error: unknown) => {
+        console.warn('[useTheme] Failed to hydrate theme_custom_color:', error);
+        return null;
+      });
+  }
+  return customColorSqliteRead;
+}
+
 /** 迁移旧版存储键 */
 const migrateLegacyStorageKeys = () => {
   try {
@@ -190,6 +218,24 @@ const migrateLegacyStorageKeys = () => {
 
 const isValidPalette = (value: unknown): value is ThemePalette =>
   ALL_PALETTES.includes(value as ThemePalette);
+
+const isValidThemeMode = (value: unknown): value is ThemeMode =>
+  value === 'light' || value === 'dark' || value === 'auto';
+
+function readStoredThemeSnapshot(): Pick<ThemeState, 'mode' | 'palette' | 'customColor'> {
+  const rawMode = localStorage.getItem(STORAGE_KEYS.mode);
+  const mode: ThemeMode = isValidThemeMode(rawMode) ? rawMode : 'auto';
+  let storedPalette = localStorage.getItem(STORAGE_KEYS.palette);
+
+  // 兼容旧版：colorsafe/accessible 统一迁移到 muted
+  if (storedPalette === 'colorsafe' || storedPalette === 'accessible') {
+    storedPalette = 'muted';
+  }
+
+  const palette = isValidPalette(storedPalette) ? storedPalette : 'default';
+  const customColor = localStorage.getItem(STORAGE_KEYS.customColor) || DEFAULT_CUSTOM_COLOR;
+  return { mode, palette, customColor };
+}
 
 const DARK_CLASS = 'dark';
 
@@ -213,7 +259,7 @@ const readThemeTransitionDurationMs = (root: HTMLElement): number => {
  * prefers-reduced-motion 下直接跳过。
  */
 const runThemeSwitchTransition = (root: HTMLElement) => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   root.classList.add(THEME_TRANSITION_CLASS);
@@ -226,10 +272,101 @@ const runThemeSwitchTransition = (root: HTMLElement) => {
   }, readThemeTransitionDurationMs(root) + 50);
 };
 
+const syncedRootBackgrounds = new WeakMap<HTMLElement, string>();
+const syncedBodyBackgrounds = new WeakMap<HTMLElement, string>();
+
+function isTransparentOrEmptyColor(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === 'transparent') return true;
+  if (/^(?:rgba|hsla)\(\s*[^,]+,\s*[^,]+,\s*[^,]+,\s*0(?:\.0+)?\s*\)$/.test(normalized)) {
+    return true;
+  }
+  if (/\/\s*0(?:\.0+)?%?\s*\)$/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 采样根元素真实渲染背景色并同步浏览器外壳与状态栏颜色：
+ * - 读取 getComputedStyle(doc.documentElement).backgroundColor 真实渲染色
+ * - 移除 <meta name="theme-color"> 的 media 属性并动态更新 content（不存在则创建）
+ * - 同步 doc.documentElement.style.backgroundColor 与 doc.body.style.backgroundColor，
+ *   消除移动端状态栏与底部 Home Indicator 区域橡皮筋露白/露黑
+ */
+export function syncBrowserChromeColor(doc?: Document): string | null {
+  const targetDoc = doc ?? (typeof document !== 'undefined' ? document : undefined);
+  if (!targetDoc || !targetDoc.documentElement) {
+    return null;
+  }
+
+  const win = targetDoc.defaultView ?? (typeof window !== 'undefined' ? window : undefined);
+  if (!win || typeof win.getComputedStyle !== 'function') {
+    return null;
+  }
+
+  const root = targetDoc.documentElement;
+  const body = targetDoc.body;
+
+  // 若内联背景色由上一次 syncBrowserChromeColor 写入，先临时剥离以读取最新主题 CSS 规则；
+  // 若外部主动指定了新的内联背景色，则保留外部值直接采样
+  const prevSyncedRoot = syncedRootBackgrounds.get(root);
+  const hadOwnRootInline =
+    prevSyncedRoot !== undefined && root.style.backgroundColor === prevSyncedRoot;
+  if (hadOwnRootInline) {
+    root.style.removeProperty('background-color');
+  }
+
+  const prevSyncedBody = body ? syncedBodyBackgrounds.get(body) : undefined;
+  const hadOwnBodyInline = Boolean(
+    body && prevSyncedBody !== undefined && body.style.backgroundColor === prevSyncedBody,
+  );
+  if (body && hadOwnBodyInline) {
+    body.style.removeProperty('background-color');
+  }
+
+  let resolvedColor = win.getComputedStyle(root).backgroundColor?.trim() ?? '';
+  if (isTransparentOrEmptyColor(resolvedColor) && body) {
+    resolvedColor = win.getComputedStyle(body).backgroundColor?.trim() ?? '';
+  }
+  if (isTransparentOrEmptyColor(resolvedColor) && hadOwnRootInline && prevSyncedRoot) {
+    resolvedColor = prevSyncedRoot;
+  }
+
+  if (isTransparentOrEmptyColor(resolvedColor)) {
+    return null;
+  }
+
+  const existingMetas = Array.from(
+    targetDoc.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'),
+  );
+  if (existingMetas.length === 0) {
+    const meta = targetDoc.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    meta.setAttribute('content', resolvedColor);
+    (targetDoc.head ?? root).appendChild(meta);
+  } else {
+    for (const meta of existingMetas) {
+      meta.removeAttribute('media');
+      meta.setAttribute('content', resolvedColor);
+    }
+  }
+
+  root.style.backgroundColor = resolvedColor;
+  syncedRootBackgrounds.set(root, root.style.backgroundColor);
+
+  if (body) {
+    body.style.backgroundColor = resolvedColor;
+    syncedBodyBackgrounds.set(body, body.style.backgroundColor);
+  }
+
+  return resolvedColor;
+}
+
 /**
  * 应用主题到 DOM
  * 只设置属性和类名，颜色由 CSS 规则匹配
- * custom 调色板额外注入动态 CSS 变量
+ * custom 调色板额外注入动态 CSS 变量，并同步浏览器外壳色
  */
 const applyThemeToDom = (isDark: boolean, palette: ThemePalette, customColor?: string) => {
   const root = document.documentElement;
@@ -241,6 +378,7 @@ const applyThemeToDom = (isDark: boolean, palette: ThemePalette, customColor?: s
     runThemeSwitchTransition(root);
   }
 
+  root.setAttribute('data-boot-theme', isDark ? 'dark' : 'light');
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
   root.setAttribute('data-theme-palette', palette);
   root.dataset.themePalette = palette;
@@ -257,23 +395,20 @@ const applyThemeToDom = (isDark: boolean, palette: ThemePalette, customColor?: s
   } else {
     clearCustomThemeVars();
   }
+
+  syncBrowserChromeColor(document);
 };
 
 export const useTheme = () => {
   const [themeState, setThemeState] = useState<ThemeState>(() => {
     migrateLegacyStorageKeys();
 
-    const savedMode = (localStorage.getItem(STORAGE_KEYS.mode) as ThemeMode) || 'auto';
-    let storedPalette = localStorage.getItem(STORAGE_KEYS.palette);
-
-    // 兼容旧版：colorsafe/accessible 统一迁移到 muted
-    if (storedPalette === 'colorsafe' || storedPalette === 'accessible') {
-      storedPalette = 'muted';
-    }
-
-    const savedPalette = isValidPalette(storedPalette) ? storedPalette : 'default';
-    const savedCustomColor = localStorage.getItem(STORAGE_KEYS.customColor) || DEFAULT_CUSTOM_COLOR;
-    const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const { mode: savedMode, palette: savedPalette, customColor: savedCustomColor } =
+      readStoredThemeSnapshot();
+    const isSystemDark =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? Boolean(window.matchMedia('(prefers-color-scheme: dark)')?.matches)
+        : false;
 
     const initialIsDark = savedMode === 'dark' ? true
       : savedMode === 'light' ? false
@@ -291,7 +426,11 @@ export const useTheme = () => {
   }, [themeState]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    if (!mediaQuery) return undefined;
     const handler = (e: MediaQueryListEvent) => {
       setThemeState(prev => ({ ...prev, isSystemDark: e.matches }));
     };
@@ -307,6 +446,33 @@ export const useTheme = () => {
       } else {
         mediaQuery.removeListener?.(handler);
       }
+    };
+  }, []);
+
+  // ★ BUG-11: 自选色号 SQLite 回填 —— localStorage 是权威源，只有它缺失时才用副本
+  // （Tauri→Electron origin 变更、Android WebView 缓存清理都会让 localStorage 整块丢失）
+  useEffect(() => {
+    let cancelled = false;
+    void readCustomColorFromSettings().then((stored) => {
+      if (cancelled || !stored) return;
+      try {
+        if (localStorage.getItem(STORAGE_KEYS.customColor) !== null) return;
+        localStorage.setItem(STORAGE_KEYS.customColor, stored);
+      } catch {
+        // localStorage 不可用时仍更新内存状态
+      }
+      setThemeState(prev => {
+        if (prev.customColor === stored) return prev;
+        const next = { ...prev, customColor: stored };
+        if (prev.palette === 'custom') {
+          const isDark = prev.mode === 'dark' ? true : prev.mode === 'light' ? false : prev.isSystemDark;
+          applyThemeToDom(isDark, 'custom', stored);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -328,12 +494,37 @@ export const useTheme = () => {
     }));
   }, []);
 
+  const handleStorageChange = useCallback((event: Event) => {
+    const storageEvent = event as StorageEvent;
+    if (storageEvent.storageArea && storageEvent.storageArea !== window.localStorage) return;
+    if (
+      storageEvent.key !== null &&
+      storageEvent.key !== STORAGE_KEYS.mode &&
+      storageEvent.key !== STORAGE_KEYS.palette &&
+      storageEvent.key !== STORAGE_KEYS.customColor
+    ) {
+      return;
+    }
+    const next = readStoredThemeSnapshot();
+    setThemeState(prev => {
+      if (
+        prev.mode === next.mode &&
+        prev.palette === next.palette &&
+        prev.customColor === next.customColor
+      ) {
+        return prev;
+      }
+      return { ...prev, ...next };
+    });
+  }, []);
+
   useEventRegistry(
     [
       { target: 'window', type: 'dstu-theme-mode-changed', listener: handleThemeModeChanged },
       { target: 'window', type: 'dstu-theme-palette-changed', listener: handleThemePaletteChanged },
+      { target: 'window', type: 'storage', listener: handleStorageChange },
     ],
-    [handleThemeModeChanged, handleThemePaletteChanged],
+    [handleThemeModeChanged, handleThemePaletteChanged, handleStorageChange],
   );
 
   useEffect(() => {
@@ -372,6 +563,10 @@ export const useTheme = () => {
       localStorage.setItem(STORAGE_KEYS.customColor, color);
       localStorage.setItem(STORAGE_KEYS.palette, 'custom');
     } catch {}
+    // ★ BUG-11: 镜像到 SQLite settings，localStorage 整块丢失后仍能回填自选色号
+    void saveSetting(THEME_CUSTOM_COLOR_SETTING_KEY, color).catch((error: unknown) => {
+      console.warn('[useTheme] Failed to persist theme_custom_color:', error);
+    });
     window.dispatchEvent(
       new CustomEvent('dstu-theme-palette-changed', { detail: { palette: 'custom', customColor: color } }),
     );

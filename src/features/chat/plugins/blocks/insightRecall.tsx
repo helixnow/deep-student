@@ -12,10 +12,13 @@
 
 import React, { useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
-import { CircleNotch, Lightbulb, WarningCircle } from '@phosphor-icons/react';
+import { Lightbulb } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
+import {
+  RetrievalBlockShell,
+  RetrievalErrorNotice,
+} from './components/RetrievalBlockShell';
 import {
   convertBackendSources,
   type BackendSourceInfo,
@@ -87,8 +90,15 @@ const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, i
 
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
+  const isActive = isPending || isRunning;
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const durationMs =
+    block.startedAt && block.endedAt
+      ? block.endedAt - block.startedAt
+      : data?.durationMs;
 
   // 当前块中最高披露级别（用于头部徽章；按阶梯序取真最大值，非末条覆盖）
   const maxLevel = useMemo(() => {
@@ -103,125 +113,76 @@ const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, i
     return best;
   }, [sources]);
 
+  const statusText = useMemo(() => {
+    if (isActive) return t('blocks.insightRecall.searching', '回忆中…');
+    if (isError) return t('blocks.insightRecall.error', '召回失败');
+    if (isSuccess && sources.length > 0) {
+      return t('blocks.insightRecall.statsSimple', '{{count}} 条灵感', { count: sources.length });
+    }
+    if (isSuccess) return t('blocks.insightRecall.noResults', '没有找到相关的灵感卡');
+    return null;
+  }, [isActive, isError, isSuccess, sources.length, t]);
+
+  const levelBadge = isSuccess && maxLevel ? (
+    <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
+      {LEVEL_BADGE_KEYS[maxLevel] ? t(`blocks.insightRecall.level.${LEVEL_BADGE_KEYS[maxLevel]}`) : maxLevel}
+    </span>
+  ) : null;
+
+  const hasBody = isError || (isSuccess && sources.length > 0);
+
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
-      )}
+    <RetrievalBlockShell
+      icon={Lightbulb}
+      title={t('blocks.insightRecall.title', '灵感召回')}
+      statusText={statusText}
+      badge={levelBadge}
+      isActive={!!isActive}
+      isError={isError}
+      isSuccess={isSuccess}
+      durationMs={durationMs}
+      collapsible={hasBody}
+      isExpanded={isExpanded}
+      onToggleExpand={() => setIsExpanded((prev) => !prev)}
+      footer={
+        editing ? (
+          <InsightConfirmDialog
+            open={editing !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditing(null);
+            }}
+            initial={editing}
+            onSubmit={handleSubmit}
+            submitLabel={t('blocks.insightRecall.saveCorrection', '保存纠正')}
+          />
+        ) : null
+      }
     >
-      {/* 头部 */}
-      <div className={cn('flex items-center gap-2 px-3 py-2', 'border-b border-border/30')}>
-        <div
-          className={cn(
-            'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-amber-500/10'
-          )}
-        >
-          <Lightbulb size={16} className="text-amber-500" />
-        </div>
-
-        <span className="font-medium text-sm text-foreground">
-          {t('blocks.insightRecall.title', '灵感召回')}
-        </span>
-
-        {isSuccess && maxLevel && (
-          <span
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded-full',
-              'bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs'
-            )}
-          >
-            <Lightbulb size={12} />
-            <span>{LEVEL_BADGE_KEYS[maxLevel] ? t(`blocks.insightRecall.level.${LEVEL_BADGE_KEYS[maxLevel]}`) : maxLevel}</span>
-          </span>
-        )}
-
-        {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <CircleNotch size={12} className="animate-spin" />
-            <span>{t('blocks.insightRecall.searching', '回忆中…')}</span>
-          </span>
-        )}
-
-        {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
-            <WarningCircle size={12} />
-            <span>{t('blocks.insightRecall.error', '召回失败')}</span>
-          </span>
-        )}
-
-        {isSuccess && sources.length > 0 && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {t('blocks.insightRecall.statsSimple', '{{count}} 条灵感', { count: sources.length })}
-          </span>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className="p-3">
-        {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" />
-              <span className="text-sm">{t('blocks.insightRecall.loading', '正在翻找你的灵感卡…')}</span>
-            </div>
-          </div>
-        )}
-
-        {isError && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <WarningCircle size={20} />
-              <span className="text-sm">
-                {block.error || t('blocks.insightRecall.errorMessage', '灵感召回出错')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {isSuccess && sources.length > 0 && (
-          <>
-            <SourceList
-              sources={sources}
-              maxVisible={3}
-              defaultExpanded={false}
-              onSourceClick={handleSourceClick}
-            />
-            {maxLevel === 'existence' && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t(
-                  'blocks.insightRecall.existenceHint',
-                  '以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。'
-                )}
-              </p>
-            )}
-          </>
-        )}
-
-        {isSuccess && sources.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <span className="text-sm">
-              {t('blocks.insightRecall.noResults', '没有找到相关的灵感卡')}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {editing && (
-        <InsightConfirmDialog
-          open={editing !== null}
-          onOpenChange={(open) => {
-            if (!open) setEditing(null);
-          }}
-          initial={editing}
-          onSubmit={handleSubmit}
-          submitLabel={t('blocks.insightRecall.saveCorrection', '保存纠正')}
+      {isError && (
+        <RetrievalErrorNotice
+          message={block.error || t('blocks.insightRecall.errorMessage', '灵感召回出错')}
         />
       )}
-    </div>
+
+      {isSuccess && sources.length > 0 && (
+        <>
+          <SourceList
+            sources={sources}
+            maxVisible={3}
+            defaultExpanded={false}
+            onSourceClick={handleSourceClick}
+          />
+          {maxLevel === 'existence' && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'blocks.insightRecall.existenceHint',
+                '以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。'
+              )}
+            </p>
+          )}
+        </>
+      )}
+    </RetrievalBlockShell>
   );
 });
 

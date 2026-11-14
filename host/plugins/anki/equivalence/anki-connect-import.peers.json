@@ -1,0 +1,15 @@
+{
+  "package": "WP-233",
+  "peer": "host/plugins/anki/tests/anki-connect-peer.ts#startAnkiConnectPeer",
+  "address": "127.0.0.1:8765",
+  "scenarios": {
+    "anki.connect.import-package": {
+      "faults": {
+        "importPackage": {
+          "kind": "reply",
+          "body": "{\"result\":true,\"error\":null}"
+        }
+      }
+    }
+  }
+}

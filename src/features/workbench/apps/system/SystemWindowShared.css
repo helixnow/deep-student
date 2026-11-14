@@ -96,7 +96,7 @@
   flex-direction: column;
   gap: 14px;
   padding: 18px 16px;
-  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.35));
 }
 
 .wb-sys-skel-main {
@@ -177,7 +177,7 @@
   min-height: 0;
   overflow: hidden;
   /* 侧栏与内容之间的软分隔线：与对话窗口同源，避免同色背景下两面糊成一片 */
-  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.35));
   transition:
     width 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
     border-color 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
@@ -336,7 +336,7 @@
   justify-content: space-between;
   flex-shrink: 0;
   padding: 8px 10px 8px 14px;
-  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
 }
 
 .wb-sys-drawer-title {
@@ -362,7 +362,7 @@
 
 .wb-sys-drawer-close:hover {
   color: hsl(var(--foreground));
-  background: var(--interactive-hover, rgba(0, 0, 0, 0.08));
+  background: hsl(var(--foreground) / 0.045);
 }
 
 .wb-sys-drawer-close:focus-visible {
@@ -497,4 +497,17 @@
 :root[data-wb-material='minimal'] .wb-sys-scrim[data-open='true'],
 :root[data-wb-material='minimal'] .wb-sys-drawer-handle {
   transition-duration: 0ms;
+}
+
+/* ==== 系统应用窗口高工艺表面与排版统一 ================================= */
+
+[data-wb-sys-app] .study-shell-badge,
+[data-wb-sys-app] [data-slot='badge'] {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  [data-wb-sys-app] .desktop-shell-nav-row:not([data-active='true']):not([aria-current='page']):hover {
+    background: hsl(var(--foreground) / 0.035);
+  }
 }

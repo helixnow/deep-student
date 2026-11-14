@@ -1,0 +1,5770 @@
+{
+  "lane": "L02-llm-manager",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "call_llm_for_boundary",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4051,
+        "fn": "call_llm_for_boundary"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "prompt",
+          "rustName": "prompt",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cancel_stream",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 341,
+        "fn": "cancel_stream"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "streamEventName",
+          "rustName": "streamEventName",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cancel_translation_candidates",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/translation/candidates.rs",
+        "line": 33,
+        "fn": "cancel_translation_candidates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "check_api_config_status",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "crates/dstu-llm/src/config_recovery.rs",
+        "line": 192,
+        "fn": "check_api_config_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "estimate_tokens",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 316,
+        "fn": "estimate_tokens"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/EstimateTokensRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "fetch_vendor_models",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3106,
+        "fn": "fetch_vendor_models"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "vendorId",
+          "rustName": "vendor_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/FetchedVendorModel"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_api_configurations",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2127,
+        "fn": "get_api_configurations"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ApiConfig"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_injection_budget_config",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6913,
+        "fn": "get_injection_budget_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_model_assignments",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2175,
+        "fn": "get_model_assignments"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ModelAssignments"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_model_profiles",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2206,
+        "fn": "get_model_profiles"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ModelProfile"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_vendor_configs",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2193,
+        "fn": "get_vendor_configs"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/VendorConfig"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_get_failover_policy",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "crates/dstu-llm/src/llm_manager/routing.rs",
+        "line": 781,
+        "fn": "llm_get_failover_policy"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FailoverPolicy"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "llm_set_failover_policy",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "crates/dstu-llm/src/llm_manager/routing.rs",
+        "line": 789,
+        "fn": "llm_set_failover_policy"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "policy",
+          "rustName": "policy",
+          "schema": {
+            "$ref": "#/$defs/FailoverPolicy__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "ocr_extract_text",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/cmd/translation.rs",
+        "line": 90,
+        "fn": "ocr_extract_text"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "imagePath",
+          "rustName": "image_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "imageBase64",
+          "rustName": "image_base64",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "opencode_go_get_usage",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3311,
+        "fn": "opencode_go_get_usage"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "vendorId",
+          "rustName": "vendor_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/OpenCodeGoUsage"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "restore_default_api_configs",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "crates/dstu-llm/src/config_recovery.rs",
+        "line": 166,
+        "fn": "restore_default_api_configs"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "save_api_configurations",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2149,
+        "fn": "save_api_configurations"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "configs",
+          "rustName": "configs",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ApiConfig__De"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_model_assignments",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2182,
+        "fn": "save_model_assignments"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "assignments",
+          "rustName": "assignments",
+          "schema": {
+            "$ref": "#/$defs/ModelAssignments__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_model_profiles",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2211,
+        "fn": "save_model_profiles"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "profiles",
+          "rustName": "profiles",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ModelProfile__De"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_vendor_configs",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 2198,
+        "fn": "save_vendor_configs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "configs",
+          "rustName": "configs",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/VendorConfig__De"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "simulate_budget_allocation",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6927,
+        "fn": "simulate_budget_allocation"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "testItems",
+          "rustName": "test_items",
+          "schema": {
+            "type": "array",
+            "items": {
+              "x-rust": "serde_json::Value"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "stream_chat_translation_aligned",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/translation/chat_popover.rs",
+        "line": 16,
+        "fn": "stream_chat_translation_aligned"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/ChatTranslationRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "stream_chat_translation_plain",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/translation/chat_popover.rs",
+        "line": 26,
+        "fn": "stream_chat_translation_plain"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/ChatTranslationRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "test_deepseek_capability",
+      "lane": "L02-llm-manager",
+      "source": "host/plugins/llm/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "capability",
+          "schema": { "type": "string", "enum": ["chat_search", "chat_read_url", "chat_files", "chat_safety", "search", "fetch", "ocr", "asr"] },
+          "optional": false
+        },
+        {
+          "key": "image",
+          "schema": { "type": "string" },
+          "optional": true
+        },
+        {
+          "key": "audio",
+          "schema": { "type": "string" },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": { "type": "number" },
+      "error": { "$ref": "_shared.json#/$defs/AppError" },
+      "frontend": "app"
+    },
+    {
+      "name": "test_api_connection",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3321,
+        "fn": "test_api_connection"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "apiKey",
+          "rustName": "api_key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "apiBase",
+          "rustName": "api_base",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "apiProtocol",
+          "rustName": "api_protocol",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "supportsOpenaiResponses",
+          "rustName": "supports_openai_responses",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "providerType",
+          "rustName": "provider_type",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "providerScope",
+          "rustName": "provider_scope",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "authMode",
+          "rustName": "auth_mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "modelAdapter",
+          "rustName": "model_adapter",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "model",
+          "rustName": "model",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "vendorId",
+          "rustName": "vendor_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "headers",
+          "rustName": "headers",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "isEmbedding",
+          "rustName": "is_embedding",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "isReranker",
+          "rustName": "is_reranker",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "isImageGeneration",
+          "rustName": "is_image_generation",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "isReasoning",
+          "rustName": "is_reasoning",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "supportsReasoning",
+          "rustName": "supports_reasoning",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "enableThinking",
+          "rustName": "enable_thinking",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "thinkingBudget",
+          "rustName": "thinking_budget",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i32",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "includeThoughts",
+          "rustName": "include_thoughts",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "reasoningEffort",
+          "rustName": "reasoning_effort",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "reasoningMode",
+          "rustName": "reasoning_mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "maxOutputTokens",
+          "rustName": "max_output_tokens",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "maxTokensLimit",
+          "rustName": "max_tokens_limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "geminiApiVersion",
+          "rustName": "gemini_api_version",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ConnectionTestOutcome"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "translate_text_candidates",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/translation/candidates.rs",
+        "line": 21,
+        "fn": "translate_text_candidates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/TranslationRequest"
+          },
+          "optional": false
+        },
+        {
+          "key": "numCandidates",
+          "rustName": "num_candidates",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TranslationCandidatesResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "translate_text_stream",
+      "lane": "L02-llm-manager",
+      "rust": {
+        "file": "src/translation/mod.rs",
+        "line": 35,
+        "fn": "translate_text_stream"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/TranslationRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TranslationResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "chat_translation_{}",
+      "dynamic": true,
+      "payload": {
+        "$ref": "#/$defs/ChatTranslationEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 228,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 243,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 275,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 292,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 302,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 310,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 317,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/chat_popover.rs",
+          "line": 332,
+          "fn": "run_chat_translation",
+          "lane": "L02-llm-manager",
+          "method": "other",
+          "via": "emit_event (crates/dstu-tutor/src/translation/chat_popover.rs:199)"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2://model_assignments_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "slot"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "src/chat_v2/tools/settings_models_executor.rs",
+          "line": 412,
+          "fn": "execute_model_assignments_set",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2://model_profiles_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "vendor_id": {
+            "type": "string"
+          },
+          "profile_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "vendor_id",
+          "profile_id"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "src/chat_v2/tools/settings_models_executor.rs",
+          "line": 616,
+          "fn": "execute_model_profile_add",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2://settings_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/mcp_settings_store.rs",
+          "line": 93,
+          "fn": "emit_mcp_list_changed",
+          "lane": "L07-agent-skills-ptc",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/settings_models_executor.rs",
+          "line": 234,
+          "fn": "execute_settings_set",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2_llm_request_body",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "streamEvent": {
+            "type": "string"
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "model": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "requestBody": {
+            "x-rust": "serde_json::Value"
+          },
+          "logFilePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          }
+        },
+        "required": [
+          "streamEvent",
+          "messageId",
+          "model",
+          "url",
+          "requestBody",
+          "logFilePath"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 4002,
+          "fn": "log_and_emit_llm_request",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2_session_{}",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "eventType": {
+                "type": "string"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "variantId": {
+                "type": "string"
+              },
+              "remainingCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "newActiveVariantId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              }
+            },
+            "required": [
+              "eventType",
+              "messageId",
+              "variantId",
+              "remainingCount",
+              "newActiveVariantId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string"
+              },
+              "eventType": {
+                "type": "string"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "retryAttempt": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "retryMax": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "timestamp": {
+                "type": "integer",
+                "x-int": "i64"
+              }
+            },
+            "required": [
+              "sessionId",
+              "eventType",
+              "messageId",
+              "retryAttempt",
+              "retryMax",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/goal/mod.rs",
+          "line": 28,
+          "fn": "emit_goal_updated",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+          "line": 39,
+          "fn": "emit_goal_updated",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+          "line": 368,
+          "fn": "delete_variant_impl",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/goal_executor.rs",
+          "line": 154,
+          "fn": "emit_goal_updated",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 5152,
+          "fn": "emit_inner_retry_progress",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "deepseek_ocr_log",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "page_index": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "x-rust": "serde_json::Value"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          }
+        },
+        "required": [
+          "level",
+          "stage",
+          "page_index",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/exam_engine.rs",
+          "line": 458,
+          "fn": "emit_deepseek_debug",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "essay_grading_stream_{}",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/GradingStreamCancelled"
+          },
+          {
+            "$ref": "#/$defs/GradingStreamComplete"
+          },
+          {
+            "$ref": "#/$defs/GradingStreamData"
+          },
+          {
+            "$ref": "#/$defs/GradingStreamError"
+          },
+          {
+            "$ref": "#/$defs/GradingStreamProgress"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-tutor/src/essay_grading/events.rs",
+          "line": 39,
+          "fn": "emit_data",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/essay_grading/events.rs",
+          "line": 66,
+          "fn": "emit_complete",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/essay_grading/events.rs",
+          "line": 86,
+          "fn": "emit_progress",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/essay_grading/events.rs",
+          "line": 146,
+          "fn": "emit_error_classified",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/essay_grading/events.rs",
+          "line": 160,
+          "fn": "emit_cancelled",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "llm-failover",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "from_config_id": {
+            "type": "string"
+          },
+          "from_model": {
+            "type": "string"
+          },
+          "to_config_id": {
+            "type": "string"
+          },
+          "to_model": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "user_pinned": {
+            "type": "boolean"
+          },
+          "temporary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task",
+          "kind",
+          "from_config_id",
+          "from_model",
+          "to_config_id",
+          "to_model",
+          "reason",
+          "attempt",
+          "total",
+          "user_pinned",
+          "temporary"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/routing.rs",
+          "line": 709,
+          "fn": "run_with_failover",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "mcp-bridge-tools-request",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "correlationId"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 8240,
+          "fn": "request_frontend_mcp_tools",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "stream_error",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "stream_event": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "stream_event",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7179,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "translation_candidates_{}",
+      "dynamic": true,
+      "payload": {
+        "$ref": "#/$defs/TranslationCandidatesEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-tutor/src/translation/candidates.rs",
+          "line": 69,
+          "fn": "emit_candidates_event",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "translation_stream_{}",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TranslationEvent"
+          },
+          {
+            "$ref": "#/$defs/TranslationStreamCancelled"
+          },
+          {
+            "$ref": "#/$defs/TranslationStreamComplete"
+          },
+          {
+            "$ref": "#/$defs/TranslationStreamData"
+          },
+          {
+            "$ref": "#/$defs/TranslationStreamError"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-tutor/src/translation/events.rs",
+          "line": 56,
+          "fn": "emit_application_event",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/events.rs",
+          "line": 98,
+          "fn": "emit_data",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/events.rs",
+          "line": 120,
+          "fn": "emit_complete",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/events.rs",
+          "line": 143,
+          "fn": "emit_error",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-tutor/src/translation/events.rs",
+          "line": 154,
+          "fn": "emit_cancelled",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}_cancelled",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 6728,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_error",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "type": "string"
+              },
+              "stream_event": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "error",
+              "stream_event",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7045,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7175,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_id",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string"
+          },
+          "stream_event": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "stream_event",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 6614,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_memory_sources",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "x-rust": "serde_json::Value"
+                }
+              },
+              "tool_name": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "tool_name",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stage": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "stage"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5350,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5409,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 5997,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_rag_sources",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "x-rust": "serde_json::Value"
+            }
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sources",
+          "tool_name",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5338,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5397,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}_reasoning",
+      "dynamic": true,
+      "payload": {
+        "x-rust": "serde_json::Value"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 6831,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7410,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_safety_blocked",
+      "dynamic": true,
+      "payload": {
+        "x-rust": "serde_json::Value"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7019,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_start",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "request_bytes": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "request_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 6284,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_truncated",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "content_len": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "reasoning_len": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "chunk_count": {
+            "type": "integer",
+            "x-int": "i32",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "stream_event": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "error",
+          "content_len",
+          "reasoning_len",
+          "chunk_count",
+          "stream_event",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7155,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_usage",
+      "dynamic": true,
+      "payload": {
+        "x-rust": "serde_json::Value"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 6980,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "{}_web_search",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "x-rust": "serde_json::Value"
+                }
+              },
+              "stage": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "stage",
+              "tool_name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "x-rust": "serde_json::Value"
+                }
+              },
+              "tool_name": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "tool_name",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "x-rust": "serde_json::Value"
+              },
+              "stage": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "stage",
+              "tool_name"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5324,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5384,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7004,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "crates/dstu-mcp/src/tools/mod.rs",
+          "line": 1141,
+          "fn": "invoke",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "ApiConfig": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "vendorId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vendorName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "providerType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "providerScope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "authMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsOpenaiResponses": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "isMultimodal": {
+          "type": "boolean"
+        },
+        "isReasoning": {
+          "type": "boolean"
+        },
+        "isEmbedding": {
+          "type": "boolean"
+        },
+        "isReranker": {
+          "type": "boolean"
+        },
+        "isImageGeneration": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "modelAdapter": {
+          "type": "string"
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "temperature": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "supportsTools": {
+          "type": "boolean"
+        },
+        "geminiApiVersion": {
+          "type": "string"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingBudget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "includeThoughts": {
+          "type": "boolean"
+        },
+        "minP": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enableThinking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsReasoning": {
+          "type": "boolean"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topPOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "frequencyPenaltyOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "presencePenaltyOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "repetitionPenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningSplit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "verbosity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "extraBody": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "resolvedAdapterId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "vendorId",
+        "vendorName",
+        "providerType",
+        "providerScope",
+        "authMode",
+        "apiProtocol",
+        "supportsOpenaiResponses",
+        "apiKey",
+        "baseUrl",
+        "model",
+        "isMultimodal",
+        "isReasoning",
+        "isEmbedding",
+        "isReranker",
+        "isImageGeneration",
+        "enabled",
+        "modelAdapter",
+        "maxOutputTokens",
+        "temperature",
+        "supportsTools",
+        "geminiApiVersion",
+        "isBuiltin",
+        "isReadOnly",
+        "reasoningEffort",
+        "reasoningMode",
+        "thinkingEnabled",
+        "thinkingBudget",
+        "includeThoughts",
+        "minP",
+        "topK",
+        "enableThinking",
+        "supportsReasoning",
+        "headers",
+        "topPOverride",
+        "frequencyPenaltyOverride",
+        "presencePenaltyOverride",
+        "repetitionPenalty",
+        "reasoningSplit",
+        "effort",
+        "verbosity",
+        "isFavorite",
+        "maxTokensLimit",
+        "contextWindow",
+        "extraBody",
+        "resolvedAdapterId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::llm_config::ApiConfig"
+    },
+    "ApiConfig__De": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "vendorId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vendorName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "providerType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "providerScope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "authMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsOpenaiResponses": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "isMultimodal": {
+          "type": "boolean"
+        },
+        "isReasoning": {
+          "type": "boolean"
+        },
+        "isEmbedding": {
+          "type": "boolean"
+        },
+        "isReranker": {
+          "type": "boolean"
+        },
+        "isImageGeneration": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "modelAdapter": {
+          "type": "string"
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "temperature": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "supports_tools": {
+          "type": "boolean",
+          "x-aliases": [
+            "supports_tools"
+          ]
+        },
+        "supportsTools": {
+          "type": "boolean",
+          "x-aliases": [
+            "supports_tools"
+          ]
+        },
+        "geminiApiVersion": {
+          "type": "string"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingBudget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "includeThoughts": {
+          "type": "boolean"
+        },
+        "minP": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enableThinking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsReasoning": {
+          "type": "boolean"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topPOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "frequencyPenaltyOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "presencePenaltyOverride": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "repetitionPenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningSplit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "verbosity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "context_window"
+          ]
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "context_window"
+          ]
+        },
+        "extraBody": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "apiKey",
+        "baseUrl",
+        "model",
+        "isMultimodal",
+        "isReasoning",
+        "isEmbedding",
+        "isReranker",
+        "enabled"
+      ],
+      "x-rust": "dstu_core::llm_config::ApiConfig"
+    },
+    "ChatTranslationEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "chunk"
+            },
+            "delta": {
+              "type": "string"
+            },
+            "accumulated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "delta"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "complete"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "cancelled"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_tutor::translation::chat_popover::ChatTranslationEvent"
+    },
+    "ChatTranslationRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "src_lang": {
+          "type": "string"
+        },
+        "tgt_lang": {
+          "type": "string"
+        },
+        "context_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "context_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "request_id",
+        "source",
+        "src_lang",
+        "tgt_lang"
+      ],
+      "x-rust": "dstu_tutor::translation::chat_popover::ChatTranslationRequest"
+    },
+    "ConnectionTestOutcome": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "latencyMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "ok",
+        "latencyMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::commands::ConnectionTestOutcome"
+    },
+    "EstimateTokensRequest": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "texts"
+      ],
+      "x-rust": "deep_student_lib::commands::EstimateTokensRequest"
+    },
+    "FailoverPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "autoDegradeChat": {
+          "type": "boolean"
+        },
+        "defaultFallbacks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taskFallbacks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "x-key-order": "unspecified"
+        },
+        "purposeModels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "keyCooldownSecs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rateLimitBackoffMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "enabled",
+        "autoDegradeChat",
+        "defaultFallbacks",
+        "taskFallbacks",
+        "purposeModels",
+        "keyCooldownSecs",
+        "rateLimitBackoffMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::llm_manager::routing::FailoverPolicy"
+    },
+    "FailoverPolicy__De": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "autoDegradeChat": {
+          "type": "boolean"
+        },
+        "defaultFallbacks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taskFallbacks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "x-key-order": "unspecified"
+        },
+        "purposeModels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "keyCooldownSecs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rateLimitBackoffMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "x-rust": "dstu_llm::llm_manager::routing::FailoverPolicy"
+    },
+    "FetchedVendorModel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "maxOutputTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::commands::FetchedVendorModel"
+    },
+    "GradingStreamCancelled": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingStreamCancelled"
+    },
+    "GradingStreamComplete": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "round_id": {
+          "type": "string"
+        },
+        "grading_result": {
+          "type": "string"
+        },
+        "overall_score": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "parsed_score": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "round_id",
+        "grading_result",
+        "overall_score",
+        "parsed_score",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingStreamComplete"
+    },
+    "GradingStreamData": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "chunk": {
+          "type": "string"
+        },
+        "char_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "type",
+        "chunk",
+        "char_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingStreamData"
+    },
+    "GradingStreamError": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingStreamError"
+    },
+    "GradingStreamProgress": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "char_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "type",
+        "stage",
+        "char_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingStreamProgress"
+    },
+    "ModelAssignments": {
+      "type": "object",
+      "properties": {
+        "model2_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "review_analysis_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "anki_card_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qbank_ai_grading_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qbank_ai_generation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "embedding_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reranker_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "chat_title_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "exam_sheet_ocr_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "translation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vl_embedding_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vl_reranker_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memory_decision_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "voice_input_asr_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "image_generation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "compaction_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "translation_display_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "model2_config_id",
+        "review_analysis_model_config_id",
+        "anki_card_model_config_id",
+        "qbank_ai_grading_model_config_id",
+        "qbank_ai_generation_model_config_id",
+        "embedding_model_config_id",
+        "reranker_model_config_id",
+        "chat_title_model_config_id",
+        "exam_sheet_ocr_model_config_id",
+        "translation_model_config_id",
+        "vl_embedding_model_config_id",
+        "vl_reranker_model_config_id",
+        "memory_decision_model_config_id",
+        "voice_input_asr_model_config_id",
+        "image_generation_model_config_id",
+        "compaction_model_config_id",
+        "translation_display_mode"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::ModelAssignments"
+    },
+    "ModelAssignments__De": {
+      "type": "object",
+      "properties": {
+        "model2_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "review_analysis_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "anki_card_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qbank_ai_grading_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qbank_ai_generation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "embedding_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reranker_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "chat_title_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "exam_sheet_ocr_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "translation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vl_embedding_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "vl_reranker_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memory_decision_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "voice_input_asr_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "image_generation_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "compaction_model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "translation_display_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_core::models::ModelAssignments"
+    },
+    "ModelProfile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "vendorId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "providerScope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "modelAdapter": {
+          "type": "string"
+        },
+        "isMultimodal": {
+          "type": "boolean"
+        },
+        "isReasoning": {
+          "type": "boolean"
+        },
+        "isEmbedding": {
+          "type": "boolean"
+        },
+        "isReranker": {
+          "type": "boolean"
+        },
+        "isImageGeneration": {
+          "type": "boolean"
+        },
+        "supportsTools": {
+          "type": "boolean"
+        },
+        "supportsReasoning": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "temperature": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingBudget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "includeThoughts": {
+          "type": "boolean"
+        },
+        "enableThinking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "minP": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "geminiApiVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "repetitionPenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningSplit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "verbosity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "extraBody": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "vendorId",
+        "label",
+        "model",
+        "providerScope",
+        "apiProtocol",
+        "modelAdapter",
+        "isMultimodal",
+        "isReasoning",
+        "isEmbedding",
+        "isReranker",
+        "isImageGeneration",
+        "supportsTools",
+        "supportsReasoning",
+        "status",
+        "enabled",
+        "maxOutputTokens",
+        "temperature",
+        "reasoningEffort",
+        "reasoningMode",
+        "thinkingEnabled",
+        "thinkingBudget",
+        "includeThoughts",
+        "enableThinking",
+        "minP",
+        "topK",
+        "geminiApiVersion",
+        "isBuiltin",
+        "repetitionPenalty",
+        "reasoningSplit",
+        "effort",
+        "verbosity",
+        "isFavorite",
+        "maxTokensLimit",
+        "contextWindow",
+        "extraBody"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::llm_manager::ModelProfile"
+    },
+    "ModelProfile__De": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "vendorId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "providerScope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "modelAdapter": {
+          "type": "string"
+        },
+        "isMultimodal": {
+          "type": "boolean"
+        },
+        "isReasoning": {
+          "type": "boolean"
+        },
+        "isEmbedding": {
+          "type": "boolean"
+        },
+        "isReranker": {
+          "type": "boolean"
+        },
+        "isImageGeneration": {
+          "type": "boolean"
+        },
+        "supportsTools": {
+          "type": "boolean"
+        },
+        "supportsReasoning": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "temperature": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingBudget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "includeThoughts": {
+          "type": "boolean"
+        },
+        "enableThinking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "minP": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "geminiApiVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "repetitionPenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningSplit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "verbosity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "context_window"
+          ]
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "context_window"
+          ]
+        },
+        "extraBody": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "vendorId",
+        "label",
+        "model"
+      ],
+      "x-rust": "dstu_llm::llm_manager::ModelProfile"
+    },
+    "OpenCodeGoUsage": {
+      "type": "object",
+      "properties": {
+        "windows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OpenCodeGoUsageWindow"
+          }
+        }
+      },
+      "required": [
+        "windows"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::llm_manager::opencode_go::OpenCodeGoUsage"
+    },
+    "OpenCodeGoUsageWindow": {
+      "type": "object",
+      "properties": {
+        "window": {
+          "type": "string"
+        },
+        "usedPercent": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "resetsAtMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "window",
+        "usedPercent",
+        "resetsAtMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::llm_manager::opencode_go::OpenCodeGoUsageWindow"
+    },
+    "TranslationCandidate": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "label": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "index",
+        "label",
+        "text"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationCandidate"
+    },
+    "TranslationCandidatesEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "candidate_data"
+            },
+            "candidate_index": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "label": {
+              "type": "string"
+            },
+            "delta": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "candidate_index",
+            "label",
+            "delta"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "candidate_complete"
+            },
+            "candidate_index": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "label": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "candidate_index",
+            "label",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "candidate_error"
+            },
+            "candidate_index": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "label": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "candidate_index",
+            "label",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "complete"
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TranslationCandidate"
+              }
+            },
+            "detected_lang": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "candidates"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "cancelled"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_tutor::translation::types::TranslationCandidatesEvent"
+    },
+    "TranslationCandidatesResponse": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranslationCandidate"
+          }
+        },
+        "detected_lang": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "candidates",
+        "cancelled",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationCandidatesResponse"
+    },
+    "TranslationEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "data"
+            },
+            "chunk": {
+              "type": "string"
+            },
+            "delta": {
+              "type": "string"
+            },
+            "char_count": {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            "word_count": {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            "detected_lang": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "segment_index": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "x-int": "u64",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "segment_total": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "x-int": "u64",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "chunk",
+            "delta",
+            "char_count",
+            "word_count"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "complete"
+            },
+            "id": {
+              "type": "string"
+            },
+            "translated_text": {
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "detected_lang": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "translated_text",
+            "created_at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "retriable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "message",
+            "code",
+            "retriable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "cancelled"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_translation_core::wire::TranslationEvent"
+    },
+    "TranslationRequest": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "src_lang": {
+          "type": "string"
+        },
+        "tgt_lang": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "prompt_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "formality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "glossary": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "text",
+        "src_lang",
+        "tgt_lang",
+        "session_id"
+      ],
+      "x-rust": "dstu_translation_core::wire::TranslationRequest"
+    },
+    "TranslationResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "translated_text": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "translated_text",
+        "created_at",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_translation_core::wire::TranslationResponse"
+    },
+    "TranslationStreamCancelled": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationStreamCancelled"
+    },
+    "TranslationStreamComplete": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "translated_text": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "detected_lang": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "translated_text",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationStreamComplete"
+    },
+    "TranslationStreamData": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "chunk": {
+          "type": "string"
+        },
+        "delta": {
+          "type": "string"
+        },
+        "char_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "word_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "detected_lang": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "segment_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "segment_total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "type",
+        "chunk",
+        "delta",
+        "char_count",
+        "word_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationStreamData"
+    },
+    "TranslationStreamError": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "retriable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::translation::types::TranslationStreamError"
+    },
+    "VendorConfig": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "providerType": {
+          "type": "string"
+        },
+        "authMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsOpenaiResponses": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "apiKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "rateLimitPerMinute": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "defaultTimeoutMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "websiteUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "providerType",
+        "authMode",
+        "apiProtocol",
+        "supportsOpenaiResponses",
+        "baseUrl",
+        "apiKey",
+        "apiKeys",
+        "headers",
+        "rateLimitPerMinute",
+        "defaultTimeoutMs",
+        "notes",
+        "isBuiltin",
+        "isReadOnly",
+        "sortOrder",
+        "maxTokensLimit",
+        "websiteUrl"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::llm_manager::VendorConfig"
+    },
+    "VendorConfig__De": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "providerType": {
+          "type": "string"
+        },
+        "authMode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "apiProtocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "supportsOpenaiResponses": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "apiKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "rateLimitPerMinute": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "defaultTimeoutMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isBuiltin": {
+          "type": "boolean"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxTokensLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "websiteUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "providerType",
+        "baseUrl",
+        "apiKey"
+      ],
+      "x-rust": "dstu_llm::llm_manager::VendorConfig"
+    }
+  }
+}

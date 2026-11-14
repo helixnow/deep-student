@@ -12,57 +12,57 @@
  * - 旧的数组常量导出保留兼容，新代码请使用函数版本。
  */
 
-/** 节点文字颜色 - 快速选择（右键菜单 / 大纲菜单，亮色模式） */
+/** 节点文字颜色 - 快速选择（矿物墨水色，亮底对比度 >= 4.8:1，彻底消灭刺眼亮黄） */
 export const QUICK_TEXT_COLORS = [
-  '#ef4444', // Red
-  '#f97316', // Orange
-  '#eab308', // Yellow
-  '#22c55e', // Green
-  '#3b82f6', // Blue
-  '#a855f7', // Purple
-  '#ec4899', // Pink
+  '#a8433b', // 赤陶墨红 Terracotta Ink
+  '#b0622b', // 赭石暖橙 Ochre Ink
+  '#8a681d', // 古铜琥珀 Bronze Amber (contrast >= 4.9:1 on light card)
+  '#2a6f5e', // 青瓷松绿 Celadon Pine
+  '#2c5e8a', // 黛蓝矿石 Slate Indigo
+  '#5e4b8b', // 烟紫矿石 Muted Amethyst
+  '#944664', // 胭脂梅紫 Plum Rose
 ] as const;
 
-/** 节点文字颜色 - 快速选择（暗色模式：提亮一档，深底可读） */
+/** 节点文字颜色 - 快速选择（暗色模式：温润矿物亮色，深底清晰可读） */
 export const QUICK_TEXT_COLORS_DARK = [
-  '#f87171', // Red
-  '#fb923c', // Orange
-  '#facc15', // Yellow
-  '#4ade80', // Green
-  '#60a5fa', // Blue
-  '#c084fc', // Purple
-  '#f472b6', // Pink
+  '#e08a82', // Soft Terracotta
+  '#e4a372', // Soft Ochre
+  '#d6ba6c', // Soft Amber
+  '#68b5a0', // Soft Celadon
+  '#74a9d4', // Soft Slate Blue
+  '#a594cf', // Soft Amethyst
+  '#d18ba4', // Soft Plum Rose
 ] as const;
 
-/** 节点背景高亮颜色 - 快速选择（右键菜单 / 大纲菜单，亮色模式） */
+/** 节点背景微染颜色 - 快速选择（亮色模式：浅赤陶、暖羊皮、云母米、青瓷绿、冰瓷蓝、烟紫雾、云母灰） */
 export const QUICK_BG_COLORS = [
-  '#fecaca', // Red
-  '#fed7aa', // Orange
-  '#fef08a', // Yellow
-  '#bbf7d0', // Green
-  '#bfdbfe', // Blue
-  '#e9d5ff', // Purple
-  '#fbcfe8', // Pink
+  '#f4e6e4', // 浅赤陶 Soft Terracotta
+  '#f5eae0', // 暖羊皮 Warm Parchment
+  '#f3efe2', // 云母暖米 Mica Ochre
+  '#e6f0ec', // 青瓷绿 Celadon Mist
+  '#e7eef4', // 冰瓷蓝 Porcelain Blue
+  '#edebf4', // 烟紫雾 Amethyst Haze
+  '#eaecef', // 云母灰 Mica Slate
 ] as const;
 
-/** 暗色模式 - 节点背景高亮颜色（深色调变体） */
+/** 暗色模式 - 节点背景微染颜色（低饱和深矿石微染） */
 export const QUICK_BG_COLORS_DARK = [
-  '#991b1b', // Red-900
-  '#9a3412', // Orange-900
-  '#854d0e', // Yellow-900
-  '#166534', // Green-900
-  '#1e3a5f', // Blue-900
-  '#581c87', // Purple-900
-  '#831843', // Pink-900
+  '#362423', // Dark Terracotta
+  '#36291f', // Dark Parchment
+  '#332e20', // Dark Ochre
+  '#1d322c', // Dark Celadon
+  '#1e2d3a', // Dark Porcelain
+  '#2a2638', // Dark Amethyst
+  '#25292e', // Dark Mica Slate
 ] as const;
 
 /** 节点文字颜色 - 完整列表（样式面板 - 亮色模式） */
 export const FULL_TEXT_COLORS = [
   'inherit',
-  '#000000',
-  '#37352f',
-  '#4a5568',
-  '#718096',
+  '#182220',
+  '#2c3533',
+  '#4a5855',
+  '#6e7d79',
   ...QUICK_TEXT_COLORS,
 ] as const;
 
@@ -70,27 +70,27 @@ export const FULL_TEXT_COLORS = [
 export const FULL_BG_COLORS = [
   'transparent',
   '#ffffff',
-  '#f8f9fa',
-  '#e9ecef',
+  '#f7f9f8',
+  '#eef2f0',
   ...QUICK_BG_COLORS,
 ] as const;
 
 /** 节点文字颜色 - 完整列表（样式面板 - 暗色模式） */
 export const FULL_TEXT_COLORS_DARK = [
   'inherit',
-  '#ffffff',
-  '#e0e0e0',
-  '#a0aec0',
-  '#718096',
+  '#f2f7f5',
+  '#dce5e2',
+  '#9bafa9',
+  '#6e807b',
   ...QUICK_TEXT_COLORS_DARK,
 ] as const;
 
 /** 节点背景颜色 - 完整列表（样式面板 - 暗色模式） */
 export const FULL_BG_COLORS_DARK = [
   'transparent',
-  '#2d2d2d',
-  '#363636',
-  '#404040',
+  '#19211f',
+  '#212b28',
+  '#2a3633',
   ...QUICK_BG_COLORS_DARK,
 ] as const;
 
@@ -139,21 +139,21 @@ interface BranchCurve {
 }
 
 const LIGHT_BRANCH_CURVE: BranchCurve = {
-  saturation: 62,
-  lightness: 44,
-  saturationStep: -9,
-  lightnessStep: 6,
-  minSaturation: 26,
-  maxLightness: 68,
+  saturation: 35,
+  lightness: 42,
+  saturationStep: -5,
+  lightnessStep: 5,
+  minSaturation: 22,
+  maxLightness: 64,
 };
 
 const DARK_BRANCH_CURVE: BranchCurve = {
-  saturation: 68,
+  saturation: 38,
   lightness: 64,
-  saturationStep: -9,
+  saturationStep: -5,
   lightnessStep: 4,
-  minSaturation: 30,
-  maxLightness: 80,
+  minSaturation: 24,
+  maxLightness: 78,
 };
 
 /**

@@ -814,12 +814,12 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
             )}
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
               {(task?.authoringResult?.document.materials || []).map(material=>(
-                <section key={material.local_id || material.id} className="border-l-2 border-border px-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
+                <section key={material.local_id || material.id} className="rounded-r-xl border-l-2 border-primary/35 bg-foreground/[0.025] pl-3.5 pr-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
               ))}
               {drafts.map((draft, index) => (
                 <label
                   key={index}
-                  className="flex items-start gap-2.5 rounded-md border border-border p-2.5 cursor-pointer hover:bg-muted/30"
+                  className="flex items-start gap-3 rounded-xl border border-border/45 bg-card/40 p-3 cursor-pointer transition-colors hover:border-border/70 hover:bg-foreground/[0.03]"
                 >
                   <input
                     type="checkbox"
@@ -828,17 +828,17 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                     className="mt-1 h-4 w-4 accent-primary flex-shrink-0"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="rounded bg-muted px-1.5 py-px text-2xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                         {t(`exam_sheet:questionTypes.${draft.question_type}`, draft.question_type)}
                       </span>
                       {draft.difficulty && (
-                        <span className="rounded bg-muted px-1.5 py-px text-2xs text-muted-foreground">
+                        <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                           {t(`exam_sheet:questionBank.difficulty.${draft.difficulty}`, draft.difficulty)}
                         </span>
                       )}
                       {draft.tags?.slice(0, 3).map((tag) => (
-                        <span key={tag} className="rounded bg-primary/10 px-1.5 py-px text-2xs text-primary">
+                        <span key={tag} className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                           {tag}
                         </span>
                       ))}

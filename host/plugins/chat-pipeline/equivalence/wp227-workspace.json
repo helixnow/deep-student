@@ -1,0 +1,276 @@
+{
+  "domain": "chat-session",
+  "commands": ["workspace_get", "workspace_close", "workspace_delete", "workspace_set_context", "workspace_get_context", "workspace_list_documents", "workspace_get_document", "workspace_list_all", "workspace_run_agent", "workspace_cancel_agent", "workspace_manual_wake", "workspace_cancel_sleep", "workspace_restore_executions", "workspace_list_agent_profiles", "workspace_read_agent_profile_file", "workspace_save_agent_profile_file", "workspace_delete_agent_profile_file"],
+  "scenarios": [
+    {
+      "id": "chat-session.wp227.workspace.creator_lifecycle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "期末复习工作区" } } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_creator" } },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "plan", "value": { "chapters": ["力学", "热学"], "deadline": "2026-12-31", "done": false } } },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "plan" } },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "plan", "value": "改为只复习力学\n第二行" } },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "plan" } },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "空值键", "value": null } },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "空值键" } },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "key": "missing_key" } },
+        { "cmd": "workspace_list_documents", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_get_document", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "documentId": "doc_wp227_missing" } },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_close", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_creator" } },
+        { "cmd": "workspace_close", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.delete_active_with_agents",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": null } } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": {} } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "coordinator" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "skill_id": "explorer", "initial_task": null } } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_creator" } },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_creator" } },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${3.agent_session_id}" } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${1.workspace_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.membership_and_roles",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "成员权限" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "coordinator", "skill_id": null, "initial_task": null, "system_prompt": null } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "skill_id": "worker" } } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}", "key": "plan" }, "expect": "error" },
+        { "cmd": "workspace_list_documents", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_get_document", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}", "documentId": "doc_wp227_any" }, "expect": "error" },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}", "agentSessionId": "${2.agent_session_id}" }, "expect": "error" },
+        { "cmd": "workspace_cancel_sleep", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}", "sleepId": "sleep_wp227_any" }, "expect": "error" },
+        { "cmd": "workspace_manual_wake", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_outsider", "sleep_id": "sleep_wp227_any", "message": null } }, "expect": "error" },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "agent_session_id": "${2.agent_session_id}", "requester_session_id": "sess_wp227_ws_outsider", "reminder": null } }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}", "key": "plan", "value": "越权写入" }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "${2.agent_session_id}", "workspaceId": "${0.workspace_id}", "key": "plan", "value": "worker 写入" }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}", "key": "plan", "value": { "by": "coordinator" } } },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "${2.agent_session_id}", "workspaceId": "${0.workspace_id}", "key": "plan" } },
+        { "cmd": "workspace_get", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_list_documents", "args": { "sessionId": "${2.agent_session_id}", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_get_document", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}", "documentId": "doc_wp227_missing" } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_outsider" } },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "${2.agent_session_id}" } },
+        { "cmd": "workspace_close", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_close", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_outsider", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_delete", "args": { "sessionId": "${2.agent_session_id}", "workspaceId": "${0.workspace_id}" }, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.invalid_and_missing_ids",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "../escape" }, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws a b" }, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "" }, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing" }, "expect": "error" },
+        { "cmd": "workspace_close", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing" }, "expect": "error" },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing" }, "expect": "error" },
+        { "cmd": "workspace_delete", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "../escape" }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "key": "plan", "value": 1 }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws/slash", "key": "plan", "value": 1 }, "expect": "error" },
+        { "cmd": "workspace_get_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "key": "plan" }, "expect": "error" },
+        { "cmd": "workspace_list_documents", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing" }, "expect": "error" },
+        { "cmd": "workspace_get_document", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "documentId": "doc_x" }, "expect": "error" },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing" }, "expect": "error" },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "agentSessionId": "agent_wp227_x" }, "expect": "error" },
+        { "cmd": "workspace_cancel_sleep", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "sleepId": "sleep_x" }, "expect": "error" },
+        { "cmd": "workspace_manual_wake", "args": { "request": { "workspace_id": "ws_wp227_missing", "requester_session_id": "sess_wp227_ws_creator", "sleep_id": "sleep_x" } }, "expect": "error" },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "ws_wp227_missing", "agent_session_id": "agent_wp227_x", "requester_session_id": "sess_wp227_ws_creator" } }, "expect": "error" },
+        { "cmd": "workspace_list_all", "args": { "sessionId": "sess_wp227_ws_creator" } },
+        { "cmd": "workspace_list_all", "args": {}, "expect": "error" },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator" }, "expect": "error" },
+        { "cmd": "workspace_set_context", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "ws_wp227_missing", "key": "plan" }, "expect": "error" },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "ws_wp227_missing" } }, "expect": "error" },
+        { "cmd": "workspace_manual_wake", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.run_agent_idle_and_noop_controls",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "空闲 worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "coordinator" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "skill_id": "explorer", "initial_task": null } } },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "agent_session_id": "${2.agent_session_id}", "requester_session_id": "sess_wp227_ws_creator", "reminder": null } } },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "agent_session_id": "${2.agent_session_id}", "requester_session_id": "sess_wp227_ws_creator" } } },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "agent_session_id": "${1.agent_session_id}", "requester_session_id": "sess_wp227_ws_creator", "reminder": "请继续" } }, "expect": "error" },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "agent_session_id": "agent_wp227_missing", "requester_session_id": "sess_wp227_ws_creator", "reminder": null } }, "expect": "error" },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "agentSessionId": "${2.agent_session_id}" } },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}", "agentSessionId": "agent_wp227_missing" } },
+        { "cmd": "workspace_manual_wake", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "sleep_id": "sleep_wp227_missing", "message": "醒醒\n第二行" } } },
+        { "cmd": "workspace_manual_wake", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "${1.agent_session_id}", "sleep_id": "sleep_wp227_missing" } } },
+        { "cmd": "workspace_cancel_sleep", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}", "sleepId": "sleep_wp227_missing" } },
+        { "cmd": "workspace_cancel_sleep", "args": { "sessionId": "${2.agent_session_id}", "workspaceId": "${0.workspace_id}", "sleepId": "" } },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "${1.agent_session_id}", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${0.workspace_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.run_agent_reminder_answer",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp227-ws-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "wp227-ws-answer" } } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "提醒运行" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${2.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "skill_id": "worker", "initial_task": null } } },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${2.workspace_id}", "agent_session_id": "${3.agent_session_id}", "requester_session_id": "sess_wp227_ws_creator", "reminder": "请汇报当前进度" } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${3.agent_session_id}" } },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}", "agentSessionId": "${3.agent_session_id}" } },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.cancel_running_worker",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp227-ws-hold", "name": "WP227 hold", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/interrupt.hold-after-partial/v1", "model": "wp227-hold", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "wp227-ws-hold" } } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "取消运行中 worker" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${2.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "skill_id": "worker", "initial_task": "整理第一章错题" } } },
+        { "cmd": "workspace_run_agent", "args": { "request": { "workspace_id": "${2.workspace_id}", "agent_session_id": "${3.agent_session_id}", "requester_session_id": "sess_wp227_ws_creator", "reminder": "重复触发" } } },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}", "agentSessionId": "${3.agent_session_id}" } },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}", "agentSessionId": "${3.agent_session_id}" } },
+        { "cmd": "workspace_restore_executions", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}" } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${3.agent_session_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.workspace.close_cancels_running_worker",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp227-ws-hold", "name": "WP227 hold", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/interrupt.hold-after-partial/v1", "model": "wp227-hold", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "wp227-ws-hold" } } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp227_ws_creator", "request": { "name": "关闭时取消" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${2.workspace_id}", "requester_session_id": "sess_wp227_ws_creator", "role": "worker", "initial_task": "长任务" } } },
+        { "cmd": "workspace_close", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}" } },
+        { "cmd": "workspace_get", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}" } },
+        { "cmd": "workspace_cancel_agent", "args": { "sessionId": "sess_wp227_ws_creator", "workspaceId": "${2.workspace_id}", "agentSessionId": "${3.agent_session_id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.agent_profiles.crud",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_list_agent_profiles", "args": {} },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "paper-summarizer.md" }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "paper-summarizer.md", "content": "---\nname: paper-summarizer\ndescription: 论文摘要\nbase: explorer\n---\n# 论文摘要员\n正文。\n", "overwrite": false } },
+        { "cmd": "workspace_list_agent_profiles", "args": {} },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "paper-summarizer.md" } },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "paper-summarizer.md", "content": "---\nname: paper-summarizer\n---\n第二版\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": " paper-summarizer.md ", "content": "---\nname: paper-summarizer\ndescription: 第二版\nreasoning_effort: \"high\"\n---\n第二版\n", "overwrite": true } },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "paper-summarizer.md" } },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "dup-a.md", "content": "---\nname: paper-summarizer\n---\n同名档案\n", "overwrite": false } },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "no-desc-2.md", "content": "---\r\nname: quiz-maker\r\nbase: worker\r\n---\r\n", "overwrite": false } },
+        { "cmd": "workspace_list_agent_profiles", "args": {} },
+        { "cmd": "workspace_delete_agent_profile_file", "args": { "fileName": "paper-summarizer.md" } },
+        { "cmd": "workspace_delete_agent_profile_file", "args": { "fileName": "paper-summarizer.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "paper-summarizer.md" }, "expect": "error" },
+        { "cmd": "workspace_list_agent_profiles", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.agent_profiles.file_name_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "paper.txt" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": ".md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "Paper.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "../escape.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "a_b.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "con.md" } , "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "../escape.md", "content": "---\nname: escape-test\n---\n", "overwrite": true }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "论文.md", "content": "---\nname: escape-test\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_delete_agent_profile_file", "args": { "fileName": "sub/dir.md" }, "expect": "error" },
+        { "cmd": "workspace_delete_agent_profile_file", "args": { "fileName": "missing-file.md" }, "expect": "error" },
+        { "cmd": "workspace_read_agent_profile_file", "args": {}, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "x.md", "content": "---\nname: x-test\n---\n" }, "expect": "error" },
+        { "cmd": "workspace_list_agent_profiles", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.agent_profiles.content_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-empty.md", "content": "", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-nofm.md", "content": "# 没有 frontmatter\nname: x\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-unclosed.md", "content": "---\nname: unclosed\n正文\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-noname.md", "content": "---\ndescription: 无名\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-blankname.md", "content": "---\nname:   \n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-upper.md", "content": "---\nname: Paper_Bot\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-builtin.md", "content": "---\nname: explorer\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-builtin2.md", "content": "---\nname: default\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-base.md", "content": "---\nname: bad-base\nbase: coordinator\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-perm.md", "content": "---\nname: bad-perm\npermissions: full\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-ctx.md", "content": "---\nname: bad-ctx\ncontextInheritance: all\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "bad-effort.md", "content": "---\nname: bad-effort\nreasoning_effort: max\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "", "content": "", "overwrite": true }, "expect": "error" },
+        { "cmd": "workspace_list_agent_profiles", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.agent_profiles.model_checks",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-persona-chat", "name": "WP227 persona chat", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-chat", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true },
+          { "id": "wp227-persona-off", "name": "WP227 persona disabled", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-off", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": false },
+          { "id": "wp227-persona-embed", "name": "WP227 persona embedding", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-embed", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": true, "isReranker": false, "enabled": true }
+        ] } },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "model-missing.md", "content": "---\nname: model-missing\nmodel: wp227-persona-none\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "model-off.md", "content": "---\nname: model-off\nmodel: wp227-persona-off\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "model-embed.md", "content": "---\nname: model-embed\nmodel: wp227-persona-embed\n---\n", "overwrite": false }, "expect": "error" },
+        { "cmd": "workspace_save_agent_profile_file", "args": { "fileName": "model-ok.md", "content": "---\nname: model-ok\nmodel: wp227-persona-chat\nbase: worker\nreasoning_effort: low\n---\n# 绑定模型\n", "overwrite": false } },
+        { "cmd": "workspace_list_agent_profiles", "args": {} },
+        { "cmd": "workspace_read_agent_profile_file", "args": { "fileName": "model-ok.md" } },
+        { "cmd": "workspace_delete_agent_profile_file", "args": { "fileName": "model-ok.md" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

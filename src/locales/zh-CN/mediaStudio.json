@@ -67,10 +67,13 @@
   },
   "empty": {
     "title": "导入第一节课",
-    "transcribe": "转写与字幕：一键把讲课转成带时间的字幕，边看边搜、点字幕跳到那一刻。",
-    "ask": "边看边问：就这门课提问，回答带 [媒体@时间] 引用，点一下回到原处。",
-    "review": "讲义与练习：生成图文讲义笔记，按讲到的时刻制作闪卡、出练习题。",
-    "subtitleNote": "已有字幕文件（.srt / .vtt / B 站字幕 .json）？导入音视频后在行菜单选「导入字幕文件」，免去转写费用。"
+    "transcribeTitle": "转写与字幕",
+    "transcribe": "转写成带时间的字幕，搜索后直接跳到对应片段。",
+    "askTitle": "边看边问",
+    "ask": "就课程提问，从回答引用跳回原片段。",
+    "reviewTitle": "讲义与练习",
+    "review": "把课程内容整理为讲义、闪卡和练习。",
+    "subtitleNote": "已有字幕？导入音视频后，可从行菜单添加 .srt、.vtt 或 B 站字幕 .json。"
   },
   "drawer": {
     "recent": "最近在看",
@@ -200,5 +203,13 @@
   },
   "chapters": {
     "title": "章节 {{current}}/{{total}}"
+  },
+  "interop": {
+    "auto_excerpt": "划选即入图",
+    "auto_excerpt_hint": "开启后，点选字幕片段即自动送入当前导图或笔记",
+    "drag_cue": "拖拽引用此片段",
+    "backlink_mindmap": "{{count}} 导图",
+    "backlink_flashcard": "{{count}} 闪卡",
+    "backlink_note": "{{count}} 笔记"
   }
 }

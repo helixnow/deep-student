@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
+import { GroupTitle } from './settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { presetToMcpConfig } from '@/mcp/presetMcpServers';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
@@ -55,7 +56,6 @@ interface McpToolsSectionProps {
   onTestServer: (server: McpServer) => void | Promise<void>;
   testStep?: string | null;
   onReconnect: () => void;
-  onRefreshRegistry: () => void;
   onHealthCheck: () => void;
   onClearCache: () => void;
   onOpenPolicy: () => void;
@@ -84,7 +84,6 @@ export function McpToolsSection({
   onTestServer,
   testStep,
   onReconnect,
-  onRefreshRegistry,
   onHealthCheck,
   onClearCache,
   onOpenPolicy,
@@ -190,16 +189,16 @@ export function McpToolsSection({
             suffix={`/ ${cacheCapacity}`}
             status={totalCachedTools > 0 ? 'success' : 'neutral'}
           />
-          <div className="p-2 transition-colors">
+                      <div className="p-2 transition-colors">
             <div className="text-xs text-muted-foreground mb-1">{t('settings:mcp_server_list.prompts_resources')}</div>
             <div className="flex items-center gap-3">
               <div>
-                <span className="text-lg font-semibold text-foreground">{promptsCount}</span>
+                <span className="text-lg font-semibold tabular-nums text-foreground">{promptsCount}</span>
                 <span className="text-2xs text-muted-foreground ml-1">P</span>
               </div>
               <div className="w-px h-6 bg-border/60" />
               <div>
-                <span className="text-lg font-semibold text-foreground">{resourcesCount}</span>
+                <span className="text-lg font-semibold tabular-nums text-foreground">{resourcesCount}</span>
                 <span className="text-2xs text-muted-foreground ml-1">R</span>
               </div>
             </div>
@@ -222,50 +221,47 @@ export function McpToolsSection({
           </div>
         )}
 
-        {/* 操作栏 */}
-        <div className="flex min-w-0 flex-col items-stretch gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <h3 className="text-base font-semibold text-foreground flex-shrink-0">{t('settings:mcp_server_list.server_list')}</h3>
-          <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:gap-2 lg:w-auto lg:justify-end">
-            <ActionMenu
-              onReconnect={onReconnect}
-              onRefresh={onRefreshRegistry}
-              onHealthCheck={onHealthCheck}
-              onClearCache={onClearCache}
-              onOpenPolicy={onOpenPolicy}
-            />
-            <PresetServerSelector
-              existingServerIds={servers.map(s => s.id)}
-              onAddPreset={(preset, options) => {
-                const config = presetToMcpConfig(preset, options);
-                void onAddServer(config);
-              }}
-            />
-            {/* 移动端：新增入口收进统一顶栏（Settings.tsx rightActions），
-                卡片头部只留次级操作，避免三按钮换行拥挤；桌面端保持行内新建表单 */}
-            {!isSmallScreen && (
-            <DsButton
-              onClick={() => {
-                setIsAddingNew(true);
-                setExpandedPanels(new Map()); // 关闭其他展开的面板
-              }}
-              disabled={isAddingNew}
-              variant="primary"
-              size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              {t('settings:mcp.add_server')}
-            </DsButton>
-            )}
-          </div>
-        </div>
-
         {/* 服务器列表 */}
+        <section className="min-w-0">
+          <GroupTitle
+            title={t('settings:mcp_server_list.server_list')}
+            actions={
+              <>
+                <ActionMenu
+                  onReconnect={onReconnect}
+                  onHealthCheck={onHealthCheck}
+                  onClearCache={onClearCache}
+                  onOpenPolicy={onOpenPolicy}
+                />
+                <PresetServerSelector
+                  existingServerIds={servers.map(s => s.id)}
+                  onAddPreset={(preset, options) => {
+                    const config = presetToMcpConfig(preset, options);
+                    void onAddServer(config);
+                  }}
+                />
+                {/* 移动端：新增入口收进统一顶栏（Settings.tsx rightActions），
+                    卡片头部只留次级操作，避免三按钮换行拥挤；桌面端保持行内新建表单 */}
+                {!isSmallScreen && (
+                  <DsButton
+                    onClick={() => {
+                      setIsAddingNew(true);
+                      setExpandedPanels(new Map()); // 关闭其他展开的面板
+                    }}
+                    disabled={isAddingNew}
+                    variant="primary"
+                    size="sm"
+                    className="[@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    {t('settings:mcp.add_server')}
+                  </DsButton>
+                )}
+              </>
+            }
+          />
 
-        {/* 选项 ①：MCP 危险模式全局开关（红色危险区） */}
-        <McpDangerZoneSection />
-
-        <div className="space-y-2">
+          <div className="space-y-2">
           {totalServers === 0 && !isAddingNew ? (
             <div className="rounded-2xl bg-muted">
               <EmptyServerList onAdd={() => {
@@ -335,13 +331,17 @@ export function McpToolsSection({
               />
             </div>
           )}
-        </div>
+          </div>
+        </section>
+
+        {/* 选项 ①：MCP 危险模式全局开关（红色危险区） */}
+        <McpDangerZoneSection />
 
         {/* Prompts & Resources 详情（可选展示） */}
         {(promptsCount > 0 || resourcesCount > 0) && (
-          <div className="mt-8 pt-6 border-t border-border/40">
-            <h3 className="text-sm font-medium text-foreground mb-4">{t('settings:mcp_server_list.prompts_resources_section')}</h3>
-            <div className="grid gap-6 lg:grid-cols-2">
+          <section className="min-w-0">
+            <GroupTitle title={t('settings:mcp_server_list.prompts_resources_section')} />
+            <div className="rounded-2xl bg-muted p-4 grid gap-6 lg:grid-cols-2">
               {/* Prompts */}
               <div className="space-y-3">
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:mcp_server_list.latest_prompts')}</div>
@@ -375,35 +375,41 @@ export function McpToolsSection({
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {/* 工具权限管理：默认折叠，展开后才挂载整段权限 DOM（~750 节点） */}
-        <div className="mt-8 border-t border-border/40 pt-6">
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setPermissionsExpanded((open) => !open)}
-            className="!h-auto !px-1 !py-1.5 [@media(pointer:coarse)]:!min-h-11 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
-            aria-expanded={permissionsExpanded}
-            aria-controls="settings-tool-permissions"
-          >
-            <CaretRight
-              className={cn('h-3.5 w-3.5 shrink-0 transition-transform', permissionsExpanded && 'rotate-90')}
-              aria-hidden
-            />
-            {t('settings:tool_permissions.title')}
-            {!permissionsExpanded && (
-              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                {t('common:expand', { defaultValue: 'Expand' })}
-              </span>
-            )}
-          </DsButton>
+        <section className="min-w-0">
+          <GroupTitle
+            title={t('settings:tool_permissions.title')}
+            actions={
+              <DsButton
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPermissionsExpanded((open) => !open)}
+                className="[@media(pointer:coarse)]:!min-h-11 gap-1.5"
+                aria-expanded={permissionsExpanded}
+                aria-controls="settings-tool-permissions"
+              >
+                <CaretRight
+                  className={cn('h-3.5 w-3.5 shrink-0 transition-transform', permissionsExpanded && 'rotate-90')}
+                  aria-hidden
+                />
+                <span>
+                  {permissionsExpanded
+                    ? t('common:collapse', { defaultValue: 'Collapse' })
+                    : t('common:expand', { defaultValue: 'Expand' })}
+                </span>
+              </DsButton>
+            }
+          />
           {permissionsExpanded ? (
-            <ToolPermissionsSection toolsByServer={toolsByServer} embedded />
+            <div className="rounded-2xl bg-muted p-4">
+              <ToolPermissionsSection toolsByServer={toolsByServer} embedded />
+            </div>
           ) : null}
-        </div>
+        </section>
       </div>
     </SettingSection>
   );

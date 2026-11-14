@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -11,9 +12,9 @@ import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
-  FileZip, X, FloppyDisk, FileText, ChartBar, BookOpen, Brain, Database,
-  Crosshair, TrendUp, Tag, Pulse, Lightning, WarningCircle, ArrowUpRight,
-  ArrowDownRight, SpinnerGap, Image, Info, Cloud
+  FileZip, FloppyDisk, FileText,
+  ArrowUpRight,
+  ArrowDownRight, SpinnerGap, Cloud
 } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/shad/Card';
@@ -32,7 +33,6 @@ import {
 import { Badge } from './ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/shad/Tabs';
 import { Input } from './ui/shad/Input';
-import { ImportConversationDialog } from './ImportConversationDialog';
 import { SyncSettingsSection } from '@/features/settings/components/SyncSettingsSection';
 import { SettingSection } from '@/features/settings/components/SettingsCommon';
 import { HeaderTemplate } from './HeaderTemplate';
@@ -251,7 +251,7 @@ const StatCard = ({
       </div>
 
       {/* 数值 */}
-      <div className="text-2xl font-semibold text-foreground mb-1">
+      <div className="text-2xl font-semibold tabular-nums text-foreground mb-1">
         {displayValue}
         {isEstimated && (
           <span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -893,6 +893,16 @@ ${resolvedPath}`);
 
       const restoreJob = await DataGovernanceApi.restoreBackup(backupId);
       const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
+      // ★ BUG-15: 恢复后的 settings 里带着 webview.localstorage.backup 快照，
+      // 立刻回填缺失的 localStorage 键，避免 UI 偏好要等下次启动才生效。
+      try {
+        const restored = await TauriAPI.hydrateWebviewSettingsFromBackup();
+        if (restored > 0) {
+          debugLog.log(`[DataImportExport] 已从备份回填 ${restored} 个 WebView 设置键`);
+        }
+      } catch (hydrateError) {
+        debugLog.warn('[DataImportExport] WebView 设置回填失败:', hydrateError);
+      }
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
         restoreRequiresRestart = true;
@@ -991,6 +1001,17 @@ ${resolvedPath}`);
       setRestoreProgress(null);
       const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
       const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
+
+      // ★ BUG-15: 恢复后的 settings 里带着 webview.localstorage.backup 快照，
+      // 立刻回填缺失的 localStorage 键，避免 UI 偏好要等下次启动才生效。
+      try {
+        const restored = await TauriAPI.hydrateWebviewSettingsFromBackup();
+        if (restored > 0) {
+          debugLog.log(`[DataImportExport] 已从备份回填 ${restored} 个 WebView 设置键`);
+        }
+      } catch (hydrateError) {
+        debugLog.warn('[DataImportExport] WebView 设置回填失败:', hydrateError);
+      }
 
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
@@ -1171,6 +1192,8 @@ ${resolvedPath}`);
     return formatStorageFromKB(totalBytes / 1024);
   }, [enhancedStats, formatStorageFromKB]);
 
+  useRefreshOnReturn(() => { void loadBackupList(); void loadDataSpaceInfo(); });
+
   // 初始化加载
   React.useEffect(() => {
     loadBackupList();
@@ -1187,13 +1210,13 @@ ${resolvedPath}`);
   const executeClearAllData = async () => {
     // 防止重复执行
     if (isClearing) {
-      debugLog.log('⚠️ 清空操作正在进行中，跳过重复请求');
+      debugLog.log('[DataImportExport] 清空操作正在进行中，跳过重复请求');
       return;
     }
     
     setIsClearing(true);
     try {
-      debugLog.log('🚀 开始物理删除所有数据库文件');
+      debugLog.log('[DataImportExport] 开始物理删除所有数据库文件');
       showGlobalNotification('info', t('data:clear_data.in_progress'));
       
       // 使用新的物理删除方法，直接删除所有数据库文件
@@ -1203,7 +1226,7 @@ ${resolvedPath}`);
         'purge database files'
       );
       
-      debugLog.log('✅ 数据库文件删除结果:', result);
+      debugLog.log('[DataImportExport] 数据库文件删除结果:', result);
       setShowClearDataDialog(false);
       
       const mobile = isMobileRuntime();
@@ -1259,7 +1282,7 @@ ${resolvedPath}`);
   const handleRunIntegrityCheck = async () => {
     try {
       const result = await DataGovernanceApi.runHealthCheck();
-      debugLog.log('🧪 完整性检查结果:', result);
+      debugLog.log('[DataImportExport] 完整性检查结果:', result);
       if (result.overall_healthy) {
         showGlobalNotification('success', t('data:integrity.passed', { count: result.total_databases }));
       } else {
@@ -1359,7 +1382,6 @@ ${resolvedPath}`);
             title={t('data:header.title')}
             subtitle={t('data:header.subtitle')}
             onExport={handleExport}
-            onRefresh={loadBackupList}
             isRefreshing={isLoadingBackups}
             refreshingText={t('data:header.refreshing_text')}
 />
@@ -1411,7 +1433,7 @@ ${resolvedPath}`);
               <ChatV2StatsSection />
               
               {/* LLM 使用统计 */}
-              <div className="border-t border-border/40">
+              <div>
                 <LlmUsageStatsSection days={30} sessionTrends={chatStats.dailyActivity} />
               </div>
             </div>
@@ -1420,9 +1442,6 @@ ${resolvedPath}`);
 
         {(mode === 'all' || mode === 'manage') && (
           <>
-            {/* 分隔线 */}
-            {mode === 'all' && <div className="border-t border-border/40 my-8"></div>}
-
             {/* 数据管理部分标题 - 仅在 all 模式桌面端显示；移动端顶栏已是「数据管理」，页内不重复 */}
             {mode === 'all' && !isSmallScreen && (
             <div className="mb-6">
@@ -1436,13 +1455,6 @@ ${resolvedPath}`);
           {/* 导出 */}
           <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                {isExporting ? (
-                  <ArrowsClockwise className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
-                ) : (
-                  <Upload className={DATA_CENTER_ICON_CLASS} />
-                )}
-              </div>
               <CardTitle className="text-base">{t('data:actions.export_title')}</CardTitle>
               <CardDescription>{t('data:actions.export_description')}</CardDescription>
             </CardHeader>
@@ -1533,9 +1545,6 @@ ${resolvedPath}`);
           {/* 导入 */}
           <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                <DownloadSimple className={DATA_CENTER_ICON_CLASS} />
-              </div>
               <CardTitle className="text-base">{t('data:actions.import_title')}</CardTitle>
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
@@ -1567,9 +1576,6 @@ ${resolvedPath}`);
           {/* 🎯 导入对话（新增）*/}
           <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                <Brain className={DATA_CENTER_ICON_CLASS} />
-              </div>
               <CardTitle className="text-base">{t('chat_host:import.dialog_title')}</CardTitle>
               <CardDescription>
                 {t('chat_host:import.format_hint')}
@@ -1595,9 +1601,6 @@ ${resolvedPath}`);
           {/* 云存储配置 */}
           <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                <Cloud className={DATA_CENTER_ICON_CLASS} />
-              </div>
               <CardTitle className="text-base">{t('cloudStorage:title')}</CardTitle>
               <CardDescription>
                 {t('cloudStorage:description')}
@@ -1691,8 +1694,7 @@ ${resolvedPath}`);
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-4">
-                    <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
-                      <Warning className={DATA_CENTER_ICON_SM_CLASS} />
+                    <h3 className="text-base font-semibold text-foreground">
                       {t('data:usage_tips_title')}
                     </h3>
                     <div className="space-y-3">
@@ -1705,7 +1707,7 @@ ${resolvedPath}`);
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-muted p-6">
+                  <div className="rounded-xl bg-background/60 p-5">
                     <h3 className="text-base font-semibold text-foreground">{t('data:data_space.title')}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {t('data:data_space.description')}
@@ -1738,10 +1740,6 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <DsButton variant="outline" onClick={loadDataSpaceInfo} className="sm:w-auto [@media(pointer:coarse)]:!min-h-11">
-                        <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
-                        {t('data:data_space.refresh_button')}
-                      </DsButton>
                       <DsButton
                         className="sm:w-auto [@media(pointer:coarse)]:!min-h-11"
                         onClick={async () => {
@@ -1761,7 +1759,7 @@ ${resolvedPath}`);
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl bg-muted p-6">
+                    <div className="rounded-xl bg-background/60 p-5">
                       <h3 className="text-base font-semibold text-foreground">{t('data:integrity.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
@@ -1772,7 +1770,7 @@ ${resolvedPath}`);
                       </DsButton>
                     </div>
 
-                    <div className="rounded-2xl bg-muted p-6">
+                    <div className="rounded-xl bg-background/60 p-5">
                       <h3 className="text-base font-semibold text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
                       <DsButton variant="outline" className="mt-4 !text-destructive [@media(pointer:coarse)]:!min-h-11" onClick={handleClearAllData}>

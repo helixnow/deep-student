@@ -9,7 +9,7 @@ import type { ExamSheetProgressEvent } from '../utils/tauriApi';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import { multimodalRagService } from '../services/multimodalRagService';
 import i18n from '@/i18n';
-import { emitExamSheetDebug } from '../debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import { emitExamSheetDebug } from '@/shared/debug/channels/examSheetProcessing';
 
 /**
  * 异步触发多模态索引（不阻塞题目识别主流程）。

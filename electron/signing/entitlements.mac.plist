@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 正式发布（Developer ID + hardened runtime），主程序与全部 helper 共用。V8 / WebAssembly 需要 MAP_JIT。 -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- 语音输入（src-tauri/Entitlements.plist 同项；用途说明见 Info.plist NSMicrophoneUsageDescription）。 -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>

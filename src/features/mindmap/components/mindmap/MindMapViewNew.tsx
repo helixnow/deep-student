@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { MindMapCanvas, type MindMapCanvasHandle, type MindMapCanvasProps } from './MindMapCanvas';
+import { MindMapGhostProposalLayer } from '../agent/MindMapGhostProposalLayer';
 
 export type MindMapViewNewHandle = MindMapCanvasHandle;
 export type MindMapViewNewProps = MindMapCanvasProps;
 
 export const MindMapViewNew = React.forwardRef<MindMapViewNewHandle, MindMapViewNewProps>(
   function MindMapViewNew(props, ref) {
+    const hostRef = useRef<HTMLDivElement>(null);
     return (
-      <div className="w-full h-full relative">
+      <div ref={hostRef} className="w-full h-full relative">
         <MindMapCanvas ref={ref} {...props} />
-        {/* 结构选择器已移至顶部工具栏 */}
+        <MindMapGhostProposalLayer hostRef={hostRef} />
       </div>
     );
   },

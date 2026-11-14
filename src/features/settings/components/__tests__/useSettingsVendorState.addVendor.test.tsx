@@ -52,6 +52,39 @@ const createDeps = (overrides: Partial<Parameters<typeof useSettingsVendorState>
 });
 
 describe('useSettingsVendorState add vendor flow', () => {
+  it.each([false, true])('closes the mobile model editor only after a successful save (success: %s)', async (saveSucceeds) => {
+    const vendor: VendorConfig = {
+      id: 'vendor-custom',
+      name: 'Custom',
+      providerType: 'custom',
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: '',
+    };
+    const deps = createDeps({
+      vendors: [vendor],
+      isSmallScreen: true,
+      upsertModelProfile: saveSucceeds
+        ? vi.fn().mockResolvedValue({})
+        : vi.fn().mockRejectedValue(new Error('save failed')),
+    });
+    const { result } = renderHook(() => useSettingsVendorState(deps));
+    act(() => result.current.handleOpenModelEditor(vendor));
+    const draft = { ...result.current.modelEditor!.api, model: 'custom-model' };
+
+    await act(async () => {
+      await result.current.handleSaveModelProfileAndClose(draft);
+    });
+
+    expect(deps.upsertModelProfile).toHaveBeenCalledTimes(1);
+    if (saveSucceeds) {
+      expect(result.current.modelEditor).toBeNull();
+      expect(deps.closeRightPanel).toHaveBeenCalledTimes(1);
+    } else {
+      expect(result.current.modelEditor).not.toBeNull();
+      expect(deps.closeRightPanel).not.toHaveBeenCalled();
+    }
+  });
+
   it('opens the add-vendor form without immediately persisting a default vendor', () => {
     const deps = createDeps();
     const { result } = renderHook(() => useSettingsVendorState(deps));

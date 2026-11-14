@@ -1,0 +1,2972 @@
+{
+  "lightweight": {
+    "plugins": {
+      "default": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "all-off": {
+        "first": [
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "all-on": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "wikilink-config": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "host:getNotes",
+                "resolve": "host:resolve",
+                "maxSuggestions": 5
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "wikilink-partial": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": "host:resolve",
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "mention-config": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": "host:searchNotes",
+                "maxSuggestions": 3,
+                "debounceMs": 50
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "columns-ignored": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      }
+    },
+    "slashMenu": {
+      "zh-CN": {
+        "config": {
+          "blockHandle": {
+            "getOffset": "function"
+          },
+          "groups": {
+            "textGroup": {
+              "label": "文本",
+              "text": {
+                "label": "普通文本"
+              },
+              "h1": {
+                "label": "一级标题"
+              },
+              "h2": {
+                "label": "二级标题"
+              },
+              "h3": {
+                "label": "三级标题"
+              },
+              "h4": {
+                "label": "四级标题"
+              },
+              "h5": {
+                "label": "五级标题"
+              },
+              "h6": {
+                "label": "六级标题"
+              },
+              "quote": {
+                "label": "引用"
+              },
+              "divider": {
+                "label": "分隔线"
+              }
+            },
+            "listGroup": {
+              "label": "列表",
+              "bulletList": {
+                "label": "无序列表"
+              },
+              "orderedList": {
+                "label": "有序列表"
+              },
+              "taskList": {
+                "label": "任务列表"
+              }
+            },
+            "advancedGroup": {
+              "label": "高级",
+              "image": {
+                "label": "图片"
+              },
+              "codeBlock": {
+                "label": "代码块"
+              },
+              "table": {
+                "label": "表格"
+              },
+              "math": {
+                "label": "数学公式"
+              }
+            }
+          }
+        },
+        "groups": [
+          {
+            "key": "text",
+            "label": "文本",
+            "items": [
+              {
+                "key": "text",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "paragraph",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h1",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-1",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h2",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-2",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h3",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-3",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h4",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-4",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h5",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-5",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h6",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-6",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "quote",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "quote",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "divider",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "hr",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "list",
+            "label": "列表",
+            "items": [
+              {
+                "key": "bullet-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "bullet-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "ordered-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "ordered-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "task-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "task-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "advanced",
+            "label": "高级",
+            "items": [
+              {
+                "key": "image",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "image",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "code-block",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "table",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "table",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "math",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "math",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "callout",
+                "label": "高亮块",
+                "icon": "10c303f3c96574e6",
+                "run": [
+                  {
+                    "command": "insert-callout",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "toggle",
+                "label": "折叠块",
+                "icon": "5f9d486c8d84e55a",
+                "run": [
+                  {
+                    "command": "insert-toggle",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "note-layout",
+            "label": "页面布局",
+            "items": [
+              {
+                "key": "insert-columns",
+                "label": "插入双列",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "insert-cornell",
+                "label": "插入康奈尔布局",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-columns",
+                "label": "转为双列",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell",
+                "label": "转为康奈尔布局",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell-template",
+                "label": "转换康奈尔模板",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell-template",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "unwrap-columns",
+                "label": "展开为普通块",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "unwrap-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "config": {
+          "blockHandle": {
+            "getOffset": "function"
+          },
+          "groups": {
+            "textGroup": {
+              "label": "Text",
+              "text": {
+                "label": "Text"
+              },
+              "h1": {
+                "label": "Heading 1"
+              },
+              "h2": {
+                "label": "Heading 2"
+              },
+              "h3": {
+                "label": "Heading 3"
+              },
+              "h4": {
+                "label": "Heading 4"
+              },
+              "h5": {
+                "label": "Heading 5"
+              },
+              "h6": {
+                "label": "Heading 6"
+              },
+              "quote": {
+                "label": "Quote"
+              },
+              "divider": {
+                "label": "Divider"
+              }
+            },
+            "listGroup": {
+              "label": "List",
+              "bulletList": {
+                "label": "Bullet List"
+              },
+              "orderedList": {
+                "label": "Ordered List"
+              },
+              "taskList": {
+                "label": "Task List"
+              }
+            },
+            "advancedGroup": {
+              "label": "Advanced",
+              "image": {
+                "label": "Image"
+              },
+              "codeBlock": {
+                "label": "Code Block"
+              },
+              "table": {
+                "label": "Table"
+              },
+              "math": {
+                "label": "Math"
+              }
+            }
+          }
+        },
+        "groups": [
+          {
+            "key": "text",
+            "label": "Text",
+            "items": [
+              {
+                "key": "text",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "paragraph",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h1",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-1",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h2",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-2",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h3",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-3",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h4",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-4",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h5",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-5",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h6",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-6",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "quote",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "quote",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "divider",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "hr",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "list",
+            "label": "List",
+            "items": [
+              {
+                "key": "bullet-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "bullet-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "ordered-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "ordered-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "task-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "task-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "advanced",
+            "label": "Advanced",
+            "items": [
+              {
+                "key": "image",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "image",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "code-block",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "table",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "table",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "math",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "math",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "callout",
+                "label": "Callout",
+                "icon": "10c303f3c96574e6",
+                "run": [
+                  {
+                    "command": "insert-callout",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "toggle",
+                "label": "Toggle",
+                "icon": "5f9d486c8d84e55a",
+                "run": [
+                  {
+                    "command": "insert-toggle",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "note-layout",
+            "label": "Page layout",
+            "items": [
+              {
+                "key": "insert-columns",
+                "label": "Insert two columns",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "insert-cornell",
+                "label": "Insert Cornell layout",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-columns",
+                "label": "Convert to two columns",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell",
+                "label": "Convert to Cornell layout",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell-template",
+                "label": "Convert Cornell template",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell-template",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "unwrap-columns",
+                "label": "Unwrap into regular blocks",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "unwrap-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "kernel": {
+    "plugins": {
+      "default": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "all-off": {
+        "first": [
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "all-on": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "wikilink-config": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "host:getNotes",
+                "resolve": "host:resolve",
+                "maxSuggestions": 5
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "wikilink-partial": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": "host:resolve",
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "mention-config": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": "host:searchNotes",
+                "maxSuggestions": 3,
+                "debounceMs": 50
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      },
+      "columns-ignored": {
+        "first": [
+          {
+            "plugin": "automd"
+          },
+          {
+            "plugin": "searchHighlight"
+          },
+          {
+            "plugin": "agentHighlight"
+          },
+          {
+            "plugin": "pasteLink",
+            "args": []
+          },
+          {
+            "plugin": "callout",
+            "args": []
+          },
+          {
+            "plugin": "toggle",
+            "args": []
+          },
+          {
+            "plugin": "wikilink",
+            "args": [
+              {
+                "getNotes": "defaultWikilinkGetNotes",
+                "resolve": null,
+                "maxSuggestions": null
+              }
+            ]
+          },
+          {
+            "plugin": "mention",
+            "args": [
+              {
+                "searchNotes": null,
+                "maxSuggestions": null,
+                "debounceMs": null
+              }
+            ]
+          },
+          {
+            "plugin": "imageLightbox",
+            "args": []
+          },
+          {
+            "plugin": "linkKeymap",
+            "args": []
+          },
+          {
+            "plugin": "internalLinkSchema"
+          },
+          {
+            "plugin": "pdfRef",
+            "args": []
+          },
+          {
+            "plugin": "mediaRef",
+            "args": []
+          },
+          {
+            "plugin": "columns",
+            "args": [
+              {
+                "canWrite": "function"
+              }
+            ]
+          },
+          {
+            "plugin": "blockIdentity",
+            "args": []
+          },
+          {
+            "plugin": "blockSelection",
+            "args": []
+          },
+          {
+            "plugin": "typedPlaceholder",
+            "args": []
+          },
+          {
+            "plugin": "canonicalDocument"
+          },
+          {
+            "plugin": "crepeExecuteCommand"
+          },
+          {
+            "plugin": "crepeCommandBindings"
+          },
+          {
+            "plugin": "listItemHasChecked",
+            "args": []
+          }
+        ],
+        "sameAsSecondInstance": true
+      }
+    },
+    "slashMenu": {
+      "zh-CN": {
+        "config": {
+          "blockHandle": {
+            "getOffset": "function"
+          },
+          "groups": {
+            "textGroup": {
+              "label": "文本",
+              "text": {
+                "label": "普通文本"
+              },
+              "h1": {
+                "label": "一级标题"
+              },
+              "h2": {
+                "label": "二级标题"
+              },
+              "h3": {
+                "label": "三级标题"
+              },
+              "h4": {
+                "label": "四级标题"
+              },
+              "h5": {
+                "label": "五级标题"
+              },
+              "h6": {
+                "label": "六级标题"
+              },
+              "quote": {
+                "label": "引用"
+              },
+              "divider": {
+                "label": "分隔线"
+              }
+            },
+            "listGroup": {
+              "label": "列表",
+              "bulletList": {
+                "label": "无序列表"
+              },
+              "orderedList": {
+                "label": "有序列表"
+              },
+              "taskList": {
+                "label": "任务列表"
+              }
+            },
+            "advancedGroup": {
+              "label": "高级",
+              "image": {
+                "label": "图片"
+              },
+              "codeBlock": {
+                "label": "代码块"
+              },
+              "table": {
+                "label": "表格"
+              },
+              "math": {
+                "label": "数学公式"
+              }
+            }
+          }
+        },
+        "groups": [
+          {
+            "key": "text",
+            "label": "文本",
+            "items": [
+              {
+                "key": "text",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "paragraph",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h1",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-1",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h2",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-2",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h3",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-3",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h4",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-4",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h5",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-5",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h6",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-6",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "quote",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "quote",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "divider",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "hr",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "list",
+            "label": "列表",
+            "items": [
+              {
+                "key": "bullet-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "bullet-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "ordered-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "ordered-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "task-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "task-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "advanced",
+            "label": "高级",
+            "items": [
+              {
+                "key": "image",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "image",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "code-block",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "table",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "table",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "math",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "math",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "callout",
+                "label": "高亮块",
+                "icon": "10c303f3c96574e6",
+                "run": [
+                  {
+                    "command": "insert-callout",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "toggle",
+                "label": "折叠块",
+                "icon": "5f9d486c8d84e55a",
+                "run": [
+                  {
+                    "command": "insert-toggle",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "note-layout",
+            "label": "页面布局",
+            "items": [
+              {
+                "key": "insert-columns",
+                "label": "插入双列",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "insert-cornell",
+                "label": "插入康奈尔布局",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-columns",
+                "label": "转为双列",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell",
+                "label": "转为康奈尔布局",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell-template",
+                "label": "转换康奈尔模板",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell-template",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "unwrap-columns",
+                "label": "展开为普通块",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "unwrap-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "en-US": {
+        "config": {
+          "blockHandle": {
+            "getOffset": "function"
+          },
+          "groups": {
+            "textGroup": {
+              "label": "Text",
+              "text": {
+                "label": "Text"
+              },
+              "h1": {
+                "label": "Heading 1"
+              },
+              "h2": {
+                "label": "Heading 2"
+              },
+              "h3": {
+                "label": "Heading 3"
+              },
+              "h4": {
+                "label": "Heading 4"
+              },
+              "h5": {
+                "label": "Heading 5"
+              },
+              "h6": {
+                "label": "Heading 6"
+              },
+              "quote": {
+                "label": "Quote"
+              },
+              "divider": {
+                "label": "Divider"
+              }
+            },
+            "listGroup": {
+              "label": "List",
+              "bulletList": {
+                "label": "Bullet List"
+              },
+              "orderedList": {
+                "label": "Ordered List"
+              },
+              "taskList": {
+                "label": "Task List"
+              }
+            },
+            "advancedGroup": {
+              "label": "Advanced",
+              "image": {
+                "label": "Image"
+              },
+              "codeBlock": {
+                "label": "Code Block"
+              },
+              "table": {
+                "label": "Table"
+              },
+              "math": {
+                "label": "Math"
+              }
+            }
+          }
+        },
+        "groups": [
+          {
+            "key": "text",
+            "label": "Text",
+            "items": [
+              {
+                "key": "text",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "paragraph",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h1",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-1",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h2",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-2",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h3",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-3",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h4",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-4",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h5",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-5",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "h6",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "heading-6",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "quote",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "quote",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "divider",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "hr",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "list",
+            "label": "List",
+            "items": [
+              {
+                "key": "bullet-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "bullet-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "ordered-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "ordered-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "task-list",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "task-list",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "advanced",
+            "label": "Advanced",
+            "items": [
+              {
+                "key": "image",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "image",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "code",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "code-block",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "table",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "table",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "math",
+                "label": null,
+                "icon": "builtin",
+                "run": [
+                  {
+                    "command": "math",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "callout",
+                "label": "Callout",
+                "icon": "10c303f3c96574e6",
+                "run": [
+                  {
+                    "command": "insert-callout",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "toggle",
+                "label": "Toggle",
+                "icon": "5f9d486c8d84e55a",
+                "run": [
+                  {
+                    "command": "insert-toggle",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "note-layout",
+            "label": "Page layout",
+            "items": [
+              {
+                "key": "insert-columns",
+                "label": "Insert two columns",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "insert-cornell",
+                "label": "Insert Cornell layout",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "insert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-columns",
+                "label": "Convert to two columns",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell",
+                "label": "Convert to Cornell layout",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "convert-cornell-template",
+                "label": "Convert Cornell template",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "convert-cornell-template",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "unwrap-columns",
+                "label": "Unwrap into regular blocks",
+                "icon": "10c303f3c96574e6",
+                "extra": [
+                  "active"
+                ],
+                "run": [
+                  {
+                    "command": "unwrap-columns",
+                    "options": {
+                      "slash": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

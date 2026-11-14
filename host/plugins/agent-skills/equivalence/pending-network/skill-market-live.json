@@ -1,0 +1,382 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_market_search",
+    "skill_market_skill_detail",
+    "skill_market_verify",
+    "skill_market_download_and_scan",
+    "skill_check_updates",
+    "skill_update_from_source",
+    "skill_list_directories",
+    "skill_list_package_files",
+    "skill_read_file"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.market_live.search_detail_verify",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {}
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 5,
+            "nonSuspiciousOnly": false,
+            "sort": "downloads"
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "   ",
+            "limit": 0,
+            "nonSuspiciousOnly": true,
+            "sort": "stars"
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 100,
+            "nonSuspiciousOnly": true,
+            "sort": "bogus"
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "pdf",
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": " pdf ",
+            "limit": null,
+            "nonSuspiciousOnly": null,
+            "sort": null
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "zz-no-such-skill-w0",
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          }
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "${0.items.0.slug}"
+          }
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "sonoscli"
+          }
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${0.items.0.version}"
+          }
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": null
+          }
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "   "
+          }
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          }
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "zz-no-such-skill-w0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "zz-no-such-skill-w0",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "0.0.0-no-such-version"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market_live.scan_install_update",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          }
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${0.items.0.version}"
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${1.version}",
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": null,
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${2.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "${2.tempZipPath}",
+            "declaredRiskLevel": "${2.scan.risk_level}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${2.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${2.scan.package_sha256}",
+            "tempZipPath": "${2.tempZipPath}",
+            "declaredRiskLevel": "${2.scan.risk_level}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${3.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${3.scan.package_sha256}",
+            "tempZipPath": "/",
+            "declaredRiskLevel": "${3.scan.risk_level}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${3.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${3.scan.package_sha256}",
+            "tempZipPath": "${3.tempZipPath}",
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${1.version}",
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${8.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${8.scan.package_sha256}",
+            "tempZipPath": "${8.tempZipPath}",
+            "declaredRiskLevel": "${8.scan.risk_level}"
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${8.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${8.scan.package_sha256}",
+            "tempZipPath": "${8.tempZipPath}",
+            "declaredRiskLevel": "${8.scan.risk_level}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${1.version}",
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${11.version}",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "${11.scan.package_sha256}",
+            "tempZipPath": "${11.tempZipPath}",
+            "declaredRiskLevel": "${11.scan.risk_level}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${1.version}",
+            "install": false,
+            "overwrite": true,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          }
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "${0.items.0.slug}",
+            "version": "${13.version}",
+            "install": true,
+            "overwrite": true,
+            "expectedPackageSha256": "${13.scan.package_sha256}",
+            "tempZipPath": "${13.tempZipPath}",
+            "declaredRiskLevel": "${13.scan.risk_level}"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "${9.scan.skill_id}"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "${9.scan.skill_id}"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "${14.scan.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuCon
 import { useNotesChromeSlot } from './notesChromeSlot';
 import { NotePageLayoutOptions } from './components/NotePageLayoutOptions';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, TreeStructure, DownloadSimple, ClockCounterClockwise, DotsThree } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, TreeStructure, DownloadSimple, ClockCounterClockwise, DotsThree, ArrowsClockwise } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import type { CrepeSelectionAction } from '@/components/crepe/types';
@@ -25,7 +25,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, mergeExpandedMarkdown, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
 import { useNotesOptional } from './NotesContext';
 import { NoteFormatGate } from './NoteFormatGate';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Popover';
@@ -68,6 +68,7 @@ import { buildMobileEditorCommands } from './mobileEditorCommands';
 import { parseWorkbenchDragData, WB_RESOURCE_MIME } from '@/features/workbench/hooks/useDesktopDrop';
 import { insertWikilink } from '@/components/crepe/plugins/wikilink/autocomplete';
 import { editorViewCtx } from '@milkdown/kit/core';
+import type { EditorView } from '@milkdown/prose/view';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
 import { isMobilePlatform } from '@/utils/platform';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -106,11 +107,20 @@ import {
   type NotesActiveHeadingDetail,
 } from './components/outlineActiveHeadingBridge';
 import type { NotesFocusModeEventDetail } from './focusModeOwnership';
+import { ImageOcclusionBuilderModal } from '@/components/anki/occlusion/ImageOcclusionBuilderModal';
+import { syncInlineCardsForNote } from './inlineCards/inlineCardSyncService';
+import { emitNoteBlockAutoExcerpt, registerNoteBlockRevealHandler } from './inlineCards/noteBlockExcerptBridge';
+import { requestHandoutSyncToMindmap } from '@/ui-kernel/services/handoutSyncBridge';
+import { extractProvenanceLinksFromHandout } from '@/ui-kernel/services/mindmapHandoutBridge';
+import { getErrorMessage } from '@/utils/errorUtils';
 
 
 /** 「加入聊天」浮条图标（24×24 填充，Material add_comment，Apache-2.0） */
 const ADD_TO_CHAT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 4c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4zm-2 13.17L18.83 16H4V4h16v13.17zM13 5h-2v4H7v2h4v4h2v-4h4V9h-4z"/></svg>';
+/** 「摘录到导图」浮条图标（24×24 填充，Material account_tree，Apache-2.0） */
+const EXCERPT_TO_MINDMAP_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3z"/></svg>';
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
+const INLINE_CARD_SYNC_DEBOUNCE_MS = 1200;
 const SAVING_INDICATOR_DELAY_MS = 400;
 /** 焦点模式 chrome 淡出/淡入时长（与 notes-editor-chrome.css 的过渡对齐） */
 const FOCUS_CHROME_TRANSITION_MS = 200;
@@ -357,6 +367,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   windowingStateRef.current = windowingState;
   const isComposingRef = useRef(false); // IME 合成状态追踪
   const contentChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 内容变化事件防抖
+  const inlineCardSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 内联闪卡编译防抖
   const saveRetryCountRef = useRef(0); // 🔒 审计修复: 自动保存重试计数（指数退避）
 
   // Find & Replace 状态
@@ -595,6 +606,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    if (inlineCardSyncTimerRef.current) {
+      clearTimeout(inlineCardSyncTimerRef.current);
+      inlineCardSyncTimerRef.current = null;
+    }
   };
 
   // 页面菜单的制卡使用完整文档，与移动端共用生成链路。
@@ -635,6 +650,61 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+
+  // 精读讲义 -> 原思维导图反向同步（C7 §2.3）：按讲义出处胶囊里的稳定节点 ID 原地回写
+  const [syncingHandout, setSyncingHandout] = useState(false);
+  const handleSyncHandoutToMindmap = useCallback(() => {
+    if (!editorApi || !noteId || syncingHandout) return;
+    const markdown = readNoteMarkdown(editorApi);
+    if (!markdown.trim()) {
+      showGlobalNotification('error', t('notes:generateMindmap.syncEmpty', '这篇笔记还没有正文，无法同步回导图'));
+      return;
+    }
+    const mindmapIds = [...new Set(
+      extractProvenanceLinksFromHandout(markdown)
+        .filter((link) => link.anchor.kind === 'mindmap')
+        .map((link) => link.anchor.resourceId.trim())
+        .filter(Boolean),
+    )];
+    if (mindmapIds.length === 0) {
+      showGlobalNotification('error', t('notes:generateMindmap.syncNoSource', '这篇笔记没有来自思维导图的出处，先从导图导出一份精读讲义再同步'));
+      return;
+    }
+    if (mindmapIds.length > 1) {
+      showGlobalNotification('warning', t('notes:generateMindmap.syncMultipleSources', { count: mindmapIds.length, defaultValue: '这篇笔记引用了 {{count}} 张不同的导图，请拆分讲义后分别同步' }));
+      return;
+    }
+    setSyncingHandout(true);
+    void requestHandoutSyncToMindmap({
+      noteId,
+      noteTitle: (isDstuMode ? initialTitle : contextActive?.title) ?? undefined,
+      mindmapId: mindmapIds[0]!,
+      markdown,
+    })
+      .then((summary) => {
+        if (!summary.ok) {
+          const failure = summary.reason === 'mindmap-not-open'
+            ? t('notes:generateMindmap.syncNotOpen', '请先打开原思维导图再同步')
+            : t('notes:generateMindmap.syncEmpty', '这篇笔记还没有正文，无法同步回导图');
+          showGlobalNotification('warning', failure);
+          return;
+        }
+        if (summary.updated === 0 && summary.added === 0) {
+          showGlobalNotification('info', t('notes:generateMindmap.syncNoChanges', '讲义与导图已经一致，无需同步'));
+          return;
+        }
+        showGlobalNotification('success', t('notes:generateMindmap.syncSuccess', {
+          updated: summary.updated,
+          added: summary.added,
+          defaultValue: '已同步回思维导图：更新 {{updated}} 个节点，新增 {{added}} 个节点',
+        }));
+      })
+      .catch((error) => {
+        showGlobalNotification('error', t('notes:generateMindmap.syncFailed', { error: getErrorMessage(error), defaultValue: '同步回思维导图失败：{{error}}' }));
+      })
+      .finally(() => setSyncingHandout(false));
+  }, [editorApi, noteId, syncingHandout, t, isDstuMode, initialTitle, contextActive?.title]);
+
   useEffect(() => {
     const retained = noteId ? recoveryDraftsRef.current.get(noteId) : undefined;
     setIsFindReplaceOpen(false);
@@ -661,12 +731,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     return () => { cancelled = true; };
   }, [noteId]);
 
-  // P0 选区即上下文：笔记选区 → 结构化 contextRef 注入聊天。
-  // 动态 import 避免把 chat context 链路静态打进笔记 chunk。
-  const handleSelectionAddAsContext = useCallback((text: string) => {
-    if (!noteId) return;
-    const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
-    // 所在小节：选区之前最近的标题——回链时滚到这一节，而不是停在笔记开头
+  // 选区所在小节标题：选区之前最近的 heading——回链时滚到这一节，而不是停在笔记开头
+  const resolveSelectionHeading = useCallback((): string | null => {
     let heading: string | null = null;
     try {
       const view = editorApi?.getCrepe?.()?.editor.ctx.get(editorViewCtx);
@@ -678,13 +744,43 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         });
       }
     } catch { /* 编辑器未就绪：不带定位 */ }
+    return heading;
+  }, [editorApi]);
+
+  // P0 选区即上下文：笔记选区 → 结构化 contextRef 注入聊天。
+  // 动态 import 避免把 chat context 链路静态打进笔记 chunk。
+  const handleSelectionAddAsContext = useCallback((text: string) => {
+    if (!noteId) return;
+    const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
+    const heading = resolveSelectionHeading();
     void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
       selectionToChat({
         text,
         source: { kind: 'note', sourceId: noteId, title, locator: heading ? `heading:${heading}` : undefined },
       })
     );
-  }, [noteId, isDstuMode, initialTitle, active?.title, editorApi]);
+  }, [noteId, isDstuMode, initialTitle, active?.title, resolveSelectionHeading]);
+
+  // C7 §2.3：笔记选区直接摘录进思维导图（走内核 dnd 自动摘录总线，
+  // 导图侧按「先入待整理池 / 直接挂载」设置落位，与 PDF、音视频摘录同一条通道）。
+  const handleSelectionExcerptToMindmap = useCallback((text: string) => {
+    if (!noteId || !text.trim()) return;
+    const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
+    const payload = emitNoteBlockAutoExcerpt({
+      noteId,
+      noteTitle: title,
+      headingPath: resolveSelectionHeading() ?? undefined,
+      markdownText: text,
+    });
+    if (!payload) {
+      showGlobalNotification('error', t('notes:selection.excerptToMindmapFailed', '摘录失败：当前笔记未就绪'));
+      return;
+    }
+    showGlobalNotification(
+      'success',
+      t('notes:selection.excerptToMindmapSent', '已发送摘录到思维导图（导图需开启「划选即入图」）'),
+    );
+  }, [noteId, isDstuMode, initialTitle, active?.title, resolveSelectionHeading, t]);
 
   // 选区即上下文：「加入聊天」与格式按钮同在一条选区浮条，不再另起一条工具栏
   const selectionActions = useMemo<CrepeSelectionAction[]>(() => noteId ? [{
@@ -692,7 +788,12 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     label: t('chatV2:selectionToolbar.addToChat', '引用到聊天'),
     icon: ADD_TO_CHAT_ICON,
     run: handleSelectionAddAsContext,
-  }] : [], [noteId, handleSelectionAddAsContext, t]);
+  }, {
+    key: 'excerpt-to-mindmap',
+    label: t('notes:selection.excerptToMindmap', '摘录到导图'),
+    icon: EXCERPT_TO_MINDMAP_ICON,
+    run: handleSelectionExcerptToMindmap,
+  }] : [], [noteId, handleSelectionAddAsContext, handleSelectionExcerptToMindmap, t]);
 
   useEffect(() => {
     const onFindQuery = (event: Event) => {
@@ -1030,6 +1131,32 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     return runPendingSave();
   }, [runPendingSave, retainFailedDraft]);
 
+  const noteTitleRef = useRef<string>('');
+  noteTitleRef.current = (isDstuMode ? initialTitle : active?.title) ?? '';
+
+  const flushInlineCardSync = useCallback((targetNoteId?: string | null, fallbackMarkdown?: string) => {
+    const resolvedNoteId = targetNoteId ?? noteIdRef.current;
+    if (!resolvedNoteId || readOnly || isComposingRef.current) return;
+    const liveApi = editorNoteIdRef.current === resolvedNoteId ? lifecycleApiRef.current : null;
+    let liveView: EditorView | null = null;
+    try {
+      liveView = liveApi?.getCrepe?.()?.editor.ctx.get(editorViewCtx) ?? null;
+    } catch {
+      liveView = null;
+    }
+    if (liveView?.composing) return;
+    const doc = liveView && !liveView.isDestroyed ? liveView.state.doc : null;
+    const markdown = !doc
+      ? (fallbackMarkdown ?? draftByNoteRef.current.get(resolvedNoteId) ?? contentRef.current)
+      : undefined;
+    void syncInlineCardsForNote({
+      noteId: resolvedNoteId,
+      noteTitle: noteTitleRef.current || undefined,
+      doc,
+      markdown,
+    }).catch(() => {});
+  }, [readOnly]);
+
   const flushNoteDraft = useCallback((targetNoteId?: string | null) => {
     const resolvedNoteId = targetNoteId ?? noteIdRef.current;
     if (!resolvedNoteId) {
@@ -1041,13 +1168,14 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     const draft = editorNoteIdRef.current === resolvedNoteId && api?.getCrepe()
       ? api.getMarkdown()
       : draftByNoteRef.current.get(resolvedNoteId);
+    flushInlineCardSync(resolvedNoteId, typeof draft === 'string' ? draft : undefined);
     if (typeof draft !== 'string') {
       return Promise.resolve();
     }
     // 已取到 live 文档快照，未序列化的即时脏标记随草稿比较接管
     unsavedDocChangeRef.current = false;
     return queueSave(draft, resolvedNoteId);
-  }, [queueSave]);
+  }, [queueSave, flushInlineCardSync]);
 
   // 切换笔记时保存草稿 & 清理旧条目防止内存泄漏
   const MAX_DRAFT_ENTRIES = 10;
@@ -1258,7 +1386,14 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         detail: { noteId: eventNoteId, content: fullMarkdown }
       }));
     }, 500);
-  }, [noteId, queueSave, effectiveReadOnly, isPureReserialization]);
+
+    if (eventNoteId) {
+      inlineCardSyncTimerRef.current = setTimeout(() => {
+        if (isUnmountedRef.current || isComposingRef.current || currentRenderedNoteRef.current !== eventNoteId) return;
+        flushInlineCardSync(eventNoteId, markdown);
+      }, INLINE_CARD_SYNC_DEBOUNCE_MS);
+    }
+  }, [noteId, queueSave, effectiveReadOnly, isPureReserialization, flushInlineCardSync]);
 
   // C1：事务级同步通知。不序列化全文，只置标志；UI 的“未保存”指示立即反映，
   // 关闭/外部更新判断也从此刻起视为 dirty（无需等待 250ms onChange）。
@@ -1316,6 +1451,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     
     const handleCompositionStart = () => {
       isComposingRef.current = true;
+      if (inlineCardSyncTimerRef.current) {
+        clearTimeout(inlineCardSyncTimerRef.current);
+        inlineCardSyncTimerRef.current = null;
+      }
     };
     
     const handleCompositionEnd = () => {
@@ -1323,6 +1462,16 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       // 🔧 性能修复：不再在 compositionend 时立即派发事件
       // 之前的做法会绕过 500ms 防抖，导致首字符输入卡顿
       // 现在统一由 handleChange 中的防抖机制处理事件派发
+      const currentNoteId = noteIdRef.current;
+      if (currentNoteId && !readOnly) {
+        if (inlineCardSyncTimerRef.current) {
+          clearTimeout(inlineCardSyncTimerRef.current);
+        }
+        inlineCardSyncTimerRef.current = setTimeout(() => {
+          if (isUnmountedRef.current || isComposingRef.current || currentRenderedNoteRef.current !== currentNoteId) return;
+          flushInlineCardSync(currentNoteId);
+        }, INLINE_CARD_SYNC_DEBOUNCE_MS);
+      }
     };
     
     // 使用 capture: true 确保在事件冒泡前捕获，避免与 ProseMirror 内部处理竞争
@@ -1333,7 +1482,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       container.removeEventListener('compositionstart', handleCompositionStart, { capture: true });
       container.removeEventListener('compositionend', handleCompositionEnd, { capture: true });
     };
-  }, [isDstuMode]);
+  }, [isDstuMode, readOnly, flushInlineCardSync]);
 
   useEffect(() => {
     const container = dropZoneRef.current;
@@ -1580,6 +1729,54 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     const pending = consumeNotesQuoteTarget(noteId);
     if (pending) void locateQuote(pending);
   }, [editorApi, noteId, locateQuote]);
+
+  // 跨插件语义锚点 (`ds-anchor://v1/note/<noteId>?block=<blockId>`) 定位与闪烁高亮
+  useEffect(() => {
+    if (!editorApi || !noteId) return;
+    return registerNoteBlockRevealHandler({
+      noteId,
+      isFocused: () => {
+        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+        return Boolean(activeEl && notesShellRef.current?.contains(activeEl));
+      },
+      materializeFullDocument: () => (editorApi as FullDocumentSearchApi).materializeFullDocument?.(),
+      focusBlock: (blockId) => Boolean(editorApi.focusBlock?.(blockId)),
+      pulseBlock: (blockId) => {
+        try {
+          const view = editorApi.getCrepe?.()?.editor.ctx.get(editorViewCtx);
+          if (view && !view.isDestroyed) {
+            let blockPos = -1;
+            view.state.doc.forEach((node, pos) => {
+              if (node.attrs?.dsBlockId === blockId) blockPos = pos;
+            });
+            const dom = blockPos >= 0 ? view.nodeDOM(blockPos) : null;
+            if (dom instanceof HTMLElement) {
+              dom.classList.remove('crepe-heading-locate-flash');
+              void dom.offsetWidth;
+              dom.classList.add('crepe-heading-locate-flash');
+              window.setTimeout(() => dom.classList.remove('crepe-heading-locate-flash'), 1300);
+            }
+          }
+        } catch {
+          // Ignore pulse failure if view unmounts concurrently.
+        }
+      },
+      scrollToHeading: (heading) => {
+        editorApi.scrollToHeading?.(
+          heading,
+          0,
+          heading.toLowerCase().trim(),
+          (docHeading) => notesHeadingTargetMatches(docHeading, heading),
+        );
+      },
+      scrollToTop: () => {
+        scrollViewportRef.current?.scrollTo({
+          top: 0,
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        });
+      },
+    });
+  }, [editorApi, noteId]);
 
   // 未解析 wikilink 点击 → 创建笔记 → 刷新链接样式 → DSTU_OPEN_NOTE
   useEffect(() => {
@@ -2433,6 +2630,11 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onClick={handleGenerateMindmap} disabled={!editorApi || generatingMindmap} aria-busy={generatingMindmap || undefined}>
       <TreeStructure size={16} /><span>{t('notes:toolbar.generateMindmap', '生成思维导图')}</span>
     </DsButton>
+    <DsButton variant="ghost" size="sm"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={handleSyncHandoutToMindmap} disabled={!editorApi || !noteId || syncingHandout} aria-busy={syncingHandout || undefined}>
+      <ArrowsClockwise size={16} /><span>{t('notes:toolbar.syncHandoutToMindmap', '同步回思维导图')}</span>
+    </DsButton>
     {/* 快捷助手窗口仅桌面端可用（移动端后端为空实现）：移动端不展示，桌面失败要告知 */}
     {!isMobilePlatform() && <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
       onClick={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', t('notes:toolbar.ask_agent_failed', { defaultValue: '无法打开助手窗口：{{error}}', error: String(error) }))); }}>
@@ -2845,7 +3047,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
       {hostRefreshError && <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
         <span className="flex-1">{hostRefreshError}</span>
-        <DsButton variant="outline" size="sm" disabled={hostBusy} onClick={() => {
+        <DsButton variant="ghost" size="sm" disabled={hostBusy} onClick={() => {
           if (noteId) void noteHostCoordinator.withLockedNotes([noteId], () => noteHostCoordinator.refreshNotes([noteId]))
             .catch(error => showGlobalNotification('error', String(error)));
         }}>{t('notes:host.retry_refresh', '重试刷新')}</DsButton>
@@ -2862,19 +3064,19 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       </div></div>}
       {recoveredDrafts.length > 0 && <div className="notes-banner" role="status"><div className="notes-column notes-banner-row">
         <span className="flex-1">{t('notes:host.drafts_found', '已找到未保存草稿')}</span>
-        {recoveredDrafts.map((draft, index) => <DsButton key={draft.persistenceId} variant="outline" size="sm"
+        {recoveredDrafts.map((draft, index) => <DsButton key={draft.persistenceId} variant="ghost" size="sm"
           onClick={() => { if (noteId) setRecoveryDraft({ ...draft, noteId }); }}>{t('notes:host.view_draft', { defaultValue: '查看草稿 {{index}}', index: index + 1 })}</DsButton>)}
       </div></div>}
       {recoveryDraft && recoveryDraft.noteId === noteId && (
         <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
           <span className="flex-1">{recoveryDraft.error}</span>
-          <DsButton variant="outline" size="sm" onClick={() => { void copyRecoveryDraft(); }}>{t('notes:editor.copy_retained_draft', '复制保留草稿')}</DsButton>
-          <DsButton variant="outline" size="sm" onClick={() => { void saveRecoveryAs(); }}>{t('notes:host.save_draft_as_note', '草稿另存为笔记')}</DsButton>
-          <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void handleManualSave().catch(() => {}); }}>{t('notes:editor.retry_current_draft', '重试保存当前正文')}</DsButton>
-          <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(); }}>{t('notes:editor.restore_retained_draft', '恢复保留草稿并保存')}</DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => { void copyRecoveryDraft(); }}>{t('notes:editor.copy_retained_draft', '复制保留草稿')}</DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => { void saveRecoveryAs(); }}>{t('notes:host.save_draft_as_note', '草稿另存为笔记')}</DsButton>
+          <DsButton variant="ghost" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void handleManualSave().catch(() => {}); }}>{t('notes:editor.retry_current_draft', '重试保存当前正文')}</DsButton>
+          <DsButton variant="ghost" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(); }}>{t('notes:editor.restore_retained_draft', '恢复保留草稿并保存')}</DsButton>
           {recoveryDraft.previousMarkdown !== undefined && <>
-            <DsButton variant="outline" size="sm" onClick={() => { void copyRecoveryDraft(true); }}>{t('notes:editor.copy_previous_draft', '复制操作前草稿')}</DsButton>
-            <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(true); }}>{t('notes:editor.restore_previous_draft', '恢复操作前草稿')}</DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => { void copyRecoveryDraft(true); }}>{t('notes:editor.copy_previous_draft', '复制操作前草稿')}</DsButton>
+            <DsButton variant="ghost" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(true); }}>{t('notes:editor.restore_previous_draft', '恢复操作前草稿')}</DsButton>
           </>}
           <DsButton variant="ghost" size="sm" onClick={() => { void discardRecoveryDraft(); }}>{t('notes:editor.discard_retained_draft', '丢弃保留草稿')}</DsButton>
         </div></div>
@@ -2883,19 +3085,19 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
           <span className="flex-1">{aiPersistenceError ?? t('notes:aiReview.recovery_available')}</span>
           {aiRecoveryOptions.map((option, index) => (
-            <DsButton key={option.id} variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading'}
+            <DsButton key={option.id} variant="ghost" size="sm" disabled={aiPersistenceStatus === 'loading'}
               onClick={() => { void restoreAICandidate(option.id); }}>
               {t('notes:aiReview.restore_candidate', { index: index + 1, date: new Date(option.createdAt).toLocaleString() })}
             </DsButton>
           ))}
-          <DsButton variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading' || aiPersistenceStatus === 'saving'}
+          <DsButton variant="ghost" size="sm" disabled={aiPersistenceStatus === 'loading' || aiPersistenceStatus === 'saving'}
             onClick={() => { void retryAIReviewPersistence(); }}>{t('common:retry')}</DsButton>
         </div></div>
       )}
       {aiReview?.collapsed && (
         <div role="status" className="notes-banner"><div className="notes-column notes-banner-row">
           <span className="flex-1">{t('notes:aiDiff.suspended', 'AI 建议已收起，候选与分组决定已保留。')}</span>
-          <DsButton variant="outline" size="sm" onClick={() => setAIReviewCollapsed(false)}>{t('notes:aiDiff.reopen', '继续审阅')}</DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => setAIReviewCollapsed(false)}>{t('notes:aiDiff.reopen', '继续审阅')}</DsButton>
           <DsButton variant="ghost" size="sm" onClick={() => { void copyAICandidate(); }}>{t('notes:aiDiff.copy_candidate', '复制候选')}</DsButton>
           <DsButton variant="ghost" size="sm" disabled={isAIEditApplying} onClick={() => { void handleReject(); }}>{t('notes:aiDiff.discard', '丢弃建议')}</DsButton>
         </div></div>
@@ -2959,6 +3161,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
               containerRef={selectionContainerRef}
               onClear={noteSelection.clear}
               onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
+              // 阅读模式没有 Crepe 格式浮条，摘录入口挂在这条只读选区条上（C7 §2.3）
+              extraActions={noteId ? [{
+                key: 'excerpt-to-mindmap',
+                label: t('notes:selection.excerptToMindmap', '摘录到导图'),
+                icon: ({ touchTarget }) => <TreeStructure size={touchTarget ? 16 : 14} />,
+                run: handleSelectionExcerptToMindmap,
+              }] : undefined}
               hideUnavailableActions
               dismissOnLeaveView={null}
             />
@@ -2975,7 +3184,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             tags={tags}
             onTagsChange={effectiveReadOnly ? undefined : onTagsChange}
             onExitToBody={() => editorApi?.focusStart?.()}
-            autoFocusTitle={!effectiveReadOnly && isContentLoaded && !(initialValue ?? '').trim()}
+            // RUST-FIX(RF-W09-new-note-title-focus): 等正文编辑器就绪后再聚焦标题；Rust 版先聚焦标题，约 80ms 后正文就绪把焦点抢走
+            autoFocusTitle={!effectiveReadOnly && isContentLoaded && editorApi !== null && !(initialValue ?? '').trim()}
           />
           <CrepeEditor
             key={contentVersionKey}
@@ -2990,6 +3200,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             selectionActions={selectionActions}
             plugins={{
               wikilink: buildWikilinkPluginHostConfig(),
+              inlineCards: noteId ? { noteId } : true,
             }}
           />
           {windowingState?.enabled && (windowingState.hasMore || windowingState.isLoadingMore || windowingState.loadMoreError) && (
@@ -3036,6 +3247,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         commands={mobileCommands}
         activeStates={formattingState}
       />
+      <ImageOcclusionBuilderModal defaultDeckName={(isDstuMode ? initialTitle : active?.title) || undefined} />
     </div>
     </ErrorBoundary>
   );

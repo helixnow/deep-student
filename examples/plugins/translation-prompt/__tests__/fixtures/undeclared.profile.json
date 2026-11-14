@@ -1,0 +1,3 @@
+{
+  "plugins": [{ "id": "example.translation-prompt", "module": "./undeclared/index.ts" }]
+}

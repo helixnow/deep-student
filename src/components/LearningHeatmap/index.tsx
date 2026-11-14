@@ -18,6 +18,11 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { splitDuration, studyHeatLevel } from '@/features/study-time/studyLog';
+import {
+  computeHeatLevel,
+  computeStudyTimeStats,
+  formatLocalDateKey,
+} from '@/utils/studyTimeTrackerAndHeatmap';
 import type { TFunction } from 'i18next';
 import './LearningHeatmap.css';
 
@@ -231,7 +236,7 @@ function StatsCard({ icon, label, value }: StatsCardProps) {
         <span className="opacity-70">{icon}</span>
         <span className="text-xs font-medium">{label}</span>
       </div>
-      <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+      <div className="text-2xl font-semibold tracking-tight text-foreground font-mono tabular-nums">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
     </div>
@@ -306,13 +311,24 @@ export function LearningHeatmap({
     return map;
   }, [data]);
 
+  const durationSummary = useMemo(() => {
+    const rows = data.map((item) => ({
+      date: normalizeDateKey(item.date),
+      seconds: item.studySeconds ?? 0,
+    }));
+    return computeStudyTimeStats(rows, formatLocalDateKey(grid.today));
+  }, [data, grid.today]);
+
   /**
    * 色阶：0 = 空，1-4。活动口径按当日活动量相对峰值分档；
    * 时长口径用绝对刻度（15 / 45 / 90 分钟），避免每天 5 分钟也染成满格。
    */
   const levelOf = useCallback(
     (activity: LearningActivity | undefined) => {
-      if (metric === 'duration') return studyHeatLevel(activity?.studySeconds ?? 0);
+      if (metric === 'duration') {
+        const seconds = activity?.studySeconds ?? 0;
+        return computeHeatLevel(seconds) || studyHeatLevel(seconds);
+      }
       const count = activity?.count ?? 0;
       if (count <= 0 || maxCount <= 0) return 0;
       return Math.min(4, Math.max(1, Math.ceil((count / maxCount) * 4)));
@@ -440,10 +456,40 @@ export function LearningHeatmap({
       {/* 统计卡片 */}
       {showStats && !loading && (
         metric === 'duration' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-            <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.duration.total')} value={formatStudyDuration(totalStudySeconds, t)} />
-            <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={studyDays} />
-            <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={formatStudyDuration(maxStudySeconds, t)} />
+          <div className="mb-6 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.duration.total')} value={formatStudyDuration(totalStudySeconds, t)} />
+              <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={studyDays} />
+              <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={formatStudyDuration(maxStudySeconds, t)} />
+            </div>
+            <div
+              data-testid="study-duration-extended-stats"
+              data-current-streak={durationSummary.currentStreak}
+              data-longest-streak={durationSummary.longestStreak}
+              data-last7-active={durationSummary.last7DaysActiveDays}
+              className="flex flex-wrap items-center gap-3 px-1 text-2xs font-mono tabular-nums text-muted-foreground"
+            >
+              <span className="font-mono tabular-nums">
+                {t('heatmap.duration.currentStreak', {
+                  defaultValue: '连续 {{count}} 天',
+                  count: durationSummary.currentStreak,
+                })}
+              </span>
+              <span className="h-2.5 w-px bg-border/35" />
+              <span className="font-mono tabular-nums">
+                {t('heatmap.duration.longestStreak', {
+                  defaultValue: '最长连续 {{count}} 天',
+                  count: durationSummary.longestStreak,
+                })}
+              </span>
+              <span className="h-2.5 w-px bg-border/35" />
+              <span className="font-mono tabular-nums">
+                {t('heatmap.duration.last7Active', {
+                  defaultValue: '近 7 日活跃 {{count}}/7 天',
+                  count: durationSummary.last7DaysActiveDays,
+                })}
+              </span>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">

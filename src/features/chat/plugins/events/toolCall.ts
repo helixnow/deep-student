@@ -20,7 +20,7 @@ import { eventRegistry, type EventHandler, type EventStartPayload } from '../../
 import type { ChatStore } from '../../core/types';
 // 🆕 工作区状态（用于自动设置 currentWorkspaceId）
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
-import type { WorkspaceAgent, WorkspaceMessage } from '../../workspace/types';
+import type { WorkspaceAgent } from '../../workspace/types';
 // 🆕 Skills 渐进披露（处理 load_skills 工具调用）
 import {
   LOAD_SKILLS_TOOL_NAME,
@@ -35,7 +35,7 @@ import {
   trackPreparing,
   trackStart,
   trackEnd,
-} from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+} from '@/shared/debug/channels/toolCallLifecycle';
 // ACR R2-05: 与恢复路径共用 workbench_* 判定
 import {
   isWorkbenchOpsToolName,
@@ -72,6 +72,7 @@ function findPreparingBlockIds(
   messageId: string,
   toolCallId: string
 ): string[] {
+  if (!store.blocks) return [];
   const sameMessage: string[] = [];
   const otherMessages: string[] = [];
   const message = store.messageMap?.get(messageId);
@@ -98,43 +99,72 @@ function findPreparingBlockIds(
 }
 
 /**
- * 更新 workspace_status 块的快照数据
- * 用于在 agents 变化后同步更新块的持久化数据
+ * 为自定义工具事件（retrieval / generative_ui / image_gen）解析目标块 ID，
+ * 若关联了原始 toolCallId，则同步替换或清理对应的 tool_call_preparing 占位块，
+ * 并幂等复用已存在的 backendBlockId（避免瞬时重试重复推入 blockIds）。
  */
-function updateWorkspaceStatusBlockSnapshot(
+export function resolveBlockWithPreparingCleanup(
   store: ChatStore,
-  workspaceId: string,
-  agents: WorkspaceAgent[]
-) {
-  // 找到所有 workspace_status 块
-  for (const [blockId, block] of store.blocks) {
-    if (block.type === 'workspace_status') {
-      const input = block.toolInput as { workspaceId?: string } | undefined;
-      const output = block.toolOutput as { workspace_id?: string; snapshotName?: string; snapshotCreatedAt?: string } | undefined;
-      if (input?.workspaceId === workspaceId || output?.workspace_id === workspaceId) {
-        // 更新快照
-        store.updateBlock(blockId, {
-          toolOutput: {
-            ...output,
-            workspace_id: workspaceId,
-            snapshotAgents: agents.map(a => ({
-              session_id: a.sessionId,
-              role: a.role,
-              status: a.status,
-              skill_id: a.skillId || null,
-            })),
-          },
-        });
-        console.log('[ToolCall] Updated workspace_status block snapshot:', blockId);
-      }
+  messageId: string,
+  blockType: string,
+  toolCallId: string | undefined,
+  backendBlockId: string | undefined,
+): string {
+  let preparingBlockId: string | undefined;
+  if (toolCallId) {
+    const preparingIds = findPreparingBlockIds(store, messageId, toolCallId);
+    preparingBlockId = preparingIds[0];
+    const primaryMessageId = preparingBlockId
+      ? store.blocks?.get(preparingBlockId)?.messageId
+      : undefined;
+    for (const extraId of preparingIds.slice(1)) {
+      if (store.blocks?.get(extraId)?.messageId !== primaryMessageId) continue;
+      if (extraId === backendBlockId) continue;
+      store.deleteBlock?.(extraId);
+    }
+    if (preparingIds.length > 0) {
+      store.clearPreparingToolCall?.(messageId);
     }
   }
+
+  const hasBackendBlock = Boolean(backendBlockId && store.blocks?.has(backendBlockId));
+  let blockId: string;
+
+  if (preparingBlockId && backendBlockId && !hasBackendBlock) {
+    if (store.replaceBlockId) {
+      store.replaceBlockId(preparingBlockId, backendBlockId);
+      blockId = backendBlockId;
+    } else {
+      store.deleteBlock?.(preparingBlockId);
+      blockId = store.createBlockWithId(messageId, blockType as any, backendBlockId);
+    }
+  } else if (preparingBlockId && !backendBlockId) {
+    blockId = preparingBlockId;
+  } else if (backendBlockId) {
+    if (preparingBlockId && preparingBlockId !== backendBlockId) {
+      store.deleteBlock?.(preparingBlockId);
+    }
+    blockId = hasBackendBlock
+      ? backendBlockId
+      : store.createBlockWithId(messageId, blockType as any, backendBlockId);
+  } else {
+    blockId = store.createBlock(messageId, blockType as any);
+  }
+
+  store.updateBlock?.(blockId, {
+    type: blockType as any,
+    isPreparing: false,
+    content: '',
+    error: undefined,
+    endedAt: undefined,
+  });
+
+  return blockId;
 }
 
 /**
- * 从后端刷新指定工作区的 agents 列表并同步到 workspaceStore，
- * 同时更新已有 workspace_status 块的快照。
- * workspace_create / workspace_create_agent / subagent_call(auto_created_workspace) 共用。
+ * 从后端刷新指定工作区的 agents 列表并同步到 workspaceStore。
+ * subagent_call(auto_created_workspace) 完成后调用。
  */
 function refreshWorkspaceAgents(store: ChatStore, workspaceId: string): void {
   void (async () => {
@@ -158,7 +188,6 @@ function refreshWorkspaceAgents(store: ChatStore, workspaceId: string): void {
         pendingInboxCount: a.pending_inbox_count,
       }));
       useWorkspaceStore.getState().setAgents(convertedAgents);
-      updateWorkspaceStatusBlockSnapshot(store, workspaceId, convertedAgents);
     } catch (e: unknown) {
       console.warn('[ToolCall] refreshWorkspaceAgents failed for', workspaceId, e);
     }
@@ -232,8 +261,6 @@ const toolCallEventHandler: EventHandler = {
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
     const isSubagentCallTool = SUBAGENT_EMBED_TOOL_NAMES.has(strippedToolName);
-    // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块
-    const isWorkspaceSendTool = strippedToolName === 'workspace_send';
     // 与后端持久化的 QBANK_QUESTIONS 映射一致，实时展示可勾选的题目草稿。
     const isQbankGenerationTool = strippedToolName === 'qbank_generate_questions';
     // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops（撤销入口）
@@ -243,13 +270,11 @@ const toolCallEventHandler: EventHandler = {
         ? 'ask_user'
         : isSubagentCallTool
           ? 'subagent_embed'
-          : isWorkspaceSendTool
-            ? 'workspace_send'
-            : isWorkbenchOpsToolName(toolName)
-              ? 'workbench_ops'
-              : isQbankGenerationTool
-                ? 'qbank_questions'
-                : 'mcp_tool';
+          : isWorkbenchOpsToolName(toolName)
+            ? 'workbench_ops'
+            : isQbankGenerationTool
+              ? 'qbank_questions'
+              : 'mcp_tool';
 
     // 🆕 2026-01-16: 尝试复用已存在的 preparing 块
     // 幂等：同一 toolCallId 只保留一个块。若因重复 preparing 事件 / 流重试残留
@@ -338,6 +363,9 @@ const toolCallEventHandler: EventHandler = {
         allowCustom?: boolean;
         timeoutSeconds?: number;
         context?: string;
+        html?: string;
+        ui?: string;
+        title?: string;
       };
       // 归一化 options：兼容 LLM 误把 options 输出为 { label, value } 对象数组的情况
       // 否则 React 渲染 <span>{option}</span> 时会抛 "Objects are not valid as a React child"
@@ -386,6 +414,9 @@ const toolCallEventHandler: EventHandler = {
         allowCustom: askInput.allowCustom ?? true,
         timeoutSeconds: askInput.timeoutSeconds ?? null,
         context: typeof askInput.context === 'string' ? askInput.context : undefined,
+        ...(typeof askInput.html === 'string' ? { html: askInput.html } : {}),
+        ...(typeof askInput.ui === 'string' ? { ui: askInput.ui } : {}),
+        ...(typeof askInput.title === 'string' ? { title: askInput.title } : {}),
       });
     }
 
@@ -445,261 +476,10 @@ const toolCallEventHandler: EventHandler = {
         .replace(/^.*\./, ''); // 移除任何剩余的命名空间前缀
       
       console.log('[ToolCall] onEnd - toolName:', block.toolName, '-> stripped:', toolName, 'unwrappedResult:', unwrappedResult);
-      
-      // workspace_create 成功后，自动设置当前工作区 ID 并创建状态块
-      if (toolName === 'workspace_create' && unwrappedResult) {
-        const workspaceResult = unwrappedResult as { workspace_id?: string; status?: string; message?: string };
-        console.log('[ToolCall] workspace_create result:', workspaceResult);
-        if (workspaceResult.workspace_id && workspaceResult.status === 'created') {
-          console.log('[ToolCall] workspace_create success, setting currentWorkspaceId:', workspaceResult.workspace_id);
 
-          const workspaceStore = useWorkspaceStore.getState();
-          const now = new Date().toISOString();
-          const sessionId = store.sessionId;
-          if (!sessionId) {
-            console.warn('[ToolCall] workspace_create: missing sessionId, skip persistence');
-          }
-
-          workspaceStore.setCurrentWorkspace(workspaceResult.workspace_id);
-
-          workspaceStore.setWorkspace({
-            id: workspaceResult.workspace_id,
-            name: (block.toolInput as { name?: string })?.name,
-            status: 'active',
-            creatorSessionId: sessionId,
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          workspaceStore.addAgent({
-            sessionId: sessionId || 'unknown',
-            workspaceId: workspaceResult.workspace_id,
-            role: 'coordinator',
-            status: 'idle',
-            joinedAt: now,
-            lastActiveAt: now,
-          });
-
-          void (async () => {
-            try {
-              const { listAgents, agentMetadataFromInfo } = await import('../../workspace/api');
-              if (!sessionId) {
-                return;
-              }
-              const agentsData = await listAgents(sessionId, workspaceResult.workspace_id!);
-
-              const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
-                sessionId: a.session_id,
-                workspaceId: workspaceResult.workspace_id!,
-                role: a.role as WorkspaceAgent['role'],
-                skillId: a.skill_id,
-                status: a.status as WorkspaceAgent['status'],
-                joinedAt: a.joined_at,
-                lastActiveAt: a.last_active_at,
-                metadata: agentMetadataFromInfo(a),
-                // 🆕 C12: inbox 未消费消息数
-                pendingInboxCount: a.pending_inbox_count,
-              }));
-
-              workspaceStore.setAgents(convertedAgents);
-            } catch (e: unknown) {
-              console.warn('[ToolCall] workspace_create: failed to refresh agents', e);
-            }
-          })();
-
-          console.log('[ToolCall] workspace_create: set workspace and coordinator agent');
-
-          // 🆕 创建 workspace_status 块显示工作区状态面板
-          const messageId = block.messageId;
-          const statusBlockId = store.createBlock(messageId, 'workspace_status');
-          const workspaceName = (block.toolInput as { name?: string })?.name;
-          const toolInput = { workspaceId: workspaceResult.workspace_id, workspaceName };
-          const toolOutput = {
-            ...workspaceResult,
-            // 🆕 保存快照数据用于历史加载渲染
-            snapshotName: workspaceName,
-            snapshotCreatedAt: now,
-            snapshotAgents: [{
-              session_id: sessionId,
-              role: 'coordinator',
-              status: 'idle',
-              skill_id: null,
-            }],
-          };
-          store.updateBlock(statusBlockId, {
-            toolName: 'workspace_status',
-            toolInput,
-            toolOutput,
-          });
-          store.updateBlockStatus(statusBlockId, 'success');
-          console.log('[ToolCall] Created workspace_status block:', statusBlockId);
-
-          // 🆕 P37 调试：直接调用调试日志
-          const logDebug = (window as any).__multiAgentDebug?.log;
-          if (logDebug) {
-            logDebug('block', 'FRONTEND_CREATE_WORKSPACE_STATUS_BLOCK', {
-              blockId: statusBlockId,
-              messageId,
-              snapshotAgents: 1,
-            }, 'info');
-          }
-
-          // 🔧 P35: 立即保存 workspace_status 块到后端数据库
-          void (async () => {
-            try {
-              const { invoke } = await import('@tauri-apps/api/core');
-              
-              // 🆕 P37 调试：记录 upsert 调用
-              if (logDebug) {
-                logDebug('block', 'UPSERT_WORKSPACE_STATUS_BLOCK', {
-                  blockId: statusBlockId,
-                  messageId,
-                  hasToolOutput: true,
-                  snapshotAgentsCount: toolOutput.snapshotAgents?.length || 0,
-                }, 'info');
-              }
-              
-              await invoke('chat_v2_upsert_streaming_block', {
-                blockId: statusBlockId,
-                messageId,
-                sessionId: sessionId || undefined,
-                blockType: 'workspace_status',
-                content: '',
-                status: 'success',
-                toolName: 'workspace_status',
-                toolInputJson: JSON.stringify(toolInput),
-                toolOutputJson: JSON.stringify(toolOutput),
-              });
-              console.log('[ToolCall] workspace_status block persisted:', statusBlockId);
-              
-              // 🆕 P37 调试：记录成功
-              if (logDebug) {
-                logDebug('block', 'UPSERT_WORKSPACE_STATUS_BLOCK_SUCCESS', {
-                  blockId: statusBlockId,
-                  messageId,
-                }, 'success');
-              }
-            } catch (e: unknown) {
-              console.warn('[ToolCall] Failed to persist workspace_status block:', e);
-              // 🆕 P37 调试：记录失败
-              if (logDebug) {
-                logDebug('block', 'UPSERT_WORKSPACE_STATUS_BLOCK_ERROR', {
-                  blockId: statusBlockId,
-                  messageId,
-                  error: String(e),
-                }, 'error');
-              }
-            }
-          })();
-
-          // 🆕 当 agents 数据更新后，同步更新块的快照并保存
-          setTimeout(async () => {
-            const latestAgents = useWorkspaceStore.getState().agents;
-            if (latestAgents.length > 0) {
-              const updatedToolOutput = {
-                ...workspaceResult,
-                snapshotName: workspaceName,
-                snapshotCreatedAt: now,
-                snapshotAgents: latestAgents.map(a => ({
-                  session_id: a.sessionId,
-                  role: a.role,
-                  status: a.status,
-                  skill_id: a.skillId || null,
-                })),
-              };
-              store.updateBlock(statusBlockId, {
-                toolOutput: updatedToolOutput,
-              });
-              
-              // 🔧 P35: 同步更新后端数据库
-              try {
-                const { invoke } = await import('@tauri-apps/api/core');
-                await invoke('chat_v2_upsert_streaming_block', {
-                  blockId: statusBlockId,
-                  messageId,
-                  sessionId: sessionId || undefined,
-                  blockType: 'workspace_status',
-                  content: '',
-                  status: 'success',
-                  toolName: 'workspace_status',
-                  toolInputJson: JSON.stringify(toolInput),
-                  toolOutputJson: JSON.stringify(updatedToolOutput),
-                });
-              } catch (e: unknown) {
-                console.warn('[ToolCall] Failed to update workspace_status block:', e);
-              }
-            }
-          }, 500);
-        }
-      }
-
-      if (toolName === 'workspace_create_agent' && unwrappedResult) {
-        const agentResult = unwrappedResult as {
-          agent_session_id?: string;
-          workspace_id?: string;
-          role?: string;
-          skill_id?: string;
-          status?: string;
-        };
-
-        if (agentResult.agent_session_id && agentResult.workspace_id) {
-          const workspaceStore = useWorkspaceStore.getState();
-          const now = new Date().toISOString();
-
-          if (!workspaceStore.currentWorkspaceId) {
-            workspaceStore.setCurrentWorkspace(agentResult.workspace_id);
-          }
-
-          const mappedStatus: WorkspaceAgent['status'] =
-            // 'dispatched' 是后端原生派发的新状态；'auto_starting' 为旧版兼容
-            agentResult.status === 'dispatched' || agentResult.status === 'auto_starting'
-              ? 'running'
-              : agentResult.status === 'completed'
-                ? 'completed'
-                : agentResult.status === 'failed'
-                  ? 'failed'
-                  : 'idle';
-
-          workspaceStore.addAgent({
-            sessionId: agentResult.agent_session_id,
-            workspaceId: agentResult.workspace_id,
-            role: (agentResult.role as WorkspaceAgent['role']) || 'worker',
-            skillId: agentResult.skill_id,
-            status: mappedStatus,
-            joinedAt: now,
-            lastActiveAt: now,
-          });
-
-          void (async () => {
-            try {
-              const { listAgents, agentMetadataFromInfo } = await import('../../workspace/api');
-              const agentsData = await listAgents(store.sessionId || 'unknown', agentResult.workspace_id!);
-              const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
-                sessionId: a.session_id,
-                workspaceId: agentResult.workspace_id!,
-                role: a.role as WorkspaceAgent['role'],
-                skillId: a.skill_id,
-                status: a.status as WorkspaceAgent['status'],
-                joinedAt: a.joined_at,
-                lastActiveAt: a.last_active_at,
-                metadata: agentMetadataFromInfo(a),
-                // 🆕 C12: inbox 未消费消息数
-                pendingInboxCount: a.pending_inbox_count,
-              }));
-              workspaceStore.setAgents(convertedAgents);
-
-              // 🆕 更新 workspace_status 块的快照
-              updateWorkspaceStatusBlockSnapshot(store, agentResult.workspace_id!, convertedAgents);
-            } catch (e: unknown) {
-              console.warn('[ToolCall] workspace_create_agent: failed to refresh agents', e);
-            }
-          })();
-        }
-      }
-
-      // 🆕 单 Task 委托：subagent_call 缺省 workspace_id 时后端自动创建工作区并把
-      // 当前会话注册为 coordinator（auto_created_workspace=true）。前端参照
-      // workspace_create 成功后的逻辑做等价的 store 关联刷新，使工作区面板可见。
+      // 单 Task 委托：subagent_call 缺省 workspace_id 时后端自动创建内部跟踪工作区
+      // （auto_created_workspace=true）。仅同步 workspaceStore（不创建 workspace_status 卡片），
+      // 供 subagent_embed / sleepBlock 订阅子代理状态。
       if (toolName === 'subagent_call' && unwrappedResult && typeof unwrappedResult === 'object') {
         const subagentResult = unwrappedResult as {
           workspace_id?: string;
@@ -738,57 +518,6 @@ const toolCallEventHandler: EventHandler = {
               runId: subagentResult.run_id,
               status: subagentResult.status,
             }, 'info');
-          }
-        }
-      }
-
-      if (toolName === 'workspace_send' && block.toolInput) {
-        const toolInput = block.toolInput as { workspace_id?: string };
-        if (toolInput.workspace_id) {
-          const workspaceStore = useWorkspaceStore.getState();
-          if (!workspaceStore.currentWorkspaceId) {
-            workspaceStore.setCurrentWorkspace(toolInput.workspace_id);
-          }
-        }
-      }
-
-      if (toolName === 'workspace_query' && block.toolInput && unwrappedResult) {
-        const toolInput = block.toolInput as { workspace_id?: string; query_type?: string };
-        const toolOutput = unwrappedResult as { agents?: unknown; messages?: unknown };
-        const workspaceId = toolInput.workspace_id;
-        if (workspaceId) {
-          const workspaceStore = useWorkspaceStore.getState();
-          if (!workspaceStore.currentWorkspaceId) {
-            workspaceStore.setCurrentWorkspace(workspaceId);
-          }
-
-          if (toolInput.query_type === 'agents' && Array.isArray(toolOutput.agents)) {
-            const now = new Date().toISOString();
-            const convertedAgents: WorkspaceAgent[] = (toolOutput.agents as Array<any>).map((a) => ({
-              sessionId: a.session_id,
-              workspaceId,
-              role: a.role as WorkspaceAgent['role'],
-              skillId: a.skill_id,
-              status: a.status as WorkspaceAgent['status'],
-              joinedAt: now,
-              lastActiveAt: now,
-            }));
-            workspaceStore.setAgents(convertedAgents);
-          }
-
-          if (toolInput.query_type === 'messages' && Array.isArray(toolOutput.messages)) {
-            const now = new Date().toISOString();
-            const convertedMessages: WorkspaceMessage[] = (toolOutput.messages as Array<any>).map((m) => ({
-              id: m.id,
-              workspaceId,
-              senderSessionId: m.sender,
-              targetSessionId: m.target,
-              messageType: m.type as WorkspaceMessage['messageType'],
-              content: m.content,
-              status: 'delivered',
-              createdAt: m.created_at || now,
-            }));
-            workspaceStore.setMessages(convertedMessages);
           }
         }
       }
@@ -983,25 +712,34 @@ const imageGenEventHandler: EventHandler = {
     payload: EventStartPayload,
     backendBlockId?: string
   ): string => {
-    const { prompt, width, height, model } = payload as ImageGenStartPayload;
+    const payloadObj = (payload ?? {}) as ImageGenStartPayload & { toolCallId?: string };
+    const { prompt, width, height, model } = payloadObj;
+    const rawToolCallId =
+      typeof payloadObj.toolCallId === 'string' && payloadObj.toolCallId
+        ? payloadObj.toolCallId
+        : undefined;
 
-    // 🆕 2026-02-17: 生命周期追踪 — image_gen 无 preparing 阶段，trackStart 会自动回填
-    const syntheticToolCallId = backendBlockId || `img_${Date.now()}`;
+    // 🆕 2026-02-17: 生命周期追踪 — 若携带原始 toolCallId，先清理对应 preparing 占位块
+    const syntheticToolCallId = rawToolCallId || backendBlockId || `img_${Date.now()}`;
     emitToolCallDebug('info', 'backend:start', `image_gen 开始执行`, () => ({
       toolName: 'image_gen', toolCallId: syntheticToolCallId, blockId: backendBlockId,
       detail: { prompt: prompt?.slice(0, 80), width, height, model },
     }));
     trackStart(syntheticToolCallId, backendBlockId, 'image_gen');
 
-    // 如果后端传了 blockId，使用它；否则由前端生成
-    const blockId = backendBlockId
-      ? store.createBlockWithId(messageId, 'image_gen', backendBlockId)
-      : store.createBlock(messageId, 'image_gen');
+    const blockId = resolveBlockWithPreparingCleanup(
+      store,
+      messageId,
+      'image_gen',
+      rawToolCallId,
+      backendBlockId,
+    );
 
     // 设置输入信息（使用 toolInput 字段）
     store.updateBlock(blockId, {
       toolInput: { prompt, width, height, model },
       toolCallId: syntheticToolCallId, // 🆕 关联 toolCallId 以便 onEnd/onError 追踪
+      toolOutput: undefined,
     });
 
     // 🔧 修复：立即将状态更新为 running，让前端显示生成中状态
@@ -1098,8 +836,6 @@ const toolCallPreparingEventHandler: EventHandler = {
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
     const isSubagentCallTool = SUBAGENT_EMBED_TOOL_NAMES.has(strippedToolName);
-    // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块（与执行块类型保持一致）
-    const isWorkspaceSendTool = strippedToolName === 'workspace_send';
     // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops
     const blockType = isSleepTool
       ? 'sleep'
@@ -1107,11 +843,9 @@ const toolCallPreparingEventHandler: EventHandler = {
         ? 'ask_user'
         : isSubagentCallTool
           ? 'subagent_embed'
-          : isWorkspaceSendTool
-            ? 'workspace_send'
-            : isWorkbenchOpsToolName(toolName)
-              ? 'workbench_ops'
-              : 'mcp_tool';
+          : isWorkbenchOpsToolName(toolName)
+            ? 'workbench_ops'
+            : 'mcp_tool';
 
     // 幂等：同一 toolCallId 已有 preparing 占位块时不再新建（否则 tool_call start
     // 只会提升其中一个，其余成为孤儿行）。后端换了 block_id 时原地改名，
@@ -1159,6 +893,38 @@ const toolCallPreparingEventHandler: EventHandler = {
    */
   onChunk: (store: ChatStore, blockId: string, chunk: string): void => {
     store.updateBlockContent(blockId, chunk);
+  },
+
+  /**
+   * 准备阶段被正常放弃（如上下文压缩重跑、轮次重置）时清除未晋升的 preparing 占位块
+   */
+  onEnd: (store: ChatStore, blockId: string): void => {
+    const block = store.blocks?.get(blockId);
+    if (!block) return;
+    if (block.toolCallId) {
+      trackEnd(block.toolCallId, true);
+    }
+    if (block.isPreparing) {
+      store.deleteBlock?.(blockId);
+    }
+    if (block.messageId) {
+      store.clearPreparingToolCall?.(block.messageId);
+    }
+  },
+
+  /**
+   * 准备阶段因流中断、取消或上游错误未进入执行阶段时，将占位块推进为终态错误
+   */
+  onError: (store: ChatStore, blockId: string, error: string): void => {
+    const block = store.blocks?.get(blockId);
+    if (block?.toolCallId) {
+      trackEnd(block.toolCallId, false);
+    }
+    store.updateBlock(blockId, { isPreparing: false });
+    store.setBlockError(blockId, error || 'Tool preparation failed');
+    if (block?.messageId) {
+      store.clearPreparingToolCall?.(block.messageId);
+    }
   },
 };
 

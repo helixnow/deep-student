@@ -94,6 +94,9 @@ export function sanitizeNodeImages(
     if (inline) budget.inlineCharsRemaining -= source.src.length;
 
     const image: MindMapImage = { src: source.src };
+    if (typeof source.id === 'string' && source.id.trim()) {
+      image.id = source.id.trim().slice(0, 128);
+    }
     if (typeof source.name === 'string' && source.name) {
       image.name = source.name.slice(0, MAX_IMAGE_NAME_CHARS);
     }

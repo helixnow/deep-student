@@ -1,0 +1,109 @@
+{
+  "domain": "storage",
+  "commands": [
+    "staged_upload_begin",
+    "staged_upload_append"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.storage.staged_upload_begin.err_args_serde",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_begin", "args": { "name": "a.bin" }, "expect": "error" },
+        { "cmd": "staged_upload_begin", "args": { "totalSize": 10 }, "expect": "error" },
+        { "cmd": "staged_upload_begin", "args": { "name": "a.bin", "totalSize": -1 }, "expect": "error" },
+        { "cmd": "staged_upload_begin", "args": { "name": "a.bin", "total_size": 10 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_begin.err_too_large",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_begin", "args": { "name": "big.pdf", "totalSize": 209715201 }, "expect": "error" },
+        { "cmd": "staged_upload_begin", "args": { "name": "lecture.MP4", "totalSize": 4294967297 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_missing_upload_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": { "offset": 3, "data": "CQgH" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_missing_offset",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": { "uploadId": "u2", "data": "CQgH" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_missing_chunk_data",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": { "uploadId": "u2", "offset": 3 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_invalid_base64",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": { "uploadId": "u2", "offset": 3, "data": "not base64!" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_bytes_without_upload_id_header",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": [4, 5, 255], "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_unknown_upload",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_append", "args": { "uploadId": "u2", "offset": 3, "data": "CQgH" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_unexpected_offset",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_begin", "args": { "name": "a.bin", "totalSize": 4 } },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 2, "data": "YWI=" }, "expect": "error" },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 0, "data": "YWI=" } },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 0, "data": "YWI=" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.storage.staged_upload_append.err_exceeds_declared_size",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "staged_upload_begin", "args": { "name": "a.bin", "totalSize": 4 } },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 0, "data": "YWI=" } },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 2, "data": "YWJj" }, "expect": "error" },
+        { "cmd": "staged_upload_append", "args": { "uploadId": "${0}", "offset": 2, "data": "YWI=" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

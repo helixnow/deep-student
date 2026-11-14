@@ -18,6 +18,7 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { ExamReadinessHud, useSprintLauncherSnapshot } from '@/components/exam-sprint';
 import type { TodoItem, TodoList } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWindowStore } from '../core/windowStore';
@@ -88,6 +89,7 @@ function agendaSort(a: TodoItem, b: TodoItem): number {
 export const DesktopAgendaWidget: React.FC = React.memo(() => {
   const { t, i18n } = useTranslation('workbench');
   const [collapsed, toggleCollapsed] = useDesktopWidgetCollapsed('agenda');
+  const { readiness: sprintReadiness } = useSprintLauncherSnapshot();
   const snapshot = useSyncExternalStore(
     subscribeTodoAgenda,
     getTodoAgendaSnapshot,
@@ -409,6 +411,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             const isCurrentMonth = day.getMonth() === visibleMonth.getMonth();
             const isToday = key === todayKey;
             const isSelected = key === selectedKey;
+            const isExamDate = Boolean(sprintReadiness?.examDate && key === sprintReadiness.examDate);
             return (
               <button
                 type="button"
@@ -418,6 +421,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 data-outside={!isCurrentMonth || undefined}
                 data-today={isToday || undefined}
                 data-selected={isSelected || undefined}
+                data-exam-date={isExamDate || undefined}
                 data-date={key}
                 tabIndex={isSelected ? 0 : -1}
                 aria-selected={isSelected}
@@ -430,6 +434,9 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 onKeyDown={(event) => handleDayKeyDown(event, day)}
               >
                 <span>{day.getDate()}</span>
+                {isExamDate ? (
+                  <span className="wb-agenda-exam-dot" aria-hidden="true" />
+                ) : null}
                 <span className="wb-agenda-day-dots" aria-hidden="true">
                   {dayItems.slice(0, 3).map((item) => (
                     <i
@@ -445,6 +452,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
       </div>
 
       <div className="wb-agenda-divider" />
+
+      {!collapsed ? <ExamReadinessHud variant="agenda-strip" /> : null}
 
       <div className="wb-agenda-list-header">
         <div>

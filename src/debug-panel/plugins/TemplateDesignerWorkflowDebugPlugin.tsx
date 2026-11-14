@@ -8,6 +8,9 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Download, MagnifyingGlass, Trash, CaretDown, CaretRight } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { debugMasterSwitch } from '../debugMasterSwitch';
+import { TEMPLATE_DESIGNER_DEBUG_CHANNEL } from '@/shared/debug/channels/templateDesigner';
 import {
   TEMPLATE_DESIGNER_LIFECYCLE_EVENT,
   TEMPLATE_DESIGNER_TOOL_EVENT,
@@ -16,6 +19,8 @@ import {
   toTemplateDebugPhase,
   type TemplateDebugLevel,
   type TemplateDebugPhase,
+  type TemplateDesignerLifecycleEvent,
+  type TemplateDesignerToolDebugEvent,
 } from '@/features/chat/debug/templateDesignerDebug';
 
 type LogEntry = {
@@ -170,6 +175,121 @@ function normalizeToolEventDetail(detail: ToolEventDetail): ToolEventDetail {
   return normalized;
 }
 
+const inflight = new Map<string, InflightRecord>();
+
+function removeInflightByBlockId(blockId?: string): void {
+  if (!blockId) return;
+  for (const [toolCallId, record] of inflight.entries()) {
+    if (record.blockId === blockId) {
+      inflight.delete(toolCallId);
+    }
+  }
+}
+
+function updateInflight(detail: ToolEventDetail, templateId?: string, rawToolName?: string): void {
+  const toolCallId = parseToolCallId(detail);
+  if (!toolCallId) return;
+
+  const now = Date.now();
+  const existing = inflight.get(toolCallId);
+  const nextStage = resolveStage(detail);
+  const next: InflightRecord = existing
+    ? {
+        ...existing,
+        toolName: rawToolName || existing.toolName,
+        templateId: templateId ?? existing.templateId,
+        blockId: detail.blockId ?? existing.blockId,
+        lastSeenAt: now,
+        stage: nextStage,
+        approvalTimeoutMs: parseApprovalTimeoutMs(detail) ?? existing.approvalTimeoutMs,
+      }
+    : {
+        toolCallId,
+        toolName: rawToolName || '',
+        templateId,
+        blockId: detail.blockId,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        stage: nextStage,
+        approvalTimeoutMs: parseApprovalTimeoutMs(detail),
+      };
+
+  inflight.set(toolCallId, next);
+}
+
+/** One tool block event of a template designer tool (other tools are ignored); same detail as the window event. */
+export function recordTemplateDesignerToolEvent(raw: TemplateDesignerToolDebugEvent): void {
+  const detail = normalizeToolEventDetail(raw as ToolEventDetail);
+  const rawToolName = detail?.toolName || '';
+  if (!isTemplateDesignerToolName(rawToolName)) return;
+
+  const phase = detail.phase || 'start';
+  const output = detail.toolOutput ?? detail.result;
+  const templateId =
+    extractId(detail.toolInput) ?? extractId(output) ?? extractId(detail.payload);
+  const summary = formatSummary(
+    buildTemplateToolSummary(rawToolName, phase, detail.toolInput, output, detail.error),
+    templateId,
+  );
+
+  pushLog({
+    level: phase === 'error' ? 'error' : 'info',
+    phase: toTemplateDebugPhase(rawToolName),
+    summary,
+    detail,
+    blockId: detail.blockId,
+    templateId,
+  });
+
+  if (detail.type === 'tool_approval_request') {
+    pushLog({
+      level: 'warn',
+      phase: toTemplateDebugPhase(rawToolName),
+      summary: `⚠️ ${rawToolName} 进入审批，等待用户确认`,
+      detail: {
+        toolCallId: parseToolCallId(detail),
+        timeoutMs: parseApprovalTimeoutMs(detail),
+      },
+      blockId: detail.blockId,
+      templateId,
+    });
+  }
+
+  if (phase === 'end' || phase === 'error') {
+    const toolCallId = parseToolCallId(detail);
+    if (toolCallId) inflight.delete(toolCallId);
+    removeInflightByBlockId(detail.blockId);
+    return;
+  }
+
+  updateInflight(detail, templateId, rawToolName);
+}
+
+/** One lifecycle entry; missing level / phase / summary read as info / system / a placeholder. */
+export function recordTemplateDesignerLifecycle(detail: TemplateDesignerLifecycleEvent): void {
+  if (!detail) return;
+
+  pushLog({
+    level: detail.level || 'info',
+    phase: detail.phase || 'system',
+    summary: detail.summary || 'template designer event',
+    detail: detail.detail,
+    templateId: detail.templateId,
+    blockId: detail.blockId,
+  });
+}
+
+// 通道上报不经过面板组件：调试总开关关闭时照样丢弃，与宿主不渲染面板时一致（不在后台记日志）。
+// RUST-FIX(RF-W19-debug-channel-records-while-closed)
+serveDebugChannel(TEMPLATE_DESIGNER_DEBUG_CHANNEL, {
+  recordTemplateDesignerToolEvent(detail: TemplateDesignerToolDebugEvent) {
+    if (debugMasterSwitch.isEnabled()) recordTemplateDesignerToolEvent(detail);
+  },
+  recordTemplateDesignerLifecycle(detail: TemplateDesignerLifecycleEvent) {
+    if (debugMasterSwitch.isEnabled()) recordTemplateDesignerLifecycle(detail);
+  },
+});
+
 const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActivated }) => {
   const [logs, setLogs] = useState<LogEntry[]>(() => snapshotLogs());
   const [keyword, setKeyword] = useState('');
@@ -179,49 +299,6 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [copyMessage, setCopyMessage] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
-  const inflightRef = useRef<Map<string, InflightRecord>>(new Map());
-
-  const removeInflightByBlockId = useCallback((blockId?: string) => {
-    if (!blockId) return;
-    const inflight = inflightRef.current;
-    for (const [toolCallId, record] of inflight.entries()) {
-      if (record.blockId === blockId) {
-        inflight.delete(toolCallId);
-      }
-    }
-  }, []);
-
-  const updateInflight = useCallback((detail: ToolEventDetail, templateId?: string, rawToolName?: string) => {
-    const toolCallId = parseToolCallId(detail);
-    if (!toolCallId) return;
-
-    const now = Date.now();
-    const map = inflightRef.current;
-    const existing = map.get(toolCallId);
-    const nextStage = resolveStage(detail);
-    const next: InflightRecord = existing
-      ? {
-          ...existing,
-          toolName: rawToolName || existing.toolName,
-          templateId: templateId ?? existing.templateId,
-          blockId: detail.blockId ?? existing.blockId,
-          lastSeenAt: now,
-          stage: nextStage,
-          approvalTimeoutMs: parseApprovalTimeoutMs(detail) ?? existing.approvalTimeoutMs,
-        }
-      : {
-          toolCallId,
-          toolName: rawToolName || '',
-          templateId,
-          blockId: detail.blockId,
-          firstSeenAt: now,
-          lastSeenAt: now,
-          stage: nextStage,
-          approvalTimeoutMs: parseApprovalTimeoutMs(detail),
-        };
-
-    map.set(toolCallId, next);
-  }, []);
 
   useEffect(() => {
     if (!isActivated) return;
@@ -241,7 +318,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
     });
     return () => {
       globalListeners.delete(onLog);
-      inflightRef.current.clear();
+      inflight.clear();
     };
   }, [isActivated]);
 
@@ -281,82 +358,17 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
     };
   }, [isActivated]);
 
+  // 发送端仍派发 window 事件，迁到调试通道（`@/shared/debug/channels/templateDesigner`）之前保留这两个监听。
   useEffect(() => {
     if (!isActivated) return;
-    const handler = (event: Event) => {
-      const detail = normalizeToolEventDetail((event as CustomEvent).detail as ToolEventDetail);
-      const rawToolName = detail?.toolName || '';
-      if (!isTemplateDesignerToolName(rawToolName)) return;
-
-      const phase = detail.phase || 'start';
-      const output = detail.toolOutput ?? detail.result;
-      const templateId =
-        extractId(detail.toolInput) ?? extractId(output) ?? extractId(detail.payload);
-      const summary = formatSummary(
-        buildTemplateToolSummary(rawToolName, phase, detail.toolInput, output, detail.error),
-        templateId,
-      );
-
-      pushLog({
-        level: phase === 'error' ? 'error' : 'info',
-        phase: toTemplateDebugPhase(rawToolName),
-        summary,
-        detail,
-        blockId: detail.blockId,
-        templateId,
-      });
-
-      if (detail.type === 'tool_approval_request') {
-        pushLog({
-          level: 'warn',
-          phase: toTemplateDebugPhase(rawToolName),
-          summary: `⚠️ ${rawToolName} 进入审批，等待用户确认`,
-          detail: {
-            toolCallId: parseToolCallId(detail),
-            timeoutMs: parseApprovalTimeoutMs(detail),
-          },
-          blockId: detail.blockId,
-          templateId,
-        });
-      }
-
-      if (phase === 'end' || phase === 'error') {
-        const toolCallId = parseToolCallId(detail);
-        if (toolCallId) inflightRef.current.delete(toolCallId);
-        removeInflightByBlockId(detail.blockId);
-        return;
-      }
-
-      updateInflight(detail, templateId, rawToolName);
-    };
-
+    const handler = (event: Event) => recordTemplateDesignerToolEvent((event as CustomEvent).detail);
     window.addEventListener(TEMPLATE_DESIGNER_TOOL_EVENT, handler);
     return () => window.removeEventListener(TEMPLATE_DESIGNER_TOOL_EVENT, handler);
-  }, [isActivated, removeInflightByBlockId, updateInflight]);
+  }, [isActivated]);
 
   useEffect(() => {
     if (!isActivated) return;
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail as {
-        level?: TemplateDebugLevel;
-        phase?: TemplateDebugPhase;
-        summary?: string;
-        detail?: unknown;
-        templateId?: string;
-        blockId?: string;
-      };
-      if (!detail) return;
-
-      pushLog({
-        level: detail.level || 'info',
-        phase: detail.phase || 'system',
-        summary: detail.summary || 'template designer event',
-        detail: detail.detail,
-        templateId: detail.templateId,
-        blockId: detail.blockId,
-      });
-    };
-
+    const handler = (event: Event) => recordTemplateDesignerLifecycle((event as CustomEvent).detail);
     window.addEventListener(TEMPLATE_DESIGNER_LIFECYCLE_EVENT, handler);
     return () => window.removeEventListener(TEMPLATE_DESIGNER_LIFECYCLE_EVENT, handler);
   }, [isActivated]);
@@ -366,7 +378,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
 
     const timer = window.setInterval(() => {
       const now = Date.now();
-      for (const record of inflightRef.current.values()) {
+      for (const record of inflight.values()) {
         const ageMs = now - record.firstSeenAt;
 
         if (record.stage === 'preparing' && ageMs > PREPARE_TIMEOUT_MS && !record.warnedPrepareTimeout) {

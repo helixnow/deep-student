@@ -20,7 +20,7 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2',
+        'flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card dark:bg-card/80 px-3 py-2',
         className,
       )}
       data-generative-ui-chrome
@@ -51,15 +51,15 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
       </div>
       {!isStreaming && onAction ? (
         <div className="flex items-center gap-1">
-          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'accept' })}>
+          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs [@media(pointer:coarse)]:!min-h-11" onClick={() => onAction({ type: 'accept' })}>
             <Check className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t('chrome.accept')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'regenerate' })}>
+          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs [@media(pointer:coarse)]:!min-h-11" onClick={() => onAction({ type: 'regenerate' })}>
             <ArrowClockwise className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t('chrome.regenerate')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'dismiss' })}>
+          <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs [@media(pointer:coarse)]:!min-h-11" onClick={() => onAction({ type: 'dismiss' })}>
             <X className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t('chrome.dismiss')}
           </DsButton>

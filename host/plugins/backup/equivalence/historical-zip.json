@@ -1,0 +1,142 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_import_zip",
+    "data_governance_get_backup_list",
+    "data_governance_get_backup_job",
+    "data_governance_verify_backup",
+    "data_governance_check_disk_space_for_restore",
+    "data_governance_list_resumable_jobs"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.import.historical.portable_zip",
+      "seed": "l21-historical-zip-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_import_zip",
+          "args": {
+            "zipPath": "${seed.file.portableZip}",
+            "backupId": "wp073_hist_portable"
+          },
+          "waitAfter": {
+            "channel": "backup-job-progress",
+            "payload": {
+              "job_id": "${0.job_id}",
+              "status": [
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "wp073_hist_portable"
+          }
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "wp073_hist_portable"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.import.historical.sealed_zip",
+      "seed": "l21-historical-zip-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_import_zip",
+          "args": {
+            "zipPath": "${seed.file.sealedZip}",
+            "backupId": "wp073_hist_sealed_nopw"
+          },
+          "waitAfter": {
+            "channel": "backup-job-progress",
+            "payload": {
+              "job_id": "${0.job_id}",
+              "status": [
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_import_zip",
+          "args": {
+            "zipPath": "${seed.file.sealedZip}",
+            "backupId": "wp073_hist_sealed",
+            "password": "${seed.secret.sealedZipPassword}"
+          },
+          "waitAfter": {
+            "channel": "backup-job-progress",
+            "payload": {
+              "job_id": "${2.job_id}",
+              "status": [
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${2.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "wp073_hist_sealed"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

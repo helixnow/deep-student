@@ -15,6 +15,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import {
   ArrowSquareOut,
+  CaretDown,
+  CaretRight,
   Check,
   Desktop,
   WarningCircle,
@@ -24,8 +26,10 @@ import { DsButton } from '@/components/ui/DsButton';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { cn } from '@/utils/cn';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import {
   isWorkbenchBlockRestored,
 } from '@/features/chat/utils/workbenchBlockRemap';
@@ -445,6 +449,11 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
     }
   };
 
+  const [isExpanded, setIsExpanded] = useState(true);
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
+  const isActive = statusKey === 'running';
+
   const statusBadgeClass = {
     running: 'bg-primary/10 text-primary',
     success: 'bg-success/10 text-success',
@@ -457,9 +466,9 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/40',
-        'bg-card/40 dark:bg-card/20',
-        'overflow-hidden'
+        'rounded-lg border overflow-hidden',
+        'bg-card dark:bg-card/80',
+        statusKey === 'error' ? 'border-destructive/30' : 'border-border/50'
       )}
       data-testid="workbench-ops-block"
       data-status={statusKey}
@@ -470,31 +479,44 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
     >
       {/* 标题行 */}
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/30"
+        className={cn(
+          'flex items-center justify-between gap-2 px-3 py-2.5',
+          isExpanded && 'border-b border-border/40'
+        )}
         data-testid="workbench-ops-header"
       >
-        <div className="flex flex-1 items-center gap-2 min-w-0">
-          <div className="p-1.5 rounded-md bg-primary/10 dark:bg-primary/20 flex-shrink-0">
-            <Desktop size={16} className="text-primary" />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {t('blocks.workbenchOps.title')}
-              {displayName ? (
-                <span className="text-muted-foreground font-normal"> · {displayName}</span>
-              ) : null}
-            </span>
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          aria-expanded={isExpanded}
+          className="flex flex-1 items-center gap-2 min-w-0 text-left [@media(pointer:coarse)]:!min-h-11"
+        >
+          <ToolActivitySweep
+            active={isActive}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <Desktop size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex flex-col justify-center gap-0.5 min-w-0 flex-1">
+            <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+              <span className="block text-xs font-medium leading-4 text-muted-foreground truncate">
+                {t('blocks.workbenchOps.title')}
+                {displayName ? (
+                  <span className="text-muted-foreground/75 font-normal"> · {displayName}</span>
+                ) : null}
+              </span>
+            </ToolActivitySweep>
             {targetSummary ? (
-              <span className="text-xs text-muted-foreground truncate">
+              <span className="text-xs leading-4 text-muted-foreground/80 truncate">
                 {t('blocks.workbenchOps.target')}: {targetSummary}
               </span>
             ) : (
-              <span className="text-xs text-muted-foreground/70">
+              <span className="text-xs leading-4 text-muted-foreground/70 truncate">
                 {t('blocks.workbenchOps.noTarget')}
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         <div className="flex flex-shrink-0 items-center gap-2">
           {canOpenTarget && (
@@ -513,14 +535,20 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             </DsButton>
           )}
 
+          {!isActive && durationMs !== undefined && durationMs >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(durationMs)}
+            </span>
+          )}
+
           <span
             className={cn(
-              'text-[11px] px-2 py-0.5 rounded-full flex-shrink-0',
+              'text-[11px] px-2 py-0.5 rounded-md flex-shrink-0',
               statusBadgeClass
             )}
             data-testid="workbench-ops-status"
           >
-            {statusKey === 'running' ? (
+            {isActive ? (
               <TextShimmer className="text-[11px]" duration={1.5} spread={3}>
                 {t(`blocks.workbenchOps.status.${statusKey}`)}
               </TextShimmer>
@@ -528,8 +556,21 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
               t(`blocks.workbenchOps.status.${statusKey}`)
             )}
           </span>
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            aria-label={t('blocks.workbenchOps.title')}
+            aria-expanded={isExpanded}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          >
+            {isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
+          </button>
         </div>
       </div>
+
+      {isExpanded && (
+        <>
 
       {/* 步骤流：running 始终展示区；终态有 content 行时保留摘要 */}
       {(block.status === 'running' || block.status === 'pending' || showSteps) && (
@@ -748,6 +789,8 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             </span>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

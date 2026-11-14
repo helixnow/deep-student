@@ -7,10 +7,11 @@
 import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
-import { Globe, X, Check } from '@phosphor-icons/react';
+import { Globe, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { useDialogControl } from '@/contexts/DialogControlContext';
+import { ComposerPanel } from '../../components/input-bar/ComposerPanel/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 
 // ============================================================================
@@ -116,22 +117,15 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
     selectedSearchEngines.length === availableSearchEngines.length;
 
   return (
-    <div className="space-y-3">
+    <ComposerPanel.Root>
       {/* 📱 面板头部移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键） */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <Globe size={16} />
-          <span>{t('analysis:input_bar.search_engine.title')}</span>
-          {selectedSearchEngines.length > 0 && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-              {selectedSearchEngines.length}
-            </span>
-          )}
-        </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <X size={16} />
-        </DsButton>
-      </div>
+      <ComposerPanel.Header
+        icon={Globe}
+        title={t('analysis:input_bar.search_engine.title')}
+        count={selectedSearchEngines.length}
+        onClose={onClose}
+        closeAriaLabel={t('common:actions.cancel')}
+      />
 
       {/* 说明文字 */}
       <div className="text-xs text-muted-foreground">
@@ -201,7 +195,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
       <div className="text-[11px] text-muted-foreground">
         {t('analysis:input_bar.search_engine.hint')}
       </div>
-    </div>
+    </ComposerPanel.Root>
   );
 };
 

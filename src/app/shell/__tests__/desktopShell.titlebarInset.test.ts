@@ -59,15 +59,11 @@ describe('Android system bar wiring (#472)', () => {
       'SRC="src-tauri/mobile/android/SystemBarsPlugin.kt"',
     );
     expect(read('scripts/build_android.sh')).toMatch(/for FILE in [^\n]*SystemBarsPlugin\.kt/);
-    expect(read('src-tauri/src/system_bars.rs')).toContain('"SystemBarsPlugin"');
     expect(read('src-tauri/mobile/android/SystemBarsPlugin.kt')).toContain('mainActivity.setImmersiveMode(args.enabled)');
     expect(read('src-tauri/mobile/android/MainActivity.kt')).toContain('internal fun setImmersiveMode(enabled: Boolean)');
   });
 
-  it('registers and allowlists the immersive command', () => {
-    const lib = read('src-tauri/src/lib.rs');
-    expect(lib).toContain('.plugin(crate::system_bars::init())');
-    expect(lib).toContain('crate::system_bars::set_android_immersive_mode,');
-    expect(read('src-tauri/permissions/application-commands.toml')).toContain('"set_android_immersive_mode",');
+  it('allowlists the immersive command', () => {
+    expect(read('resources/app/permissions/application-commands.toml')).toContain('"set_android_immersive_mode",');
   });
 });

@@ -17,6 +17,9 @@ import { Copy, Trash, Download, CaretDown, CaretRight, MagnifyingGlass, X } from
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Switch } from '@/components/ui/shad/Switch';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { debugMasterSwitch } from '../debugMasterSwitch';
+import { CHAT_ANKI_DEBUG_CHANNEL } from '@/shared/debug/channels/chatAnki';
 
 // ============================================================================
 // 类型
@@ -99,32 +102,44 @@ function clearLogs(): void {
 // 全局事件桥接 — 任何模块都可以通过 window event 发日志，不依赖 require()
 // ============================================================================
 
-const LIFECYCLE_EVENT = 'chatanki-debug-lifecycle';
-
 /**
- * 向调试插件发送生命周期日志（通过 window CustomEvent，无需 import）
- *
- * 使用方式（任何模块）：
+ * 生命周期日志的 window 事件（无需 import）。各模块直接派发：
  * ```ts
  * window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
  *   detail: { level: 'info', phase: 'bridge:card', summary: '...', documentId, blockId, detail: {...} }
  * }));
  * ```
+ * 新代码改用调试通道 `emitChatAnkiLifecycle(detail)`（`@/shared/debug/channels/chatAnki`，生产构建为空操作），detail 相同。
  */
-export function emitChatAnkiDebug(
-  level: LogLevel,
-  phase: LogPhase,
-  summary: string,
-  opts?: { detail?: unknown; documentId?: string; blockId?: string; taskId?: string },
-): void {
-  pushChatAnkiLog(level, phase, summary, opts);
-  // 也通过 window event 广播（冗余但确保不丢）
-  try {
-    window.dispatchEvent(new CustomEvent(LIFECYCLE_EVENT, {
-      detail: { level, phase, summary, ...opts },
-    }));
-  } catch { /* SSR safe */ }
+const LIFECYCLE_EVENT = 'chatanki-debug-lifecycle';
+
+/** One lifecycle entry as modules report it; level / phase are not checked, missing ones read as info / system. */
+export interface ChatAnkiLifecycleDetail {
+  level?: string;
+  phase?: string;
+  summary?: string;
+  detail?: unknown;
+  documentId?: string;
+  blockId?: string;
+  taskId?: string;
 }
+
+export function recordChatAnkiLifecycle(d: ChatAnkiLifecycleDetail): void {
+  pushChatAnkiLog(
+    (d.level ?? 'info') as LogLevel,
+    (d.phase ?? 'system') as LogPhase,
+    d.summary ?? '',
+    { detail: d.detail, documentId: d.documentId, blockId: d.blockId, taskId: d.taskId },
+  );
+}
+
+// 通道上报不经过面板组件：调试总开关关闭时照样丢弃，与宿主不渲染面板时一致（不在后台记日志）。
+// RUST-FIX(RF-W19-debug-channel-records-while-closed)
+serveDebugChannel(CHAT_ANKI_DEBUG_CHANNEL, {
+  recordChatAnkiLifecycle(d: ChatAnkiLifecycleDetail) {
+    if (debugMasterSwitch.isEnabled()) recordChatAnkiLifecycle(d);
+  },
+});
 
 const TOOL_INTERCEPT_EVENT = 'chatanki-debug-tool-intercept';
 
@@ -442,16 +457,9 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail;
       if (!d) return;
-      // 避免重复：pushChatAnkiLog 已经在 emitChatAnkiDebug 内部调了一次
-      // 这里只处理外部直接 dispatchEvent 但没走 emitChatAnkiDebug 的情况
-      // 用 _fromEmit 标记区分
+      // 带 _fromEmit 标记的事件已在派发方记过日志，不重复记录
       if (d._fromEmit) return;
-      pushChatAnkiLog(
-        d.level ?? 'info',
-        d.phase ?? 'system',
-        d.summary ?? '',
-        { detail: d.detail, documentId: d.documentId, blockId: d.blockId, taskId: d.taskId },
-      );
+      recordChatAnkiLifecycle(d);
     };
     window.addEventListener(LIFECYCLE_EVENT, handler);
     return () => window.removeEventListener(LIFECYCLE_EVENT, handler);

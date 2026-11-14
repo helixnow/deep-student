@@ -18,7 +18,7 @@ on:
         default: false
         type: boolean
       allow_unsigned:
-        default: true
+        default: false
         type: boolean
       allow_missing_fixtures:
         default: false
@@ -59,7 +59,7 @@ jobs:
       tag_name: ${{ inputs.tag_name }}
       allow_unsigned: ${{ inputs.allow_unsigned }}
       frontend_dist_artifact: frontend-dist
-      targets: ${{ inputs.stage == 'macos-arm' && '[{"target":"aarch64-apple-darwin","runner":"macos-15"}]' || '[{"target":"x86_64-apple-darwin","runner":"macos-15-intel"}]' }}
+      targets: ${{ inputs.stage == 'macos-arm' && '[{"target":"aarch64-apple-darwin","arch":"arm64","runner":"macos-15"}]' || '[{"target":"x86_64-apple-darwin","arch":"x64","runner":"macos-15-intel"}]' }}
     secrets: inherit
   windows:
     if: inputs.reuse_run_id == '' && inputs.stage == 'windows'

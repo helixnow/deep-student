@@ -8,10 +8,10 @@
  */
 
 import { CHAT_PANEL_PDF_FOCUS_SCOPE } from './chatPdfFocus';
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour } from '@phosphor-icons/react';
+import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour, Columns } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
@@ -39,8 +39,10 @@ import { useGroupManagement } from '../hooks/useGroupManagement';
 import { useGroupCollapse } from '../hooks/useGroupCollapse';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
@@ -80,6 +82,8 @@ import {
   clearHiddenDraftSessionMetadata,
   getHiddenDraftSessionScope,
 } from './draftSession';
+import { ParkedSessionViewManager } from '../utils/modelListCacheAndResume';
+import { ChatReadingResizeHandle, getChatReadingWidth, MIN_READING_LAYOUT_WIDTH } from './ChatReadingResizeHandle';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -100,19 +104,20 @@ interface DesktopSecondaryPanelSnapshot {
   openApp: OpenApp | null;
 }
 
+const APP_ICONS = {
+  note: FileText,
+  textbook: BookOpen,
+  exam: ClipboardText,
+  image: Image,
+  file: File,
+} as const;
+
 /**
  * 获取应用类型对应的图标
  */
-const getAppIcon = (type: ResourceType) => {
-  switch (type) {
-    case 'note': return FileText;
-    case 'textbook': return BookOpen;
-    case 'exam': return ClipboardText;
-    case 'image': return Image;
-    case 'file': return File;
-    default: return FileText;
-  }
-};
+export const getAppIcon = (type: ResourceType) =>
+  Object.hasOwn(APP_ICONS, type) ? APP_ICONS[type as keyof typeof APP_ICONS] : FileText;
+const isReadingResource = (type: ResourceType) => type === 'file' || type === 'textbook' || type === 'image';
 const LAST_SESSION_KEY = 'chat-v2-last-session-id';
 // 次级面板动效对齐 chat 动效 token（motion.css）：
 // - 时长 = --chat-motion-base（200ms）；JS 侧 setTimeout 需要数值，
@@ -137,11 +142,14 @@ export interface ChatV2PageProps {
    * 应暂停（token 缓冲不丢，回可见立即补渲）。缺省 false 行为不变。
    */
   isSuspended?: boolean;
+  /** Only the normal desktop shell offers document-first split reading. */
+  allowReadingLayout?: boolean;
 }
 
 export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   streamPreset = 'balanced',
   isSuspended = false,
+  allowReadingLayout = false,
 }) => {
   const { t } = useTranslation(['chatV2', 'learningHub', 'common']);
 
@@ -150,6 +158,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
   // ========== 响应式布局支持 ==========
   const { isSmallScreen } = useBreakpoint();
+  const reduceReadingMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const readingViewportWideEnough = useMediaQuery(`(min-width: ${MIN_READING_LAYOUT_WIDTH}px)`);
   const [sandboxOwnerKey] = useState(() => createSandboxOwnerKey('chat-page'));
 
   useEffect(() => {
@@ -162,16 +172,46 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   const sessions = useSessionListStore((state) => state.sessions);
   const setSessions = useSessionListStore((state) => state.setSessions);
   const [currentSessionId, setCurrentSessionIdState] = useState<string | null>(null);
+  const [readingLayoutRequested, setReadingLayoutRequested] = useState(false);
+  const [preferredReadingChatWidth, setPreferredReadingChatWidth] = useState<number>();
+  const [desktopContent, setDesktopContent] = useState({ width: 0, fillsShell: false });
+  const desktopContentRef = useRef<HTMLDivElement>(null);
+  const desktopChatPaneRef = useRef<HTMLDivElement>(null);
+  const desktopDocumentPaneRef = useRef<HTMLDivElement>(null);
+  const previousReadingLayoutRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const element = desktopContentRef.current;
+    if (!allowReadingLayout || isSmallScreen || !element) return;
+    const shell = element.closest('[data-shell-role="app-shell"]');
+    const measure = () => {
+      const width = element.getBoundingClientRect().width;
+      const fillsShell = width >= (shell?.getBoundingClientRect().width ?? width);
+      setDesktopContent((prev) => prev.width === width && prev.fillsShell === fillsShell
+        ? prev : { width, fillsShell });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [allowReadingLayout, isSmallScreen]);
 
   // 🔧 P1-26 + P1-28: 包装 setCurrentSessionId
   // - 同步更新 sessionManager（P1-26）
   // - 保存到 localStorage（P1-28）
   // 副作用移出 setState updater（updater 必须纯函数，StrictMode 下会被双调用）
   const currentSessionIdRef = useRef<string | null>(null);
+  const parkedSessionViewsRef = useRef(
+    new ParkedSessionViewManager<{ visitedAt: number }>('__init__', () => ({ visitedAt: 0 })),
+  );
   const setCurrentSessionId = useCallback((sessionIdOrUpdater: string | null | ((prev: string | null) => string | null)) => {
     const prev = currentSessionIdRef.current;
     const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
     currentSessionIdRef.current = newId;
+    if (newId) {
+      parkedSessionViewsRef.current.activeSessionKey = newId;
+      parkedSessionViewsRef.current.writeView(newId, { visitedAt: Date.now() });
+    }
     // 同步更新 sessionManager 的当前会话 ID
     sessionManager.setCurrentSessionId(newId);
     // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
@@ -188,6 +228,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
     // 移动端同时收回右屏：只清 openApp 会让右屏退化成资源库列表盖住新会话
     if (newId !== prev) {
+      setReadingLayoutRequested(false);
       setOpenApp(null);
       setAttachmentPreviewOpen(false);
       setMobileResourcePanelOpen(false);
@@ -811,15 +852,21 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       title: item.title,
       filePath: item.path,
     });
-  }, []);
+    // A file opened from the conversation's resource browser uses the same reader as an attachment.
+    if (allowReadingLayout && !isSmallScreen && isReadingResource(item.type)) {
+      setAttachmentPreviewOpen(true);
+    }
+  }, [allowReadingLayout, isSmallScreen]);
   
   // ★ 关闭应用面板
   const handleCloseApp = useCallback(() => {
+    setReadingLayoutRequested(false);
     setOpenApp(null);
     setAttachmentPreviewOpen(false);
   }, []);
 
   const handleCloseSandbox = useCallback(() => {
+    setReadingLayoutRequested(false);
     setOpenApp(null);
     setAttachmentPreviewOpen(false);
     setCanvasSidebarOpen(false);
@@ -843,12 +890,64 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         ? 'canvas'
         : null;
   const desktopSecondaryPanelOpen = !isSmallScreen && desktopSecondaryPanelMode !== null;
+  // Eligibility uses the whole window: collapsing the navigation frees its width.
+  const hasReadingDocument = allowReadingLayout && !isSmallScreen
+    && desktopSecondaryPanelMode === 'attachment' && !!openApp && isReadingResource(openApp.type);
+  const readingLayoutAvailable = hasReadingDocument && readingViewportWideEnough;
+  const readingLayoutActive = readingLayoutAvailable && readingLayoutRequested
+    && globalLeftPanelCollapsed && desktopContent.fillsShell && desktopContent.width >= MIN_READING_LAYOUT_WIDTH;
+  const readingChatWidth = getChatReadingWidth(desktopContent.width, preferredReadingChatWidth);
+
+  useLayoutEffect(() => {
+    const changed = previousReadingLayoutRef.current !== readingLayoutActive;
+    previousReadingLayoutRef.current = readingLayoutActive;
+    const chat = desktopChatPaneRef.current;
+    const documentPane = desktopDocumentPaneRef.current;
+    if (!changed || !hasReadingDocument || reduceReadingMotion || !chat || !documentPane || !chat.animate) return;
+
+    // Animate on the compositor after layout. Keeping widths out of the animation
+    // avoids rerendering the PDF at a different scale on every frame.
+    const style = getComputedStyle(chat);
+    const time = style.getPropertyValue('--chat-motion-base').trim();
+    const duration = parseFloat(time) * (time.endsWith('ms') ? 1 : 1000);
+    if (duration === 0) return;
+    const options = {
+      duration: Number.isFinite(duration) ? duration : DESKTOP_SECONDARY_PANEL_TRANSITION_MS,
+      easing: style.getPropertyValue('--chat-motion-ease').trim() || 'cubic-bezier(0.22, 1, 0.36, 1)',
+    };
+    const distance = readingLayoutActive ? 32 : -32;
+    const enter = (pane: HTMLElement, x: number) => pane.animate(
+      [{ translate: `${x}px 0`, opacity: 0.7 }, { translate: '0 0', opacity: 1 }],
+      options,
+    );
+    const chatAnimation = enter(chat, -distance);
+    const documentAnimation = enter(documentPane, distance);
+    return () => {
+      chatAnimation.cancel();
+      documentAnimation.cancel();
+    };
+  }, [hasReadingDocument, readingLayoutActive, reduceReadingMotion]);
+
+  useLayoutEffect(() => {
+    // Expanding the sidebar leaves reading mode, even if it is opened while the window is narrow.
+    if (readingLayoutRequested && !globalLeftPanelCollapsed) setReadingLayoutRequested(false);
+  }, [readingLayoutRequested, globalLeftPanelCollapsed]);
+
+  const toggleReadingLayout = useCallback(() => {
+    if (!readingLayoutRequested && !useUIStore.getState().leftPanelCollapsed) {
+      useUIStore.getState().setLeftPanelCollapsed(true);
+    }
+    setReadingLayoutRequested(!readingLayoutRequested);
+  }, [readingLayoutRequested]);
   const desktopSecondaryPanelSnapshotApp = desktopSecondaryPanelMode === 'attachment'
     ? openApp
     : desktopSecondaryPanelSnapshot?.mode === 'attachment'
       ? desktopSecondaryPanelSnapshot.openApp
       : null;
   const desktopSecondaryPanelSnapshotMode = desktopSecondaryPanelMode ?? desktopSecondaryPanelSnapshot?.mode ?? null;
+  const desktopSecondaryPanelWidth = allowReadingLayout && desktopSecondaryPanelSnapshotMode === 'attachment'
+    ? `min(${DESKTOP_SECONDARY_PANEL_WIDTH}, 55cqw)`
+    : DESKTOP_SECONDARY_PANEL_WIDTH;
 
   useEffect(() => {
     if (isSmallScreen) {
@@ -968,6 +1067,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       return;
     }
 
+    setReadingLayoutRequested(false);
     setOpenApp(null);
     setAttachmentPreviewOpen(false);
     setCanvasSidebarOpen(false);
@@ -984,32 +1084,22 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     const { type, id, title } = openApp;
     const dstuPath = openApp.filePath || (id.startsWith('/') ? id : `/${id}`);
 
-    switch (type) {
-      case 'exam':
-        window.dispatchEvent(new CustomEvent('navigateToExamSheet', {
-          detail: { sessionId: id },
-        }));
-        break;
-      case 'note':
-        window.dispatchEvent(new CustomEvent('navigateToNote', {
-          detail: { noteId: id },
-        }));
-        break;
-      case 'essay':
-        window.dispatchEvent(new CustomEvent('navigateToEssay', {
-          detail: { essayId: id, title },
-        }));
-        break;
-      case 'translation':
-        window.dispatchEvent(new CustomEvent('navigateToTranslation', {
-          detail: { translationId: id, title },
-        }));
-        break;
-      default:
-        window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
-          detail: { view: 'learning-hub', openResource: dstuPath },
-        }));
-        break;
+    const openEvent = getOfficialResourceTypeUi(type)?.chatOpenEvent;
+    if (openEvent) {
+      const detailKey = openEvent === 'navigateToExamSheet'
+        ? 'sessionId'
+        : openEvent === 'navigateToNote'
+          ? 'noteId'
+          : openEvent === 'navigateToEssay'
+            ? 'essayId'
+            : 'translationId';
+      window.dispatchEvent(new CustomEvent(openEvent, {
+        detail: { [detailKey]: id, ...(detailKey === 'sessionId' || detailKey === 'noteId' ? {} : { title }) },
+      }));
+    } else {
+      window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+        detail: { view: 'learning-hub', openResource: dstuPath },
+      }));
     }
     handleCloseApp();
     setMobileResourcePanelOpen(false);
@@ -1065,7 +1155,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     return (
       <div className={cn(
         'study-shell-panel h-full flex flex-col',
-        !options?.fullScreen && 'border-l border-[color:var(--shell-inspector-border)]'
+        readingLayoutActive ? '!border-0 !shadow-none' : !options?.fullScreen && 'border-l border-[color:var(--shell-inspector-border)]'
       )}>
         <div
           className={cn(
@@ -1083,12 +1173,29 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             <span className="text-sm font-medium truncate">
               {panelOpenApp.title || t('common:untitled')}
             </span>
-            <span className="text-xs text-muted-foreground">
-              ({t(`learningHub:resourceType.${panelOpenApp.type}`, panelOpenApp.type)})
-            </span>
+            {!readingLayoutAvailable && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                ({t(`learningHub:resourceType.${panelOpenApp.type}`, panelOpenApp.type)})
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {panelOpenApp.type === 'note' && <div ref={setPanelNotesChromeSlot} className="notes-tab-actions-slot flex items-center gap-1" data-tab-actions-slot />}
+            {readingLayoutAvailable && !options?.fullScreen && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={toggleReadingLayout}
+                data-testid="chat-reading-layout-toggle"
+                className={cn(
+                  '!h-7 !gap-1.5 whitespace-nowrap !px-2 [@media(pointer:coarse)]:!min-h-11',
+                  readingLayoutActive && 'bg-primary/10 text-primary hover:bg-primary/15',
+                )}
+              >
+                <Columns size={15} aria-hidden="true" />
+                {t(readingLayoutActive ? 'page.backToChatLayout' : 'page.readAlong')}
+              </DsButton>
+            )}
             <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
@@ -1115,6 +1222,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               resourceId={panelOpenApp.id}
               dstuPath={panelOpenApp.filePath || `/${panelOpenApp.id}`}
               focusScopeId={CHAT_PANEL_PDF_FOCUS_SCOPE}
+              pdfToolbarVariant={readingLayoutActive ? 'reader' : 'preview'}
               onClose={handleClose}
               onTitleChange={handleTitleChange}
               isActive
@@ -1125,7 +1233,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </div>
       </div>
     );
-  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t, panelNotesChromeSlot]);
+  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t, panelNotesChromeSlot, readingLayoutAvailable, readingLayoutActive, toggleReadingLayout]);
 
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
@@ -1272,6 +1380,56 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     </div>
   );
 
+  // Keep both DOM nodes in place: moving a scroll container resets its scroll offset.
+  const desktopChatPane = !isSmallScreen && (
+    <div
+      key="conversation"
+      ref={desktopChatPaneRef}
+      data-testid="chat-conversation-pane"
+      className={cn('h-full min-h-0 min-w-0', readingLayoutActive ? 'order-3 shrink-0' : 'flex-1')}
+      style={readingLayoutActive ? { width: readingChatWidth } : undefined}
+    >
+      {renderMainContent()}
+    </div>
+  );
+  const desktopDocumentPane = desktopSecondaryPanelShouldRender && (
+    <div
+      key="secondary"
+      ref={desktopDocumentPaneRef}
+      data-testid="chat-secondary-pane"
+      className={cn(
+        'h-full min-w-0 overflow-hidden bg-background',
+        readingLayoutActive ? 'order-1 flex-1' : 'shrink-0 border-l border-[color:var(--shell-inspector-border)] shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none',
+      )}
+      style={readingLayoutActive ? undefined : {
+        width: desktopSecondaryPanelOpen ? desktopSecondaryPanelWidth : 0,
+        transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+      }}
+    >
+      <div
+        className={cn('h-full min-w-0', readingLayoutActive ? 'w-full' : desktopSecondaryPanelShellClassName)}
+        style={readingLayoutActive ? undefined : {
+          width: desktopSecondaryPanelWidth,
+          transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+        }}
+      >
+        {renderDesktopSecondaryPanel({
+          mode: desktopSecondaryPanelSnapshotMode,
+          openApp: desktopSecondaryPanelSnapshotApp,
+        })}
+      </div>
+    </div>
+  );
+  const readingDivider = readingLayoutActive && (
+    <ChatReadingResizeHandle
+      key="reading-divider"
+      label={t('page.resizeReadingLayout')}
+      totalWidth={desktopContent.width}
+      chatWidth={readingChatWidth}
+      onResize={setPreferredReadingChatWidth}
+    />
+  );
+
   return (
     <StreamPreferencesProvider preset={streamPreset} mode="blocked" suspended={isSuspended}>
       <div className={cn(
@@ -1405,34 +1563,15 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </MobileSlidingLayout>
       ) : null}
 
-      {/* 桌面端：主聊天区域 + 次级面板（附件预览不再全屏替换聊天，统一走侧栏内联预览） */}
       {!isSmallScreen && (
-        <div className="flex flex-1 min-w-0 h-full overflow-hidden">
-          <div className="h-full min-h-0 min-w-0 flex-1">
-            {renderMainContent()}
-          </div>
-          {desktopSecondaryPanelShouldRender && (
-            <div
-              className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none"
-              style={{
-                width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
-                transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
-              }}
-            >
-              <div
-                className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
-                style={{
-                  width: DESKTOP_SECONDARY_PANEL_WIDTH,
-                  transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
-                }}
-              >
-                {renderDesktopSecondaryPanel({
-                  mode: desktopSecondaryPanelSnapshotMode,
-                  openApp: desktopSecondaryPanelSnapshotApp,
-                })}
-              </div>
-            </div>
-          )}
+        <div
+          ref={desktopContentRef}
+          className={cn("flex flex-1 min-w-0 h-full overflow-hidden", allowReadingLayout && "[container-type:inline-size] [reading-flow:flex-visual]")}
+          data-chat-reading-layout={readingLayoutActive ? 'reading' : 'chat'}
+        >
+          {desktopChatPane}
+          {readingDivider}
+          {desktopDocumentPane}
         </div>
       )}
 

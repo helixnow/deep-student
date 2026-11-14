@@ -1,0 +1,812 @@
+{
+  "appMenus": {
+    "no-windows": {
+      "app": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-appmenu\" data-testid=\"wb-menubar-appmenu\" aria-label=\"学习桌面 菜单\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"学习桌面\"><span class=\"wb-menubar-appmenu-label\">学习桌面</span></button>",
+        "panel": {
+          "label": "学习桌面 菜单",
+          "rows": [
+            {
+              "testId": "wb-menubar-app-all-apps",
+              "role": "menuitem",
+              "label": "全部应用"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-all-apps\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-app-all-apps": {
+            "effects": [
+              [
+                "openAppsPanel"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      },
+      "window": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-windowmenu\" data-testid=\"wb-menubar-windowmenu\" aria-haspopup=\"menu\" aria-expanded=\"true\" title=\"窗口\">窗口</button>",
+        "panel": {
+          "label": "窗口",
+          "rows": [
+            {
+              "testId": "wb-menubar-window-empty",
+              "role": "menuitem",
+              "label": "没有打开的窗口",
+              "disabled": true
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-window-tile-left",
+              "role": "menuitem",
+              "label": "平铺到左半屏",
+              "disabled": true
+            },
+            {
+              "testId": "wb-menubar-window-tile-right",
+              "role": "menuitem",
+              "label": "平铺到右半屏",
+              "disabled": true
+            },
+            {
+              "testId": "wb-menubar-window-maximize",
+              "role": "menuitem",
+              "label": "最大化",
+              "disabled": true
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-empty\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">没有打开的窗口</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-left\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到左半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-right\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\" style=\"transform: scaleX(-1);\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到右半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-maximize\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,48V208H48V48Z\" opacity=\"0.2\"></path><path d=\"M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM88,40H48a8,8,0,0,0-8,8V88a8,8,0,0,0,16,0V56H88a8,8,0,0,0,0-16Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">最大化</span></button>"
+        },
+        "clicks": {}
+      }
+    },
+    "unregistered-app-focused": {
+      "app": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-appmenu\" data-testid=\"wb-menubar-appmenu\" aria-label=\"todo 菜单\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"todo\"><span class=\"wb-menubar-appmenu-label\">todo</span></button>",
+        "panel": {
+          "label": "todo 菜单",
+          "rows": [
+            {
+              "testId": "wb-menubar-app-new-window",
+              "role": "menuitem",
+              "label": "新建窗口"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-app-close-window",
+              "role": "menuitem",
+              "label": "关闭窗口"
+            },
+            {
+              "testId": "wb-menubar-app-close-all",
+              "role": "menuitem",
+              "label": "关闭全部窗口"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-new-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建窗口</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-all\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V48H208V208ZM165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭全部窗口</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-app-new-window": {
+            "effects": [
+              [
+                "workbenchBus.launch",
+                {
+                  "typeId": "todo",
+                  "reason": "api"
+                }
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-window": {
+            "effects": [
+              [
+                "requestCloseAnimated",
+                "<win:2>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-all": {
+            "effects": [
+              [
+                "requestCloseAppWindowsAnimated",
+                "<win:2>"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      },
+      "window": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-windowmenu\" data-testid=\"wb-menubar-windowmenu\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"窗口\">窗口</button>",
+        "panel": {
+          "label": "窗口",
+          "rows": [
+            {
+              "testId": "wb-menubar-window-item-<win:1>",
+              "role": "menuitemcheckbox",
+              "label": "todo",
+              "checked": "false"
+            },
+            {
+              "testId": "wb-menubar-window-item-<win:2>",
+              "role": "menuitemcheckbox",
+              "label": "todo",
+              "checked": "true"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-window-tile-left",
+              "role": "menuitem",
+              "label": "平铺到左半屏"
+            },
+            {
+              "testId": "wb-menubar-window-tile-right",
+              "role": "menuitem",
+              "label": "平铺到右半屏"
+            },
+            {
+              "testId": "wb-menubar-window-maximize",
+              "role": "menuitem",
+              "label": "最大化"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:1>\" role=\"menuitemcheckbox\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">todo</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"></span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:2>\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">todo</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-left\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到左半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-right\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\" style=\"transform: scaleX(-1);\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到右半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-maximize\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,48V208H48V48Z\" opacity=\"0.2\"></path><path d=\"M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM88,40H48a8,8,0,0,0-8,8V88a8,8,0,0,0,16,0V56H88a8,8,0,0,0,0-16Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">最大化</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-window-item-<win:1>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:1>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-item-<win:2>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:2>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-left": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:2>",
+                "tiled-left"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-right": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:2>",
+                "tiled-right"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-maximize": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:2>",
+                "maximized"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      }
+    },
+    "registered-app-focused-with-minimized": {
+      "app": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-appmenu\" data-testid=\"wb-menubar-appmenu\" aria-label=\"fe-b9-sample 菜单\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"fe-b9-sample\"><span class=\"wb-menubar-appmenu-label\">fe-b9-sample</span></button>",
+        "panel": {
+          "label": "fe-b9-sample 菜单",
+          "rows": [
+            {
+              "testId": "wb-menubar-app-new-window",
+              "role": "menuitem",
+              "label": "新建窗口"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-app-close-window",
+              "role": "menuitem",
+              "label": "关闭窗口"
+            },
+            {
+              "testId": "wb-menubar-app-close-all",
+              "role": "menuitem",
+              "label": "关闭全部窗口"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-new-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建窗口</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-all\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V48H208V208ZM165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭全部窗口</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-app-new-window": {
+            "effects": [
+              [
+                "workbenchBus.launch",
+                {
+                  "typeId": "fe-b9-sample",
+                  "reason": "api"
+                }
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-window": {
+            "effects": [
+              [
+                "requestCloseAnimated",
+                "<win:3>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-all": {
+            "effects": [
+              [
+                "requestCloseAppWindowsAnimated",
+                "<win:3>"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      },
+      "window": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-windowmenu\" data-testid=\"wb-menubar-windowmenu\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"窗口\">窗口</button>",
+        "panel": {
+          "label": "窗口",
+          "rows": [
+            {
+              "testId": "wb-menubar-window-item-<win:1>",
+              "role": "menuitemcheckbox",
+              "label": "fe-b9-sample",
+              "checked": "false"
+            },
+            {
+              "testId": "wb-menubar-window-item-<win:2>",
+              "role": "menuitemcheckbox",
+              "label": "Todo B · 已最小化",
+              "checked": "false"
+            },
+            {
+              "testId": "wb-menubar-window-item-<win:3>",
+              "role": "menuitemcheckbox",
+              "label": "Gamma",
+              "checked": "true"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-window-tile-left",
+              "role": "menuitem",
+              "label": "平铺到左半屏"
+            },
+            {
+              "testId": "wb-menubar-window-tile-right",
+              "role": "menuitem",
+              "label": "平铺到右半屏"
+            },
+            {
+              "testId": "wb-menubar-window-maximize",
+              "role": "menuitem",
+              "label": "最大化"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:1>\" role=\"menuitemcheckbox\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">fe-b9-sample</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"></span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:2>\" role=\"menuitemcheckbox\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">Todo B · 已最小化</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"></span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:3>\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">Gamma</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-left\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到左半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-right\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\" style=\"transform: scaleX(-1);\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到右半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-maximize\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,48V208H48V48Z\" opacity=\"0.2\"></path><path d=\"M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM88,40H48a8,8,0,0,0-8,8V88a8,8,0,0,0,16,0V56H88a8,8,0,0,0,0-16Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">最大化</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-window-item-<win:1>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:1>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-item-<win:2>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:2>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-item-<win:3>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:3>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-left": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:3>",
+                "tiled-left"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-right": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:3>",
+                "tiled-right"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-maximize": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:3>",
+                "maximized"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      }
+    },
+    "focused-window-minimized": {
+      "app": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-appmenu\" data-testid=\"wb-menubar-appmenu\" aria-label=\"fe-b9-sample 菜单\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"fe-b9-sample\"><span class=\"wb-menubar-appmenu-label\">fe-b9-sample</span></button>",
+        "panel": {
+          "label": "fe-b9-sample 菜单",
+          "rows": [
+            {
+              "testId": "wb-menubar-app-new-window",
+              "role": "menuitem",
+              "label": "新建窗口"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-app-close-window",
+              "role": "menuitem",
+              "label": "关闭窗口"
+            },
+            {
+              "testId": "wb-menubar-app-close-all",
+              "role": "menuitem",
+              "label": "关闭全部窗口"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-new-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建窗口</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-window\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-app-close-all\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V48H208V208ZM165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">关闭全部窗口</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-app-new-window": {
+            "effects": [
+              [
+                "workbenchBus.launch",
+                {
+                  "typeId": "fe-b9-sample",
+                  "reason": "api"
+                }
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-window": {
+            "effects": [
+              [
+                "requestCloseAnimated",
+                "<win:1>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-app-close-all": {
+            "effects": [
+              [
+                "requestCloseAppWindowsAnimated",
+                "<win:1>"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      },
+      "window": {
+        "trigger": "<button type=\"button\" class=\"wb-menubar-item wb-menubar-windowmenu\" data-testid=\"wb-menubar-windowmenu\" aria-haspopup=\"menu\" aria-expanded=\"false\" title=\"窗口\">窗口</button>",
+        "panel": {
+          "label": "窗口",
+          "rows": [
+            {
+              "testId": "wb-menubar-window-item-<win:1>",
+              "role": "menuitemcheckbox",
+              "label": "Alpha",
+              "checked": "true"
+            },
+            {
+              "testId": "wb-menubar-window-item-<win:2>",
+              "role": "menuitemcheckbox",
+              "label": "Todo B · 已最小化",
+              "checked": "false"
+            },
+            {
+              "separator": true
+            },
+            {
+              "testId": "wb-menubar-window-tile-left",
+              "role": "menuitem",
+              "label": "平铺到左半屏"
+            },
+            {
+              "testId": "wb-menubar-window-tile-right",
+              "role": "menuitem",
+              "label": "平铺到右半屏"
+            },
+            {
+              "testId": "wb-menubar-window-maximize",
+              "role": "menuitem",
+              "label": "最大化"
+            }
+          ],
+          "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:1>\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">Alpha</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-item-<win:2>\" role=\"menuitemcheckbox\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">Todo B · 已最小化</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-left\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到左半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-tile-right\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\" style=\"transform: scaleX(-1);\"><path d=\"M208,56V200a8,8,0,0,1-8,8H128V48h72A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40ZM56,56h64V200H56ZM200,200H136V56h64V200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺到右半屏</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-window-maximize\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,48V208H48V48Z\" opacity=\"0.2\"></path><path d=\"M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM88,40H48a8,8,0,0,0-8,8V88a8,8,0,0,0,16,0V56H88a8,8,0,0,0,0-16Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">最大化</span></button>"
+        },
+        "clicks": {
+          "wb-menubar-window-item-<win:1>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:1>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-item-<win:2>": {
+            "effects": [
+              [
+                "windowStore.focusWindow",
+                "<win:2>"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-left": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:1>",
+                "tiled-left"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-tile-right": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:1>",
+                "tiled-right"
+              ]
+            ],
+            "closes": true
+          },
+          "wb-menubar-window-maximize": {
+            "effects": [
+              [
+                "windowStore.setDisplayMode",
+                "<win:1>",
+                "maximized"
+              ]
+            ],
+            "closes": true
+          }
+        }
+      }
+    }
+  },
+  "brand": {
+    "unnamed": {
+      "panel": {
+        "label": "学习桌面菜单",
+        "rows": [
+          {
+            "header": "学习桌面"
+          },
+          {
+            "testId": "wb-menubar-brand-rename",
+            "role": "menuitem",
+            "label": "重命名桌面…"
+          },
+          {
+            "separator": true
+          },
+          {
+            "testId": "wb-menubar-brand-apps",
+            "role": "menuitem",
+            "label": "全部应用"
+          },
+          {
+            "testId": "wb-menubar-brand-shortcuts",
+            "role": "menuitem",
+            "label": "键盘快捷键",
+            "shortcut": "?"
+          },
+          {
+            "testId": "wb-menubar-brand-settings",
+            "role": "menuitem",
+            "label": "系统设置…"
+          },
+          {
+            "separator": true
+          },
+          {
+            "testId": "wb-menubar-brand-exit",
+            "role": "menuitem",
+            "label": "退出学习桌面"
+          }
+        ],
+        "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu-header\" role=\"presentation\" data-testid=\"wb-menubar-brand-desktop-name\"><span class=\"wb-desk-menu-header-name\">学习桌面</span></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-rename\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名桌面…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-apps\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-settings\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">系统设置…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-exit\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a16,16,0,0,1-16,16H48V40H208A16,16,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">退出学习桌面</span></button>"
+      },
+      "clicks": {
+        "wb-menubar-brand-rename": {
+          "effects": [],
+          "closes": false,
+          "panel": {
+            "label": "学习桌面菜单",
+            "rows": [
+              {
+                "form": "wb-menubar-brand-rename-form"
+              },
+              {
+                "testId": "wb-menubar-brand-rename",
+                "role": "menuitem",
+                "label": "重命名桌面…"
+              },
+              {
+                "separator": true
+              },
+              {
+                "testId": "wb-menubar-brand-apps",
+                "role": "menuitem",
+                "label": "全部应用"
+              },
+              {
+                "testId": "wb-menubar-brand-shortcuts",
+                "role": "menuitem",
+                "label": "键盘快捷键",
+                "shortcut": "?"
+              },
+              {
+                "testId": "wb-menubar-brand-settings",
+                "role": "menuitem",
+                "label": "系统设置…"
+              },
+              {
+                "separator": true
+              },
+              {
+                "testId": "wb-menubar-brand-exit",
+                "role": "menuitem",
+                "label": "退出学习桌面"
+              }
+            ],
+            "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><form class=\"wb-desk-menu-rename\" data-testid=\"wb-menubar-brand-rename-form\"><input name=\"desktopName\" class=\"wb-desk-menu-rename-input\" data-testid=\"wb-menubar-brand-rename-input\" maxlength=\"48\" aria-label=\"桌面名称\" placeholder=\"学习桌面\" value=\"\"></form><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-rename\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名桌面…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-apps\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-settings\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">系统设置…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-exit\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a16,16,0,0,1-16,16H48V40H208A16,16,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">退出学习桌面</span></button>"
+          }
+        },
+        "wb-menubar-brand-apps": {
+          "effects": [
+            [
+              "openAppsPanel"
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-shortcuts": {
+          "effects": [
+            [
+              "openCheatsheet",
+              {
+                "sticky": true
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-settings": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "settings",
+                "reason": "api"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-exit": {
+          "effects": [
+            [
+              "persistWorkbenchModeEnabled",
+              false
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "renameSubmit": {
+        "effects": [
+          [
+            "persistDesktopName",
+            "Renamed"
+          ]
+        ],
+        "closes": true
+      }
+    },
+    "named": {
+      "panel": {
+        "label": "学习桌面菜单",
+        "rows": [
+          {
+            "header": "Study Room学习桌面"
+          },
+          {
+            "testId": "wb-menubar-brand-rename",
+            "role": "menuitem",
+            "label": "重命名桌面…"
+          },
+          {
+            "separator": true
+          },
+          {
+            "testId": "wb-menubar-brand-apps",
+            "role": "menuitem",
+            "label": "全部应用"
+          },
+          {
+            "testId": "wb-menubar-brand-shortcuts",
+            "role": "menuitem",
+            "label": "键盘快捷键",
+            "shortcut": "?"
+          },
+          {
+            "testId": "wb-menubar-brand-settings",
+            "role": "menuitem",
+            "label": "系统设置…"
+          },
+          {
+            "separator": true
+          },
+          {
+            "testId": "wb-menubar-brand-exit",
+            "role": "menuitem",
+            "label": "退出学习桌面"
+          }
+        ],
+        "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu-header\" role=\"presentation\" data-testid=\"wb-menubar-brand-desktop-name\"><span class=\"wb-desk-menu-header-name\">Study Room</span><span class=\"wb-desk-menu-header-sub\">学习桌面</span></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-rename\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名桌面…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-apps\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-settings\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">系统设置…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-exit\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a16,16,0,0,1-16,16H48V40H208A16,16,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">退出学习桌面</span></button>"
+      },
+      "clicks": {
+        "wb-menubar-brand-rename": {
+          "effects": [],
+          "closes": false,
+          "panel": {
+            "label": "学习桌面菜单",
+            "rows": [
+              {
+                "form": "wb-menubar-brand-rename-form"
+              },
+              {
+                "testId": "wb-menubar-brand-rename",
+                "role": "menuitem",
+                "label": "重命名桌面…"
+              },
+              {
+                "separator": true
+              },
+              {
+                "testId": "wb-menubar-brand-apps",
+                "role": "menuitem",
+                "label": "全部应用"
+              },
+              {
+                "testId": "wb-menubar-brand-shortcuts",
+                "role": "menuitem",
+                "label": "键盘快捷键",
+                "shortcut": "?"
+              },
+              {
+                "testId": "wb-menubar-brand-settings",
+                "role": "menuitem",
+                "label": "系统设置…"
+              },
+              {
+                "separator": true
+              },
+              {
+                "testId": "wb-menubar-brand-exit",
+                "role": "menuitem",
+                "label": "退出学习桌面"
+              }
+            ],
+            "html": "<div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><form class=\"wb-desk-menu-rename\" data-testid=\"wb-menubar-brand-rename-form\"><input name=\"desktopName\" class=\"wb-desk-menu-rename-input\" data-testid=\"wb-menubar-brand-rename-input\" maxlength=\"48\" aria-label=\"桌面名称\" placeholder=\"学习桌面\" value=\"Study Room\"></form><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-rename\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名桌面…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-apps\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-settings\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">系统设置…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-menubar-brand-exit\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V200a16,16,0,0,1-16,16H48V40H208A16,16,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">退出学习桌面</span></button>"
+          }
+        },
+        "wb-menubar-brand-apps": {
+          "effects": [
+            [
+              "openAppsPanel"
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-shortcuts": {
+          "effects": [
+            [
+              "openCheatsheet",
+              {
+                "sticky": true
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-settings": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "settings",
+                "reason": "api"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "wb-menubar-brand-exit": {
+          "effects": [
+            [
+              "persistWorkbenchModeEnabled",
+              false
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "renameSubmit": {
+        "effects": [
+          [
+            "persistDesktopName",
+            "Renamed"
+          ]
+        ],
+        "closes": true
+      }
+    }
+  }
+}

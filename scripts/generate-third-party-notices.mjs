@@ -1,33 +1,18 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mobileRuntimePackages, packageLockHash, shippedNpmPackages } from './licenses/shipped-npm-packages.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const cargoRoot = path.join(repoRoot, 'src-tauri');
-const cargoLockPath = path.join(cargoRoot, 'Cargo.lock');
-const npmLockPath = path.join(repoRoot, 'package-lock.json');
-// 唯一权威路径（WI-9 legal 去重）：不再放 public/（避免随 frontendDist 进安装包形成双份），
-// 仅经 tauri.conf.json bundle.resources 进入 resources/licenses/；前端展示走
-// resolveResource 读取（web dev 由 vite 中间件代理，见 vite.config.ts legalNoticesDevPlugin）。
+// Electron copies this into resources/licenses/; Vite serves it to the frontend in development.
 const outputPath = path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt');
 const legalFilePattern = /^(?:licen[cs]e|copying|notice|copyright)(?:$|[._-])/i;
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
-}
-
-// release-please 的版本 bump 只改写 package-lock.json 的根 version 与
-// packages[""].version，依赖闭包并未变化；哈希前剔除这两个字段，
-// 与 scripts/check-license-compliance.mjs 的校验口径保持一致。
-function sha256PackageLock(filePath) {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  delete data.version;
-  if (data.packages && data.packages['']) delete data.packages[''].version;
-  return sha256(JSON.stringify(data));
 }
 
 // Shrinks a legal text without touching its wording: strips trailing
@@ -100,12 +85,41 @@ function npmLicense(manifest, lockedPackage) {
   return typeof lockedPackage.license === 'string' ? lockedPackage.license : 'UNKNOWN';
 }
 
-function collectNpmRecords() {
-  const lock = JSON.parse(fs.readFileSync(npmLockPath, 'utf8'));
+const ASSET_LICENSE_SUBDIRS = new Map([
+  ['pdfjs-dist', ['cmaps', 'iccs', 'standard_fonts', 'wasm']],
+]);
+
+function appendUniqueLegalFiles(record, candidateFiles) {
+  const knownTexts = new Set(record.legalFiles.map((item) => sha256(item.text)));
+  for (const legalFile of candidateFiles) {
+    const hash = sha256(legalFile.text);
+    if (!knownTexts.has(hash)) {
+      record.legalFiles.push(legalFile);
+      knownTexts.add(hash);
+    }
+  }
+}
+
+function appendOverrideNotice(record, name, version) {
+  const overridePath = path.join(repoRoot, 'scripts', 'license-overrides', `${name.replaceAll('/', '__')}@${version}.txt`);
+  if (!fs.existsSync(overridePath)) return;
+  const text = readText(overridePath);
+  if (text) {
+    appendUniqueLegalFiles(record, [{
+      source: `scripts/license-overrides/${path.basename(overridePath)}`,
+      text,
+    }]);
+  }
+}
+
+// 按“实际进入产物的包”取舍（Electron 运行时闭包 + 前端 bundle 清单），不按 lock 的 dev 标记：
+// 前端打包进 dist 的库是 devDependencies，构建工具虽是生产依赖的同类也不会进产物。见 licenses/shipped-npm-packages.mjs。
+export function collectNpmRecords() {
+  const { lock, shipped } = shippedNpmPackages(repoRoot);
   const records = new Map();
 
-  for (const [packagePath, lockedPackage] of Object.entries(lock.packages || {})) {
-    if (!packagePath.includes('node_modules/') || lockedPackage.dev === true) continue;
+  for (const packagePath of [...shipped.keys()].sort()) {
+    const lockedPackage = lock.packages[packagePath];
     const packageDirectory = path.join(repoRoot, packagePath);
     const manifestPath = path.join(packageDirectory, 'package.json');
     if (!fs.existsSync(manifestPath)) {
@@ -134,24 +148,11 @@ function collectNpmRecords() {
       repository: repositoryUrl(manifest.repository),
       legalFiles: [],
     };
-    const overridePath = path.join(repoRoot, 'scripts', 'license-overrides', `${name.replaceAll('/', '__')}@${version}.txt`);
-    const knownTexts = new Set(record.legalFiles.map((item) => sha256(item.text)));
-    for (const legalFile of legalFilesIn(packageDirectory, undefined, `npm/${id}`)) {
-      const hash = sha256(legalFile.text);
-      if (!knownTexts.has(hash)) {
-        record.legalFiles.push(legalFile);
-        knownTexts.add(hash);
-      }
+    appendUniqueLegalFiles(record, legalFilesIn(packageDirectory, undefined, `npm/${id}`));
+    for (const subdir of ASSET_LICENSE_SUBDIRS.get(name) ?? []) {
+      appendUniqueLegalFiles(record, legalFilesIn(path.join(packageDirectory, subdir), undefined, `npm/${id}/${subdir}`));
     }
-    if (fs.existsSync(overridePath)) {
-      const text = readText(overridePath);
-      if (text && !knownTexts.has(sha256(text))) {
-        record.legalFiles.push({
-          source: `scripts/license-overrides/${path.basename(overridePath)}`,
-          text,
-        });
-      }
-    }
+    appendOverrideNotice(record, name, version);
     if (record.license === 'UNKNOWN' && record.legalFiles.some((item) => /\bMIT License\b/i.test(item.text))) {
       record.license = 'MIT';
     }
@@ -161,81 +162,107 @@ function collectNpmRecords() {
   return [...records.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function cargoMetadata() {
-  const result = spawnSync(
-    'cargo',
-    ['metadata', '--locked', '--offline', '--format-version', '1'],
-    { cwd: cargoRoot, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 },
-  );
-  if (result.status !== 0) {
-    throw new Error(
-      `cargo metadata failed. Run "cd src-tauri && cargo fetch --locked" first.\n${result.stderr || result.stdout}`,
-    );
-  }
-  return JSON.parse(result.stdout);
+// The WASM is already built; its recorded dependency notices ship without a Cargo workspace.
+function collectPrebuiltWasmRecords() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'legal/f7-native-wasm-components.json'), 'utf8'));
+  return {
+    mplSourceAvailabilityNotice: manifest.mplSourceAvailabilityNotice || '',
+    records: manifest.components.map(({ id, license, repository, notices }) => ({
+      ecosystem: 'F7 WASM',
+      id,
+      license,
+      repository,
+      legalFiles: notices.map(({ source, text }) => ({ source, text: manifest.texts[text] })),
+    })),
+  };
 }
 
-function cargoRuntimePackageIds(metadata) {
-  const rootManifest = path.join(cargoRoot, 'Cargo.toml');
-  const rootPackage = metadata.packages.find(
-    (pkg) => path.resolve(pkg.manifest_path) === rootManifest,
-  );
-  if (!rootPackage) throw new Error('Could not locate the DeepStudent Cargo package.');
+function collectDesktopRuntimeRecords(npmLock) {
+  const electronVersion = npmLock.packages?.['node_modules/electron']?.version || 'unknown';
+  const electronLicensePath = path.join(repoRoot, 'electron', 'native', 'LICENSE.electron');
+  const electronLicenseText = fs.existsSync(electronLicensePath)
+    ? readText(electronLicensePath)
+    : readText(path.join(repoRoot, 'node_modules', 'electron', 'LICENSE'));
 
-  // Workspace members (the app and its dstu-* crates) are first-party code: walk
-  // through their runtime dependencies, but never list them as components.
-  const workspaceMembers = new Set(metadata.workspace_members);
-  const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
-  const included = new Set([rootPackage.id]);
-  const queue = [rootPackage.id];
-  while (queue.length) {
-    const node = nodes.get(queue.shift());
-    if (!node) continue;
-    for (const dependency of node.deps) {
-      const kinds = dependency.dep_kinds || [];
-      if (kinds.length && !kinds.some((kind) => kind.kind !== 'dev')) continue;
-      if (!included.has(dependency.pkg)) {
-        included.add(dependency.pkg);
-        queue.push(dependency.pkg);
-      }
+  return [
+    {
+      ecosystem: 'Desktop runtime',
+      id: `Electron@${electronVersion}`,
+      license: 'MIT',
+      repository: 'https://github.com/electron/electron',
+      legalFiles: electronLicenseText ? [{ source: 'electron/native/LICENSE.electron', text: electronLicenseText }] : [],
+    },
+    {
+      ecosystem: 'Desktop runtime',
+      id: 'Chromium',
+      license: 'BSD-3-Clause AND Multiple-OSS',
+      repository: 'https://www.chromium.org/Home',
+      legalFiles: [{
+        source: 'desktop/chromium-notice',
+        text: [
+          `Chromium (embedded via Electron ${electronVersion})`,
+          'Copyright 2015 The Chromium Authors. All rights reserved.',
+          '',
+          'Desktop distributions of DeepStudent bundle Chromium inside the Electron runtime.',
+          'Chromium and its third-party components are licensed under BSD-3-Clause and other',
+          'open-source licenses; the complete machine-generated Chromium notice bundle ships',
+          'as LICENSES.chromium.html in the Electron application distribution.',
+        ].join('\n'),
+      }],
+    },
+    {
+      ecosystem: 'Desktop runtime',
+      id: 'Node.js',
+      license: 'MIT',
+      repository: 'https://github.com/nodejs/node',
+      legalFiles: [{
+        source: 'desktop/nodejs-notice',
+        text: [
+          `Node.js (embedded via Electron ${electronVersion})`,
+          'Copyright Node.js contributors. All rights reserved.',
+          '',
+          'Desktop distributions of DeepStudent execute the Host runtime on Node.js',
+          'embedded inside Electron under the MIT License (and bundled dependency notices',
+          'included in the Node.js / Electron distribution).',
+        ].join('\n'),
+      }],
+    },
+  ];
+}
+
+function collectMobileRuntimeRecords() {
+  const { lock, shipped } = mobileRuntimePackages(repoRoot);
+  const records = new Map();
+
+  for (const packagePath of [...shipped].sort()) {
+    const lockedPackage = lock.packages?.[packagePath] ?? {};
+    const packageDirectory = path.join(repoRoot, 'mobile', packagePath);
+    const manifestPath = path.join(packageDirectory, 'package.json');
+    const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
+    const name = manifest.name || packagePath.replace(/^.*node_modules\//, '');
+    const version = manifest.version || lockedPackage.version || 'unknown';
+    const id = `${name}@${version}`;
+    const record = records.get(id) || {
+      ecosystem: 'Mobile runtime',
+      id,
+      license: npmLicense(manifest, lockedPackage),
+      repository: repositoryUrl(manifest.repository),
+      legalFiles: [],
+    };
+    if (fs.existsSync(packageDirectory)) {
+      appendUniqueLegalFiles(record, legalFilesIn(packageDirectory, undefined, `mobile/${id}`));
     }
+    appendOverrideNotice(record, name, version);
+    records.set(id, record);
   }
-  for (const id of workspaceMembers) included.delete(id);
-  return included;
-}
 
-function collectCargoRecords() {
-  const metadata = cargoMetadata();
-  const included = cargoRuntimePackageIds(metadata);
-  return metadata.packages
-    .filter((pkg) => included.has(pkg.id))
-    .map((pkg) => {
-      const directory = path.dirname(pkg.manifest_path);
-      return {
-        ecosystem: 'Cargo',
-        id: `${pkg.name}@${pkg.version}`,
-        license: pkg.license || (pkg.license_file ? 'SEE INCLUDED LICENSE FILE' : 'UNKNOWN'),
-        repository: pkg.repository || '',
-        legalFiles: legalFilesIn(directory, pkg.license_file, `cargo/${pkg.name}-${pkg.version}`),
-      };
-    })
-    .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    mobileLockHash: packageLockHash(lock),
+    records: [...records.values()].sort((a, b) => a.id.localeCompare(b.id)),
+  };
 }
 
 function collectBundledAssetRecords() {
-  const pdfiumRoot = path.join(cargoRoot, 'resources', 'pdfium');
-  const binaryLicense = path.join(pdfiumRoot, 'LICENSE.pdfium-binaries');
-  const componentLicenseRoot = path.join(pdfiumRoot, 'licenses');
-  if (!fs.existsSync(binaryLicense) || !fs.existsSync(componentLicenseRoot)) {
-    throw new Error('PDFium license files are missing. Run scripts/download-pdfium.sh for a bundled platform.');
-  }
-
-  const legalFiles = [{ source: path.relative(repoRoot, binaryLicense), text: readText(binaryLicense) }];
-  for (const entry of fs.readdirSync(componentLicenseRoot, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const filePath = path.join(componentLicenseRoot, entry.name);
-    legalFiles.push({ source: path.relative(repoRoot, filePath), text: readText(filePath) });
-  }
   const wallpaperAttribution = path.join(repoRoot, 'public', 'wallpapers', 'study-os', 'ATTRIBUTION.md');
 
   return [
@@ -245,13 +272,6 @@ function collectBundledAssetRecords() {
       license: 'OFL-1.1',
       repository: 'https://github.com/notofonts/noto-cjk',
       legalFiles: [{ source: 'public/fonts/paper-export/OFL.txt', text: readText(path.join(repoRoot, 'public/fonts/paper-export/OFL.txt')) }],
-    },
-    {
-      ecosystem: 'Bundled binary',
-      id: 'PDFium chromium/7350',
-      license: 'SEE INCLUDED LICENSE FILES',
-      repository: 'https://github.com/bblanchon/pdfium-binaries',
-      legalFiles: legalFiles.filter((item) => item.text),
     },
     {
       ecosystem: 'Bundled media',
@@ -343,7 +363,7 @@ function factorCommonTexts(notices) {
   return commonTexts;
 }
 
-function render(records, cargoLockHash, npmLockHash) {
+function render(records, npmLockHash, mobileLockHash, mplSourceAvailabilityNotice) {
   const unknown = records.filter(
     (record) => record.license === 'UNKNOWN' && record.legalFiles.length === 0,
   );
@@ -375,12 +395,17 @@ function render(records, cargoLockHash, npmLockHash) {
     'DEEPSTUDENT THIRD-PARTY NOTICES',
     '',
     'This file contains license and attribution material for third-party',
-    'components distributed with DeepStudent. NPM development-only packages are',
-    'excluded. Cargo normal and build dependency closures are included.',
+    'components distributed with DeepStudent. NPM packages are listed when they',
+    'ship: the Electron runtime closure, the packages rendered into the frontend',
+    'bundle (dependency type does not matter), the mobile runtime dependencies,',
+    'and the embedded desktop runtime acknowledgments (Electron, Chromium, Node.js).',
+    'Third-party components in the prebuilt F7 WASM are listed from its bundled',
+    'license inventory.',
+    ...(mplSourceAvailabilityNotice ? ['', mplSourceAvailabilityNotice] : []),
     '',
     'Generated by: scripts/generate-third-party-notices.mjs',
-    `Cargo.lock SHA256: ${cargoLockHash}`,
     `package-lock.json SHA256: ${npmLockHash}`,
+    `mobile/package-lock.json SHA256: ${mobileLockHash}`,
     '',
     `Components: ${records.length}`,
     `Distinct legal texts: ${notices.size}`,
@@ -414,16 +439,20 @@ function render(records, cargoLockHash, npmLockHash) {
 }
 
 function main() {
-  const cargoLock = fs.readFileSync(cargoLockPath);
+  const npmLock = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package-lock.json'), 'utf8'));
+  const wasm = collectPrebuiltWasmRecords();
+  const mobile = collectMobileRuntimeRecords();
   const records = [
-    ...collectCargoRecords(),
+    ...wasm.records,
     ...collectNpmRecords(),
+    ...collectDesktopRuntimeRecords(npmLock),
+    ...mobile.records,
     ...collectBundledAssetRecords(),
   ];
-  const output = render(records, sha256(cargoLock), sha256PackageLock(npmLockPath));
+  const output = render(records, packageLockHash(npmLock), mobile.mobileLockHash, wasm.mplSourceAvailabilityNotice);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');
   console.log(`Wrote ${path.relative(repoRoot, outputPath)} (${records.length} components).`);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main();

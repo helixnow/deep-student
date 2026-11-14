@@ -1,0 +1,36 @@
+{
+  "plugins": [
+    {
+      "id": "dstu.chat",
+      "module": "../../../chat/index.ts"
+    },
+    {
+      "id": "dstu.vfs",
+      "module": "../../../vfs/index.ts"
+    },
+    {
+      "id": "dstu.vfs-repos",
+      "module": "../../../vfs-repos/index.ts"
+    },
+    {
+      "id": "dstu.vfs-index",
+      "module": "../../../vfs-index/index.ts"
+    },
+    {
+      "id": "dstu.agent-workspace",
+      "module": "../../../agent-workspace/index.ts"
+    },
+    {
+      "id": "dstu.media",
+      "module": "../../../media/index.ts"
+    },
+    {
+      "id": "dstu.llm-providers",
+      "module": "../../../llm-providers/index.ts"
+    },
+    {
+      "id": "dstu.llm",
+      "module": "../../../llm/index.ts"
+    }
+  ]
+}

@@ -3,7 +3,6 @@
  *
  * - .automation-card：卡片表面（用已定义 token --surface-elevated / --border-soft，
  *   替代未定义的 --surface-raised，避免卡片透明）
- *   变体：--highlight（primary 着色，运行中/临近执行）、--danger（destructive 着色，失败态）
  * - .automation-collapse：内联展开/收起容器（CSS grid 0fr → 1fr，200ms 高度+透明度）
  * - .automation-rise-in：轻量入场动效（150ms）
  * - .automation-value-pop：概览统计卡数字变化过渡（200ms，值变化时 key 重挂载触发）
@@ -19,17 +18,6 @@
   border: 1px solid var(--border-soft, hsl(var(--border)));
   transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.automation-card--highlight {
-  border-color: hsl(var(--primary) / 0.35);
-  background: hsl(var(--primary) / 0.06);
-}
-
-/* 失败态统计卡：醒目但不聒噪的静态着色（不闪烁、不脉冲） */
-.automation-card--danger {
-  border-color: hsl(var(--destructive) / 0.3);
-  background: hsl(var(--destructive) / 0.05);
 }
 
 /* 内联展开容器：grid-template-rows 0fr → 1fr（内容自适应高度的纯 CSS 折叠） */
@@ -155,26 +143,18 @@
   animation: automation-dot-pulse 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-/* ---------------------------------------------------------------------------
- * 任务卡片列表：单卡表面（复用 --surface-elevated/--border-soft token），
- * hover 时边框着色 + 轻微抬升
- * ------------------------------------------------------------------------- */
+/* Match the ordinary todo list's row treatment. */
 .automation-item {
-  position: relative;
-  background: var(--surface-elevated, hsl(var(--card)));
-  border: 1px solid var(--border-soft, hsl(var(--border)));
-  transition: border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: transparent;
+  transition: background-color 150ms var(--ease-standard, ease);
 }
 
 .automation-item:hover {
-  border-color: hsl(var(--primary) / 0.28);
-  box-shadow: 0 2px 10px hsl(var(--foreground) / 0.06);
+  background: var(--interactive-hover);
 }
 
 .automation-item[data-expanded='true'] {
-  border-color: hsl(var(--primary) / 0.35);
+  background: var(--interactive-selected);
 }
 
 /* 任务卡「最近运行」迷你状态点 */

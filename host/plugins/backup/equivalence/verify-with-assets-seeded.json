@@ -1,0 +1,79 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_verify_backup_with_assets",
+    "data_governance_verify_backup",
+    "data_governance_get_backup_list"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.verify_with_assets.legacy_mirror_ok",
+      "seed": "l21-backups-legacy-mirror-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260101_000000_full_ok"
+          }
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260102_000000_checksum_bad"
+          }
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260109_000000_absent"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "20260101_000000_full_ok"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.verify_with_assets.mixed_no_legacy_dir",
+      "seed": "l21-backups-mixed-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260101_000000_full_ok"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260103_000000_dirname_mismatch"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

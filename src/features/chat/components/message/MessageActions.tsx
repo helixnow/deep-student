@@ -2,7 +2,7 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree, FileArrowDown } from '@phosphor-icons/react';
+import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree, FileArrowDown, SpeakerHigh, Stop } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -29,6 +29,8 @@ export interface MessageActionsProps {
   onSaveAsNote?: () => Promise<void>;
   /** 🆕 导出为 Markdown 文件 */
   onExportMarkdown?: () => Promise<void>;
+  onToggleReading?: () => Promise<void>;
+  reading?: boolean;
   /** 🆕 会话分支 */
   onBranchSession?: () => Promise<void>;
   /** 移动端紧凑模式：仅展示主操作，其余进入更多菜单 */
@@ -53,6 +55,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onDelete,
   onSaveAsNote,
   onExportMarkdown,
+  onToggleReading,
+  reading,
   onBranchSession,
   compactMobile = false,
   tokenUsage,
@@ -205,6 +209,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     canDelete ||
     onSaveAsNote ||
     onExportMarkdown ||
+    onToggleReading ||
     onBranchSession ||
     (isUser && onResend) ||
     (!isUser && onRetry && !showInlineRetry)
@@ -271,6 +276,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         {onExportMarkdown && (
           <AppMenuItem onClick={handleExportMarkdown} disabled={isExporting} icon={<FileArrowDown size={16} />}>
             {t('messageItem.actions.exportMarkdown')}
+          </AppMenuItem>
+        )}
+        {onToggleReading && (
+          <AppMenuItem onClick={onToggleReading} icon={reading ? <Stop size={16} /> : <SpeakerHigh size={16} />}>
+            {t(reading ? 'messageItem.actions.stopReading' : 'messageItem.actions.readAloud')}
           </AppMenuItem>
         )}
         {onBranchSession && (

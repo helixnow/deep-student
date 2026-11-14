@@ -1,0 +1,69 @@
+# initial
+<div>
+  <header .mb-6.min-w-0.space-y-3>
+    <h1 .font-semibold.text-foreground.text-xl>
+      "模型与 AI"
+    <div .w-full>
+      <div .[@media(pointer:coarse)]:min-h-11.bg-transparent.border-[color:var(--shell-workspace-border)].border-b.gap-1.h-10.h-auto.inline-flex.items-center.justify-start.max-w-full.min-h-10.overflow-x-auto.overflow-y-hidden.pb-2.text-[color:var(--text-secondary)].w-full aria-label="模型与 AI" aria-orientation="horizontal" role="tablist">
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="true" data-state="active" data-tour-id="settings-tab-apis" id="@2" role="tab" tabindex="0" type="button">
+          "模型服务"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-models" id="@3" role="tab" tabindex="-1" type="button">
+          "模型分配"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" id="@4" role="tab" tabindex="-1" type="button">
+          "参数"
+  <div aria-labelledby="@2" id="@1" role="tabpanel">
+    "apis"
+
+
+# 模型分配 clicked
+<div>
+  <header .mb-6.min-w-0.space-y-3>
+    <h1 .font-semibold.text-foreground.text-xl>
+      "模型与 AI"
+    <div .w-full>
+      <div .[@media(pointer:coarse)]:min-h-11.bg-transparent.border-[color:var(--shell-workspace-border)].border-b.gap-1.h-10.h-auto.inline-flex.items-center.justify-start.max-w-full.min-h-10.overflow-x-auto.overflow-y-hidden.pb-2.text-[color:var(--text-secondary)].w-full aria-label="模型与 AI" aria-orientation="horizontal" role="tablist">
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-apis" id="@2" role="tab" tabindex="-1" type="button">
+          "模型服务"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="true" data-state="active" data-tour-id="settings-tab-models" id="@3" role="tab" tabindex="0" type="button">
+          "模型分配"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" id="@4" role="tab" tabindex="-1" type="button">
+          "参数"
+  <div aria-labelledby="@3" id="@1" role="tabpanel">
+    "models"
+
+
+# ArrowRight from 模型分配
+<div>
+  <header .mb-6.min-w-0.space-y-3>
+    <h1 .font-semibold.text-foreground.text-xl>
+      "模型与 AI"
+    <div .w-full>
+      <div .[@media(pointer:coarse)]:min-h-11.bg-transparent.border-[color:var(--shell-workspace-border)].border-b.gap-1.h-10.h-auto.inline-flex.items-center.justify-start.max-w-full.min-h-10.overflow-x-auto.overflow-y-hidden.pb-2.text-[color:var(--text-secondary)].w-full aria-label="模型与 AI" aria-orientation="horizontal" role="tablist">
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-apis" id="@2" role="tab" tabindex="-1" type="button">
+          "模型服务"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-models" id="@3" role="tab" tabindex="-1" type="button">
+          "模型分配"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="true" data-state="active" id="@4" role="tab" tabindex="0" type="button">
+          "参数"
+  <div aria-labelledby="@4" id="@1" role="tabpanel">
+    "params"
+
+focused: 参数
+
+# Home
+<div>
+  <header .mb-6.min-w-0.space-y-3>
+    <h1 .font-semibold.text-foreground.text-xl>
+      "模型与 AI"
+    <div .w-full>
+      <div .[@media(pointer:coarse)]:min-h-11.bg-transparent.border-[color:var(--shell-workspace-border)].border-b.gap-1.h-10.h-auto.inline-flex.items-center.justify-start.max-w-full.min-h-10.overflow-x-auto.overflow-y-hidden.pb-2.text-[color:var(--text-secondary)].w-full aria-label="模型与 AI" aria-orientation="horizontal" role="tablist">
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="true" data-state="active" data-tour-id="settings-tab-apis" id="@2" role="tab" tabindex="0" type="button">
+          "模型服务"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-models" id="@3" role="tab" tabindex="-1" type="button">
+          "模型分配"
+        <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@1" aria-selected="false" data-state="inactive" id="@4" role="tab" tabindex="-1" type="button">
+          "参数"
+  <div aria-labelledby="@2" id="@1" role="tabpanel">
+    "apis"
+
+focused: 模型服务

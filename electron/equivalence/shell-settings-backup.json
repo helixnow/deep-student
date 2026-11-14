@@ -1,0 +1,291 @@
+{
+  "domain": "shell",
+  "commands": [
+    "save_webview_settings",
+    "set_backend_sentry_enabled",
+    "export_unified_backup_data"
+  ],
+  "scenarios": [
+    {
+      "id": "shell.settings.save_webview_settings.write_and_read_back",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {
+            "settings": {
+              "zeta-last": "z",
+              "alpha-first": "a",
+              "deep-student-theme": "dark",
+              "ui.locale": "zh-CN",
+              "multi": "第一行\n\"quoted\"\t\\",
+              "empty": ""
+            }
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "get_file_size",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {
+            "settings": {}
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${4.path}"
+          }
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {
+            "settings": null
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${6.path}"
+          }
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {
+            "settings": {
+              "n": 1.5,
+              "nested": {
+                "b": [
+                  1,
+                  2
+                ],
+                "a": true
+              },
+              "nil": null
+            }
+          }
+        },
+        {
+          "cmd": "read_file_text",
+          "args": {
+            "path": "${8.path}"
+          }
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.settings.save_webview_settings.write_failed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/webview_settings.json/blocker.txt",
+            "content": "directory in the way"
+          }
+        },
+        {
+          "cmd": "save_webview_settings",
+          "args": {
+            "settings": {
+              "k": "v"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.settings.sentry_toggle_and_export",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_settings": true
+            }
+          }
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_settings": true
+            }
+          }
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_settings": true
+            }
+          }
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_settings": true
+            }
+          }
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backend_sentry_enabled",
+          "args": {
+            "enabled": "true"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.backup.export_unified_backup_data.options",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_images": false,
+              "include_knowledge_graph": false,
+              "include_embeddings": false,
+              "include_settings": false,
+              "include_statistics": false
+            }
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_images": true,
+              "include_knowledge_graph": true,
+              "include_embeddings": true,
+              "include_settings": true,
+              "include_statistics": true
+            }
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {}
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": {
+              "include_settings": "yes",
+              "extra": [
+                1,
+                null
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": null
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {
+            "options": [
+              true
+            ]
+          }
+        },
+        {
+          "cmd": "export_unified_backup_data",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

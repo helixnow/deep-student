@@ -1,0 +1,342 @@
+/*
+ * MarginNote 5 式摘录入图与知识汇聚中枢（W08 + C7 §3）：
+ * 出处胶囊、复合摘录槽、个人批注、双热区投放反馈、待整理池、归纳大括号与闪卡角标（Mineral 青瓷微染）。
+ * 色板与 styles/themes/palettes.ts 一致；分隔线统一 1px，状态点 6px，数值统一等宽表格数字。
+ */
+
+:root {
+  --mm-celadon-accent: #2A6F5E;
+  --mm-celadon-pill-bg: rgba(42, 111, 94, 0.08);
+  --mm-celadon-pill-bg-hover: rgba(42, 111, 94, 0.15);
+  --mm-celadon-pill-fg: #1E3A34;
+  --mm-celadon-border: rgba(42, 111, 94, 0.24);
+  --mm-celadon-quote-bar: rgba(42, 111, 94, 0.45);
+  --mm-celadon-drop-bg: rgba(42, 111, 94, 0.07);
+  --mm-celadon-drop-merge-bg: rgba(42, 111, 94, 0.13);
+}
+
+.dark {
+  --mm-celadon-accent: #5EA893;
+  --mm-celadon-pill-bg: rgba(94, 168, 147, 0.13);
+  --mm-celadon-pill-bg-hover: rgba(94, 168, 147, 0.22);
+  --mm-celadon-pill-fg: #D2E8E2;
+  --mm-celadon-border: rgba(94, 168, 147, 0.30);
+  --mm-celadon-quote-bar: rgba(94, 168, 147, 0.50);
+  --mm-celadon-drop-bg: rgba(94, 168, 147, 0.10);
+  --mm-celadon-drop-merge-bg: rgba(94, 168, 147, 0.18);
+}
+
+/* ------------------------------------------------------------------ */
+/* 出处胶囊与闪卡角标 */
+/* ------------------------------------------------------------------ */
+
+.mm-mn5-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  max-width: 100%;
+}
+
+.mm-mn5-sources[data-compact='true'] {
+  display: inline-flex;
+  margin-top: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.mm-mn5-source-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  max-width: 144px;
+  padding: 0 6px;
+  border: 1px solid var(--mm-celadon-border);
+  border-radius: 9999px;
+  background: var(--mm-celadon-pill-bg);
+  color: var(--mm-celadon-pill-fg);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.mm-mn5-source-pill:hover {
+  background: var(--mm-celadon-pill-bg-hover);
+}
+
+.mm-mn5-source-pill:active {
+  transform: scale(0.97);
+}
+
+.mm-mn5-source-pill:focus-visible {
+  outline: 1px solid var(--mm-celadon-accent);
+  outline-offset: 1px;
+}
+
+.mm-mn5-source-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.mm-mn5-source-pill-icon {
+  flex-shrink: 0;
+  color: var(--mm-celadon-accent);
+}
+
+.mm-mn5-source-pill > button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mm-mn5-flashcard-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--mm-celadon-accent);
+  border-radius: 9999px;
+  background: var(--mm-celadon-pill-bg);
+  color: var(--mm-celadon-pill-fg);
+  font-size: 10px;
+  line-height: 1;
+  user-select: none;
+}
+
+.mm-mn5-status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--mm-celadon-accent);
+}
+
+/* 选中节点悬停时出现的移除按钮 */
+.mm-mn5-source-remove {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-right: -3px;
+  border-radius: 9999px;
+  color: var(--mm-celadon-pill-fg);
+  opacity: 0.7;
+}
+
+.mm-mn5-source-pill:hover .mm-mn5-source-remove,
+.mm-mn5-source-pill:focus-within .mm-mn5-source-remove {
+  display: inline-flex;
+}
+
+.mm-mn5-source-remove:hover {
+  opacity: 1;
+  background: var(--mm-celadon-pill-bg-hover);
+}
+
+/* ------------------------------------------------------------------ */
+/* 摘录原文：两行截断，点击展开 / 收起 */
+/* ------------------------------------------------------------------ */
+
+.mm-mn5-quote {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-left: 2px solid var(--mm-celadon-quote-bar);
+  background: transparent;
+  color: var(--mm-text-secondary, var(--mm-text-muted));
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+}
+
+.mm-mn5-quote[data-expanded='false'] {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* 复合摘录卡片（Compound Excerpt Slots + 个人理解批注） */
+/* ------------------------------------------------------------------ */
+
+.mm-mn5-compound-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--mm-border);
+}
+
+.mm-mn5-slot-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 7px;
+  border: 1px solid var(--mm-celadon-border);
+  border-radius: 6px;
+  background: var(--mm-celadon-drop-bg);
+  text-align: left;
+}
+
+.mm-mn5-card-note {
+  width: 100%;
+  max-width: 340px;
+  margin-top: 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  background: var(--mm-bg-elevated, transparent);
+  color: var(--mm-text, inherit);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------ */
+/* 双热区投放反馈（C7 §3.2）：
+ * - 中部 60% 合并进当前卡片：青瓷微染底色 + 1.5px 虚线框
+ * - 外侧边缘新建子卡片：1.5px 实线青瓷描边 + 右侧子卡片延伸导引锚点
+ * ------------------------------------------------------------------ */
+
+.react-flow__node.mm-mn5-drop-node > * {
+  position: relative;
+  box-shadow: 0 0 0 1.5px var(--mm-celadon-accent);
+  border-radius: inherit;
+}
+
+.react-flow__node.mm-mn5-drop-node > *::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -10px;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%);
+  border: 1.5px solid var(--mm-celadon-accent);
+  border-radius: 9999px;
+  background: var(--mm-bg-elevated, #FFFFFF);
+  pointer-events: none;
+}
+
+.react-flow__node.mm-mn5-drop-merge > * {
+  outline: 1.5px dashed var(--mm-celadon-accent);
+  outline-offset: 2px;
+  background-image: linear-gradient(var(--mm-celadon-drop-merge-bg), var(--mm-celadon-drop-merge-bg));
+  box-shadow: none;
+}
+
+.mm-mn5-drop-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 20;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--mm-celadon-border);
+  border-radius: 9999px;
+  background: var(--mm-bg-elevated, #FFFFFF);
+  color: var(--mm-celadon-pill-fg);
+  font-size: 11px;
+  pointer-events: none;
+  box-shadow: var(--mm-shadow-sm, none);
+}
+
+.mm-mn5-drop-hint-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--mm-celadon-accent);
+}
+
+/* 空白处投放：flow 坐标中的分支幽灵胶囊 */
+.mm-mn5-drop-branch-ghost {
+  position: absolute;
+  width: 96px;
+  height: 22px;
+  border: 1px dashed var(--mm-celadon-accent);
+  border-radius: 9999px;
+  background: var(--mm-celadon-drop-bg);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* 大纲行投放：子卡片 vs 合并入当前卡片 */
+.outline-node-row.mm-mn5-outline-drop {
+  box-shadow: inset 2px 0 0 var(--mm-celadon-accent), inset 0 -1.5px 0 var(--mm-celadon-accent);
+  background: var(--mm-celadon-drop-bg);
+}
+
+.outline-node-row.mm-mn5-outline-drop-merge {
+  box-shadow: inset 2px 0 0 var(--mm-celadon-accent);
+  outline: 1px dashed var(--mm-celadon-accent);
+  outline-offset: -1px;
+  background: var(--mm-celadon-drop-merge-bg);
+}
+
+/* ------------------------------------------------------------------ */
+/* 归纳总结大括号 `}`（Summary Braces） */
+/* ------------------------------------------------------------------ */
+
+.mm-mn5-summary-brace-path {
+  fill: none;
+  stroke: var(--mm-celadon-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mm-mn5-summary-pill {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  max-width: 240px;
+  padding: 2px 8px;
+  border: 1px solid var(--mm-celadon-border);
+  border-radius: 6px;
+  background: var(--mm-bg-elevated, #FFFFFF);
+  color: var(--mm-text, inherit);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: var(--mm-shadow-sm, none);
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-mn5-source-pill {
+    transition: none;
+  }
+
+  .mm-mn5-source-pill:active {
+    transform: none;
+  }
+}

@@ -246,25 +246,29 @@ export interface CloudStorageConfig {
   encryptionPassword?: string;
 }
 
-/** Credential-free cloud configuration persisted for backend Agent sync. */
+/**
+ * Credential-free cloud configuration persisted for backend Agent sync.
+ * Wire shape of Rust `SafeCloudStorageConfig` (deny_unknown_fields): the
+ * opt-in is `allow_insecure`; `rename_all` only renames the variant tags.
+ */
 export type SafeCloudStorageConfig =
   | {
       provider: 'webdav';
       webdav: Pick<WebDavConfig, 'endpoint' | 'username'>;
       root?: string;
-      allowInsecure?: boolean;
+      allow_insecure?: boolean;
     }
   | {
       provider: 's3';
       s3: Pick<S3Config, 'endpoint' | 'bucket' | 'accessKeyId' | 'region' | 'pathStyle'>;
       root?: string;
-      allowInsecure?: boolean;
+      allow_insecure?: boolean;
     }
   | {
       provider: 'ftp';
       ftp: Pick<FtpConfig, 'host' | 'port' | 'username' | 'useTls'>;
       root?: string;
-      allowInsecure?: boolean;
+      allow_insecure?: boolean;
     };
 
 export interface CloudConfigSsotResponse {
@@ -280,6 +284,8 @@ export interface CloudConfigSsotResponse {
  * secret field are dropped rather than serialized as empty placeholders.
  */
 export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudStorageConfig {
+  // RUST-FIX(RF-W09-cloud-config-allow-insecure-wire-key): the Tauri frontend sent `allowInsecure`, which the backend rejects as an unknown field
+  const insecureOptIn = config.allowInsecure ? { allow_insecure: true } : {};
   switch (config.provider) {
     case 'webdav': {
       if (!config.webdav) throw new Error(i18next.t('backend_errors:cloud_storage.missing_webdav_config'));
@@ -290,7 +296,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           username: config.webdav.username,
         },
         ...(config.root ? { root: config.root } : {}),
-        ...(config.allowInsecure ? { allowInsecure: true } : {}),
+        ...insecureOptIn,
       };
     }
     case 's3': {
@@ -305,7 +311,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           pathStyle: config.s3.pathStyle ?? false,
         },
         ...(config.root ? { root: config.root } : {}),
-        ...(config.allowInsecure ? { allowInsecure: true } : {}),
+        ...insecureOptIn,
       };
     }
     case 'ftp': {
@@ -319,7 +325,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           useTls: config.ftp.useTls ?? false,
         },
         ...(config.root ? { root: config.root } : {}),
-        ...(config.allowInsecure ? { allowInsecure: true } : {}),
+        ...insecureOptIn,
       };
     }
   }
@@ -327,13 +333,14 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
 
 /** Rebuild a runtime DTO with explicit empty secret placeholders. */
 export function fromSafeCloudStorageConfig(config: SafeCloudStorageConfig): CloudStorageConfig {
+  // RUST-FIX(RF-W09-cloud-config-allow-insecure-wire-key): the Tauri frontend read `allowInsecure`, so the persisted opt-in always came back false
   switch (config.provider) {
     case 'webdav':
       return {
         provider: 'webdav',
         webdav: { ...config.webdav, password: '' },
         root: config.root,
-        allowInsecure: config.allowInsecure ?? false,
+        allowInsecure: config.allow_insecure ?? false,
       };
     case 's3':
       return {
@@ -347,7 +354,7 @@ export function fromSafeCloudStorageConfig(config: SafeCloudStorageConfig): Clou
         provider: 'ftp',
         ftp: { ...config.ftp, password: '' },
         root: config.root,
-        allowInsecure: config.allowInsecure ?? false,
+        allowInsecure: config.allow_insecure ?? false,
       };
   }
 }
@@ -416,6 +423,18 @@ function writeSafeCloudConfigCache(
 }
 
 /**
+ * The cache holds either the UI shape (`allowInsecure`: legacy config and
+ * caches written by older builds) or the backend DTO (`allow_insecure`:
+ * written after publish/resolve). Both keep the opt-in.
+ */
+function parseStoredCloudStorageConfig(raw: string): CloudStorageConfig {
+  // RUST-FIX(RF-W09-cloud-config-allow-insecure-wire-key): the Tauri frontend parsed the cached backend DTO as the UI shape and dropped `allow_insecure`
+  const { allow_insecure: storedOptIn, ...config } =
+    JSON.parse(raw) as CloudStorageConfig & { allow_insecure?: unknown };
+  return storedOptIn === true ? { ...config, allowInsecure: true } : config;
+}
+
+/**
  * 从 localStorage 读取云存储配置（不包含安全存储中的敏感凭据）
  *
  * 注意：这里返回的是“安全配置”（password / secretAccessKey 通常为空字符串）。
@@ -426,7 +445,7 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
   const raw = storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as CloudStorageConfig;
+    const parsed = parseStoredCloudStorageConfig(raw);
     const safe = toSafeCloudStorageConfig(parsed);
     writeSafeCloudConfigCache(storage, safe);
     return fromSafeCloudStorageConfig(safe);
@@ -580,7 +599,7 @@ export async function resolveCloudStorageConfig(
   const raw = current ?? legacy;
   if (!raw) return null;
 
-  const candidate = JSON.parse(raw) as CloudStorageConfig;
+  const candidate = parseStoredCloudStorageConfig(raw);
   const safe = toSafeCloudStorageConfig(candidate);
   const credentials = credentialsFromLegacyConfig(candidate);
   if (hasCredentials(credentials)) {

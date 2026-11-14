@@ -32,6 +32,7 @@ import {
   type VfsMultimodalIndexResourceOutput,
 } from '@/api/vfsRagApi';
 import i18n from '@/i18n';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 
 // 供调用方直接复用后端 DTO 类型，避免在服务层重复声明形状。
 export type { VfsMultimodalIndexResourceOutput, VfsCapabilityState } from '@/api/vfsRagApi';
@@ -238,17 +239,9 @@ function deriveRetrievalSource(provenance: VfsRetrievalHitProvenance[]): Retriev
   return textOnly ? 'text_chunk' : 'multimodal_page';
 }
 
-function normalizeSourceType(resourceType: string): SourceType {
-  switch (resourceType) {
-    case 'attachment':
-    case 'exam':
-    case 'textbook':
-    case 'image':
-    case 'file':
-      return resourceType;
-    default:
-      return 'file';
-  }
+export function normalizeSourceType(resourceType: string): SourceType {
+  if (resourceType === 'attachment') return 'attachment';
+  return getOfficialResourceTypeUi(resourceType)?.multimodalSourceType ?? 'file';
 }
 
 /** 获取当前多模态 embedding 路线的运行时状态。 */

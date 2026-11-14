@@ -247,6 +247,13 @@ describe('wasDeliveredViaSyncToolReturn', () => {
     expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(false);
   });
 
+  it('keeps the auto-wake after a user backgrounds a previously blocking call', () => {
+    const store = storeWithBlocks([
+      { type: 'subagent_embed', toolOutput: syncToolOutput({ status: 'running', backgrounded: true }) },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(false);
+  });
+
   it('does not match a different agent', () => {
     const store = storeWithBlocks([
       { type: 'subagent_embed', toolOutput: syncToolOutput({ agent_session_id: 'agent-2' }) },

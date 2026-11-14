@@ -39,15 +39,15 @@ const t = (key: string, options?: Record<string, unknown>) =>
 describe('短密码 / stored-password 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一对 code', () => {
     const secureStore = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-security/src/secure_store.rs'),
+      resolve(process.cwd(), 'host/platform/secrets/api.ts'),
       'utf-8',
     );
     const zipCommands = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/commands_zip.rs'),
+      resolve(process.cwd(), 'host/plugins/backup/src/zip-commands.ts'),
       'utf-8',
     );
-    expect(secureStore).toContain(`"${CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE}"`);
-    expect(zipCommands).toContain(`"${STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE}"`);
+    expect(secureStore).toContain(`'${CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE}'`);
+    expect(zipCommands).toContain(`'${STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE}'`);
   });
 });
 
@@ -116,16 +116,11 @@ describe('localizeCloudStorageError', () => {
   });
 
   it('Rust and TypeScript share the partial-archive slot-restore code', () => {
-    const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/mod.rs'),
+    const host = readFileSync(
+      resolve(process.cwd(), 'host/plugins/backup/src/manifest-model.ts'),
       'utf-8',
     );
-    expect(rust).toContain(`"${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}"`);
-    const restore = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/commands_restore.rs'),
-      'utf-8',
-    );
-    expect(restore).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
+    expect(host).toContain(`'${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}'`);
   });
 
   it('maps sealed-ZIP and atomic-restore refusals by stable code', () => {
@@ -161,17 +156,17 @@ describe('localizeCloudStorageError', () => {
 
   it('Rust and TypeScript share sealed-ZIP and atomic-restore codes', () => {
     const zip = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs'),
+      resolve(process.cwd(), 'host/plugins/backup/src/zip-codes.ts'),
       'utf-8',
     );
-    expect(zip).toContain(`"${SEALED_BACKUP_PASSWORD_REQUIRED_CODE}"`);
-    expect(zip).toContain(`"${SEALED_BACKUP_DECRYPT_FAILED_CODE}"`);
+    expect(zip).toContain(`'${SEALED_BACKUP_PASSWORD_REQUIRED_CODE}'`);
+    expect(zip).toContain(`'${SEALED_BACKUP_DECRYPT_FAILED_CODE}'`);
 
     const backup = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/mod.rs'),
+      resolve(process.cwd(), 'host/plugins/backup/src/manifest-model.ts'),
       'utf-8',
     );
-    expect(backup).toContain(`"${ATOMIC_RESTORE_UNAVAILABLE_CODE}"`);
+    expect(backup).toContain(`'${ATOMIC_RESTORE_UNAVAILABLE_CODE}'`);
   });
 
   it('cloud and local ZIP restore paths refuse before restoreBackup', () => {

@@ -45,22 +45,25 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
       setError(getErrorMessage(error));
     }
   };
+  if (!error && drafts.length === 0 && attempts.length === 0) {
+    return null;
+  }
   const row = (record: PracticeSummary, submitted: boolean) => (
     <div
       key={record.id}
-      className="flex flex-wrap items-center gap-2 border-b border-border/50 py-2 text-sm"
+      className="flex flex-wrap items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs sm:text-sm transition-colors hover:bg-foreground/[0.035]"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{record.title}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="truncate font-medium text-foreground">{record.title}</p>
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">
           {new Date(record.updated_at).toLocaleString()} ·{' '}
           {t('batch.progress', { answered: record.answered_count, total: record.question_count })}
           {submitted &&
             ` · ${t('batch.correctCount', { count: record.correct_count })} · ${t('batch.pendingCount', { count: record.pending_count })}`}
         </p>
       </div>
-      <DsButton variant="outline" size="sm" onClick={() => onOpen(record.id, submitted)}>
-        {submitted ? <ListChecks size={16} /> : <Play size={16} />}
+      <DsButton variant="outline" size="sm" className="!h-7 !px-2.5 text-xs" onClick={() => onOpen(record.id, submitted)}>
+        {submitted ? <ListChecks size={14} /> : <Play size={14} />}
         {t(submitted ? 'batch.viewResult' : 'batch.continue')}
       </DsButton>
       {!readOnly && <DsButton
@@ -70,8 +73,9 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
         title={t('common:delete')}
         aria-label={t('common:delete')}
         onClick={() => setDeleteId(record.id)}
+        className="!h-7 !w-7 text-muted-foreground hover:text-destructive"
       >
-        <Trash size={16} />
+        <Trash size={15} />
       </DsButton>}
       {deleteId === record.id && (
         <div className="flex w-full items-center justify-end gap-2">
@@ -87,7 +91,7 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
     </div>
   );
   return (
-    <section className="space-y-2">
+    <section className="space-y-1.5 border-b border-border/35 pb-3">
       {error && (
         <div className="flex items-center gap-2 text-sm text-destructive" role="alert">
           <span className="min-w-0 flex-1 break-words">{error}</span>
@@ -103,24 +107,25 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
         </div>
       )}
       {!!drafts.length && (
-        <>
-          <h3 className="text-sm font-medium">{t('batch.continue')}</h3>
+        <div className="space-y-1">
+          <h3 className="px-1 text-xs font-medium text-muted-foreground">{t('batch.continue')}</h3>
           {drafts.map((d) => row(d, false))}
-        </>
+        </div>
       )}
       {!!attempts.length && (
-        <>
+        <div className="space-y-1">
           <DsButton
             variant="ghost"
             size="sm"
             aria-expanded={historyOpen}
             onClick={() => setHistoryOpen((v) => !v)}
+            className="!h-7 !px-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            <ListChecks size={16} />
+            <ListChecks size={14} />
             {t('batch.history')} ({attempts.length})
           </DsButton>
           {historyOpen && attempts.map((a) => row(a, true))}
-        </>
+        </div>
       )}
     </section>
   );

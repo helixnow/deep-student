@@ -1,0 +1,320 @@
+## expanded newest
+<div class="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11">
+  <div class="flex items-center gap-2">
+    <span class="flex-shrink-0">
+      <svg size=12 icon="M216,48H176V40a24,24,0,0" class="text-gray-500">
+    <span class="text-xs text-muted-foreground font-mono w-20 flex-shrink-0">
+      "10:00:00 AM.777"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px] px-1.5 py-0">
+      <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+      "pdf"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px] px-1.5 py-0 border-orange-500/50">
+      "legacy"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+      "Store 清理"
+    <span class="text-xs font-mono text-muted-foreground truncate max-w-[120px]" title="att_img_1">
+      "att_img_1"
+  <div class="mt-2 p-2 bg-muted/30 rounded text-xs font-mono overflow-x-auto">
+    <pre class="whitespace-pre-wrap break-all">
+      "{ \"fileId\": \"att_img_1\", \"eventType\": \"lifecycle\", \"mediaType\": \"pdf\", \"stage\": \"store_cleanup\", \"source\": \"ui\" }"
+
+## expanded oldest, newest closed
+<div class="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11">
+  <div class="flex items-center gap-2">
+    <span class="flex-shrink-0">
+      <svg size=12 icon="M232,128a104,104,0,0,1-2" class="text-blue-500 animate-spin">
+    <span class="text-xs text-muted-foreground font-mono w-20 flex-shrink-0">
+      "10:00:00 AM.037"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px] px-1.5 py-0">
+      <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+      "pdf"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px] px-1.5 py-0 border-blue-500/50">
+      "unified"
+    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+      "文本提取"
+    <span class="text-xs text-muted-foreground">
+      "12"
+      "%"
+    <span class="text-xs font-mono text-muted-foreground truncate max-w-[120px]" title="att_pdf_1">
+      "att_pdf_1"
+  <div class="mt-2 p-2 bg-muted/30 rounded text-xs font-mono overflow-x-auto">
+    <pre class="whitespace-pre-wrap break-all">
+      "{ \"fileId\": \"att_pdf_1\", \"eventType\": \"progress\", \"mediaType\": \"pdf\", \"stage\": \"text_extraction\", \"percent\": 12.4, \"readyModes\": [], \"source\": \"media\" }"
+open rows: 1
+## collapsed
+open rows: 0
+## filter PDF
+pdfProcessingStore 状态 (4) | 事件流 (17)
+事件: 21进度: 7完成: 3错误: 3模式: 2注入: 1移除/清理: 5PDF: 17 | 图片: 4Store: 4 条
+10:00:00 AM.777pdflegacyStore 清理att_img_1
+10:00:00 AM.777pdflegacyStore 清理att_pdf_3
+10:00:00 AM.740pdflegacyStore 清理att_pdf_4
+10:00:00 AM.703pdflegacyretry_startedatt_pdf_2
+10:00:00 AM.666pdflegacy已移除att_img_2
+10:00:00 AM.629pdflegacy已移除att_pdf_5
+10:00:00 AM.555pdflegacy已完成100%att_pdf_5
+10:00:00 AM.518pdflegacyOCR 处理33%att_pdf_5
+10:00:00 AM.481pdflegacy等待中0%att_pdf_5
+10:00:00 AM.370pdflegacy等待中[ocr]unknown
+10:00:00 AM.333pdflegacy等待中[text, image]att_pdf_1
+10:00:00 AM.296pdflegacy文本提取att_pdf_4
+10:00:00 AM.259pdflegacy已完成100%att_pdf_3
+10:00:00 AM.222pdflegacy向量索引88%8/8att_pdf_3
+10:00:00 AM.185pdfunifiedOCR 处理att_pdf_2
+10:00:00 AM.074pdfunified页面渲染48%3/8att_pdf_1
+10:00:00 AM.037pdfunified文本提取12%att_pdf_1
+## filter 图片
+pdfProcessingStore 状态 (4) | 事件流 (4)
+事件: 21进度: 7完成: 3错误: 3模式: 2注入: 1移除/清理: 5PDF: 17 | 图片: 4Store: 4 条
+10:00:00 AM.592imagelegacy错误att_img_2
+10:00:00 AM.407imagelegacy等待中文本:1 图片:2res_img_1
+10:00:00 AM.148imageunified已完成100%att_img_1
+10:00:00 AM.111imageunified图片压缩50%att_img_1
+## filter 全部
+pdfProcessingStore 状态 (4) | 事件流 (21)
+事件: 21进度: 7完成: 3错误: 3模式: 2注入: 1移除/清理: 5PDF: 17 | 图片: 4Store: 4 条
+10:00:00 AM.777pdflegacyStore 清理att_img_1
+10:00:00 AM.777pdflegacyStore 清理att_pdf_3
+10:00:00 AM.740pdflegacyStore 清理att_pdf_4
+10:00:00 AM.703pdflegacyretry_startedatt_pdf_2
+10:00:00 AM.666pdflegacy已移除att_img_2
+10:00:00 AM.629pdflegacy已移除att_pdf_5
+10:00:00 AM.592imagelegacy错误att_img_2
+10:00:00 AM.555pdflegacy已完成100%att_pdf_5
+10:00:00 AM.518pdflegacyOCR 处理33%att_pdf_5
+10:00:00 AM.481pdflegacy等待中0%att_pdf_5
+10:00:00 AM.407imagelegacy等待中文本:1 图片:2res_img_1
+10:00:00 AM.370pdflegacy等待中[ocr]unknown
+10:00:00 AM.333pdflegacy等待中[text, image]att_pdf_1
+10:00:00 AM.296pdflegacy文本提取att_pdf_4
+10:00:00 AM.259pdflegacy已完成100%att_pdf_3
+10:00:00 AM.222pdflegacy向量索引88%8/8att_pdf_3
+10:00:00 AM.185pdfunifiedOCR 处理att_pdf_2
+10:00:00 AM.148imageunified已完成100%att_img_1
+10:00:00 AM.111imageunified图片压缩50%att_img_1
+10:00:00 AM.074pdfunified页面渲染48%3/8att_pdf_1
+10:00:00 AM.037pdfunified文本提取12%att_pdf_1
+## store hidden
+false
+## store shown
+true
+## paused
+pdfProcessingStore 状态 (4) | 事件流 (21)已暂停
+事件: 21进度: 7完成: 3错误: 3模式: 2注入: 1移除/清理: 5PDF: 17 | 图片: 4Store: 4 条
+10:00:00 AM.777pdflegacyStore 清理att_img_1
+10:00:00 AM.777pdflegacyStore 清理att_pdf_3
+listen +6, unlisten 6
+## resumed
+pdfProcessingStore 状态 (4) | 事件流 (22)
+事件: 22进度: 7完成: 4错误: 3模式: 2注入: 1移除/清理: 5PDF: 17 | 图片: 5Store: 4 条
+10:00:00 AM.962imageunified已完成100%att_resumed
+10:00:00 AM.777pdflegacyStore 清理att_img_1
+listen +12, unlisten 12
+----
+<div class="flex items-center gap-1">
+  <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+    "全部"
+  <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+    <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+    "PDF"
+  <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+    <svg size=12 icon="M110.66,147.56a8,8,0,0,0" class="mr-1">
+    "图片"
+----
+<div class="flex items-center justify-between flex-wrap gap-2">
+  <div class="flex items-center gap-2">
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      <svg size=16 icon="M247.31,124.76c-.35-.79-" class="mr-1">
+      "恢复"
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      <svg size=16 icon="M216,48H176V40a24,24,0,0" class="mr-1">
+      "清空"
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      <svg size=16 icon="M215.79,118.17a8,8,0,0,0" class="mr-1">
+      "Store"
+  <div class="flex items-center gap-1">
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      "全部"
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+      "PDF"
+    <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+      <svg size=12 icon="M110.66,147.56a8,8,0,0,0" class="mr-1">
+      "图片"
+----
+<div>
+  <div class="h-full flex flex-col p-3 gap-3">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M53.92,34.62A8,8,0,1,0,4" class="mr-1">
+          "暂停"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0" class="mr-1">
+          "清空"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=16 icon="M215.79,118.17a8,8,0,0,0" class="mr-1">
+          "Store"
+      <div class="flex items-center gap-1">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          "全部"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=12 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+          "PDF"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-h-11">
+          <svg size=12 icon="M110.66,147.56a8,8,0,0,0" class="mr-1">
+          "图片"
+    <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none flex-shrink-0">
+      <div class="p-4 pt-0 py-2 px-3">
+        <div class="flex flex-wrap gap-3 text-xs">
+          <span class="text-muted-foreground">
+            "事件:"
+            <span class="font-medium text-foreground">
+              "0"
+          <span class="text-blue-600 dark:text-blue-400">
+            "进度:"
+            "0"
+          <span class="text-green-600 dark:text-green-400">
+            "完成:"
+            "0"
+          <span class="text-red-600 dark:text-red-400">
+            "错误:"
+            "0"
+          <span class="text-purple-600 dark:text-purple-400">
+            "模式:"
+            "0"
+          <span class="text-teal-600 dark:text-teal-400">
+            "注入:"
+            "0"
+          <span class="text-muted-foreground">
+            "移除/清理:"
+            "0"
+          <span class="border-l border-border pl-3 text-muted-foreground">
+            "PDF:"
+            "0"
+            "| 图片:"
+            "0"
+          <span class="border-l border-border pl-3 text-muted-foreground">
+            "Store:"
+            <span class="font-medium text-foreground">
+              "4"
+            "条"
+    <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none flex-shrink-0 max-h-[200px] overflow-hidden">
+      <div class="flex flex-col space-y-1.5 p-4 py-2 px-3">
+        <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+          <svg size=16 icon="M215.79,118.17a8,8,0,0,0">
+          "pdfProcessingStore 状态 ("
+          "4"
+          ")"
+      <div class="p-4 pt-0 py-0 px-3 pb-2">
+        <div class="relative min-h-0 min-w-0 min-h-0 min-w-0 h-full h-[120px] pr-1">
+          <div class="os-size-observer">
+            <div class="os-size-observer-listener">
+          <div class="h-full min-h-0 w-full min-w-0 h-full max-h-[inherit] min-h-0 w-full min-w-0 min-h-0 min-w-0 max-h-[420px]" style="margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;">
+            <div class="border border-border/50 rounded-md p-2 mb-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-mono truncate max-w-[200px]" title="att_pdf_1">
+                  "att_pdf_1"
+                <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200">
+                  "页面渲染"
+              <div class="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                <div class="h-full transition-all duration-300 bg-blue-500" style="width: 47.6%;">
+              <div class="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>
+                  "48"
+                  "%"
+                <span>
+                  "就绪模式:"
+                  "text"
+                <span>
+                  "页:"
+                  "3"
+                  "/"
+                  "8"
+            <div class="border border-border/50 rounded-md p-2 mb-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-mono truncate max-w-[200px]" title="att_img_1">
+                  "att_img_1"
+                <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                  "已完成"
+              <div class="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                <div class="h-full transition-all duration-300 bg-green-500" style="width: 100%;">
+              <div class="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>
+                  "100"
+                  "%"
+                <span>
+                  "就绪模式:"
+                  "image, ocr"
+            <div class="border border-border/50 rounded-md p-2 mb-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-mono truncate max-w-[200px]" title="att_pdf_2">
+                  "att_pdf_2"
+                <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                  "错误"
+              <div class="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                <div class="h-full transition-all duration-300 bg-red-500" style="width: 30%;">
+              <div class="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>
+                  "30"
+                  "%"
+                <span>
+                  "就绪模式:"
+                  "无"
+              <div class="mt-1 text-[10px] text-red-500 truncate" title="OCR provider timeout">
+                "错误:"
+                "OCR provider timeout"
+            <div class="border border-border/50 rounded-md p-2 mb-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-mono truncate max-w-[200px]" title="att_pdf_6">
+                  "att_pdf_6"
+                <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                  "completed_with_issues"
+              <div class="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                <div class="h-full transition-all duration-300 bg-blue-500" style="width: 0%;">
+              <div class="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>
+                  "0"
+                  "%"
+                <span>
+                  "就绪模式:"
+                  "无"
+                "0"
+          <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+          <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+    <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none flex-1 overflow-hidden flex flex-col">
+      <div class="flex flex-col space-y-1.5 p-4 py-2 px-3 flex-shrink-0">
+        <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+          <svg size=16 icon="M128,24A104,104,0,1,0,23">
+          "事件流 ("
+          "0"
+          ")"
+      <div class="p-4 pt-0 flex-1 p-0 overflow-hidden">
+        <div class="relative min-h-0 min-w-0 min-h-0 min-w-0 h-full h-full pr-1">
+          <div class="os-size-observer">
+            <div class="os-size-observer-listener">
+          <div class="h-full min-h-0 w-full min-w-0 h-full max-h-[inherit] min-h-0 w-full min-w-0 min-h-0 min-w-0 max-h-[420px]" style="margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;">
+            <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+              "暂无事件，上传 PDF 或图片附件开始监控..."
+          <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+          <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar-track">
+              <div class="os-scrollbar-handle">
+    <div class="text-[10px] text-muted-foreground">
+      <strong>
+        "提示："
+      "此插件监听媒体预处理的完整生命周期：后端处理事件 + 注入模式选择 + 实际内容注入。"
+      <br>
+      <strong>
+        "事件类型："
+      "🔄进度 ✅完成 ❌错误 🖱️模式选择 📤实际注入 🗑️移除/清理"
+      <br>
+      <strong>
+        "关键检查点："
+      "1) fileId 应为 sourceId (att_xxx) 2) Stage 应按顺序流转 3) 模式选择应正确反映用户点击 4) 注入内容应与选择的模式一致"

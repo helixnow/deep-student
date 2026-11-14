@@ -1,0 +1,120 @@
+{
+  "domain": "anki",
+  "commands": [
+    "dismiss_pending_memory_candidates",
+    "mark_pending_memory_candidates_saved"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.memory.dismiss-chat-prefix-then-idempotent",
+      "seed": "l16-pending-memory-w0",
+      "steps": [
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "chat-w233-conv-a"
+          }
+        },
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "chat-w233-conv-a"
+          }
+        },
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "w233-conv-a"
+          }
+        },
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "  w233-conv-b\t"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.memory.mark-saved-then-dismiss-noop",
+      "seed": "l16-pending-memory-w0",
+      "steps": [
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "w233-conv-c"
+          }
+        },
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "chat-w233-conv-c"
+          }
+        },
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "chat-w233-conv-b"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.memory.prefix-edge-ids",
+      "seed": "l16-pending-memory-w0",
+      "steps": [
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "chat-w233-conv-d"
+          }
+        },
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "chat-chat-w233-conv-d"
+          }
+        },
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "Chat-w233-conv-e"
+          }
+        },
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "chat-"
+          }
+        },
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "w233-unknown"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

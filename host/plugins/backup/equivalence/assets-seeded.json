@@ -1,0 +1,128 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_scan_assets"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.assets.seeded.tree_counts",
+      "seed": "l21-assets-tree-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images",
+              "images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "notes_assets"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "audio",
+              "videos"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "bogus"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images",
+              "bogus"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.assets.seeded.root_is_file",
+      "seed": "l21-assets-root-is-file",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "bogus"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

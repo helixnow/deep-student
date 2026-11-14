@@ -407,9 +407,13 @@
     "ptc-run": "Scripted Tool Composition",
     "translation-tools": "Translation Tools",
     "user-todo-tools": "Personal Todos",
-    "role-packs": "Featured Role Experts"
+    "role-packs": "Featured Role Experts",
+    "dstu-plugin-development": "Plugin Workshop",
+    "self-config-tools": "Self-Configuration",
+    "plugin-workshop-tools": "Plugin Workshop Tools"
   },
   "builtinDescriptions": {
+    "dstu-plugin-development": "Create or modify Deep Student plugins with the official SDK, built-in TypeScript compiler, and explicit confirmation.",
     "role-packs": "Version-locked, auditable finance, legal, HR, operations, admin, research, teaching, and content workflows. High-risk outputs always require human final review.",
     "knowledge-retrieval": "Find and cite relevant knowledge from your library and external sources.",
     "canvas-note": "Turn ideas into structured notes, summaries, and reusable snippets.",

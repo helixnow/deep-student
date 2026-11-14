@@ -20,8 +20,11 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
-import { useWindowStore } from '@/features/workbench/core/windowStore';
-import { openAppsPanel, toggleAppsPanel } from '@/features/workbench/components/appsPanelStore';
+import {
+  openWorkbenchAppsPanel,
+  toggleWorkbenchAppsPanel,
+  useFocusedWorkbenchAppTypeId,
+} from '@/shared/workbenchHost';
 import type { CommandView, DependencyResolver, Command } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
@@ -90,11 +93,7 @@ export function CommandPaletteProvider({
   const [sessionSearchOnly, setSessionSearchOnly] = useState(false);
   const { t, i18n } = useTranslation();
 
-  const focusedWorkbenchAppTypeId = useWindowStore((state) => {
-    if (!workbenchActive) return null;
-    const focusedWindowId = state.focusStack.at(-1);
-    return focusedWindowId ? state.windows[focusedWindowId]?.typeId ?? null : null;
-  });
+  const focusedWorkbenchAppTypeId = useFocusedWorkbenchAppTypeId(workbenchActive);
   const commandView: CommandView = workbenchActive ? 'workbench' : currentView;
 
   // 🚀 用 ref 持有 command view，避免执行路径读取过期的 legacy 视图。
@@ -106,7 +105,7 @@ export function CommandPaletteProvider({
   // （Spotlight：应用 / 命令 / 学习资源 / 聊天）。legacy 壳行为不变。
   const open = useCallback(() => {
     if (workbenchActive) {
-      openAppsPanel();
+      openWorkbenchAppsPanel();
       return;
     }
     setSessionSearchOnly(false);
@@ -114,7 +113,7 @@ export function CommandPaletteProvider({
   }, [workbenchActive]);
   const openSessionSearch = useCallback(() => {
     if (workbenchActive) {
-      openAppsPanel();
+      openWorkbenchAppsPanel();
       return;
     }
     setSessionSearchOnly(true);
@@ -123,7 +122,7 @@ export function CommandPaletteProvider({
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => {
     if (workbenchActive) {
-      toggleAppsPanel();
+      toggleWorkbenchAppsPanel();
       return;
     }
     setIsOpen((prev) => !prev);

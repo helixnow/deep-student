@@ -19,7 +19,7 @@ const END_MARKER = '<<<ANKI_CARD_JSON_END>>>';
  */
 const CROSS_LAYER_FIXTURE_PATH = path.resolve(
   __dirname,
-  '../../../../src-tauri/tests/fixtures/cardagent_system_prompt.txt'
+  '../../../fixtures/anki/cardagent_system_prompt.txt'
 );
 
 const mockTemplate: TemplateInfo = {

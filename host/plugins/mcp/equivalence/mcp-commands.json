@@ -1,0 +1,470 @@
+{
+  "domain": "mcp",
+  "commands": ["get_mcp_status","get_mcp_tools","reload_mcp_client","preheat_mcp_tools","get_mcp_stdio_allow_unapproved","set_mcp_stdio_allow_unapproved","mcp_stdio_start","mcp_stdio_send","mcp_stdio_close","test_mcp_connection","test_mcp_http","test_mcp_sse","test_mcp_websocket","get_mcp_oauth_status","get_mcp_oauth_access_token","cancel_mcp_oauth","revoke_mcp_oauth","start_mcp_oauth","save_setting","get_setting"],
+  "scenarios": [
+    {
+      "id": "mcp.status_tools_reload",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"get_mcp_status","args":{}},
+        {"cmd":"get_mcp_tools","args":{}},
+        {"cmd":"reload_mcp_client","args":{}},
+        {"cmd":"get_mcp_status","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.preheat.no_bridge_listener",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"preheat_mcp_tools","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.allow_unapproved.toggle_and_parse",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"get_mcp_stdio_allow_unapproved","args":{}},
+        {"cmd":"set_mcp_stdio_allow_unapproved","args":{"enabled":true}},
+        {"cmd":"get_mcp_stdio_allow_unapproved","args":{}},
+        {"cmd":"get_setting","args":{"key":"mcp.stdio.allowUnapproved"}},
+        {"cmd":"set_mcp_stdio_allow_unapproved","args":{"enabled":false}},
+        {"cmd":"get_mcp_stdio_allow_unapproved","args":{}},
+        {"cmd":"save_setting","args":{"key":"mcp.stdio.allowUnapproved","value":" TRUE "}},
+        {"cmd":"get_mcp_stdio_allow_unapproved","args":{}},
+        {"cmd":"save_setting","args":{"key":"mcp.stdio.allowUnapproved","value":"1"}},
+        {"cmd":"get_mcp_stdio_allow_unapproved","args":{}},
+        {"cmd":"set_mcp_stdio_allow_unapproved","args":{"enabled":"true"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.session_success_list_ping_close",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.success.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":1}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":2}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"prompts/list\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":3}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"ping\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":4}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"web_search\",\"arguments\":{\"query\":\"wave0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":5}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"fail_tool\",\"arguments\":{\"kind\":\"rate_limit\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":6}},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${1}"}},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${1}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ping\",\"params\":{}}"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.start_rejected_not_approved",
+      "seed": "empty",
+      "mcp": {"scripts":["success","initialize-error"]},
+      "steps": [
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","cwd":"${mcp.success.cwd}","framing":"jsonl"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"[]"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.initialize-error.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"content-length","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":null,"framing":null,"cwd":null},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.tools_list_invalid",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"{not json"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","cwd":"${mcp.success.cwd}","framing":"jsonl"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"{\"id\":\"wave0\"}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","cwd":"${mcp.success.cwd}","framing":"jsonl"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.start_rejected_path_checks",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.success.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"/nonexistent/wave0-cwd"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"/etc/hostname"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"/nonexistent/wave0-node","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"wave0-no-such-binary","args":"${mcp.success.args}","env":{"PATH":"/nonexistent/wave0-bin"},"framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"   ","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"command":"","args":[],"env":null,"cwd":null,"framing":null},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"command":"/nonexistent/wave0-node","args":[],"env":null,"cwd":"${mcp.success.cwd}","framing":"jsonl"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.unapproved_mode",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"set_mcp_stdio_allow_unapproved","args":{"enabled":true}},
+        {"cmd":"mcp_stdio_start","args":{"command":"  ","args":[],"env":null,"framing":null,"cwd":null},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"/nonexistent/wave0-node","args":[],"env":{},"framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${3}","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${3}-message","jsonrpcId":1}},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${3}"}},
+        {"cmd":"set_mcp_stdio_allow_unapproved","args":{"enabled":false}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","framing":"jsonl","cwd":"${mcp.success.cwd}"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.disconnect_on_list_autocleans",
+      "seed": "empty",
+      "mcp": {"scripts":["disconnect-on-list"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.disconnect-on-list.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.disconnect-on-list.command}","args":"${mcp.disconnect-on-list.args}","env":"${mcp.disconnect-on-list.env}","framing":"jsonl","cwd":"${mcp.disconnect-on-list.cwd}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":1}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-closed"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\",\"params\":{}}"},"expect":"error"},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${1}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.disconnect_on_call",
+      "seed": "empty",
+      "mcp": {"scripts":["disconnect-on-call"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.disconnect-on-call.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.disconnect-on-call.command}","args":"${mcp.disconnect-on-call.args}","env":"${mcp.disconnect-on-call.env}","framing":"jsonl","cwd":"${mcp.disconnect-on-call.cwd}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":1}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":2}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"echo_args\",\"arguments\":{\"n\":1}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-closed"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"ping\",\"params\":{}}"},"expect":"error"},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${1}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.protocol_garbage_and_raw_payloads",
+      "seed": "empty",
+      "mcp": {"scripts":["protocol-garbage"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.protocol-garbage.toolsList}"}},
+        {"cmd":"mcp_stdio_start","args":{"command":"${mcp.protocol-garbage.command}","args":"${mcp.protocol-garbage.args}","env":"${mcp.protocol-garbage.env}","framing":"jsonl","cwd":"${mcp.protocol-garbage.cwd}"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"waitAfter":{"channel":"mcp-stdio-${1}-message","jsonrpcId":1}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"not json at all"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":""}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"},"waitAfter":{"channel":"mcp-stdio-${1}-closed"}},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"${1}","payload":"{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\",\"params\":{}}"},"expect":"error"},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"${1}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.stdio.unknown_session",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"wave0-unknown-session","payload":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"wave0\",\"version\":\"0\"}}}"},"expect":"error"},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"","payload":""},"expect":"error"},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":"wave0-unknown-session"}},
+        {"cmd":"mcp_stdio_close","args":{"sessionId":""}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.success",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.success.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","cwd":"${mcp.success.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.initialize-error",
+      "seed": "empty",
+      "mcp": {"scripts":["initialize-error"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.initialize-error.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.initialize-error.command}","args":"${mcp.initialize-error.args}","env":"${mcp.initialize-error.env}","cwd":"${mcp.initialize-error.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.tools-list-error",
+      "seed": "empty",
+      "mcp": {"scripts":["tools-list-error"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.tools-list-error.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.tools-list-error.command}","args":"${mcp.tools-list-error.args}","env":"${mcp.tools-list-error.env}","cwd":"${mcp.tools-list-error.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.protocol-invalid-tools",
+      "seed": "empty",
+      "mcp": {"scripts":["protocol-invalid-tools"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.protocol-invalid-tools.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.protocol-invalid-tools.command}","args":"${mcp.protocol-invalid-tools.args}","env":"${mcp.protocol-invalid-tools.env}","cwd":"${mcp.protocol-invalid-tools.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.protocol-garbage",
+      "seed": "empty",
+      "mcp": {"scripts":["protocol-garbage"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.protocol-garbage.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.protocol-garbage.command}","args":"${mcp.protocol-garbage.args}","env":"${mcp.protocol-garbage.env}","cwd":"${mcp.protocol-garbage.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.disconnect-on-list",
+      "seed": "empty",
+      "mcp": {"scripts":["disconnect-on-list"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.disconnect-on-list.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.disconnect-on-list.command}","args":"${mcp.disconnect-on-list.args}","env":"${mcp.disconnect-on-list.env}","cwd":"${mcp.disconnect-on-list.cwd}","framing":"jsonl"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_connection.stdio.defaults_null_framing",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"mcp.tools.list","value":"${mcp.success.toolsList}"}},
+        {"cmd":"test_mcp_connection","args":{"command":"${mcp.success.command}","args":"${mcp.success.args}","env":"${mcp.success.env}","cwd":"${mcp.success.cwd}","framing":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.success",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.success.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.initialize-error",
+      "seed": "empty",
+      "mcp": {"scripts":["initialize-error"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.initialize-error.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.tools-list-error",
+      "seed": "empty",
+      "mcp": {"scripts":["tools-list-error"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.tools-list-error.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.protocol-invalid-tools",
+      "seed": "empty",
+      "mcp": {"scripts":["protocol-invalid-tools"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.protocol-invalid-tools.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.protocol-garbage",
+      "seed": "empty",
+      "mcp": {"scripts":["protocol-garbage"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.protocol-garbage.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.disconnect-on-list",
+      "seed": "empty",
+      "mcp": {"scripts":["disconnect-on-list"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.disconnect-on-list.httpUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_http.api_key_trim_and_unreachable",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.success.httpUrl}","apiKey":"  wave0-fake-token  ","env":{"WAVE0":"1"}}},
+        {"cmd":"test_mcp_http","args":{"endpoint":"http://127.0.0.1:9/mcp","apiKey":"","env":null}},
+        {"cmd":"test_mcp_http","args":{"endpoint":"not a url","apiKey":"","env":null}},
+        {"cmd":"test_mcp_http","args":{"endpoint":"${mcp.url}/wave0-unknown-path","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_sse.success",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"test_mcp_sse","args":{"endpoint":"${mcp.success.sseUrl}","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_sse.initialize_error",
+      "seed": "empty",
+      "mcp": {"scripts":["initialize-error"]},
+      "steps": [
+        {"cmd":"test_mcp_sse","args":{"endpoint":"${mcp.initialize-error.sseUrl}","apiKey":"wave0-fake-token","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_sse.unreachable_and_invalid",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"test_mcp_sse","args":{"endpoint":"http://127.0.0.1:9/sse","apiKey":"","env":null}},
+        {"cmd":"test_mcp_sse","args":{"endpoint":"not a url","apiKey":"","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_websocket.failures",
+      "seed": "empty",
+      "mcp": {"scripts":["success"]},
+      "steps": [
+        {"cmd":"test_mcp_websocket","args":{"url":"ws://127.0.0.1:9/ws","env":null}},
+        {"cmd":"test_mcp_websocket","args":{"url":"not a url","env":null}},
+        {"cmd":"test_mcp_websocket","args":{"url":"${mcp.success.httpUrl}","env":{"WAVE0":"1"}}},
+        {"cmd":"test_mcp_websocket","args":{"url":"${mcp.url}/wave0-ws","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.test_websocket.success",
+      "seed": "empty",
+      "mcp": {"scripts":["success","initialize-error"]},
+      "steps": [
+        {"cmd":"test_mcp_websocket","args":{"url":"${mcp.success.wsUrl}","env":null}},
+        {"cmd":"test_mcp_websocket","args":{"url":"${mcp.initialize-error.wsUrl}","env":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.oauth.status_token_cancel_revoke_unauthorized",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success"}},
+        {"cmd":"get_mcp_oauth_access_token","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success"}},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"not a url"}},
+        {"cmd":"get_mcp_oauth_access_token","args":{"serverId":"wave0-oauth","resourceUrl":"http://example.invalid/mcp"}},
+        {"cmd":"cancel_mcp_oauth","args":{"serverId":"wave0-oauth"}},
+        {"cmd":"cancel_mcp_oauth","args":{"serverId":""}},
+        {"cmd":"revoke_mcp_oauth","args":{"serverId":"wave0-oauth"}},
+        {"cmd":"revoke_mcp_oauth","args":{"serverId":"wave0-oauth"}},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.oauth.start_rejected_resource_url",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"http://example.invalid/mcp","clientId":null,"clientSecret":null,"scopes":null},"expect":"error"},
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"https://user:pass@127.0.0.1/mcp","clientId":null,"clientSecret":null,"scopes":null},"expect":"error"},
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"http://[::1","clientId":null,"clientSecret":null,"scopes":null},"expect":"error"},
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"ftp://127.0.0.1/mcp","clientId":"wave0-client","clientSecret":null,"scopes":["mcp"]},"expect":"error"},
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"file:///tmp/mcp","clientId":null,"clientSecret":null,"scopes":[]},"expect":"error"},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"http://example.invalid/mcp"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.oauth.start_dcr_404_on_local_service",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success","clientId":null,"clientSecret":null,"scopes":null},"expect":"error"},
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success","clientId":"   ","clientSecret":null,"scopes":["mcp:tools"]},"expect":"error"},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/success"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.oauth.no_registration_endpoint",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.noRegistrationResourceUrl}","clientId":null,"clientSecret":null,"scopes":null},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"test_mcp_http","args":{"apiKey":"","env":null},"expect":"error"},
+        {"cmd":"test_mcp_sse","args":{"endpoint":"http://127.0.0.1:9/sse","env":null},"expect":"error"},
+        {"cmd":"test_mcp_websocket","args":{"env":null},"expect":"error"},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth"},"expect":"error"},
+        {"cmd":"get_mcp_oauth_access_token","args":{"resourceUrl":"http://127.0.0.1:9/mcp"},"expect":"error"},
+        {"cmd":"cancel_mcp_oauth","args":{},"expect":"error"},
+        {"cmd":"revoke_mcp_oauth","args":{"serverId":1},"expect":"error"},
+        {"cmd":"mcp_stdio_close","args":{},"expect":"error"},
+        {"cmd":"mcp_stdio_send","args":{"sessionId":"wave0-unknown-session"},"expect":"error"},
+        {"cmd":"mcp_stdio_start","args":{"args":[],"env":null,"framing":null,"cwd":null},"expect":"error"},
+        {"cmd":"test_mcp_connection","args":{"args":[],"env":null,"cwd":null,"framing":null},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

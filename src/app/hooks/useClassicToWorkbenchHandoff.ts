@@ -4,12 +4,18 @@ import type { CurrentView } from '@/types/navigation';
 // 同一资源。descriptor 形状 { version, appType, resourceId, innerRoute?, savedAt }，
 // sanitize 与新鲜度窗口（默认 15min）在模块内完成；consume 总是先删再判，
 // 一次即清，不残留跨次交接的陈旧描述符。
+//
+// W38：这些调用经 `@/shared/workbenchHost` 宿主桥完成；桌面实现由 `loadWorkbenchHost`
+// 动态注册，移动端构建不包含 features/workbench。
 import {
-  PDF_PAGE_ACTIVATION_TYPE_IDS,
-  workbenchBus,
-  type PdfPageActivationTypeId,
-} from '@/features/workbench/core/workbenchBus';
-import { consumeHandoffDescriptor } from '@/features/workbench/core/handoffDescriptor';
+  consumeWorkbenchHandoff,
+  isPdfPageActivationType,
+  isWorkbenchHostEnabled,
+  launchWorkbenchApp,
+  openWorkbenchPdfPage,
+} from '@/shared/workbenchHost';
+import { loadWorkbenchHost } from '../workbench/load';
+import type { PdfPageActivationTypeId } from '@/features/workbench/core/workbenchBus';
 import { isMobilePlatform } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -63,41 +69,43 @@ export function useClassicToWorkbenchHandoff(workbenchActive: boolean, currentVi
     prevWorkbenchActiveRef.current = workbenchActive;
     if (wasActive || !workbenchActive || isMobilePlatform()) return;
 
-    // 消费一次即清（模块内先删再判 + 15min 新鲜度窗口）：典型来源是
-    // handoffWorkbenchToLegacyShell 在 Workbench→经典壳时落盘的焦点窗上下文，
-    // 用户切回学习桌面即恢复到离开时的资源（round-trip 连续性）。
-    const handoff = consumeHandoffDescriptor();
-    let target: { typeId: string; instanceKey?: string; innerRoute?: string } | null = null;
-    if (handoff) {
-      target = {
-        typeId: handoff.appType,
-        // resourceId 可为 null（如焦点曾是 files / 无选中资源的单实例工作区）：
-        // 此时仍按「同一应用」交接，仅退化资源级精度
-        instanceKey: handoff.resourceId ?? undefined,
-        innerRoute: handoff.innerRoute,
-      };
-    } else if (currentView === 'chat-v2') {
-      // 兜底：chat 仅在有活跃会话时交接（避免凭空新建会话窗）
-      if (currentChatHeaderSessionId) {
-        target = { typeId: 'chat', instanceKey: currentChatHeaderSessionId };
-      }
-    } else {
-      // 其余视图查映射表，无对应桌面应用则静默（空桌面 + Dock 已足够）
-      const mapped = WORKBENCH_APP_BY_CLASSIC_VIEW[currentView];
-      if (mapped) target = { typeId: mapped };
-    }
-    const launchTarget = target;
-    if (!launchTarget) return;
-
-    // 应用注册在 WorkbenchDesktop chunk 内（registerAll 模块求值即注册）。
-    // 经典壳启动（localStorage 预读 false）时该 chunk 未预热，直接 launch 会让
-    // note/mindmap 因 notes 工作区未注册落错分支、single 去重与 defaultFrame
-    // 拿不到定义——先动态引入补齐注册（与桌面壳挂载命中同一 chunk 家族）再发。
     void (async () => {
       try {
+        // 宿主桥在桌面端是异步注册的：先等它可用，再读取一次性描述符。
+        await loadWorkbenchHost();
+        // 消费一次即清（模块内先删再判 + 15min 新鲜度窗口）：典型来源是
+        // handoffWorkbenchToLegacyShell 在 Workbench→经典壳时落盘的焦点窗上下文，
+        // 用户切回学习桌面即恢复到离开时的资源（round-trip 连续性）。
+        const handoff = consumeWorkbenchHandoff();
+        let target: { typeId: string; instanceKey?: string; innerRoute?: string } | null = null;
+        if (handoff) {
+          target = {
+            typeId: handoff.appType,
+            // resourceId 可为 null（如焦点曾是 files / 无选中资源的单实例工作区）：
+            // 此时仍按「同一应用」交接，仅退化资源级精度
+            instanceKey: handoff.resourceId ?? undefined,
+            innerRoute: handoff.innerRoute,
+          };
+        } else if (currentView === 'chat-v2') {
+          // 兜底：chat 仅在有活跃会话时交接（避免凭空新建会话窗）
+          if (currentChatHeaderSessionId) {
+            target = { typeId: 'chat', instanceKey: currentChatHeaderSessionId };
+          }
+        } else {
+          // 其余视图查映射表，无对应桌面应用则静默（空桌面 + Dock 已足够）
+          const mapped = WORKBENCH_APP_BY_CLASSIC_VIEW[currentView];
+          if (mapped) target = { typeId: mapped };
+        }
+        const launchTarget = target;
+        if (!launchTarget) return;
+
+        // 应用注册在 WorkbenchDesktop chunk 内（registerAll 模块求值即注册）。
+        // 经典壳启动（localStorage 预读 false）时该 chunk 未预热，直接 launch 会让
+        // note/mindmap 因 notes 工作区未注册落错分支、single 去重与 defaultFrame
+        // 拿不到定义——先动态引入补齐注册（与桌面壳挂载命中同一 chunk 家族）再发。
         await import('@/features/workbench/apps/registerAll');
         // 等待期间模式又被关掉：放弃交接，避免 launch 误入 legacy 降级导航
-        if (!workbenchBus.isEnabled()) return;
+        if (!isWorkbenchHostEnabled()) return;
         if (launchTarget.typeId === 'chat' && launchTarget.instanceKey) {
           // chat 走既有入口：聚焦单例 + navigate-to-session 导航握手
           const { openChatSession } = await import('@/features/workbench/apps/chat/newSession');
@@ -111,16 +119,16 @@ export function useClassicToWorkbenchHandoff(workbenchActive: boolean, currentVi
         if (
           pageMatch
           && launchTarget.instanceKey
-          && (PDF_PAGE_ACTIVATION_TYPE_IDS as readonly string[]).includes(launchTarget.typeId)
+          && isPdfPageActivationType(launchTarget.typeId)
         ) {
-          await workbenchBus.openPdfPage({
+          await openWorkbenchPdfPage({
             typeId: launchTarget.typeId as PdfPageActivationTypeId,
             resourceId: launchTarget.instanceKey,
             page: Number(pageMatch[1]),
           });
           return;
         }
-        workbenchBus.launch({
+        launchWorkbenchApp({
           typeId: launchTarget.typeId,
           instanceKey: launchTarget.instanceKey,
           // 未识别的 innerRoute 以瞬态载荷透传（不进快照），应用侧自行消费

@@ -5,7 +5,7 @@
  * 约束：禁止 switch/case，只能从注册表获取组件
  */
 
-import React, { useMemo, Component, memo } from 'react';
+import React, { useMemo, useCallback, useSyncExternalStore, Component, memo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import type { StoreApi } from 'zustand';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +15,7 @@ import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
-import { blockRegistry } from '../registry';
+import { blockRegistry, type BlockRendererPlugin } from '../registry';
 import type { Block, ChatStore } from '../core/types';
 import { useBlock, useIsBlockActive } from '../hooks/useChatStore';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
@@ -238,11 +238,25 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
 // ============================================================================
 
 /**
+ * 订阅 blockRegistry 中某个类型的渲染插件（未注册则回退到 'generic'）。
+ * 快照是插件对象本身：别的类型登记或撤销时引用不变，不会重渲染；晚到的登记（社区插件）会触发重渲染。
+ */
+function useBlockPlugin(type: string): BlockRendererPlugin | undefined {
+  const getSnapshot = useCallback(() => blockRegistry.get(type) ?? blockRegistry.get('generic'), [type]);
+  return useSyncExternalStore(subscribeBlockRegistry, getSnapshot, getSnapshot);
+}
+
+/** 不可订阅的注册表（旧形状，只有 get）退化为渲染时读取。 */
+function subscribeBlockRegistry(listener: () => void): () => void {
+  return typeof blockRegistry.subscribe === 'function' ? blockRegistry.subscribe(listener) : () => {};
+}
+
+/**
  * BlockRenderer 块渲染组件
  *
  * 核心逻辑：
  * 1. 跳过来源类型块（rag, memory, web_search, multimodal_rag），这些块由 SourcePanelV2 统一渲染
- * 2. 从 blockRegistry 获取对应类型的渲染组件
+ * 2. 从 blockRegistry 获取对应类型的渲染组件（订阅注册表，晚注册的类型也能渲染）
  * 3. 如果未注册，优先回退到注册的 'generic' 插件（i18n + 状态展示更完整），
  *    再兜底到本地 GenericBlock
  * 4. 禁止使用 switch/case 进行类型判断
@@ -256,10 +270,7 @@ const BlockRendererInner: React.FC<BlockRendererProps> = ({
   sessionSwitchPerf.mark('br_render', { blockType: block.type });
 
   // 从注册表获取渲染插件（禁止 switch/case）；hooks 必须在 early return 之前
-  const plugin = useMemo(
-    () => blockRegistry.get(block.type) ?? blockRegistry.get('generic'),
-    [block.type]
-  );
+  const plugin = useBlockPlugin(block.type);
 
   // 跳过来源类型块，这些块只在 SourcePanelV2 中统一展示
   if (SOURCE_BLOCK_TYPES.has(block.type)) {
@@ -321,6 +332,9 @@ const BlockRendererWithStoreInner: React.FC<BlockRendererWithStoreProps> = ({
   // 🚀 细粒度订阅：只订阅此 block 的流式状态
   const isStreaming = useIsBlockActive(store, blockId);
 
+  // 从注册表获取渲染插件；未注册类型回退到注册的 'generic' 插件，再兜底本地 GenericBlock
+  const plugin = useBlockPlugin(block?.type ?? '');
+
   // 块不存在时返回 null
   if (!block) {
     return null;
@@ -331,8 +345,6 @@ const BlockRendererWithStoreInner: React.FC<BlockRendererWithStoreProps> = ({
     return null;
   }
 
-  // 从注册表获取渲染插件；未注册类型回退到注册的 'generic' 插件，再兜底本地 GenericBlock
-  const plugin = blockRegistry.get(block.type) ?? blockRegistry.get('generic');
   const Component = plugin?.component ?? GenericBlock;
 
   return (

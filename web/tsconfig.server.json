@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.host.json",
+  "include": [
+    "server/**/*.ts",
+    "shared/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}

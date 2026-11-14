@@ -17,6 +17,56 @@ import { getHtmlSandboxCsp } from './htmlSandboxPolicy';
 /** 聊天 HTML 预览帧的 sandbox 值：同源（父页面可测量/拦截链接），但禁止脚本 */
 export const CHAT_HTML_PREVIEW_SANDBOX = 'allow-same-origin';
 
+/** 流式无脚本高保真首帧预览的 sandbox 值：同源仅用于测量，严禁包含 allow-scripts */
+export const WIDGET_STREAM_FRAME_SANDBOX = 'allow-same-origin';
+
+/** 流式无脚本高保真首帧预览的严格 CSP */
+export const WIDGET_STREAM_FRAME_CSP =
+  "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'none'; font-src data:; connect-src 'none'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none';";
+
+const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml)[;,]/i;
+const EXTERNAL_CSS_URL_RE = /url\s*\(\s*(['"]?)(?!#|data:image\/)[^)]*\1\s*\)|@import\b[^;]*;?/gi;
+const STREAM_FORBID_TAGS = [
+  'script',
+  'noscript',
+  'iframe',
+  'frame',
+  'frameset',
+  'object',
+  'embed',
+  'applet',
+  'portal',
+  'form',
+  'meta',
+  'base',
+  'link',
+  'audio',
+  'video',
+  'source',
+  'track',
+  'foreignObject',
+  'use',
+  'image',
+  'feImage',
+  'animate',
+  'animateMotion',
+  'animateTransform',
+  'set',
+];
+const STREAM_FORBID_ATTRS = new Set([
+  'action',
+  'formaction',
+  'srcset',
+  'imagesrcset',
+  'ping',
+  'autofocus',
+  'background',
+  'poster',
+  'xlink:href',
+  'target',
+  'srcdoc',
+]);
+
 const RAW_TEXT_ELEMENTS = ['style', 'script', 'textarea', 'title'];
 const TRAILING_PARTIAL_ENTITY_RE = /&[#a-zA-Z0-9]*$/;
 
@@ -242,4 +292,119 @@ export function htmlPreviewBufferReducer(
     };
   }
   return { ...state, front, loading: null, pending: null };
+}
+
+/**
+ * 净化流式首帧 HTML 片段：
+ * - 剥离所有 `<script>`（含未闭合尾部 `<script`）、`on*` 内联事件属性及外链 URL；
+ * - 保留作者 `<style>`、`class`、`id`、`data-*`、`aria-*` 与内联 `<svg>`。
+ */
+export function sanitizeWidgetStreamHtml(raw: string): string {
+  const withoutScripts = raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[\s\S]*$/i, '');
+  const repaired = repairPartialHtml(withoutScripts).html;
+
+  const sanitized = DOMPurify.sanitize(repaired, {
+    FORCE_BODY: true,
+    ADD_TAGS: ['style', 'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'text', 'g', 'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath', 'mask', 'pattern', 'marker', 'tspan'],
+    FORBID_TAGS: STREAM_FORBID_TAGS,
+    ALLOW_DATA_ATTR: true,
+    ALLOW_ARIA_ATTR: true,
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+  });
+
+  const doc = new DOMParser().parseFromString(
+    `<!DOCTYPE html><html><head></head><body>${sanitized}</body></html>`,
+    'text/html',
+  );
+
+  for (const tag of STREAM_FORBID_TAGS) {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  }
+
+  doc.querySelectorAll('style').forEach((styleEl) => {
+    if (styleEl.textContent) {
+      EXTERNAL_CSS_URL_RE.lastIndex = 0;
+      styleEl.textContent = styleEl.textContent.replace(EXTERNAL_CSS_URL_RE, 'none');
+    }
+  });
+
+  doc.querySelectorAll('*').forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim();
+      if (name.startsWith('on') || STREAM_FORBID_ATTRS.has(name)) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (name === 'src') {
+        if (!SAFE_DATA_IMAGE_RE.test(value)) {
+          el.removeAttribute(attr.name);
+        }
+        continue;
+      }
+      if (name === 'href') {
+        if (!value.startsWith('#')) {
+          el.removeAttribute(attr.name);
+        }
+        continue;
+      }
+      if (name === 'style') {
+        EXTERNAL_CSS_URL_RE.lastIndex = 0;
+        if (EXTERNAL_CSS_URL_RE.test(value)) {
+          EXTERNAL_CSS_URL_RE.lastIndex = 0;
+          el.setAttribute(attr.name, value.replace(EXTERNAL_CSS_URL_RE, 'none'));
+        }
+      }
+    }
+  });
+
+  const headStyles = Array.from(doc.head.querySelectorAll('style'))
+    .map((el) => el.outerHTML)
+    .join('\n');
+
+  return headStyles ? `${headStyles}\n${doc.body.innerHTML}` : doc.body.innerHTML;
+}
+
+export interface BuildWidgetStreamPreviewDocOptions {
+  html: string;
+  themeVars?: Record<string, string>;
+  presetCss?: string;
+}
+
+/**
+ * 构造无脚本高保真首帧预览完整 HTML 文档：
+ * - 严格 CSP：`default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'none';`
+ * - 注入与宿主同步的主题 CSS 变量及 `.oc-*` / `.ds-*` 预置样式；
+ * - 根节点 `<body inert>` 防止流式期间误触。
+ */
+export function buildWidgetStreamPreviewDocument({
+  html,
+  themeVars = {},
+  presetCss = '',
+}: BuildWidgetStreamPreviewDocOptions): string {
+  const cleanHtml = sanitizeWidgetStreamHtml(html);
+  const varsBlock = Object.entries(themeVars)
+    .filter(([k, v]) => /^--[a-zA-Z0-9-]+$/.test(k) && !/[;<>{}]/.test(v))
+    .map(([k, v]) => `  ${k}: ${v};`)
+    .join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="${WIDGET_STREAM_FRAME_CSP}">
+<style id="ds-stream-theme">
+:root {
+${varsBlock}
+}
+${presetCss}
+</style>
+</head>
+<body inert data-widget-stream-root="">
+${cleanHtml}
+</body>
+</html>`;
 }

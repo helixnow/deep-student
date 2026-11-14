@@ -21,6 +21,28 @@ import type { SkillRuntimeAdmission } from '../../skills/runtimeAdmission';
 
 const LOG_PREFIX = '[SkillActions]';
 
+/**
+ * 激活/取消激活后立刻持久化会话技能状态。
+ *
+ * `chat_v2_save_session` 已包含 `activeSkillIdsJson` + `skillStateJson`，这里只是提前触发一次保存：
+ * 用户切走页面 / 应用被杀之前不必等自动保存。没有 session（新会话尚未落库）、没有注入保存回调
+ * （非 Tauri 运行时）或保存失败时都只告警，不影响本次激活结果。
+ */
+function persistSessionSkillState(get: GetState): void {
+  try {
+    const state = get() as unknown as {
+      sessionId?: string | null;
+      saveSession?: () => Promise<void>;
+    };
+    if (!state.sessionId || typeof state.saveSession !== 'function') return;
+    void state.saveSession().catch((error: unknown) => {
+      console.warn(LOG_PREFIX, 'Persist session skill state failed:', error);
+    });
+  } catch (error: unknown) {
+    console.warn(LOG_PREFIX, 'Persist session skill state failed:', error);
+  }
+}
+
 function parseManualPinnedSkillIds(raw: string | null | undefined): string[] | null {
   if (!raw) return null;
   try {
@@ -154,6 +176,8 @@ export function createSkillActions(
 
         // 动态导入避免循环依赖
         const { skillRegistry } = await import('../../skills/registry');
+        const { ensureHostSkillContent } = await import('../../skills/hostResources');
+        await ensureHostSkillContent(skillId);
         // 检查 skill 是否存在
         const skill = skillRegistry.get(skillId);
         if (!skill) {
@@ -224,6 +248,7 @@ export function createSkillActions(
           recordSkillActivation(skillId);
         } catch { /* telemetry optional */ }
 
+        persistSessionSkillState(get);
         console.log(LOG_PREFIX, `Activated skill: ${skill.name} (${skillId})`);
         return true;
       } catch (error: unknown) {
@@ -282,6 +307,7 @@ export function createSkillActions(
         }).catch((error: unknown) => {
           console.warn(LOG_PREFIX, 'Unload skill tools failed:', error);
         });
+        persistSessionSkillState(get);
         console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
       } else {
         const activeIds = [...state.activeSkillIds];
@@ -300,6 +326,7 @@ export function createSkillActions(
         }).catch((error: unknown) => {
           console.warn(LOG_PREFIX, 'Unload all skill tools failed:', error);
         });
+        persistSessionSkillState(get);
         console.log(LOG_PREFIX, 'Deactivated all skills');
       }
     },

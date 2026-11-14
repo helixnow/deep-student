@@ -122,8 +122,8 @@ export const SourceCard: React.FC<SourceCardProps> = ({
       onClick={isInteractive ? handleClick : undefined}
       onKeyDown={isInteractive ? handleKeyDown : undefined}
       className={cn(
-        // 与统一来源面板（usp-item）对齐：圆角、边框透明度、hover 用 primary 着色
-        'group relative rounded-xl border border-border/50 bg-card dark:bg-card/50',
+        // 与统一来源面板（usp-item）对齐：轻量圆角、边框透明度、hover 用 primary 着色
+        'group relative rounded-lg border border-border/50 bg-card dark:bg-card/50',
         'transition-[border-color,background-color,box-shadow] duration-200 motion-reduce:transition-none',
         isInteractive && [
           'cursor-pointer',
@@ -208,7 +208,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
       {!compact && source.snippet && (
         <p
           className={cn(
-            'mt-2 text-sm text-muted-foreground',
+            'mt-1.5 text-xs text-muted-foreground',
             'line-clamp-2 leading-relaxed'
           )}
         >

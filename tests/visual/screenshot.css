@@ -1,0 +1,6 @@
+/* Applied only while a screenshot is taken (toHaveScreenshot stylePath).
+   OverlayScrollbars fade their bars in and out on an auto-hide timer, independent of app state;
+   whether a bar exists is still covered by the DOM golden (os-scrollbar-visible / -unusable). */
+.os-scrollbar {
+  visibility: hidden !important;
+}

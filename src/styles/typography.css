@@ -49,6 +49,21 @@ html[data-font-smoothing="macos-grayscale"] body {
 	font-family: var(--font-family-cn);
 }
 
+/* CSS Text Level 4 中西文混排光学微距 */
+:where(.markdown-body, .chat-prose, body):lang(zh) {
+	text-autospace: normal;
+}
+
+/* 源码、公式、编辑器与输入框保留字面间距 */
+:where(:lang(zh)):where(
+	pre, code, kbd, samp, input, textarea, .font-mono, .cm-editor,
+	.katex, svg, canvas, [contenteditable="true"], [style*="monospace"],
+	pre *, code *, kbd *, samp *, .font-mono *, .cm-editor *,
+	.katex *, svg *, [contenteditable="true"] *, [style*="monospace"] *
+) {
+	text-autospace: no-autospace;
+}
+
 /* 表单元素继承字体 */
 button, input, select, textarea {
 	font-family: inherit;

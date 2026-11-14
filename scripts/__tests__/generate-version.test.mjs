@@ -28,19 +28,13 @@ function writeBuildConfigFixture(
   root,
   {
     packageVersion = ANDROID_VERSION_BASE_APP_VERSION,
-    cargoVersion = packageVersion,
     tauriVersion = packageVersion,
   } = {},
 ) {
-  mkdirSync(join(root, 'src-tauri', '.cargo'), { recursive: true });
+  mkdirSync(join(root, 'resources/app'), { recursive: true });
   writeFileSync(join(root, 'package.json'), `${JSON.stringify({ version: packageVersion })}\n`);
   writeFileSync(
-    join(root, 'src-tauri', 'Cargo.toml'),
-    `[package]\nname = "fixture"\nversion = "${cargoVersion}"\n`,
-  );
-  writeFileSync(join(root, 'src-tauri', '.cargo', 'config.toml'), '[build]\n');
-  writeFileSync(
-    join(root, 'src-tauri', 'tauri.conf.json'),
+    join(root, 'resources/app', 'tauri.conf.json'),
     JSON.stringify({
       version: tauriVersion,
       bundle: { android: { versionCode: ANDROID_VERSION_CODE } },
@@ -123,7 +117,7 @@ test('explicit build number override remains validated against the published bas
   }
 });
 
-test('repository config has no pinned proxy and keeps a non-regressing fallback code', () => {
+test('Node repository config keeps a non-regressing fallback code', () => {
   const { androidVersionCode, appVersion } = validateBuildConfiguration(projectRoot);
   assert.equal(androidVersionCode, ANDROID_VERSION_CODE);
   // 应用版本可以领先锚点（release-please 只 bump 应用版本），但不得落后于锚点，
@@ -133,12 +127,6 @@ test('repository config has no pinned proxy and keeps a non-regressing fallback 
     `appVersion ${appVersion} must not resolve below the anchor code`,
   );
 
-  const cargoConfig = readFileSync(
-    join(projectRoot, 'src-tauri', '.cargo', 'config.toml'),
-    'utf-8',
-  );
-  assert.doesNotMatch(cargoConfig, /^\s*proxy\s*=/mu);
-  assert.doesNotMatch(cargoConfig, /^\s*\[target\.[^\]]+-linux-android\]\s*$/mu);
 });
 
 test('Android baseline is a fixed anchor that release-please must not auto-advance', () => {
@@ -175,21 +163,17 @@ test('Android baseline is a fixed anchor that release-please must not auto-advan
   assert.ok(ANDROID_VERSION_CODE > PUBLISHED_ANDROID_VERSION_CODE);
 });
 
-test('package, Cargo, and Tauri versions must stay aligned', () => {
+test('Node package and application config versions must stay aligned without a Cargo tree', () => {
   const root = mkdtempSync(join(tmpdir(), 'deep-student-version-contract-'));
   try {
     writeBuildConfigFixture(root);
     assert.equal(validateBuildConfiguration(root).appVersion, ANDROID_VERSION_BASE_APP_VERSION);
-
-    writeBuildConfigFixture(root, { cargoVersion: '0.9.47' });
-    assert.throws(() => validateBuildConfiguration(root), /Application versions must match/);
 
     writeBuildConfigFixture(root, { tauriVersion: '0.9.47' });
     assert.throws(() => validateBuildConfiguration(root), /Application versions must match/);
 
     writeBuildConfigFixture(root, {
       packageVersion: '0.9.47',
-      cargoVersion: ANDROID_VERSION_BASE_APP_VERSION,
       tauriVersion: ANDROID_VERSION_BASE_APP_VERSION,
     });
     assert.throws(() => validateBuildConfiguration(root), /Application versions must match/);
@@ -198,16 +182,14 @@ test('package, Cargo, and Tauri versions must stay aligned', () => {
   }
 });
 
-test('Android properties keep release versionCode separate from internal build number', () => {
+test('Node generated metadata keeps Android release code separate from internal build number', () => {
   const root = mkdtempSync(join(tmpdir(), 'deep-student-version-'));
   const previousOverride = process.env.DEEP_STUDENT_BUILD_NUMBER;
   const originalLog = console.log;
   const originalWarn = console.warn;
   try {
     mkdirSync(join(root, 'src'), { recursive: true });
-    mkdirSync(join(root, 'src-tauri', 'gen', 'android', 'app'), { recursive: true });
     writeBuildConfigFixture(root);
-    writeFileSync(join(root, 'src-tauri', 'gen', 'android', 'app', 'tauri.properties'), '');
 
     process.env.DEEP_STUDENT_BUILD_NUMBER = String(ANDROID_VERSION_CODE + 27);
     console.log = () => {};
@@ -216,12 +198,9 @@ test('Android properties keep release versionCode separate from internal build n
     assert.equal(generated.buildNumber, String(ANDROID_VERSION_CODE + 27));
     assert.equal(generated.androidVersionCode, ANDROID_VERSION_CODE);
 
-    const properties = readFileSync(
-      join(root, 'src-tauri', 'gen', 'android', 'app', 'tauri.properties'),
-      'utf-8',
-    );
-    assert.match(properties, new RegExp(`tauri\\.android\\.versionCode=${ANDROID_VERSION_CODE}\\n`, 'u'));
-    assert.doesNotMatch(properties, new RegExp(`versionCode=${ANDROID_VERSION_CODE + 27}`, 'u'));
+    const version = readFileSync(join(root, 'src', 'version.ts'), 'utf-8');
+    assert.ok(version.includes(`BUILD_NUMBER: '${ANDROID_VERSION_CODE + 27}'`));
+    assert.ok(version.includes(`APP_VERSION: '${ANDROID_VERSION_BASE_APP_VERSION}'`));
   } finally {
     console.log = originalLog;
     console.warn = originalWarn;
@@ -246,59 +225,22 @@ test('Sentry releases disambiguate sibling commits with the same numeric build',
   );
 });
 
-test('local Android build uses release versionCode instead of internal build number', () => {
-  const buildScript = readFileSync(join(projectRoot, 'scripts', 'build_android.sh'), 'utf-8');
-  assert.match(
-    buildScript,
-    /ANDROID_VERSION_CODE=\$\(node scripts\/generate-version\.mjs --print-android-version-code\)/u,
-  );
-  assert.match(buildScript, /TAURI_ANDROID_VERSION_CODE="\$ANDROID_VERSION_CODE"/u);
-  assert.match(buildScript, /--config "\$TAURI_ANDROID_CONFIG"/u);
-  assert.match(buildScript, /android_ndk_find_prebuilt "\$NDK_HOME"/u);
-  assert.match(buildScript, /android_ndk_find_tool "\$NDK_PREBUILT_DIR"/u);
-  assert.doesNotMatch(buildScript, /prebuilt\/darwin-x86_64/u);
-  assert.doesNotMatch(
-    buildScript,
-    /apply_android_version_code|TAURI_CONF_BACKUP|CARGO_CONFIG_FILE|config\.toml.*Android NDK/u,
-  );
-});
-
-test('Rust build metadata uses the same baseline and never counts unrelated refs', () => {
-  const buildScript = readFileSync(join(projectRoot, 'src-tauri', 'build.rs'), 'utf-8');
-  assert.match(buildScript, /const BUILD_NUMBER_BASE: u32 = 14638;/u);
-  assert.match(buildScript, new RegExp(BUILD_NUMBER_BASE_COMMIT, 'u'));
-  assert.match(buildScript, /"rev-list",\s*"--count"/u);
-  assert.match(buildScript, /verify_application_versions\(\)/u);
-  assert.match(buildScript, /cargo:rustc-env=SENTRY_RELEASE=/u);
-  assert.doesNotMatch(buildScript, /"--all"|9000 \+/u);
-});
-
-test('Sentry release reads the canonical generator instead of recomputing from refs', () => {
+test('the Sentry release CLI uses the canonical version, build number and revision', () => {
+  const buildNumber = BUILD_NUMBER_BASE + 50;
   const release = execFileSync(
     process.execPath,
     [join(projectRoot, 'scripts', 'generate-version.mjs'), '--print-sentry-release'],
-    { cwd: projectRoot, encoding: 'utf-8' },
+    { cwd: projectRoot, encoding: 'utf-8', env: { ...process.env, DEEP_STUDENT_BUILD_NUMBER: String(buildNumber) } },
   ).trim();
   const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf-8'));
   assert.equal(
     release,
     formatSentryRelease(
       packageJson.version,
-      resolveBuildNumber({ root: projectRoot }),
+      buildNumber,
       resolveGitRevision({ root: projectRoot }),
     ),
   );
 
-  const uploadScript = readFileSync(
-    join(projectRoot, 'scripts', 'upload-sentry-symbols.sh'),
-    'utf-8',
-  );
-  assert.match(uploadScript, /generate-version\.mjs" --print-sentry-release/u);
-  assert.doesNotMatch(uploadScript, /rev-list --all|9000 \+/u);
 
-  const rustEntry = readFileSync(join(projectRoot, 'src-tauri', 'src', 'lib.rs'), 'utf-8');
-  assert.match(
-    rustEntry,
-    /sentry::ClientOptions\s*\{[\s\S]{0,300}release:\s*Some\(env!\("SENTRY_RELEASE"\)/u,
-  );
 });

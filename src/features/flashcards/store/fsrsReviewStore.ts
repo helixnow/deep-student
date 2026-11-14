@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import i18n from '@/i18n';
+import { provideStudySpaceReview } from '@/shared/study-space/reviewBridge';
 import type { AnkiCard } from '@/types';
 import { requestFlashcardsDueRefresh } from '../events';
 import {
@@ -1956,3 +1957,9 @@ function flushPendingExternalRates(): void {
   useFsrsReviewStore.setState({ pendingExternalRateIds: [] });
   state.reconcileExternalRate(state.pendingExternalRateIds);
 }
+provideStudySpaceReview(async (cardIds) => {
+  const store = useFsrsReviewStore.getState();
+  if (cardIds.length > 0) return store.startBatchSession(cardIds);
+  store.setScreen('today');
+  return false;
+});

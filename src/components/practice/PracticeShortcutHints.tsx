@@ -9,7 +9,7 @@ export function PracticeShortcutHints(props: Pick<PracticeShortcutOptions, 'acti
       {getPracticeShortcutHints(props).map(hint => (
         <div key={hint.label} className="flex items-start justify-between gap-4">
           <span>{t(hint.label)}</span>
-          <kbd className="max-w-48 rounded bg-muted px-1.5 py-0.5 text-right break-words">{hint.keys}</kbd>
+          <kbd className="max-w-48 rounded-md border border-border/45 bg-foreground/[0.04] px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-right break-words text-foreground/80">{hint.keys}</kbd>
         </div>
       ))}
     </div>

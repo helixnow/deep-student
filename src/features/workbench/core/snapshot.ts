@@ -78,20 +78,23 @@ function isTauriRuntime(): boolean {
   );
 }
 
-async function readSetting(key: string): Promise<string | null> {
+export async function readWorkbenchSetting(key: string): Promise<string | null> {
   if (!isTauriRuntime()) {
     return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
   }
   return await invoke<string | null>('get_setting', { key });
 }
 
-async function writeSetting(key: string, value: string): Promise<void> {
+export async function writeWorkbenchSetting(key: string, value: string): Promise<void> {
   if (!isTauriRuntime()) {
     if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
     return;
   }
   await invoke<void>('save_setting', { key, value });
 }
+
+const readSetting = readWorkbenchSetting;
+const writeSetting = writeWorkbenchSetting;
 
 // ---------------------------------------------------------------------------
 // sanitizer（白名单剥离 + 校验）
@@ -262,12 +265,26 @@ export function sanitizeSnapshot(input: unknown): WorkbenchSnapshotV1 | null {
 // ---------------------------------------------------------------------------
 
 type DockPinnedProvider = () => string[];
+export type SnapshotMirrorHook = (snapshot: WorkbenchSnapshotV1) => Promise<void> | void;
 
 let dockPinnedProvider: DockPinnedProvider | null = null;
+let snapshotMirrorHook: SnapshotMirrorHook | null = null;
 
 /** Dock（P5）/ 接线（P11）注册固定应用列表来源；传 null 注销 */
 export function registerDockPinnedProvider(provider: DockPinnedProvider | null): void {
   dockPinnedProvider = provider;
+}
+
+/** W04：注册按学习空间镜像快照的钩子；默认未注册，保持单文件单测零额外 IO */
+export function registerSnapshotMirrorHook(hook: SnapshotMirrorHook | null): void {
+  snapshotMirrorHook = hook;
+}
+
+/** 仅当当前钩子仍为指定实例时注销，避免异步卸载覆盖新挂载钩子 */
+export function unregisterSnapshotMirrorHook(hook: SnapshotMirrorHook): void {
+  if (snapshotMirrorHook === hook) {
+    snapshotMirrorHook = null;
+  }
 }
 
 /** 只提取 WorkbenchWindow 白名单壳字段（lifecycle / payload 天然不在其中） */
@@ -309,13 +326,33 @@ let pendingLayer: SnapshotSaveLayer | null = null;
 let lastPersistedPayload: string | null = null;
 /** 串行化底层写入，防止旧防抖写在退出 flush 之后完成并覆盖新快照。 */
 let activePersist: Promise<void> | null = null;
+/** Main waits for this promise before shutting down the settings Host. */
+let quitFlush: Promise<void> | null = null;
+let persistencePaused = false;
+
+/** A space transition still displays the outgoing layout until target hydration completes. */
+export function setSnapshotPersistencePaused(paused: boolean): void {
+  persistencePaused = paused;
+  if (paused) cancelPendingSnapshotSave();
+}
 
 function persistNow(force: boolean): Promise<void> {
+  if (persistencePaused) return Promise.resolve();
+  // Capture the layout AND invoke the mirror synchronously: a queued native write
+  // must never bind an old layout to whichever space happens to be active later.
+  const snapshot = sanitizeSnapshot(buildSnapshot());
+  if (!snapshot) return Promise.resolve();
+  let mirror: Promise<void> | null = null;
+  try {
+    mirror = snapshotMirrorHook ? Promise.resolve(snapshotMirrorHook(snapshot)).catch((error) => {
+      console.warn('[workbench] snapshot mirror hook failed:', error);
+    }) : null;
+  } catch (error) {
+    console.warn('[workbench] snapshot mirror hook failed:', error);
+  }
   const persist = async () => {
     try {
-      // 双保险：采集结果再过一次 sanitizer，确保落盘永远是纯净白名单数据
-      const snapshot = sanitizeSnapshot(buildSnapshot());
-      if (!snapshot) return;
+      if (mirror) await mirror;
       const payload = JSON.stringify(snapshot);
       if (!force && payload === lastPersistedPayload) return;
       await writeSetting(WORKBENCH_SNAPSHOT_KEY, payload);
@@ -353,6 +390,9 @@ function persistNow(force: boolean): Promise<void> {
  * 两层写的都是同一份完整快照，分层只决定落盘时机。
  */
 export function saveSnapshot(layer: SnapshotSaveLayer = 'layout'): void {
+  if (persistencePaused) return;
+  // A native close can be cancelled by beforeunload; subsequent edits must save.
+  quitFlush = null;
   if (layer === 'meta' && pendingLayer !== null) return; // 已有排队保存，搭车
   if (saveTimer) clearTimeout(saveTimer);
   pendingLayer = layer;
@@ -366,12 +406,40 @@ export function saveSnapshot(layer: SnapshotSaveLayer = 'layout'): void {
 
 /** 立即落盘（应用退出前 / 模式关闭前 / 测试）；跳过内容去重，强制写 */
 export async function flushSnapshot(): Promise<void> {
+  if (quitFlush) return quitFlush;
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
   pendingLayer = null;
   await persistNow(true);
+}
+
+/** W04：空间切换时取消迁出空间排队的防抖保存定时器，防止跨空间串写 */
+export function cancelPendingSnapshotSave(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  pendingLayer = null;
+}
+
+/** W04：空间切换恢复后清空去重缓存，确保新空间首次变更必然落盘 */
+export function invalidateSnapshotDedupeCache(): void {
+  lastPersistedPayload = null;
+}
+
+// executeJavaScript awaits the returned promise using the existing renderer bridge.
+// An imported but inactive workbench must not overwrite its saved layout on quit.
+if (typeof window !== 'undefined') {
+  window.addEventListener('workbench:before-quit', (event) => {
+    quitFlush ??= pendingLayer !== null || activePersist !== null
+      ? flushSnapshot()
+      : Promise.resolve();
+    const detail = (event as CustomEvent<{ pending: Promise<unknown>[] | Promise<void> | null }>).detail;
+    if (Array.isArray(detail.pending)) detail.pending.push(quitFlush);
+    else detail.pending = quitFlush;
+  });
 }
 
 /**

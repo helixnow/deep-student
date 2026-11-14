@@ -1,0 +1,37 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_list_resumable_jobs",
+    "data_governance_cleanup_persisted_jobs",
+    "data_governance_list_backup_jobs"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.jobs.persist_dir_is_file",
+      "seed": "l21-backup-jobs-is-file-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_cleanup_persisted_jobs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

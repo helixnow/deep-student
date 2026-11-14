@@ -403,11 +403,15 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
               let currentTimelineBlockIds: string[] = [];
 
               for (const block of blocks) {
-                // 🔧 paper_save 工具不进时间线分组，使用专用 PaperSaveBlock 渲染
+                // 🔧 paper_save 与 dstu_plugin_propose_install 工具不进时间线分组，使用专用卡片渲染
+                const bareToolName = block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
                 const isPaperSaveBlock = block.type === 'mcp_tool' && (
                   block.toolName === 'paper_save' ||
                   block.toolName === 'builtin-paper_save' ||
-                  block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '') === 'paper_save'
+                  bareToolName === 'paper_save' ||
+                  block.toolName === 'dstu_plugin_propose_install' ||
+                  block.toolName === 'builtin-dstu_plugin_propose_install' ||
+                  bareToolName === 'dstu_plugin_propose_install'
                 );
                 if (isTimelineBlockType(block.type) && !isPaperSaveBlock) {
                   // 时间线类型块，累积

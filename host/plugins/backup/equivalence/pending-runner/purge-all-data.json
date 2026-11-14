@@ -1,0 +1,80 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_purge_all_data",
+    "data_governance_run_backup",
+    "data_governance_delete_backup",
+    "data_governance_get_backup_list",
+    "data_governance_list_backup_jobs",
+    "data_governance_get_migration_status"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.purge_all_data.marker_then_restart",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_purge_all_data",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.purge_all_data.extra_keys_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_purge_all_data",
+          "args": {
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

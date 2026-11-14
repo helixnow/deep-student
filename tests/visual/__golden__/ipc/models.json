@@ -1,0 +1,20 @@
+{
+  "scene": "models",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "get_vendor_configs()",
+        "get_model_profiles()",
+        "get_model_assignments()",
+        "openai_codex_auth_status()",
+        "get_api_configurations()",
+        "plugin:webview|set_webview_zoom(label,value)",
+        "plugin:path|resolve_directory(directory)"
+      ]
+    }
+  ]
+}

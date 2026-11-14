@@ -2,10 +2,6 @@ import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { ImageBroken } from '@phosphor-icons/react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 // ★ 加载性能：katex 改为懒加载（lazyKatex），不再静态导入进 chat chunk；
 // KatexOptions 仅作类型使用，type-only import 不引入运行时代码
 import type { KatexOptions } from 'katex';
@@ -16,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
-import { makeCitationRemarkPlugin, ensureCitationPlaceholderStyles } from '../../utils/citationRemarkPlugin';
+import { ensureCitationPlaceholderStyles } from '../../utils/citationRemarkPlugin';
 import { CitationBadgeWithPopover } from '../../plugins/blocks/components/CitationPopover';
 import { MindmapCitationCard } from '../MindmapCitationCard';
 import { QbankCitationBadge } from '../QbankCitationBadge';
@@ -26,10 +22,14 @@ import type { RetrievalSourceType } from '../../plugins/blocks/components/types'
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
 import { useMessageSearchContext } from '../messageSearchContext';
-import { rehypeSearchHighlights } from './rehypeSearchHighlights';
-import { inlineSmilesRemarkPlugin } from './inlineSmilesRemarkPlugin';
+import { officialRehypeEntries, officialRemarkEntries, resolveMarkdownPlugins } from './markdownPipeline';
 import { InlineSmiles } from './InlineSmiles';
 import { useRendererCapabilities, type RendererCapabilities } from './rendererCapabilities';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import type { ContentCodeBlockContribution, MarkdownCodeBlockContribution, MarkdownCodeBlockProps } from '@/ui-kernel/contracts/content';
+import type { SlotEntry } from '@/ui-kernel/slots';
+import { CommunityContentBoundary } from '@/ui-plugins/official/content/CommunityContentBoundary';
+import { officialMarkdownEntries } from '@/ui-plugins/official/content/entries';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -60,64 +60,6 @@ function isLocalImageFilePath(src: string): boolean {
 
   return POSIX_LOCAL_FILE_PREFIXES.some((prefix) => src.startsWith(prefix));
 }
-
-const markdownSanitizeSchema = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    span: [
-      ...(defaultSchema.attributes?.span || []),
-      'className',
-      'class',
-      // Generative UI research citations carry pre-computed i18n aria labels;
-      // keep them so the React fallback below doesn't have to reconstruct text.
-      // role is restricted to the non-interactive "note" landmark only.
-      ['role', 'note'],
-      'ariaLabel',
-      // rehype-sanitize 使用 HAST property 名称（camelCase）
-      'dataCitation',
-      'dataCitationType',
-      'dataCitationIndex',
-      'dataCitationShowImage',
-      'dataMindmapCitation',
-      'dataMindmapId',
-      'dataMindmapVersionId',
-      'dataMindmapTitle',
-      'dataMindmapNode',
-      'dataQbankCitation',
-      'dataQbankSessionId',
-      'dataQbankTitle',
-      'dataPdfRef',
-      'dataPdfSource',
-      'dataPdfPage',
-      'dataMediaRef',
-      'dataMediaSource',
-      'dataMediaSeconds',
-      // Per-word fade-in animation
-      'dataSdAnimate',
-      'dataSmiles',
-    ],
-    code: [
-      ...(defaultSchema.attributes?.code || []),
-      'className',
-      'class',
-    ],
-    pre: [
-      ...(defaultSchema.attributes?.pre || []),
-      'className',
-      'class',
-    ],
-    // 不确定性高亮（rendererUtils.makeUncertaintyHighlightPlugin）产出的 <mark>：
-    // 只放行受控 class 与 title（tooltip），不放行任意 style
-    mark: [
-      ['className', 'uncertainty-mark'],
-      ['className', 'chat-search-match'],
-      'dataChatSearchMatch',
-    ],
-  },
-  // defaultSchema 不含 mark，缺了它整个高亮节点会被消毒器拆掉
-  tagNames: [...(defaultSchema.tagNames || []), 'mark'],
-};
 
 function getCachedPdfPageImage(resourceId: string, pageIndex: number): string | undefined {
   const key = `${resourceId}:${pageIndex}`;
@@ -172,6 +114,7 @@ type MarkdownRendererRuntime = Pick<
 > & {
   isStreaming: boolean;
   rendererCapabilities: RendererCapabilities;
+  codeBlocks: readonly SlotEntry<ContentCodeBlockContribution>[];
 };
 
 const MarkdownRendererContext = React.createContext<MarkdownRendererRuntime | null>(null);
@@ -364,11 +307,26 @@ export const escapePipesInTableMath = (content: string): string => {
 // 每个正则 pass 都是对全文的一次扫描；下方为各 pass 增加了 O(n) 的
 // includes() 触发探测——绝大多数内容不含对应语法（\( / $ / bmatrix / 反引号），
 // 单次廉价扫描即可跳过整个「扫描 + 回调 + 重建字符串」流程。
-const preprocessContent = (content: string, isStreaming = false): string => {
+// 导出仅为单元测试使用（流式围栏遮挡回归）。
+export const preprocessContent = (content: string, isStreaming = false): string => {
   if (!content) return '';
 
   // 行尾统一为 \n，确保后续按行的正则在 CRLF 输入下行为一致
   let processedContent = content.includes('\r') ? content.replace(/\r\n/g, '\n') : content;
+
+  // 流式未闭合围栏遮挡：先整段取出，避免后续表格公式 / CJK 加粗 / LaTeX 预处理
+  // 改写 openui-lang、wavedrom、html-interactive 代码块内部（流式期间内容还不完整，
+  // 这些预处理会把代码里的 `|`、`**`、`\(` 当成正文语法改坏）。
+  // 末尾再原样还原并补闭合围栏。
+  let maskedStreamFence: string | null = null;
+  if (isStreaming) {
+    const fenceCount = (processedContent.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+      const openIndex = processedContent.lastIndexOf('```');
+      maskedStreamFence = processedContent.slice(openIndex);
+      processedContent = `${processedContent.slice(0, openIndex)}\x00SF\x00`;
+    }
+  }
 
   // 流式期间自动闭合未配对的 markdown 标记（**bold / [link / `` ` `` 等）
   // 仅处理 markdown 半边，不动数学（$...$ / \begin{}），后者由 remark-math 优雅降级
@@ -477,7 +435,14 @@ const preprocessContent = (content: string, isStreaming = false): string => {
     processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
   }
 
-  // 若存在未闭合的 ```，自动补一个结尾
+  // 还原流式期间被遮挡的未闭合围栏（原样恢复，内部不做任何改写）
+  if (maskedStreamFence !== null) {
+    const fence = maskedStreamFence;
+    // eslint-disable-next-line no-control-regex
+    processedContent = processedContent.replace(/\x00SF\x00/g, () => fence);
+  }
+
+  // 若存在未闭合的 ```，自动补一个结尾（含上面还原的流式围栏）
   if (processedContent.includes('```')) {
     const fenceCount = (processedContent.match(/```/g) || []).length;
     if (fenceCount % 2 === 1) {
@@ -596,80 +561,6 @@ const LazyMath: React.FC<{
   }
 };
 
-const disableIndentedCodePlugin = function disableIndentedCodePlugin(this: any) {
-  const Parser = this?.Parser;
-  if (!Parser || !Parser.prototype) return;
-
-  const blockTokenizers = Parser.prototype.blockTokenizers;
-  const blockMethods: string[] = Parser.prototype.blockMethods || [];
-
-  if (!blockTokenizers || typeof blockTokenizers.indentedCode === 'undefined') {
-    return;
-  }
-
-  delete blockTokenizers.indentedCode;
-
-  const index = blockMethods.indexOf('indentedCode');
-  if (index !== -1) {
-    blockMethods.splice(index, 1);
-  }
-};
-
-// 规范化全角标点（仅限文本节点，不进入 code/inlineCode/math），
-// 修复中文输入法下使用全角符号导致的 Markdown 加粗/删除线等语法不生效问题。
-// 例如：＂＊＊加粗＊＊＂/＂＿＿加粗＿＿＂/＂～～删除线～～＂
-const normalizeFullWidthPunctPlugin = function normalizeFullWidthPunctPlugin() {
-  return function transformer(tree: any) {
-    const SKIP_IN = new Set(['code', 'inlineCode', 'math', 'inlineMath']);
-    function walk(node: any, parent: any | null) {
-      if (!node) return;
-      const t = node.type;
-      if (t === 'text') {
-        if (parent && SKIP_IN.has(parent.type)) return;
-        const map: Record<string, string> = {
-          '＊': '*',
-          '＿': '_',
-          '～': '~',
-          '＃': '#',
-        };
-        const re = /[＊＿～＃]/g;
-        if (typeof node.value === 'string' && re.test(node.value)) {
-          node.value = node.value.replace(re, (ch: string) => map[ch] || ch);
-        }
-        return;
-      }
-      const children = Array.isArray(node.children) ? node.children : [];
-      for (const c of children) walk(c, node);
-    }
-    walk(tree, null);
-  };
-};
-
-// 拦截 ```math / ```latex 代码块并转成 math 节点的插件（必须在 remark-math 之前执行）
-const convertMathCodeBlocksPlugin = function convertMathCodeBlocksPlugin() {
-  return function transformer(tree: any) {
-    function walk(node: any, parent: any | null, index: number) {
-      if (!node) return;
-      
-      // 找到 type='code' 且 lang='math' 或 'latex' 的节点
-      if (node.type === 'code' && typeof node.lang === 'string' && /^(math|latex)$/i.test(node.lang)) {
-        console.warn('[MarkdownRenderer] Detected ```math/```latex code block (model violated prompt), force-converted to math node:', node.value?.substring(0, 50));
-        // 转换为 math 节点（块级数学公式）
-        node.type = 'math';
-        node.meta = node.meta || null;
-        delete node.lang; // math节点不需要lang属性
-      }
-      
-      // 递归处理子节点
-      const children = Array.isArray(node.children) ? node.children : [];
-      for (let i = 0; i < children.length; i++) {
-        walk(children[i], node, i);
-      }
-    }
-    walk(tree, null, 0);
-  };
-};
-
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   content,
   className = '',
@@ -681,6 +572,13 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   resolveCitationImage,
 }) => {
   const rendererCapabilities = useRendererCapabilities();
+  const codeBlocks = useOptionalSlot<ContentCodeBlockContribution>('markdown.codeBlocks') ?? officialMarkdownEntries;
+  const remarkEntries = useOptionalSlot('markdown.remark') ?? officialRemarkEntries;
+  const rehypeEntries = useOptionalSlot('markdown.rehype') ?? officialRehypeEntries;
+  const uiKernel = useOptionalUiKernel();
+  const reportPluginError = useCallback((slot: string) => (entry: SlotEntry<unknown>, error: unknown) => {
+    uiKernel?.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'render', error, slot, entryId: entry.id });
+  }, [uiKernel]);
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
   const { query: searchQuery } = useMessageSearchContext();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -768,28 +666,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     }
   }, [processedContent, isStreaming]);
 
-  const remarkPlugins = useMemo(() => {
-    const base: any[] = [
-      disableIndentedCodePlugin as any,
-      normalizeFullWidthPunctPlugin as any,
-      convertMathCodeBlocksPlugin as any,
-      remarkMath as any,
-      inlineSmilesRemarkPlugin as any,
-      remarkGfm as any,
-    ];
-    if (shouldEnableCitations) {
-      base.push(makeCitationRemarkPlugin() as any);
-    }
-    return [...base, ...(extraRemarkPlugins || [])];
-  }, [extraRemarkPlugins, shouldEnableCitations]);
+  const remarkPlugins = useMemo(() => [
+    ...resolveMarkdownPlugins(remarkEntries, { citations: shouldEnableCitations }, reportPluginError('markdown.remark')),
+    ...(extraRemarkPlugins || []),
+  ], [remarkEntries, extraRemarkPlugins, shouldEnableCitations, reportPluginError]);
 
-  const rehypePlugins = useMemo(() => {
-    const plugins: any[] = [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]];
-    if (searchQuery.trim()) {
-      plugins.push([rehypeSearchHighlights, { query: searchQuery }]);
-    }
-    return plugins;
-  }, [searchQuery]);
+  const rehypePlugins = useMemo(
+    () => resolveMarkdownPlugins(rehypeEntries, { searchQuery }, reportPluginError('markdown.rehype')),
+    [rehypeEntries, searchQuery, reportPluginError],
+  );
 
   const katexOptions: KatexOptions = useMemo(() => ({
     throwOnError: false,
@@ -815,10 +700,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const runtime = useMemo<MarkdownRendererRuntime>(() => ({
     isStreaming,
     rendererCapabilities,
+    codeBlocks,
     onLinkClick,
     onCitationClick,
     resolveCitationImage,
-  }), [isStreaming, rendererCapabilities, onLinkClick, onCitationClick, resolveCitationImage]);
+  }), [isStreaming, rendererCapabilities, codeBlocks, onLinkClick, onCitationClick, resolveCitationImage]);
 
   const components = useMemo<Components>(() => ({
     // 注意：react-markdown v9+ 会把 HAST `node` 传给自定义组件，
@@ -830,19 +716,23 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     inlineMath: ({ value }: { value?: string }) => renderMath(String(value ?? ''), false),
     // 统一处理 pre，避免出现嵌套的 <pre><pre> 造成双滚动条
     pre: function MarkdownPre({ children }: any) {
-      const { isStreaming, rendererCapabilities } = React.useContext(MarkdownRendererContext)!;
+      const { isStreaming, rendererCapabilities, codeBlocks } = React.useContext(MarkdownRendererContext)!;
       const childArray = React.Children.toArray(children as any);
       const codeElement: any = (childArray as any[]).find((c: any) => c?.type === 'code') ?? childArray[0];
       const className = (codeElement as any)?.props?.className as string | undefined;
       const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
 
-      // 若 pre>code 被标记为 math 样式（如 "math math-display" 或 "math math-inline"），直接用 KaTeX 渲染
-      // (?![\w-]) 边界：避免 language-latex-src / language-mathml 之类前缀语言被误判为数学
-      const cls = typeof className === 'string' ? className : '';
-      const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)(?![\w-])/i.test(cls);
-      if (isMathLike) {
-        const display = /math-display/i.test(cls) || (!/math-inline/i.test(cls));
-        return renderMath(codeContent, display);
+      const props: MarkdownCodeBlockProps = { placement: 'pre', codeContent, className, renderMath };
+      const contribution = codeBlocks.find((entry): entry is SlotEntry<MarkdownCodeBlockContribution> =>
+        'matches' in entry.value && entry.value.matches(props));
+      if (contribution) {
+        const Renderer = contribution.value.component;
+        const element = <Renderer {...props} />;
+        return contribution.origin === 'builtin' ? element : (
+          <CommunityContentBoundary key={`${contribution.owner}:${contribution.id}`} fallback={<code className={className}>{codeContent}</code>}>
+            {element}
+          </CommunityContentBoundary>
+        );
       }
 
       return (
@@ -852,14 +742,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       );
     },
     // 自定义 code：区分内联与块级，但块级不再额外包裹一层 pre
-    code: ({ inline, className, children, node: _node, ...props }: any) => {
+    code: function MarkdownCode({ inline, className, children, node: _node, ...props }: any) {
+      const { codeBlocks } = React.useContext(MarkdownRendererContext)!;
       const codeContent = String(children).replace(/\n$/, '');
 
-      // 1) 明确标记为 math/latex 的代码块，强制转 KaTeX
-      // (?![\w-]) 边界：language-mathematica 等真实语言不应被误转
-      const isMathBlock = typeof className === 'string' && /language-(math|latex)(?![\w-])/i.test(className);
-      if (isMathBlock) {
-        return renderMath(codeContent, inline === false);
+      const rendererProps: MarkdownCodeBlockProps = { placement: 'code', codeContent, className, inline, renderMath };
+      const contribution = codeBlocks.find((entry): entry is SlotEntry<MarkdownCodeBlockContribution> =>
+        'matches' in entry.value && entry.value.matches(rendererProps));
+      if (contribution) {
+        const Renderer = contribution.value.component;
+        const element = <Renderer {...rendererProps} />;
+        return contribution.origin === 'builtin' ? element : (
+          <CommunityContentBoundary key={`${contribution.owner}:${contribution.id}`} fallback={<code className={className} {...props}>{children}</code>}>
+            {element}
+          </CommunityContentBoundary>
+        );
       }
 
       // 2) 兜底：裸代码块若包含典型 LaTeX 命令（\frac、\int、\sum、\lim、\sqrt、上下标），也转 KaTeX

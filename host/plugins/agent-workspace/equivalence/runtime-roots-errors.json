@@ -1,0 +1,1504 @@
+{
+  "domain": "agent-workspace",
+  "commands": [
+    "chat_v2_authorize_runtime_root",
+    "chat_v2_create_session",
+    "chat_v2_list_runtime_directory",
+    "chat_v2_list_runtime_roots",
+    "chat_v2_read_runtime_file",
+    "chat_v2_reset_workspace_root",
+    "chat_v2_resolve_runtime_path",
+    "chat_v2_revert_artifact_write",
+    "chat_v2_revert_workspace_change",
+    "chat_v2_revoke_runtime_root",
+    "chat_v2_set_skill_trust",
+    "chat_v2_set_workspace_root",
+    "skill_create",
+    "skill_list_directories"
+  ],
+  "scenarios": [
+    {
+      "id": "agent_workspace.runtime.set_workspace.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-swe",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-swe"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "/w0-nonexistent-l05-root"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "~/.deep-student/skills/w0-swe/pkg/SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${0.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "/",
+            "access": "read_write"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "/home",
+            "access": "read_write"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "/root",
+            "access": "read_write"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "access": "full"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${1.0.path}",
+            "access": "readWrite"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.authorize.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-aue",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-aue"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "/w0-nonexistent-l05-root"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "~/.deep-student/skills/w0-aue/pkg/SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${0.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "~/.deep-student/skills/w0-aue"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "label": "missing path"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.revoke.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "authorized_0000000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rve",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rve"
+          }
+        },
+        {
+          "cmd": "chat_v2_authorize_runtime_root",
+          "args": {
+            "path": "${3.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "workspace"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": " authorized_0000000000000000 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "${4.1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "rootId": "${4.1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revoke_runtime_root",
+          "args": {
+            "sessionId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.list_directory.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "w0-no-such-session",
+            "rootId": "artifacts"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "authorized_0000000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "skill:w0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "host"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-lde",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-lde"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${8.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "../x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "/etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": "-1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "cursor": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "limit": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "../x",
+            "cursor": "abc",
+            "rootId": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "rootId": "workspace"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_reset_workspace_root",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.resolve_path.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "w0-no-such-session",
+            "rootId": "temp",
+            "relativePath": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "bogus",
+            "relativePath": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rpe",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rpe"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${5.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "../escape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "/etc/passwd"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "missing.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "artifacts",
+            "relativePath": "missing.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_resolve_runtime_path",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.read_file.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "w0-no-such-session",
+            "rootId": "artifacts",
+            "relativePath": "a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rfe",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rfe"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${4.0.path}",
+            "skillId": "sub",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${4.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${4.0.path}"
+          }
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "sub"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "missing.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "../x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "",
+            "relativePath": "SKILL.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "temp",
+            "relativePath": ".write_backups/missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md",
+            "maxBytes": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "SKILL.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.skill_trust.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ste",
+            "skillId": "w0-trust",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-ste"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ste/w0-trust/scripts",
+            "skillId": "x",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "",
+            "trusted": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "   ",
+            "packageRoot": null,
+            "trusted": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0/../x",
+            "trusted": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0.trust",
+            "trusted": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "技能",
+            "trusted": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": null,
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "   ",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "/w0-nonexistent-l05-root",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-ste/missing",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-ste/w0-trust/SKILL.md",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-ste/w0-trust/scripts",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/../w0-escape",
+            "trusted": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-ste/w0-trust"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_skill_trust",
+          "args": {
+            "skillId": "w0-trust",
+            "packageRoot": "~/.deep-student/skills/w0-ste/w0-trust",
+            "trusted": "true"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.revert_workspace.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": "not-an-object"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "c",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "renamed",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "artifacts",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rwe",
+            "skillId": "pkg",
+            "content": "---\nname: w0-rt\ndescription: L05 runtime root seed\n---\n# 运行时根📚\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rwe"
+          }
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${7.0.path}",
+            "access": "read_only"
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_set_workspace_root",
+          "args": {
+            "path": "${7.0.path}",
+            "access": "read_write"
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "after_hash": "not-a-hash",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "SKILL.md",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": ".git/config",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "Node_Modules/x.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "sub/Secrets/x.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "../SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "/etc/passwd",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "missing.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "created",
+              "relative_path": "missing-dir/SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "modified",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "modified",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74,
+              "backup_ref": "missing-checkpoint"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "deleted",
+              "relative_path": "SKILL.md",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "moved",
+              "relative_path": "restored.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "moved",
+              "relative_path": "SKILL.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74,
+              "destination_path": "SKILL.md"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}",
+            "receipt": {
+              "change_id": "change-w0-1",
+              "root_id": "workspace",
+              "op": "moved",
+              "relative_path": "restored.md",
+              "after_hash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396",
+              "bytes": 74,
+              "destination_path": "missing.md"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_workspace_change",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_read_runtime_file",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "workspace",
+            "relativePath": "SKILL.md"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "agent_workspace.runtime.revert_artifact.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "W0 runtime roots",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "5f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": ".",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "../a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "/etc/passwd",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "w0-no-such-session",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": "   ",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "missing-dir/a.txt",
+            "backupRef": null,
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": "other/file",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": ".write_backups",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": ".write_backups/a/b",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": "../.write_backups/x",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": ".write_backups/missing.bak",
+            "expectedAfterHash": "35f62fb23f0fb3f82fa9f57894dccaef36ddc82084f8e7d49a166f047b472396"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt",
+            "backupRef": null,
+            "expectedAfterHash": " 35F62FB23F0FB3F82FA9F57894DCCAEF36DDC82084F8E7D49A166F047B472396 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_revert_artifact_write",
+          "args": {
+            "sessionId": "${0.id}",
+            "relativePath": "a.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_runtime_directory",
+          "args": {
+            "sessionId": "${0.id}",
+            "rootId": "artifacts"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

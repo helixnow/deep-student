@@ -1277,15 +1277,14 @@
       "expand": "Expand {{category}}",
       "collapse": "Collapse {{category}}",
       "categories": {
-        "coreStack": "Core Framework & Build Stack",
+        "runtimesAndFrameworks": "Runtimes & Frameworks",
+        "backendAndStorage": "Backend, Vector & Crypto",
+        "f7WasiEngines": "F7 WASI Engines",
+        "documentsAndArchives": "Documents & Archives",
+        "editorsAndScience": "Editors, Science & DataViz",
         "uiAndInteraction": "UI & Interaction",
-        "contentEditing": "Content & Editing",
-        "stateAndData": "State & Data Collaboration",
-        "visualization": "Visualization & Drag-and-Drop",
-        "utilities": "Utilities & UX Enhancements",
-        "aiAndAgents": "AI & Protocols",
-        "rustEcosystem": "Tauri & Rust Ecosystem",
-        "testingAndTooling": "Testing & Tooling"
+        "stateAndLearning": "State, Learning & i18n",
+        "fontsAndAssets": "Fonts & Assets"
       }
     },
     "partners": {
@@ -1583,6 +1582,60 @@
     "save_failed": "Failed to save API configuration, please retry",
     "delete_failed": "Failed to delete API configuration, please retry"
   },
+  "deepseek_capabilities": {
+    "title": "Application capabilities",
+    "description": "Manage DeepSeek chat and standalone APIs. Tests send fixed samples and may incur charges.",
+    "chat": "Chat capabilities",
+    "standalone": "Standalone APIs",
+    "enabled": "Enabled",
+    "disabled": "Not enabled",
+    "loading": "Loading",
+    "status_unavailable": "Settings unavailable",
+    "missing_key": "API key not configured",
+    "untested": "Not tested",
+    "running": "Testing…",
+    "passed": "Passed · {{time}} ms",
+    "failed": "Test failed",
+    "test": "Test",
+    "test_named": "Test {{name}}",
+    "empty_result": "DeepSeek did not return a usable result",
+    "chat_search": {
+      "label": "Chat web search",
+      "description": "Takes effect when web access is allowed in a single-model official Flash chat. Includes image search and uses deep search when thinking is on."
+    },
+    "chat_read_url": {
+      "label": "Chat link reading",
+      "description": "Lets the model read links in messages. DeepSeek pauses separate link reading when both web search and thinking are on."
+    },
+    "chat_files": {
+      "label": "Chat file parsing",
+      "description": "Parses supported attachments you add to a single-model official Flash chat."
+    },
+    "chat_safety": {
+      "label": "Chat content review",
+      "description": "DeepSeek reviews input and output before showing the reply. The test uses harmless text."
+    },
+    "search": {
+      "label": "Search API",
+      "description": "Adds DeepSeek to the chat's external search engines without changing other selections. A separate key can be set in External Search."
+    },
+    "fetch": {
+      "label": "Fetch API",
+      "description": "Uses DeepSeek to extract page text first. During regular use, failures fall back to local fetching."
+    },
+    "ocr": {
+      "label": "OCR text recognition",
+      "description": "Adds DeepSeek to the existing OCR engine list. Manage priority in Model Assignment."
+    },
+    "asr": {
+      "label": "ASR speech recognition",
+      "description": "Assigns DeepSeek ASR to voice input. Tests use a bundled recording without accessing your microphone."
+    },
+    "tts": {
+      "label": "TTS voice",
+      "description": "Choose a voice for reading chat and translations aloud. With system voice selected, the test uses Stella."
+    }
+  },
   "external_search": {
     "apply_google_cse": "Apply for Google CSE API",
     "create_custom_search": "Create Custom Search Engine",
@@ -1647,13 +1700,12 @@
     "bocha_apply": "Get Bocha API Key",
     "deepseek_name": "DeepSeek Official Search",
     "deepseek_key_label": "DeepSeek API Key",
-    "deepseek_key_desc": "Reuses the same API key as DeepSeek chat; billed per successful search request (~$0.00075), empty results are free",
+    "deepseek_key_desc": "Optional override for Search and Fetch. When blank, uses the DeepSeek API key from Model Services.",
     "deepseek_desc": "DeepSeek's in-house search engine returns structured results with relevance and authority scores, and natively supports site:/lang:/after:/before: operators.",
     "deepseek_apply": "Get DeepSeek API Key",
     "deepseek_need_content_label": "Return page content with search results",
     "deepseek_need_content_desc": "Official need_content: results include the page body (Markdown) so the model can read more with one request; billed per successful search, no extra charge",
-    "deepseek_fetch_label": "Use DeepSeek Fetch for web pages",
-    "deepseek_fetch_desc": "Fetch pages through DeepSeek's official Fetch API first (clean Markdown, ~$0.00075 per successful request, 5 QPS); automatically falls back to the local fetch pipeline on failure"
+    "deepseek_tts_system": "System voice"
   },
   "model_presets": {
     "title": "Model Assignment Presets",
@@ -3177,5 +3229,61 @@
     "busy": "The browser is still handling the previous action",
     "navigationBlocked": "Navigation blocked: {{detail}}",
     "securityPolicy": "The target doesn't meet the browser security policy"
+  },
+  "byok": {
+    "cardTitle": "1-Key Auto-Provisioner",
+    "cardSubtitle": "Paste a single API key to detect provider, probe models, and configure vector indexing.",
+    "collapsedPrompt": "Paste one API key to auto-configure model slots and vector index in 10 seconds",
+    "expandAction": "Quick Setup",
+    "collapseAction": "Collapse",
+    "keyInputAriaLabel": "API Key",
+    "keyPlaceholder": "Paste API Key (e.g. sk-... / AIzaSy... / sk-ant-...)",
+    "showKey": "Show API key",
+    "hideKey": "Hide API key",
+    "baseUrlLabel": "Custom Base URL (Optional)",
+    "baseUrlPlaceholder": "https://api.example.com/v1",
+    "toggleCustomUrl": "Custom Base URL",
+    "detectedProvider": "Detected: {{provider}}",
+    "disambiguatePrompt": "Generic sk- key detected. Pick a provider or auto-probe:",
+    "autoDetectPill": "Auto-Probe",
+    "provisionCta": "Probe & Auto-Configure",
+    "provisioningBusy": "Probing & Configuring...",
+    "resetAction": "Configure Another Key",
+    "vectorReadyBadge": "Vector Index Ready · {{dimension}} dim",
+    "vectorPreservedHint": "Kept existing default vector index ({{existingDimension}} dim) and bound the new model to {{dimension}} dim.",
+    "latencyBadge": "{{ms}} ms",
+    "probedCountBadge": "{{count}} models found",
+    "steps": {
+      "detect": "Detect Provider",
+      "probe": "Probe Models & Dim",
+      "assign": "Assign 8 Slots"
+    },
+    "roles": {
+      "primary_chat": "Primary Chat",
+      "fast_utility": "Fast Utility",
+      "summary_memory": "Summary & Memory",
+      "coding_agent": "Coding & Agent",
+      "vision_parse": "Vision & Grading",
+      "document_ocr": "Document OCR",
+      "text_embedding": "Text Embedding",
+      "rag_reranker": "RAG Reranker"
+    },
+    "roleUnassigned": "Unassigned",
+    "result": {
+      "fullReadyTitle": "Models and Vector Index Configured",
+      "fullReadySummary": "Enabled {{modelCount}} core models, populated {{slotCount}} slots, and bound {{dimension}}-dim vector index.",
+      "chatOnlyTitle": "Chat & Study Models Ready (No Embedding Model Found)",
+      "chatOnlyDescription": "Populated {{slotCount}} chat and specialist slots. This provider has no Embeddings endpoint, so Library RAG will run in keyword FTS mode until an embedding key is added.",
+      "enterAppCta": "Start Learning"
+    },
+    "errors": {
+      "emptyKey": "Please paste a valid API key first",
+      "authFailed": "Authentication failed (HTTP {{status}}). Check your API key or Base URL.",
+      "noModels": "Connected, but no chat models were returned. Check account permissions or add models manually.",
+      "networkTimeout": "Connection timed out. Check your network or specify a custom Base URL.",
+      "probeFailed": "Failed to probe or save configuration: {{message}}",
+      "safeDetail": "Check the connection and configuration, then retry."
+    },
+    "fullSettingsLink": "Open Full Settings"
   }
 }

@@ -407,9 +407,13 @@
     "ptc-run": "脚本化工具组合",
     "translation-tools": "翻译工具",
     "user-todo-tools": "个人待办",
-    "role-packs": "精选岗位专家"
+    "role-packs": "精选岗位专家",
+    "dstu-plugin-development": "插件工坊",
+    "self-config-tools": "自我配置",
+    "plugin-workshop-tools": "插件工坊工具组"
   },
   "builtinDescriptions": {
+    "dstu-plugin-development": "使用官方 SDK 与内置 TypeScript 编译器创建或修改 Deep Student 插件，经确认后安装。",
     "role-packs": "版本锁定、可审计的财务、法务、人力、运营、行政、研究、教学与内容工作流，只产出草稿和异常队列，高风险事项必须人工终审。",
     "knowledge-retrieval": "从资料库与外部来源检索并引用相关知识。",
     "canvas-note": "将想法整理为结构化笔记、摘要与可复用片段。",

@@ -1,0 +1,506 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_ai_generate_questions",
+    "qbank_cancel_generation_task",
+    "qbank_get_generation_task",
+    "qbank_list_generation_tasks",
+    "qbank_start_timed_practice",
+    "qbank_generate_mock_exam",
+    "qbank_submit_mock_exam",
+    "qbank_get_daily_practice",
+    "qbank_generate_paper",
+    "qbank_get_source_images",
+    "qbank_get_source_page",
+    "qbank_crop_source_image"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.qbank.ai_generate_questions.err_model_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_ai_generate_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "model_config_id": "model_doesnotexist",
+              "max_questions": 3,
+              "specs": [
+                { "question_type": "single_choice", "count": 3, "difficulty": null }
+              ],
+              "difficulty": null,
+              "topic_hint": null,
+              "based_on_existing": false,
+              "language": "zh-CN",
+              "reference_file_ids": [],
+              "reference_files_base64": [],
+              "knowledge_points": [],
+              "stream_session_id": "g3wsession01"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.ai_generate_questions.err_model2_not_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_ai_generate_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "model_config_id": null,
+              "max_questions": 3,
+              "specs": [
+                { "question_type": "single_choice", "count": 3, "difficulty": null }
+              ],
+              "difficulty": null,
+              "topic_hint": null,
+              "based_on_existing": false,
+              "language": "zh-CN",
+              "reference_file_ids": [],
+              "reference_files_base64": [],
+              "knowledge_points": [],
+              "stream_session_id": "g3wsession02"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.ai_generate_questions.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_ai_generate_questions", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.cancel_generation_task.err_missing_task_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_cancel_generation_task", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_generation_task.err_missing_task_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_get_generation_task", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.list_generation_tasks.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_list_generation_tasks", "args": { "limit": 20 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.start_timed_practice.err_zero_question_count",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_start_timed_practice",
+          "args": {
+            "request": { "exam_id": "exam_doesnotexist", "duration_minutes": 30, "question_count": 0 }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.start_timed_practice.err_zero_duration",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_start_timed_practice",
+          "args": {
+            "request": { "exam_id": "exam_doesnotexist", "duration_minutes": 0, "question_count": 10 }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.start_timed_practice.err_no_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_start_timed_practice",
+          "args": {
+            "request": { "exam_id": "exam_doesnotexist", "duration_minutes": 30, "question_count": 10 }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.start_timed_practice.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_start_timed_practice", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_mock_exam.err_no_questions_selected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_generate_mock_exam",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "config": {
+                "duration_minutes": 60,
+                "type_distribution": {},
+                "difficulty_distribution": {},
+                "total_count": 10,
+                "shuffle": true,
+                "include_mistakes": true
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_mock_exam.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_generate_mock_exam", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.submit_mock_exam.err_invalid_started_at",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_submit_mock_exam",
+          "args": {
+            "request": {
+              "session": {
+                "id": "mock_session_g3w",
+                "exam_id": "exam_doesnotexist",
+                "config": {
+                  "duration_minutes": 60,
+                  "type_distribution": {},
+                  "difficulty_distribution": {},
+                  "total_count": 10,
+                  "shuffle": true,
+                  "include_mistakes": true
+                },
+                "question_ids": [],
+                "started_at": "not-a-date",
+                "ended_at": "2026-11-06T00:30:00.000Z",
+                "answers": {},
+                "results": {},
+                "is_submitted": true
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.submit_mock_exam.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_submit_mock_exam", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_daily_practice.err_zero_count",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_daily_practice",
+          "args": { "request": { "exam_id": "exam_doesnotexist", "count": 0 } },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_daily_practice.err_no_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_daily_practice",
+          "args": { "request": { "exam_id": "exam_doesnotexist", "count": 10 } },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_daily_practice.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_get_daily_practice", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_paper.err_empty_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_generate_paper",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "config": {
+                "title": "   ",
+                "type_selection": {},
+                "shuffle": false,
+                "include_answers": true,
+                "include_explanations": true,
+                "export_format": "preview"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_paper.err_too_many_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_generate_paper",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "config": {
+                "title": "试卷",
+                "type_selection": { "single_choice": 501 },
+                "shuffle": false,
+                "include_answers": true,
+                "include_explanations": true,
+                "export_format": "preview"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_paper.err_type_insufficient",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_generate_paper",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "config": {
+                "title": "试卷",
+                "type_selection": { "single_choice": 1 },
+                "shuffle": false,
+                "include_answers": true,
+                "include_explanations": true,
+                "export_format": "preview"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_paper.err_no_questions_selected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_generate_paper",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "config": {
+                "title": "试卷",
+                "type_selection": {},
+                "shuffle": false,
+                "include_answers": true,
+                "include_explanations": true,
+                "export_format": "preview"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.generate_paper.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_generate_paper", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_images.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_source_images",
+          "args": { "examId": "exam_doesnotexist" },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_images.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_get_source_images", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_page.err_empty_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_source_page",
+          "args": { "examId": "", "sourceId": "", "page": null },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_page.err_exam_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_source_page",
+          "args": { "examId": "exam_doesnotexist", "sourceId": "src_doesnotexist", "page": 1 },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_page.err_source_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_page",
+          "args": { "examId": "${0.id}", "sourceId": "src_doesnotexist", "page": 1 },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_source_page.err_missing_source_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_source_page",
+          "args": { "examId": "exam_doesnotexist", "page": null },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.crop_source_image.err_blob_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_crop_source_image",
+          "args": {
+            "request": {
+              "question_id": "q_doesnotexist",
+              "blob_hash": "blob_doesnotexist",
+              "crop_x": 0,
+              "crop_y": 0,
+              "crop_width": 0.5,
+              "crop_height": 0.5
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.crop_source_image.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "qbank_crop_source_image", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

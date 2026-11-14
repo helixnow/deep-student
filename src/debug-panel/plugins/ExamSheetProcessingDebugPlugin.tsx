@@ -25,6 +25,8 @@ import { Copy, Trash, Download, MagnifyingGlass, CaretDown, CaretRight, Warning,
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Switch } from '@/components/ui/shad/Switch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { EXAM_SHEET_PROCESSING_DEBUG_CHANNEL } from '@/shared/debug/channels/examSheetProcessing';
 
 // ============================================================================
 // 常量
@@ -690,5 +692,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     </div>
   );
 };
+
+serveDebugChannel(EXAM_SHEET_PROCESSING_DEBUG_CHANNEL, { emitExamSheetDebug });
 
 export default ExamSheetProcessingDebugPlugin;

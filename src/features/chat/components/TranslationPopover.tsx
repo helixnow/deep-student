@@ -35,7 +35,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise, ArrowsLeftRight } from '@phosphor-icons/react';
+import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise, ArrowsLeftRight, NotePencil } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -80,6 +80,8 @@ export interface TranslationPopoverProps {
   onAddToInput?: (text: string) => void;
   /** 头部是否显示模型名（阅读器内 360px 面板放不下，会与目标语言叠在一起） */
   showModelName?: boolean;
+  /** 一键将译文存入 PDF 批注笔记 */
+  onSaveToAnnotation?: (text: string) => void;
 }
 
 // ============================================================================
@@ -227,11 +229,13 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   onClose,
   onAddToInput,
   showModelName = true,
+  onSaveToAnnotation,
 }) => {
   const { t } = useTranslation(['translation', 'chatV2']);
   const rootRef = useRef<HTMLDivElement>(null);
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
+  const [pinnedAnnotation, setPinnedAnnotation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [segments, setSegments] = useState<AlignedSegment[] | null>(null);
   const [streamingText, setStreamingText] = useState<string>('');
@@ -259,6 +263,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   // 复制成功反馈定时器（卸载时清理，避免卸载后 setState）
   const copiedSourceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copiedTranslationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pinnedAnnotationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearStallTimer = useCallback(() => {
     if (stallTimerRef.current !== null) {
@@ -625,6 +630,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       cancelActiveStream();
       if (copiedSourceTimerRef.current) clearTimeout(copiedSourceTimerRef.current);
       if (copiedTranslationTimerRef.current) clearTimeout(copiedTranslationTimerRef.current);
+      if (pinnedAnnotationTimerRef.current) clearTimeout(pinnedAnnotationTimerRef.current);
     };
   }, [cancelActiveStream]);
 
@@ -720,6 +726,14 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     onAddToInput(fullTranslation);
     onClose();
   }, [fullTranslation, onAddToInput, onClose]);
+
+  const handleSaveToAnnotation = useCallback(() => {
+    if (!fullTranslation || !onSaveToAnnotation) return;
+    onSaveToAnnotation(fullTranslation);
+    setPinnedAnnotation(true);
+    if (pinnedAnnotationTimerRef.current) clearTimeout(pinnedAnnotationTimerRef.current);
+    pinnedAnnotationTimerRef.current = setTimeout(() => setPinnedAnnotation(false), 1500);
+  }, [fullTranslation, onSaveToAnnotation]);
 
   const handleRetry = useCallback(() => {
     doTranslate({ src: srcLang, tgt: tgtLang, mode: settings.mode, modelId: settings.modelId });
@@ -935,7 +949,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
 
           {/* 底部操作栏：流式中可见但禁用（明确"翻译中"），完成后可交互 */}
           {hasContent && !error && (
-            <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
+            <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5 flex-wrap">
               <DsButton
                 variant="ghost"
                 size="sm"
@@ -968,12 +982,32 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   a={<Copy size={13} />}
                   b={<Check size={13} className="text-success" />}
                 />
-                <span>
-                  {copiedTranslation
-                    ? t('translation:popover.copied')
-                    : t('translation:popover.copy_translation')}
-                </span>
-              </DsButton>
+                  <span>
+                    {copiedTranslation
+                      ? t('translation:popover.copied')
+                      : t('translation:popover.copy_translation')}
+                  </span>
+                </DsButton>
+              {onSaveToAnnotation && (
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSaveToAnnotation}
+                  disabled={isLoading}
+                  className="gap-1.5 !px-2 text-xs"
+                >
+                  <IconSwap
+                    active={pinnedAnnotation}
+                    a={<NotePencil size={13} />}
+                    b={<Check size={13} className="text-success" />}
+                  />
+                  <span>
+                    {pinnedAnnotation
+                      ? t('chatV2:explainPopover.savedToAnnotation')
+                      : t('chatV2:explainPopover.saveToAnnotation')}
+                  </span>
+                </DsButton>
+              )}
               {onAddToInput && (
                 <DsButton
                   variant="ghost"

@@ -11,8 +11,8 @@ import type { ActivationResult } from '@/features/workbench/core/types';
 import type { ContentSaveState } from '../content/contentDirtyRegistry';
 
 // ★ 重依赖刻意动态化：mindmap store / noteDriver(@milkdown) 仅在 ACR/工作区
-//   激活路径按需 import()——本模块被 command-palette builtinCommands 静态引入
-//   App 主 bundle，静态引用会把笔记编辑器与导图画布拖进首屏（设计 §9.3 同法）。
+//   激活路径按需 import()——本模块被 command-palette 的 notes 命令静态引入
+//   启动装配，静态引用会把笔记编辑器与导图画布拖进首屏（设计 §9.3 同法）。
 
 export type NotesWorkspaceResourceType = 'note' | 'mindmap';
 

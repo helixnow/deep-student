@@ -16,6 +16,7 @@
   
   /* 连线 */
   --mm-edge: hsl(var(--muted-foreground) / 0.45);
+  --mm-edge-active: var(--mm-primary);
   
   /* 阴影 */
   --mm-shadow: 0 1px 3px 0 hsl(var(--shadow-base) / 0.1), 0 1px 2px -1px hsl(var(--shadow-base) / 0.1);
@@ -629,38 +630,86 @@
 
 /* （edge-path 的 stroke 规则统一收敛在下方「连接线 (Edges)」段，勿在此重复定义） */
 
-/* compact editor compact toolbar */
+/* Floating Glass Dock: 顶部主工具栏与节点格式胶囊（消除双层全宽 border-bottom 压迫感） */
 .mm-toolbar {
   height: 36px;
+  flex-shrink: 0;
   padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--mm-bg);
-  border-bottom: 1px solid var(--mm-border);
-  font-size: 14px;
+  gap: 8px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid color-mix(in srgb, var(--mm-border) 75%, transparent);
+  font-size: 13px;
   position: sticky;
   top: 0;
   z-index: 50;
+}
+
+@media (min-width: 768px) {
+  .mindmap-container[data-view="mindmap"] > .mm-document-column > .mm-toolbar {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    right: 12px;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+    border-radius: 10px;
+    box-shadow:
+      0 8px 24px -4px rgba(15, 23, 42, 0.06),
+      0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  }
+}
+
+/* 选中节点时的无感悬浮毛玻璃胶囊（Floating Glass Dock）：
+   绝对定位悬浮于顶栏下方，绝不推挤画布高度或触发视口重算 */
+.mm-format-dock {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 24px);
+  z-index: 44;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 86%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 82%, transparent);
+  border-radius: 10px;
+  box-shadow:
+    0 10px 28px -6px rgba(15, 23, 42, 0.08),
+    0 2px 6px -1px rgba(15, 23, 42, 0.04);
+}
+
+@media (min-width: 768px) {
+  .mindmap-container[data-view="mindmap"] > .mm-document-column > .mm-format-dock {
+    top: 54px;
+  }
 }
 
 /* Find floats over the document like desktop editors' in-pane search instead of
    reserving a second toolbar row. */
 .mm-search-popover {
   position: absolute;
-  top: 44px;
-  right: 8px;
-  z-index: 45;
+  top: 54px;
+  right: 12px;
+  z-index: 46;
   display: flex;
   align-items: center;
   gap: 4px;
-  width: min(560px, calc(100% - 16px));
+  width: min(560px, calc(100% - 24px));
   min-height: 34px;
   padding: 3px 4px 3px 8px;
   color: var(--mm-text);
-  background: var(--mm-bg-elevated);
-  border: 1px solid var(--mm-border);
-  border-radius: var(--mm-radius-popup, 8px);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 82%, transparent);
+  border-radius: 10px;
   box-shadow: var(--mm-popover-shadow);
 }
 
@@ -897,13 +946,21 @@
   box-shadow: var(--mm-shadow-node);
 }
 
-/* 选中态：2px ring outline + offset（对齐 native-feel focus 语言）
-   + inset 轻染（叠加在主题内联背景之上，无需覆盖 inline background） */
+/* 选中态：单层精准高亮边 + 3px 柔和微光环（消除笨重的双层 outline + offset） */
 .mm-root-node.selected {
-  border-color: var(--mm-primary);
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
-  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
+  border-color: var(--mm-edge-active, var(--mm-primary)) !important;
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 16%, transparent),
+    var(--mm-shadow-node) !important;
+}
+
+.mm-root-node.editing {
+  border-color: var(--mm-edge-active, var(--mm-primary)) !important;
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 22%, transparent),
+    var(--mm-shadow-node) !important;
 }
 
 /* --- 分支节点 --- */
@@ -921,14 +978,19 @@
 }
 
 .mm-branch-node.selected {
-  border-color: var(--mm-primary);
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
-  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
+  border-color: var(--mm-edge-active, var(--mm-primary)) !important;
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 16%, transparent),
+    var(--mm-shadow-node) !important;
 }
 
 .mm-branch-node.editing {
-  border-color: var(--mm-primary);
+  border-color: var(--mm-edge-active, var(--mm-primary)) !important;
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 22%, transparent),
+    var(--mm-shadow-node) !important;
 }
 
 /* --- 下划线风格节点 (Level 2+) ---
@@ -952,6 +1014,14 @@
   transition: border-color var(--mm-dur-structure, 150ms) ease, background-color var(--mm-dur-structure, 150ms) ease;
   /* 防止文字竖排 */
   white-space: nowrap !important;
+}
+
+/* Level 2+ 显式设置 bgColor 时：呈现 6px 圆角轻量微染胶囊 */
+.mindmap-node-underline[data-has-bg="true"],
+.mm-node--underline[data-has-bg="true"],
+[data-node-chrome="underline"][data-has-bg="true"] {
+  border-radius: 6px !important;
+  padding: 3px 8px 4px 8px !important;
 }
 
 /* hover 只在「无彩虹 inline 底边色」时染 primary（inline 色由导出/彩虹分支写入，须保留）；
@@ -1008,31 +1078,33 @@
   background-color: var(--mm-bg-hover);
 }
 
-/* --- 节点操作按钮组 --- */
+/* --- 节点操作按钮组（轻量圆润微胶囊） --- */
 .mm-node-actions {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   z-index: 10;
 }
 
 .mm-action-btn {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--mm-radius-control, 5px);
-  border: none;
-  background: var(--mm-bg-elevated);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 80%, transparent);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 92%, transparent);
   color: var(--mm-text-muted);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   cursor: pointer;
   transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease), border-color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-action-btn:hover {
   background: var(--mm-bg-hover);
+  border-color: var(--mm-border-strong);
   color: var(--mm-text);
 }
 
@@ -1048,7 +1120,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
-  transition: stroke var(--mm-dur-structure, 150ms) ease, stroke-width var(--mm-dur-structure, 150ms) ease;
+  transition: stroke var(--mm-dur-structure, 150ms) ease, stroke-width var(--mm-dur-structure, 150ms) ease, opacity var(--mm-dur-structure, 150ms) ease;
 }
 
 /* 选中节点的连接线高亮 */
@@ -1057,41 +1129,45 @@
   stroke-width: 2.5px;
 }
 
-/* --- 节点选中状态（与 .selected 类版本保持同一 ring outline 语言） --- */
+/* --- 节点选中状态（单层精准高亮边 + 3px 柔和微光环） --- */
 .mindmap-container .react-flow__node.selected .mm-branch-node,
 .mindmap-container .react-flow__node.selected .mm-root-node {
-  border-color: var(--mm-primary);
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
-  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
+  border-color: var(--mm-edge-active, var(--mm-primary)) !important;
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 16%, transparent),
+    var(--mm-shadow-node) !important;
 }
 
 /* 下划线节点保留 underline 语义（不加圆角外环），
    用底边加粗 + 背景轻染表达选中；
    彩虹分支色由 inline style 提供，此处不强改颜色 */
-.mindmap-container .react-flow__node.selected .mindmap-node-underline,
-.mindmap-container .react-flow__node.selected .mm-node--underline,
-.mindmap-container .react-flow__node.selected [data-node-chrome="underline"] {
+.mindmap-container .react-flow__node.selected .mindmap-node-underline:not([data-has-bg="true"]),
+.mindmap-container .react-flow__node.selected .mm-node--underline:not([data-has-bg="true"]),
+.mindmap-container .react-flow__node.selected [data-node-chrome="underline"]:not([data-has-bg="true"]) {
   border-bottom-width: 2px !important;
-  background-color: hsl(var(--primary) / 0.07);
+  background-color: color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 7%, transparent);
 }
 
-/* --- ReactFlow 控件面板 --- */
+/* --- ReactFlow 控件面板（收纳为悬浮毛玻璃胶囊） --- */
 .mindmap-container .react-flow__controls {
-  background: var(--mm-bg-elevated);
-  border: 1px solid var(--mm-border);
-  border-radius: var(--mm-radius-row, 6px);
-  box-shadow: none;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+  margin: 12px;
 }
 
 .mindmap-container .react-flow__controls-button {
-  background: var(--mm-bg-elevated);
+  background: transparent;
   border: none;
-  border-bottom: 1px solid var(--mm-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--mm-border) 65%, transparent);
   color: var(--mm-text-secondary);
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
 }
 
 .mindmap-container .react-flow__controls-button:last-child {
@@ -1107,21 +1183,23 @@
   fill: currentColor;
 }
 
-/* 空白拖拽模式：独立于缩放控件，停靠画布右下角，文字始终说明当前工具。 */
+/* 右下角画布集成控制胶囊（Floating Glass Dock）：框选/平移/滚轮/缩放百分比/适应视图 */
 .mm-canvas-mode-switch {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: 12px;
+  right: 12px;
   z-index: 20;
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 30px;
-  padding: 2px;
-  border: 1px solid var(--mm-border);
-  border-radius: var(--mm-radius-row, 6px);
-  background: var(--mm-bg-elevated);
-  box-shadow: none;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06);
   user-select: none;
 }
 
@@ -1131,10 +1209,10 @@
   justify-content: center;
   gap: 5px;
   height: 24px;
-  min-width: 56px;
-  padding: 0 7px;
+  min-width: 48px;
+  padding: 0 8px;
   border: 0;
-  border-radius: calc(var(--mm-radius-row, 6px) - 2px); /* 分段容器 6px − 2px 内衬 */
+  border-radius: 7px;
   background: transparent;
   color: var(--mm-text-secondary);
   font-size: 11px;
@@ -1151,7 +1229,7 @@
 
 .mm-canvas-mode-button.is-active {
   background: var(--mm-primary-soft);
-  color: var(--mm-primary);
+  color: var(--mm-edge-active, var(--mm-primary));
   font-weight: 600;
 }
 
@@ -1169,33 +1247,37 @@
 
 /* --- MiniMap --- */
 .mindmap-container .react-flow__minimap {
-  background: var(--mm-bg-elevated);
-  border: 1px solid var(--mm-border);
-  border-radius: var(--mm-radius-row, 6px);
-  box-shadow: none;
-  opacity: 0.82;
-  /* 拖拽模式工具条停靠右下角（bottom 8px + 高 30px），小地图抬到其上方 */
-  margin: 8px;
-  margin-bottom: 46px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06);
+  opacity: 0.88;
+  /* 拖拽模式工具条停靠右下角（bottom 12px + 高 32px），小地图抬到其上方 */
+  margin: 12px;
+  margin-bottom: 52px;
 }
 
 .mm-canvas-breadcrumb {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 56px;
+  left: 12px;
   z-index: 20;
   display: flex;
   align-items: center;
   gap: 2px;
   max-width: min(480px, 70vw);
-  height: 26px;
-  padding: 0 3px;
-  border-radius: var(--mm-radius-row, 6px);
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 75%, transparent);
+  border-radius: 8px;
   color: var(--mm-text-secondary);
-  background: hsl(var(--background) / 88%);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
   font-size: 12px;
   user-select: none;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .outline-empty-action {
@@ -1282,9 +1364,10 @@
   gap: 6px;
   height: 24px;
   padding: 0 4px;
-  color: var(--mm-text-muted);
+  color: var(--mm-text-secondary);
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .mm-structure-grid {
@@ -1341,6 +1424,7 @@
   color: var(--mm-text-secondary);
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .mm-style-heading {
@@ -2117,7 +2201,7 @@
   -webkit-line-clamp: 1;
 }
 
-.mindmap-container.is-presentation > .mm-toolbar {
+.mindmap-container.is-presentation > .mm-document-column > .mm-toolbar {
   display: none;
 }
 
@@ -2125,7 +2209,7 @@
    is-presentation）：子屏只覆盖内容区，不藏工具栏会形成宿主顶栏+工具栏+
    子屏顶栏三层 chrome，且工具栏按钮在子屏下仍可点 */
 @media (max-width: 767.98px) {
-  .mindmap-container.has-mobile-subview > .mm-toolbar {
+  .mindmap-container.has-mobile-subview > .mm-document-column > .mm-toolbar {
     display: none;
   }
 }
@@ -2624,7 +2708,7 @@
 /* ===== 窄容器（聊天右侧面板 / 分栏）：按导图容器自身宽度收紧顶栏 =====
    顶栏原只按视口断点（md:）响应，宽窗口里的窄面板会把「大纲」「导图」「学习」挤成竖排、
    「隐藏已完成」被截断。 */
-.mindmap-container {
+.mm-document-column {
   container-type: inline-size;
   container-name: mm-root;
 }
@@ -2652,8 +2736,33 @@
 }
 
 @container mm-root (max-width: 520px) {
+  .mm-toolbar {
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .mm-toolbar > * {
+    flex-shrink: 0;
+  }
+
+  .mm-toolbar-history,
+  .mm-toolbar-actions {
+    gap: 2px;
+  }
+
+  .mm-toolbar :is(.mm-toolbar-history, .mm-toolbar-actions) > .w-px,
+  .mm-toolbar-save > span[aria-live],
   .mm-view-switcher-label {
     display: none;
+  }
+
+  .mm-toolbar :is(.ds-btn, .mm-learning-button) {
+    padding-inline: 5px;
+  }
+
+  .mm-toolbar-button {
+    width: 24px;
   }
 
   .mm-view-switcher-icon {

@@ -22,8 +22,10 @@ import {
   resetBridgeState,
   type BackendEvent,
 } from '../eventBridge';
-// 自注册 tool_call / tool_call_preparing handler
+// 自注册 tool_call / tool_call_preparing / image_gen / retrieval / generative_ui handler
 import '../../../plugins/events/toolCall';
+import '../../../plugins/events/retrieval';
+import '../../../plugins/events/generativeUI';
 
 const MSG = 'msg_tool_dedup';
 
@@ -182,5 +184,137 @@ describe('eventBridge tool call dedup (one timeline row per tool_call_id)', () =
     expect(rows[0].id).toBe('blk_exec');
     expect(rows[0].status).toBe('success');
     expect(store.getState().messageMap.get(MSG)!.blockIds).toEqual(['blk_exec']);
+  });
+
+  it('custom block starts (rag, generative_ui, image_gen) clean up matching tool_call_preparing block by toolCallId', () => {
+    handleBackendEventWithSequence(
+      store.getState(),
+      preparingStart(0, 'blk_prep_rag', 'call_rag', 'rag_search'),
+    );
+    expect(store.getState().blocks.get('blk_prep_rag')?.isPreparing).toBe(true);
+
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'rag',
+      phase: 'start',
+      messageId: MSG,
+      blockId: 'blk_rag_exec',
+      sequenceId: 1,
+      payload: { toolCallId: 'call_rag', query: 'eigenvalue' },
+    });
+    expect(store.getState().blocks.has('blk_prep_rag')).toBe(false);
+    expect(store.getState().blocks.get('blk_rag_exec')).toMatchObject({
+      type: 'rag',
+      status: 'running',
+      isPreparing: false,
+      toolCallId: 'call_rag',
+    });
+
+    handleBackendEventWithSequence(
+      store.getState(),
+      preparingStart(2, 'blk_prep_ui', 'call_ui', 'render_generative_ui'),
+    );
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'generative_ui',
+      phase: 'start',
+      messageId: MSG,
+      blockId: 'blk_ui_exec',
+      sequenceId: 3,
+      payload: { toolCallId: 'call_ui', title: 'Demo' },
+    });
+    expect(store.getState().blocks.has('blk_prep_ui')).toBe(false);
+    expect(store.getState().blocks.get('blk_ui_exec')).toMatchObject({
+      type: 'generative_ui',
+      isPreparing: false,
+      toolCallId: 'call_ui',
+    });
+
+    handleBackendEventWithSequence(
+      store.getState(),
+      preparingStart(4, 'blk_prep_img', 'call_img', 'image_generate'),
+    );
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'image_gen',
+      phase: 'start',
+      messageId: MSG,
+      blockId: 'blk_img_exec',
+      sequenceId: 5,
+      payload: { toolCallId: 'call_img', prompt: 'cat' },
+    });
+    expect(store.getState().blocks.has('blk_prep_img')).toBe(false);
+    expect(store.getState().blocks.get('blk_img_exec')).toMatchObject({
+      type: 'image_gen',
+      status: 'running',
+      isPreparing: false,
+      toolCallId: 'call_img',
+    });
+  });
+
+  it('handles tool_call_preparing end and error terminal events', () => {
+    handleBackendEventWithSequence(
+      store.getState(),
+      preparingStart(0, 'blk_prep_drop', 'call_drop', 'note_read'),
+    );
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'tool_call_preparing',
+      phase: 'end',
+      messageId: MSG,
+      blockId: 'blk_prep_drop',
+      sequenceId: 1,
+    });
+    expect(store.getState().blocks.has('blk_prep_drop')).toBe(false);
+
+    handleBackendEventWithSequence(
+      store.getState(),
+      preparingStart(2, 'blk_prep_fail', 'call_fail', 'note_read'),
+    );
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'tool_call_preparing',
+      phase: 'error',
+      messageId: MSG,
+      blockId: 'blk_prep_fail',
+      sequenceId: 3,
+      error: 'stream aborted',
+    });
+    expect(store.getState().blocks.get('blk_prep_fail')).toMatchObject({
+      isPreparing: false,
+      status: 'error',
+      error: 'stream aborted',
+    });
+  });
+
+  it('restarts an errored block on transient retry start without duplicating blockIds', () => {
+    handleBackendEventWithSequence(store.getState(), toolStart(0, 'blk_retry', 'call_retry', 'note_read'));
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'tool_call',
+      phase: 'error',
+      messageId: MSG,
+      blockId: 'blk_retry',
+      sequenceId: 1,
+      error: 'ECONNRESET',
+    });
+    expect(store.getState().blocks.get('blk_retry')?.status).toBe('error');
+
+    handleBackendEventWithSequence(store.getState(), {
+      type: 'tool_call',
+      phase: 'start',
+      messageId: MSG,
+      blockId: 'blk_retry',
+      sequenceId: 2,
+      payload: {
+        toolName: 'note_read',
+        toolCallId: 'call_retry',
+        toolInput: { id: 'n1' },
+        retry: true,
+        retryAttempt: 1,
+      },
+    });
+    expect(store.getState().blocks.get('blk_retry')).toMatchObject({
+      status: 'running',
+      error: undefined,
+    });
+    expect(store.getState().messageMap.get(MSG)!.blockIds).toEqual(['blk_retry']);
+
+    handleBackendEventWithSequence(store.getState(), toolEnd(3, 'blk_retry'));
+    expect(store.getState().blocks.get('blk_retry')?.status).toBe('success');
   });
 });

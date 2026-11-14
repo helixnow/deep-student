@@ -1,0 +1,845 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_export_zip",
+    "data_governance_restore_backup",
+    "data_governance_restore_with_assets",
+    "data_governance_verify_backup_with_assets",
+    "data_governance_list_backup_jobs",
+    "data_governance_get_backup_job",
+    "data_governance_get_backup_list",
+    "data_governance_delete_backup"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.export_zip.sync_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Awp234.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "content://com.android.externalstorage.documents/document/primary%3Awp234.zip\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "content://x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "/nonexistent-wp234/a\u0000b.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "/nonexistent-wp234/../x.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "../x.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "encryptionPassword": "short"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "encryptionPassword": " 1234567 "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "useStoredCloudEncryptionPassword": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "encryptionPassword": "   ",
+            "useStoredCloudEncryptionPassword": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "compressionLevel": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "compressionLevel": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "includeChecksums": "true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.export_zip.missing_backup_fails_async",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": " 20260101_000000_wp234_missing ",
+            "compressionLevel": 99,
+            "includeChecksums": false,
+            "useStoredCloudEncryptionPassword": false
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${3.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": null,
+            "compressionLevel": null,
+            "includeChecksums": null,
+            "encryptionPassword": null,
+            "useStoredCloudEncryptionPassword": null
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${6.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "encryptionPassword": "wp234-strong-pass",
+            "useStoredCloudEncryptionPassword": true
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${9.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "content://com.android.externalstorage.documents/document/primary%3Awp234.zip"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${12.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_export_zip",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "outputPath": "/nonexistent-wp234/out.zip"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${15.job_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.restore_backup.sync_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.restore_backup.missing_dir_fails_async",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": " 20260101_000000_wp234_missing ",
+            "restoreAssets": true
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${3.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_restore_backup",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": null
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "wp234_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${6.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.restore_with_assets.retired_entry",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_restore_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing",
+            "restoreAssets": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.verify_with_assets.empty_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "20260101_000000_wp234_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "%FF"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "a%20b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "%2e%2e"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备备"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "a\\b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "a..b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": ".hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "%zz"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": "备份"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": " 20260101_000000_wp234_missing "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup_with_assets",
+          "args": {
+            "backupId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

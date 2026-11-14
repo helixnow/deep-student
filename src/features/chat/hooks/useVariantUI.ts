@@ -11,7 +11,7 @@ import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../core/types/store';
 import type { Message, Variant, VariantStatus } from '../core/types/message';
 import type { Block } from '../core/types/block';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { isChatV2LoggingEnabled } from '../debug/chatV2Logger';
 import { isParallelVariantViewEnabled } from '@/config/featureFlags';
 

@@ -9,6 +9,13 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { findNodeById } from '../../utils/node/find';
 import { normalizeStyleId, createDefaultDocument } from '../mindmapStoreHelpers';
 import { readDraft, removeDraftFromStorage } from '../mindmapDraftStorage';
+import {
+  normalizeDocumentStagingExcerpts,
+  normalizeTreeExcerptFields,
+  treeHasExcerptFields,
+} from '../../utils/nodeAnchors';
+import { reconcileSummariesWithTree } from '../../utils/summaryBraces';
+import { seedMindMapProjectedFlashcardsBaseline } from '../../interop/mindmapCardProjection';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
 
 export const createLifecycleSlice: MindMapSliceCreator<
@@ -75,19 +82,35 @@ export const createLifecycleSlice: MindMapSliceCreator<
         let recoveredDraft = false;
         const localDraft = readDraft(mindmapId);
         if (localDraft) {
-          const serverUpdatedAt = Date.parse(metadata.updatedAt || '');
-          const draftSavedAt = Date.parse(localDraft.savedAt || '');
-          if (!Number.isNaN(draftSavedAt) && (Number.isNaN(serverUpdatedAt) || draftSavedAt >= serverUpdatedAt)) {
+          if (localDraft.baseUpdatedAt !== undefined && localDraft.baseUpdatedAt === metadata.updatedAt) {
             document = localDraft.document;
             recoveredDraft = true;
           }
         }
+
+        // 摘录与汇聚中枢字段清洗；旧文档无这些字段时零开销跳过
+        if (treeHasExcerptFields(document.root)) normalizeTreeExcerptFields(document.root);
+        normalizeDocumentStagingExcerpts(document);
+        reconcileSummariesWithTree(document);
 
         rt.documentGeneration += 1;
         set((state) => {
           state.mindmapId = mindmapId;
           state.metadata = metadata;
           state.document = document;
+          state.conflictSnapshot = localDraft && !recoveredDraft
+            && JSON.stringify(localDraft.document) !== JSON.stringify(document)
+            ? {
+              mindmapId,
+              document: localDraft.document,
+              currentView: localDraft.currentView,
+              focusedNodeId: localDraft.focusedNodeId,
+              layoutId: localDraft.layoutId || 'tree',
+              layoutDirection: localDraft.layoutDirection || 'right',
+              styleId: normalizeStyleId(localDraft.styleId || 'default'),
+              edgeType: localDraft.edgeType || 'bezier',
+            }
+            : null;
           if (!opts?.preserveViewports) {
             state.currentView =
               (recoveredDraft ? localDraft?.currentView : undefined) ||
@@ -132,6 +155,10 @@ export const createLifecycleSlice: MindMapSliceCreator<
           state.agentEnteringIds = new Set();
           state.agentExitingIds = new Set();
           state.agentUpdatedIds = new Set();
+          state.lastExcerptContext = null;
+          state.excerptRevealRequest = null;
+          state.stagingTrayOpen = Boolean(document.stagingExcerpts?.length);
+          seedMindMapProjectedFlashcardsBaseline(mindmapId, document.root);
           // 分支专注 / 视口保真为会话级，换图时重置；
           // preserveViewports（外部 watch 静默重载）时保留视口与当前视图
           state.viewRootId = null;
@@ -147,6 +174,9 @@ export const createLifecycleSlice: MindMapSliceCreator<
           debounceSave();
         } else {
           lastDraftVersionByMindmap.delete(mindmapId);
+          if (get().conflictSnapshot) {
+            showGlobalNotification('warning', i18next.t('store.conflictSnapshotKept', { ns: 'mindmap' }));
+          }
         }
       } catch (error) {
         if (get()._loadSeq !== seq!) return;
@@ -203,6 +233,9 @@ export const createLifecycleSlice: MindMapSliceCreator<
         state.edgeType = 'bezier';
         state.viewRootId = null;
         state.viewports = {};
+        state.lastExcerptContext = null;
+        state.excerptRevealRequest = null;
+        state.stagingTrayOpen = false;
         state.reciteMode = false;
         state.revealedBlanks = {};
         state.reciteSessionLog = {};
@@ -260,6 +293,10 @@ export const createLifecycleSlice: MindMapSliceCreator<
         state.agentUpdatedIds = new Set(); // ACR 4.0 A4 瞬态
         state.agentFitViewNonce = 0; // ACR R2-02
         state.nodeLocateRequest = null;
+        state.lastExcerptContext = null;
+        state.excerptRevealRequest = null;
+        state.stagingTrayOpen = false;
+        state.excerptIntakeMode = 'direct';
         state.layoutId = 'tree';
         state.layoutDirection = 'right';
         state.styleId = 'default';

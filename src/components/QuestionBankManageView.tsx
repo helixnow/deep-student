@@ -95,11 +95,11 @@ interface QuestionFilters {
   isFavorite?: boolean;
 }
 
-const statusColors: Record<QuestionStatus, string> = {
-  new: 'text-muted-foreground',
-  in_progress: 'text-primary',
-  mastered: 'text-success',
-  review: 'text-warning',
+const statusDots: Record<QuestionStatus, string> = {
+  new: 'bg-muted-foreground/35',
+  in_progress: 'bg-primary',
+  mastered: 'bg-success',
+  review: 'bg-warning',
 };
 
 const statusLabelKeys: Record<QuestionStatus, string> = {
@@ -110,10 +110,10 @@ const statusLabelKeys: Record<QuestionStatus, string> = {
 };
 
 const difficultyColors: Record<Difficulty, string> = {
-  easy: 'text-success',
-  medium: 'text-warning',
-  hard: 'text-warning',
-  very_hard: 'text-destructive',
+  easy: 'text-muted-foreground',
+  medium: 'text-muted-foreground',
+  hard: 'text-muted-foreground',
+  very_hard: 'text-muted-foreground',
 };
 
 const difficultyLabelKeys: Record<Difficulty, string> = {
@@ -706,27 +706,28 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         {q.content.slice(0, 100)}
                         {q.content.length > 100 && '...'}
                       </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
-                        <span className={cn('font-medium', statusColors[q.status])}>
-                          {t(statusLabelKeys[q.status])}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDots[q.status])} aria-hidden="true" />
+                          <span>{t(statusLabelKeys[q.status])}</span>
                         </span>
                         {q.difficulty && (
-                          <span className={cn('font-medium', difficultyColors[q.difficulty])}>
+                          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                             {t(difficultyLabelKeys[q.difficulty])}
                           </span>
                         )}
                         {q.questionType && q.questionType !== 'other' && (
-                          <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', getQuestionTypeMeta(q.questionType).pill)}>
+                          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                             {t(getQuestionTypeMeta(q.questionType).labelKey)}
                           </span>
                         )}
-                        <span className="tabular-nums text-muted-foreground">
+                        <span className="font-mono tabular-nums text-muted-foreground">
                           {q.correctCount}/{q.attemptCount}
                         </span>
                         {q.tags?.slice(0, 3).map((tag) => (
                           <span
                             key={tag}
-                            className="max-w-[8rem] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                            className="max-w-[8rem] truncate rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground"
                           >
                             {tag}
                           </span>
@@ -845,43 +846,44 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
 />
                   </TableCell>
-                  <TableCell className="font-mono text-sm">
+                  <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
                     {q.questionLabel || q.cardId}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className="line-clamp-2 text-sm">
+                      <span className="line-clamp-2 text-sm text-foreground/85">
                         {q.content.slice(0, 100)}
                         {q.content.length > 100 && '...'}
                       </span>
                       {q.isCorrect === true && (
-                        <CheckCircle size={16} className="text-success flex-shrink-0" />
+                        <CheckCircle size={15} className="text-success flex-shrink-0" />
                       )}
                       {q.isCorrect === false && (
-                        <XCircle size={16} className="text-destructive flex-shrink-0" />
+                        <XCircle size={15} className="text-destructive flex-shrink-0" />
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className={cn('text-xs font-medium', statusColors[q.status])}>
-                      {t(statusLabelKeys[q.status])}
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                      <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDots[q.status])} aria-hidden="true" />
+                      <span>{t(statusLabelKeys[q.status])}</span>
                     </span>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     {q.difficulty && (
-                      <span className={cn('text-xs font-medium', difficultyColors[q.difficulty])}>
+                      <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground whitespace-nowrap">
                         {t(difficultyLabelKeys[q.difficulty])}
                       </span>
                     )}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     {q.questionType && q.questionType !== 'other' && (
-                      <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap', getQuestionTypeMeta(q.questionType).pill)}>
+                      <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground whitespace-nowrap">
                         {t(getQuestionTypeMeta(q.questionType).labelKey)}
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                  <TableCell className="hidden md:table-cell font-mono text-xs tabular-nums text-muted-foreground">
                     {q.correctCount}/{q.attemptCount}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>

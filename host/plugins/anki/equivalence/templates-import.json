@@ -1,0 +1,800 @@
+{
+  "domain": "anki",
+  "commands": [
+    "import_builtin_templates",
+    "import_custom_templates_bulk",
+    "get_all_custom_templates",
+    "update_custom_template",
+    "delete_custom_template",
+    "export_template",
+    "create_custom_template"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.template.builtin-import-then-idempotent-skip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-glass"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.builtin-delete-tombstone-not-revived",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "design-lab",
+            "request": {
+              "is_active": true,
+              "expected_version": "3.0.4"
+            }
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.builtin-user-modified-preserved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "design-manuscript",
+            "request": {
+              "description": "缺版本"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "design-manuscript",
+            "request": {
+              "description": "用户改过的手稿",
+              "expected_version": "2.2.0"
+            }
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-manuscript"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.builtin-outdated-row-updated-in-place",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"design-lab\",\"name\":\"W0 旧版 Lab\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null}]",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.builtin-name-and-id-conflicts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "The Manuscript (手稿风格)",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"design-swiss\",\"name\":\"W0 占位 Swiss\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"9.9.9\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null}]",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "design-swiss",
+            "request": {
+              "is_built_in": false,
+              "expected_version": "9.9.9"
+            }
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.builtin-update-rename-collision-error",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"design-lab\",\"name\":\"W0 旧版 Lab\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null}]",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "The Lab (学术选择题)",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.bulk-export-reimport-conflict-overwrite",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 往返",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "${1.template_data}",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "覆盖前",
+              "expected_version": "1.0.0"
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "${1.template_data}",
+              "overwrite_existing": true,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "${1.template_data}",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.bulk-parse-and-shape-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "{not json",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "\"just a string\"",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "42",
+              "overwrite_existing": true,
+              "strict_builtin": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "null",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "{not json",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[]",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[]",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[]"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "overwrite_existing": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "templateData": "{\"id\":\"w0-alias\",\"name\":\"W0 别名导入\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false}",
+              "overwriteExisting": false
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "templateData": "[{\"id\":\"w0-strict-alias\",\"name\":\"W0 strict 别名\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.2.3\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null}]",
+              "overwriteExisting": false,
+              "strictBuiltin": true
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.bulk-nonstrict-mixed-items",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 已有同名",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"w0-ns-1\",\"name\":\"W0 非严格新建\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-bad-serde\",\"name\":\"W0 缺 fields\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-invalid\",\"name\":\"W0 非严格校验失败\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-dup\",\"name\":\"W0 已有同名\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-2\",\"name\":\"W0 非严格新建\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-builtin\",\"name\":\"W0 非严格内置\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"x.y\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":false,\"is_built_in\":true},\"not-an-object\"]",
+              "overwrite_existing": false,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"w0-ns-1\",\"name\":\"W0 非严格新建\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-bad-serde\",\"name\":\"W0 缺 fields\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-invalid\",\"name\":\"W0 非严格校验失败\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-dup\",\"name\":\"W0 已有同名\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-2\",\"name\":\"W0 非严格新建\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"2.0.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false},{\"id\":\"w0-ns-builtin\",\"name\":\"W0 非严格内置\",\"description\":\"WP-076 基础问答模板\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"x.y\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":false,\"is_built_in\":true},\"not-an-object\"]",
+              "overwrite_existing": true,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.bulk-nonstrict-overwrite-builtin-marks-user-modified",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "{\"id\":\"ignored-id\",\"name\":\"The Lab (学术选择题)\",\"description\":\"外部覆盖\",\"author\":\"wp076\",\"preview_front\":\"什么是 TCP 三次握手？\",\"preview_back\":\"SYN → SYN-ACK → ACK\",\"note_type\":\"Basic\",\"fields\":[\"Front\",\"Back\"],\"generation_prompt\":\"根据材料生成问答卡，正面提问，背面作答。\",\"front_template\":\"<div class=\\\"q\\\">{{Front}}</div>\",\"back_template\":\"{{FrontSide}}<hr id=\\\"answer\\\">{{Back}}\",\"css_style\":\".card { font-size: 18px; }\",\"field_extraction_rules\":{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"}},\"preview_data_json\":null,\"version\":\"0.1.0\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"is_active\":true,\"is_built_in\":false}",
+              "overwrite_existing": true,
+              "strict_builtin": false
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-lab"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.bulk-strict-id-name-targets-and-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"design-eink\",\"name\":\"W0 strict 覆盖 E-Ink\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.1\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-new\",\"name\":\"W0 strict 新建\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":null,\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-renamed\",\"name\":\"The Polaroid (拍立得风格)\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.2\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-new\",\"name\":\"W0 strict 同批重复 ID\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.3\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"design-swiss\",\"name\":\"The Architect (蓝图风格)\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.4\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-nofields\",\"name\":\"W0 strict 无字段\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-badrules\",\"name\":\"W0 strict 坏规则 JSON\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{bad\",\"preview_data_json\":null},{\"name\":\"W0 strict 无 ID\",\"fields_json\":\"[\\\"Front\\\"]\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"q\\\"}}\",\"generation_prompt\":\"p\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{Front}}\"},{\"id\":\"w0-strict-defaults\",\"fields_json\":\"[\\\"Front\\\"]\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"q\\\"}}\",\"generation_prompt\":\"p\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{Front}}\"}]",
+              "overwrite_existing": false,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_custom_templates_bulk",
+          "args": {
+            "request": {
+              "template_data": "[{\"id\":\"design-eink\",\"name\":\"W0 strict 覆盖 E-Ink\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.1\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-new\",\"name\":\"W0 strict 新建\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":null,\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-renamed\",\"name\":\"The Polaroid (拍立得风格)\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.2\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-new\",\"name\":\"W0 strict 同批重复 ID\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.3\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"design-swiss\",\"name\":\"The Architect (蓝图风格)\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"0.0.4\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-nofields\",\"name\":\"W0 strict 无字段\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"问题\\\"},\\\"Back\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"答案\\\"}}\",\"preview_data_json\":null},{\"id\":\"w0-strict-badrules\",\"name\":\"W0 strict 坏规则 JSON\",\"description\":\"WP-076 strict 行\",\"author\":\"wp076\",\"version\":\"1.0.0\",\"preview_front\":\"Q\",\"preview_back\":\"A\",\"note_type\":\"Basic\",\"fields_json\":\"[\\\"Front\\\",\\\"Back\\\"]\",\"generation_prompt\":\"生成问答卡\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{FrontSide}}<hr>{{Back}}\",\"css_style\":\".card{}\",\"field_extraction_rules_json\":\"{bad\",\"preview_data_json\":null},{\"name\":\"W0 strict 无 ID\",\"fields_json\":\"[\\\"Front\\\"]\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"q\\\"}}\",\"generation_prompt\":\"p\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{Front}}\"},{\"id\":\"w0-strict-defaults\",\"fields_json\":\"[\\\"Front\\\"]\",\"field_extraction_rules_json\":\"{\\\"Front\\\":{\\\"field_type\\\":\\\"Text\\\",\\\"is_required\\\":true,\\\"default_value\\\":null,\\\"validation_pattern\\\":null,\\\"description\\\":\\\"q\\\"}}\",\"generation_prompt\":\"p\",\"front_template\":\"{{Front}}\",\"back_template\":\"{{Front}}\"}]",
+              "overwrite_existing": true,
+              "strict_builtin": true
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_builtin_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "design-eink"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

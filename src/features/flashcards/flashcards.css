@@ -112,9 +112,8 @@
 .wb-fc-list {
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 6px;
-  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  background: transparent;
 }
 
 .wb-fc-list-ul {
@@ -125,7 +124,7 @@
 
 .wb-fc-row {
   padding: 9px 12px;
-  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
 }
 
 .wb-fc-row:last-child {
@@ -167,9 +166,9 @@
 
 .wb-fc-tag {
   padding: 1px 6px;
-  border-radius: 3px;
-  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
-  font-size: 10px;
+  border-radius: 4px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 4.5%, transparent 95.5%);
+  font-size: 11px;
   line-height: 1.4;
   color: hsl(var(--muted-foreground));
 }
@@ -193,10 +192,9 @@
 }
 
 .wb-fc-panel {
-  padding: 12px 14px;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 6px;
-  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  background: transparent;
   font-size: 13px;
   line-height: 1.45;
   color: hsl(var(--muted-foreground));
@@ -224,23 +222,19 @@
    复习会话（wb-fc-session-*）— 3D 翻卡、进度条、评分栏、完成态
    ============================================================ */
 
-/* --- 顶部细进度条 --- */
+/* --- 顶部极细进度条（hairline） --- */
 .wb-fc-session-progress {
   flex-shrink: 0;
-  height: 3px;
+  height: 2px;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
+  background: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 }
 
 .wb-fc-session-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    hsl(var(--primary) / 0.75),
-    hsl(var(--primary))
-  );
+  background: hsl(var(--primary) / 0.85);
   transition: width 320ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
@@ -257,39 +251,32 @@
   min-width: 0;
 }
 
-/* --- 计数徽标 / 连击 --- */
+/* --- 计数项：安静的 tabular-nums 文本 + 6px 语义微圆点，去掉彩色胶囊底 --- */
 .wb-fc-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 11px;
+  gap: 5px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: none;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.5;
+  line-height: 1.4;
   white-space: nowrap;
   color: hsl(var(--muted-foreground));
-  background: color-mix(in hsl, hsl(var(--muted)) 45%, transparent 55%);
+  background: transparent;
 }
 
 .wb-fc-chip--new {
-  color: hsl(var(--primary));
-  background: color-mix(in hsl, hsl(var(--primary)) 10%, transparent 90%);
+  color: hsl(var(--foreground) / 0.82);
 }
 
 .wb-fc-chip--learn {
-  color: hsl(24 70% 42%);
-  background: color-mix(in hsl, hsl(24 90% 55%) 12%, transparent 88%);
-}
-
-.dark .wb-fc-chip--learn {
-  color: hsl(24 85% 65%);
+  color: hsl(var(--foreground) / 0.82);
 }
 
 .wb-fc-chip--streak {
   color: hsl(41 85% 36%);
-  background: color-mix(in hsl, hsl(45 95% 55%) 16%, transparent 84%);
   animation: wb-fc-pop 260ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
@@ -305,28 +292,27 @@
   min-width: 0;
 }
 
-/* 舞台本身不画卡片框：模板的 .card 背景铺满舞台、模板里的「纸」就是卡片。
-   此前「应用卡片框 → 模板背景色带 → 模板纸张」三层叠套，观感拥挤。 */
+/* 舞台本身在模板模式下不画外框（模板自身即为卡片）；
+   原生纯文本卡面由 ReviewCardSurface 赋予单层 Tier-2 纸感卡片表面。 */
 .wb-fc-card {
-  border-radius: 14px;
+  border-radius: 20px;
   overflow: hidden;
-  /* 无模板（纯文本兜底）时的舞台底色；有模板时被模板背景完全覆盖 */
-  background: color-mix(in hsl, hsl(var(--muted)) 38%, transparent 62%);
+  background: hsl(var(--card));
   /* 滚动 viewport 会拍扁 preserve-3d，透视直接放在卡面父级 */
   perspective: 1200px;
-  transition: background-color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+  transition:
+    background-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    border-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
 .wb-fc-card[data-side='back'] {
-  background: color-mix(in hsl, hsl(var(--muted)) 38%, hsl(var(--primary)) 4%);
+  background: hsl(var(--card));
 }
 
 .wb-fc-card-side-label {
   margin-bottom: 12px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: hsl(var(--muted-foreground) / 0.7);
 }
 
@@ -471,11 +457,11 @@
   animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
-/* --- 评分栏 --- */
+/* --- 悬浮胶囊评分坞 --- */
 .wb-fc-ratebar {
   display: grid;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 4px;
 }
 
 .wb-fc-ratebar[data-mode='rate'] {
@@ -492,7 +478,7 @@
   transition:
     transform 110ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
     background-color 130ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    box-shadow 130ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+    color 130ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
 .wb-fc-rate-btn:active:not(:disabled) {
@@ -520,10 +506,10 @@
 }
 
 .wb-fc-rate-interval {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
-  opacity: 0.72;
+  line-height: 1.25;
 }
 
 .wb-fc-show-answer .wb-fc-keycap {
@@ -534,14 +520,16 @@
 .wb-fc-keycap {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 15px;
   padding: 0 4px;
-  border: 1px solid color-mix(in hsl, currentColor 28%, transparent 72%);
+  border: 1px solid color-mix(in hsl, currentColor 22%, transparent 78%);
   border-radius: 4px;
-  font-family: inherit;
-  font-size: 9px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
   font-weight: 500;
-  line-height: 1.5;
-  opacity: 0.85;
+  line-height: 1.4;
+  opacity: 0.65;
 }
 
 .wb-fc-keycap--corner {

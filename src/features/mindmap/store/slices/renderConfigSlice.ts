@@ -6,6 +6,7 @@ import type { LayoutDirection, EdgeType, MindMapRenderConfig } from '../../types
 import { PresetRegistry } from '../../registry';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import { normalizeStyleId } from '../mindmapStoreHelpers';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
 
 export const createRenderConfigSlice: MindMapSliceCreator<
@@ -45,6 +46,8 @@ export const createRenderConfigSlice: MindMapSliceCreator<
       applyRenderConfigChange((state) => {
         state.styleId = normalizedStyleId;
       });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
     },
 
     // 设置边类型
@@ -91,6 +94,8 @@ export const createRenderConfigSlice: MindMapSliceCreator<
         state.styleId = nextStyleId;
         state.edgeType = nextEdgeType;
       });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
     },
 
     // 获取当前渲染配置

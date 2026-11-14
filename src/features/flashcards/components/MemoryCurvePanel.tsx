@@ -1,8 +1,7 @@
 /**
  * 统计页「记忆曲线」面板
  *
- * - 最近复习：每张卡从上次复习（100%）起按 FSRS 遗忘曲线衰减，横轴为距上次复习的
- *   对数时间，标出「此刻」与真实的下次复习时间（学习中的卡是学习步）。
+ * - 默认查看最近的一张卡，区分此刻、模型目标与实际排期；也可比较最近五张。
  * - 点开一张卡：完整复习历史，每次复习回到 100%、按该次复习后的稳定性衰减。
  * - 数字：全部已学卡此刻的平均可提取率、近 30 天真实保留率、期望保留率。
  * 曲线常数与数据都来自后端（`fsrs_get_memory_overview` / `fsrs_get_card_memory_history`）。
@@ -15,6 +14,7 @@ import { cardDisplayFront } from '../cardDisplay';
 import { FSRS_STATS_REFRESH_EVENT, subscribeFlashcardsDueRefresh } from '../events';
 import {
   MS_PER_DAY,
+  daysUntilRetention,
   fetchCardMemoryHistory,
   fetchMemoryOverview,
   historyRange,
@@ -97,7 +97,10 @@ function useFormatters(t: TFunction, locale: string) {
       return relative.format(Math.round(diff / (365 * MS_PER_DAY)), 'year');
     };
     const tick = (value: TimeTick) => t(`stats.memory.tick.${value.unit}`, { count: value.count });
-    return { span, fromNow, tick };
+    const time = new Intl.DateTimeFormat(locale, {
+      month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    return { span, fromNow, tick, time };
   }, [t, locale]);
 }
 
@@ -173,20 +176,21 @@ interface RecentCurve {
   points: CurvePoint[];
 }
 
-function buildRecentCurves(overview: MemoryOverview, nowMs: number, range: RecentRange, t: TFunction): RecentCurve[] {
+function buildRecentCurves(overview: MemoryOverview, nowMs: number, range: RecentRange, t: TFunction, targetDays: number | null): RecentCurve[] {
   return overview.recent.flatMap((card, index) => {
     if (!card.stability || card.lastReviewMs == null) return [];
     const nowDays = Math.max(0, (nowMs - card.lastReviewMs) / MS_PER_DAY);
     const dueDays = card.dueMs > card.lastReviewMs ? (card.dueMs - card.lastReviewMs) / MS_PER_DAY : null;
-    const marks = [nowDays, ...(dueDays == null ? [] : [dueDays])];
+    const curve = card.curve ?? overview.curve;
+    const marks = [nowDays, dueDays, targetDays].filter((day): day is number => day != null);
     return [{
       card,
       title: cardTitle(card, t),
       series: String(index % SERIES_COUNT),
       nowDays,
-      nowR: retrievability(nowDays, card.stability, overview.curve),
+      nowR: retrievability(nowDays, card.stability, curve),
       dueDays,
-      points: sampleLogCurve(card.stability, overview.curve, range.minDays, range.maxDays, marks),
+      points: sampleLogCurve(card.stability, curve, range.minDays, range.maxDays, marks),
     }];
   });
 }
@@ -196,12 +200,13 @@ const RecentChart: React.FC<{
   range: RecentRange;
   floor: number;
   curve: ForgettingCurve;
-  desiredRetention: number;
+  desiredRetention: number | null;
   width: number;
   active: string | null;
+  targetDays: number | null;
   fmt: Formatters;
   t: TFunction;
-}> = ({ curves, range, floor, curve, desiredRetention, width, active, fmt, t }) => {
+}> = ({ curves, range, floor, curve, desiredRetention, width, active, targetDays, fmt, t }) => {
   const clipId = `wb-fcx-memory-${useId().replace(/:/g, '')}`;
   const plotW = Math.max(160, width - PAD.left - PAD.right);
   const plotH = CHART_H - PAD.top - PAD.bottom;
@@ -210,7 +215,8 @@ const RecentChart: React.FC<{
   const logSpan = Math.log(range.maxDays / range.minDays);
   const x = (days: number) => x0 + (Math.log(Math.min(range.maxDays, Math.max(range.minDays, days)) / range.minDays) / logSpan) * plotW;
   const y = (r: number) => PAD.top + ((1 - Math.min(1, Math.max(floor, r))) / (1 - floor)) * plotH;
-  const inRange = (days: number) => days >= range.minDays && days <= range.maxDays;
+  const single = targetDays != null;
+  const inRange = (days: number) => days <= range.maxDays && (single || days >= range.minDays);
 
   return (
     <svg width={width} height={CHART_H} role="img" aria-label={t('stats.memory.chartLabel', { count: curves.length })}>
@@ -224,7 +230,7 @@ const RecentChart: React.FC<{
           <text className="wb-fcx-memory-axis-label" x={x(tick.days)} y={PAD.top + plotH + 17} textAnchor="middle">{fmt.tick(tick)}</text>
         </g>
       ))}
-      <TargetLine y={y(desiredRetention)} x0={x0} x1={x1} label={t('stats.memory.desiredLine', { value: percent(desiredRetention) })} />
+      {desiredRetention != null && <TargetLine y={y(desiredRetention)} x0={x0} x1={x1} label={t('stats.memory.desiredLine', { value: percent(desiredRetention) })} />}
       <g clipPath={`url(#${clipId})`}>
         {curves.map((item) => {
           const visible = clipAtFloor(item.points, floor);
@@ -241,15 +247,28 @@ const RecentChart: React.FC<{
         {curves.map((item) => {
           const dim = active != null && active !== item.card.cardStateId;
           const stability = item.card.stability ?? 0;
-          const dueR = item.dueDays == null ? null : retrievability(item.dueDays, stability, curve);
+          const dueR = item.dueDays == null ? null : retrievability(item.dueDays, stability, item.card.curve ?? curve);
+          const overlaps = single && item.dueDays != null && dueR != null
+            && Math.hypot(x(item.dueDays) - x(item.nowDays), y(dueR) - y(item.nowR)) < 12;
           return (
             <g key={item.card.cardStateId}>
               {item.dueDays != null && dueR != null && inRange(item.dueDays) && dueR >= floor ? (
-                <circle className="wb-fcx-memory-mark" data-series={item.series} data-kind="due" data-dim={dim} cx={x(item.dueDays)} cy={y(dueR)} r={4.5} />
+                <circle className="wb-fcx-memory-mark" data-series={item.series} data-kind="due" data-dim={dim} cx={x(item.dueDays)} cy={y(dueR)} r={4.5}>
+                  <title>{t('stats.memory.keyDue')} · {fmt.time.format(item.card.dueMs)} · {percent(dueR)}</title>
+                </circle>
               ) : null}
-              {/* 刚复习过的卡「此刻」还在横轴起点之前，不画（否则全挤在左边缘） */}
+              {targetDays != null && desiredRetention != null && inRange(targetDays) && (
+                <rect className="wb-fcx-memory-mark" data-kind="target" data-series={item.series}
+                  x={x(targetDays) - 3} y={y(desiredRetention) - 3} width={6} height={6}
+                  transform={`rotate(45 ${x(targetDays)} ${y(desiredRetention)})`}>
+                  <title>{t('stats.memory.keyTarget')} · {percent(desiredRetention)}</title>
+                </rect>
+              )}
               {inRange(item.nowDays) && item.nowR >= floor ? (
-                <circle className="wb-fcx-memory-mark" data-series={item.series} data-kind="now" data-dim={dim} cx={x(item.nowDays)} cy={y(item.nowR)} r={3.5} />
+                <circle className="wb-fcx-memory-mark" data-series={item.series} data-kind="now" data-overlap={overlaps || undefined} data-dim={dim}
+                  cx={x(item.nowDays)} cy={y(item.nowR)} r={overlaps ? 7 : single ? 5.5 : 3.5}>
+                  <title>{t('stats.memory.nowValue', { value: percent(item.nowR) })}</title>
+                </circle>
               ) : null}
             </g>
           );
@@ -259,7 +278,7 @@ const RecentChart: React.FC<{
   );
 };
 
-const ChartKey: React.FC<{ t: TFunction; axis: string; history?: boolean }> = ({ t, axis, history = false }) => (
+const ChartKey: React.FC<{ t: TFunction; axis: string; history?: boolean; target?: boolean }> = ({ t, axis, history = false, target = false }) => (
   <p className="wb-fcx-memory-caption">
     <span>{axis}</span>
     {history ? (
@@ -277,6 +296,12 @@ const ChartKey: React.FC<{ t: TFunction; axis: string; history?: boolean }> = ({
       <svg width="10" height="10" aria-hidden="true"><circle className="wb-fcx-memory-mark" data-kind="due" cx="5" cy="5" r="4" /></svg>
       {t('stats.memory.keyDue')}
     </span>
+    {target && (
+      <span className="wb-fcx-memory-key">
+        <svg width="10" height="10" aria-hidden="true"><rect className="wb-fcx-memory-mark" data-kind="target" x="2" y="2" width="6" height="6" transform="rotate(45 5 5)" /></svg>
+        {t('stats.memory.keyTarget')}
+      </span>
+    )}
     {history ? (
       <span className="wb-fcx-memory-key">
         <svg width="18" height="10" aria-hidden="true"><line className="wb-fcx-memory-path" data-future="true" x1="1" x2="17" y1="5" y2="5" /></svg>
@@ -290,33 +315,100 @@ const RecentView: React.FC<{
   overview: MemoryOverview;
   nowMs: number;
   onOpen: (cardStateId: string) => void;
+  cardId: string | null;
+  setCardId: (cardStateId: string) => void;
+  comparing: boolean;
+  setComparing: (comparing: boolean) => void;
   fmt: Formatters;
   t: TFunction;
-}> = ({ overview, nowMs, onOpen, fmt, t }) => {
+}> = ({ overview, nowMs, onOpen, cardId, setCardId, comparing, setComparing, fmt, t }) => {
   const [measureRef, width] = useElementWidth(640);
   const [active, setActive] = useState<string | null>(null);
-  const range = useMemo(() => recentRange(overview.recent, nowMs), [overview.recent, nowMs]);
-  const floor = useMemo(() => recentFloor(overview.recent, range.maxDays, overview.curve), [overview.recent, range.maxDays, overview.curve]);
-  const curves = useMemo(() => buildRecentCurves(overview, nowMs, range, t), [overview, nowMs, range, t]);
+  const cards = overview.recent.filter((card) => card.stability != null && card.stability > 0 && card.lastReviewMs != null);
+  const selected = cards.find((card) => card.cardStateId === cardId) ?? cards[0];
+  if (!selected) return null;
+  const visible = comparing ? cards : [selected];
+  const desiredRetention = selected.desiredRetention ?? overview.desiredRetention;
+  const sharedTarget = visible.every((card) => (card.desiredRetention ?? overview.desiredRetention) === desiredRetention)
+    ? desiredRetention : null;
+  const target = daysUntilRetention(desiredRetention, selected.stability ?? 0, selected.curve ?? overview.curve);
+  const targetDays = !comparing && Number.isFinite(target) && target > 0 ? target : null;
+  const range = recentRange(visible, nowMs, targetDays ?? undefined);
+  const curves = buildRecentCurves({ ...overview, recent: visible }, nowMs, range, t, targetDays);
+  const single = !comparing ? curves[0] : null;
+  const dueR = single?.dueDays == null ? null : retrievability(single.dueDays, selected.stability ?? 0, selected.curve ?? overview.curve);
+  const floor = Math.min(recentFloor(visible, range.maxDays, overview.curve),
+    Math.floor(Math.min(single?.nowR ?? 1, dueR ?? 1, sharedTarget ?? 1) * 10) / 10);
+  const theoreticalMs = targetDays == null || selected.lastReviewMs == null ? null
+    : selected.lastReviewMs + Math.round(targetDays * MS_PER_DAY);
+  const learning = isLearningState(selected.state);
 
   return (
     <div className="wb-fcx-memory-view">
-      <p className="wb-fcx-memory-view-title">{t('stats.memory.recentTitle', { count: curves.length })}</p>
+      <div className="wb-fcx-memory-controls">
+        {comparing ? (
+          <p className="wb-fcx-memory-view-title">{t('stats.memory.recentTitle', { count: curves.length })}</p>
+        ) : (
+          <label className="wb-fcx-memory-select">
+            <span>{t('stats.memory.selectCard')}</span>
+            <select value={selected.cardStateId} onChange={(event) => setCardId(event.currentTarget.value)}>
+              {cards.map((card) => <option key={card.cardStateId} value={card.cardStateId}>{cardTitle(card, t)}</option>)}
+            </select>
+          </label>
+        )}
+        {cards.length > 1 && (
+          <button type="button" className="wb-fcx-memory-back" aria-pressed={comparing}
+            onClick={() => { setActive(null); setComparing(!comparing); }}>
+            {comparing ? t('stats.memory.singleView') : t('stats.memory.compare')}
+          </button>
+        )}
+        {!comparing && (
+          <button type="button" className="wb-fcx-memory-back"
+            aria-label={t('stats.memory.openHistory', { title: cardTitle(selected, t) })}
+            onClick={() => onOpen(selected.cardStateId)}>
+            {t('stats.memory.historyAction')} <CaretRight size={12} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       <div ref={measureRef} className="wb-fcx-memory-chart">
         <RecentChart
           curves={curves}
           range={range}
           floor={floor}
           curve={overview.curve}
-          desiredRetention={overview.desiredRetention}
+          desiredRetention={sharedTarget}
           width={width}
           active={active}
+          targetDays={targetDays}
           fmt={fmt}
           t={t}
         />
       </div>
-      <ChartKey t={t} axis={t('stats.memory.axisSinceReview')} />
-      <ul className="wb-fcx-memory-list">
+      <ChartKey t={t} axis={t('stats.memory.axisSinceReview')} target={targetDays != null} />
+      {single && (
+        <dl className="wb-fcx-memory-markers">
+          <div>
+            <dt>{t('stats.memory.keyNow')}</dt>
+            <dd>{percent(single.nowR)}</dd>
+          </div>
+          {theoreticalMs != null && (
+            <div>
+              <dt>{t('stats.memory.keyTarget')} · {percent(desiredRetention)}</dt>
+              <dd><time dateTime={new Date(theoreticalMs).toISOString()} title={fmt.time.format(theoreticalMs)}>{fmt.fromNow(theoreticalMs, nowMs)}</time></dd>
+            </div>
+          )}
+          <div>
+            <dt>{t(learning ? 'stats.memory.keyLearningDue' : 'stats.memory.keyDue')}{dueR == null ? '' : ` · ${percent(dueR)}`}</dt>
+            <dd><time dateTime={new Date(selected.dueMs).toISOString()} title={fmt.time.format(selected.dueMs)}>
+              {selected.dueMs <= nowMs
+                ? t('stats.memory.wasDue', { value: fmt.fromNow(selected.dueMs, nowMs) })
+                : fmt.fromNow(selected.dueMs, nowMs)}
+            </time></dd>
+          </div>
+        </dl>
+      )}
+      {single && learning && <p className="wb-fcx-footnote">{t('stats.memory.learningHint')}</p>}
+      {comparing && <ul className="wb-fcx-memory-list">
         {curves.map((item) => {
           const due = item.card.dueMs <= nowMs
             ? t('stats.memory.overdue')
@@ -343,7 +435,7 @@ const RecentView: React.FC<{
                   </span>
                 ) : <span />}
                 <span className="wb-fcx-memory-row-meta">
-                  {t('stats.memory.stability', { value: fmt.span(item.card.stability ?? 0) })}
+                  {t(item.card.curve && 'model' in item.card.curve ? 'stats.memory.stabilitySlow' : 'stats.memory.stability', { value: fmt.span(item.card.stability ?? 0) })}
                 </span>
                 <span className="wb-fcx-memory-row-meta">{t('stats.memory.nowValue', { value: percent(item.nowR) })}</span>
                 <span className="wb-fcx-memory-row-next">
@@ -356,7 +448,7 @@ const RecentView: React.FC<{
             </li>
           );
         })}
-      </ul>
+      </ul>}
     </div>
   );
 };
@@ -386,19 +478,19 @@ const HistoryChart: React.FC<{
   const x1 = PAD.left + plotW;
   const x = (ms: number) => x0 + ((ms - range.startMs) / (range.endMs - range.startMs)) * plotW;
   const lowest = segments.reduce(
-    (min, s) => Math.min(min, retrievability((s.toMs - s.fromMs) / MS_PER_DAY, s.stability, history.curve)),
+    (min, s) => Math.min(min, retrievability((s.toMs - s.fromMs) / MS_PER_DAY, s.stability, s.curve)),
     history.desiredRetention,
   );
   const floor = Math.min(0.8, Math.max(0.4, Math.floor(lowest * 10) / 10));
   const y = (r: number) => PAD.top + ((1 - Math.min(1, Math.max(floor, r))) / (1 - floor)) * plotH;
-  const rAt = (s: { fromMs: number; stability: number }, ms: number) =>
-    retrievability((ms - s.fromMs) / MS_PER_DAY, s.stability, history.curve);
+  const rAt = (s: (typeof segments)[number], ms: number) =>
+    retrievability((ms - s.fromMs) / MS_PER_DAY, s.stability, s.curve);
 
   const past: Array<[number, number]> = [];
   const future: Array<[number, number]> = [];
   segments.forEach((segment, i) => {
     const start: Array<[number, number]> = i > 0 ? [[x(segment.fromMs), y(rAt(segments[i - 1], segment.fromMs))]] : [];
-    past.push(...start, [x(segment.fromMs), y(1)]);
+    past.push(...start, [x(segment.fromMs), y(rAt(segment, segment.fromMs))]);
     const stop = Math.min(segment.toMs, nowMs);
     for (let k = 1; k <= HISTORY_SAMPLES; k += 1) {
       const ms = segment.fromMs + ((segment.toMs - segment.fromMs) * k) / HISTORY_SAMPLES;
@@ -498,6 +590,7 @@ const HistoryView: React.FC<{
             <HistoryChart history={history} nowMs={nowMs} width={width} t={t} locale={locale} />
           </div>
           <ChartKey t={t} axis={t('stats.memory.axisTimeline')} history />
+          <p className="wb-fcx-footnote">{t('stats.memory.historyEstimate')}</p>
           <ol className="wb-fcx-memory-reviews">
             {rows.map((row) => (
               <li key={row.logId} className="wb-fcx-memory-review" data-tone={TONE[row.rating]}>
@@ -509,7 +602,7 @@ const HistoryView: React.FC<{
                     : t('stats.memory.reviewElapsed', { value: fmt.span(row.elapsedDays) })}
                 </span>
                 <span>{row.recallBefore == null ? '' : t('stats.memory.reviewRecall', { value: percent(row.recallBefore) })}</span>
-                <span>{row.stabilityAfter ? t('stats.memory.reviewStability', { value: fmt.span(row.stabilityAfter) }) : ''}</span>
+                <span>{row.stabilityAfter ? t('model' in history.curve ? 'stats.memory.reviewStabilitySlow' : 'stats.memory.reviewStability', { value: fmt.span(row.stabilityAfter) }) : ''}</span>
               </li>
             ))}
           </ol>
@@ -526,6 +619,8 @@ export const MemoryCurvePanel: React.FC = () => {
   const [overview, setOverview] = useState<MemoryOverview | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [selected, setSelected] = useState<string | null>(null);
+  const [recentCardId, setRecentCardId] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
   const [history, setHistory] = useState<{ id: string; status: Status; data: CardMemoryHistory | null } | null>(null);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
@@ -540,7 +635,6 @@ export const MemoryCurvePanel: React.FC = () => {
       const data = await fetchCardMemoryHistory(cardStateId);
       if (!mountedRef.current || requestId !== historyRequestRef.current) return;
       setHistory({ id: cardStateId, status: 'ready', data });
-      setNowMs(Date.now());
     } catch {
       if (!mountedRef.current || requestId !== historyRequestRef.current) return;
       setHistory({ id: cardStateId, status: 'unavailable', data: null });
@@ -553,7 +647,7 @@ export const MemoryCurvePanel: React.FC = () => {
       const data = await fetchMemoryOverview(RECENT_LIMIT);
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
       setOverview(data);
-      setNowMs(Date.now());
+      setNowMs(data.generatedAtMs);
       setStatus('ready');
     } catch {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -579,6 +673,7 @@ export const MemoryCurvePanel: React.FC = () => {
 
   const open = useCallback((cardStateId: string) => {
     setSelected(cardStateId);
+    setRecentCardId(cardStateId);
     void loadHistory(cardStateId);
   }, [loadHistory]);
 
@@ -597,7 +692,7 @@ export const MemoryCurvePanel: React.FC = () => {
         <h3 className="wb-fcx-panel-title">
           <ChartLineDown size={14} weight="duotone" />
           {t('stats.memory.title')}
-          <span className="wb-fcx-memory-tag">FSRS</span>
+          <span className="wb-fcx-memory-tag">{overview && 'model' in overview.curve ? 'FSRS-7' : 'FSRS'}</span>
         </h3>
         <p className="wb-fcx-panel-sub">{t('stats.memory.subtitle')}</p>
       </div>
@@ -621,7 +716,7 @@ export const MemoryCurvePanel: React.FC = () => {
                 <dd>{trueRetention && trueRetention.reviews > 0 ? percent(trueRetention.passed / trueRetention.reviews) : '—'}</dd>
                 <p>
                   {trueRetention && trueRetention.reviews > 0
-                    ? t('stats.memory.trueRetentionHint', { count: trueRetention.reviews })
+                    ? t('stats.memory.trueRetentionHint', { passed: trueRetention.passed, total: trueRetention.reviews })
                     : t('stats.memory.trueRetentionEmpty')}
                 </p>
               </div>
@@ -642,7 +737,8 @@ export const MemoryCurvePanel: React.FC = () => {
                 locale={i18n.language}
               />
             ) : (
-              <RecentView overview={overview} nowMs={nowMs} onOpen={open} fmt={fmt} t={t} />
+              <RecentView overview={overview} nowMs={nowMs} onOpen={open}
+                cardId={recentCardId} setCardId={setRecentCardId} comparing={comparing} setComparing={setComparing} fmt={fmt} t={t} />
             )}
           </>
         )}

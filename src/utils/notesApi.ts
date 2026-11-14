@@ -256,8 +256,8 @@ export const NotesAPI = {
     });
   },
 
-  async listDeleted(page: number = 0, page_size: number = 20): Promise<NotesTrashPage> {
-    return await invoke<NotesTrashPage>('notes_list_deleted', { subject: GLOBAL_SUBJECT, page, page_size });
+  async listDeleted(page: number = 0, pageSize: number = 20): Promise<NotesTrashPage> {
+    return await invoke<NotesTrashPage>('notes_list_deleted', { subject: GLOBAL_SUBJECT, page, pageSize });
   },
   async emptyTrash(): Promise<number> {
     return await invoke<number>('notes_empty_trash', { subject: GLOBAL_SUBJECT });

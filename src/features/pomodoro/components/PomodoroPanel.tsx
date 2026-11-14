@@ -177,13 +177,13 @@ const HeroRing: React.FC<{
 
 type SettingsRowSize = 'sm' | 'md';
 
-/** 分区标题：11px 大写 muted（与 ComposerPanel.Section 的骨架语言一致） */
+/** 分区标题：12px muted（不加 uppercase / 过宽字距，适配中文） */
 const SettingsSection: React.FC<{ label: string; children: React.ReactNode }> = ({
   label,
   children,
 }) => (
   <div>
-    <div className="pb-1 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+    <div className="pb-1 text-xs font-medium text-muted-foreground">
       {label}
     </div>
     <div className="space-y-0.5">{children}</div>
@@ -934,7 +934,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             })}
             aria-pressed={workMinutes === minutes}
             className={cn(
-              'gap-0 !px-2 text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
+              'gap-0 !px-2 font-mono text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
               touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6 [@media(pointer:coarse)]:!h-11',
               workMinutes === minutes
                 ? 'font-semibold text-primary'
@@ -994,7 +994,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onValueChange={([v]) => updateSettings({ noiseVolume: (v ?? 0) / 100 })}
               aria-label={t('pomodoro.settings.noiseVolume')}
             />
-            <span className="w-8 text-right text-[10px] tabular-nums text-muted-foreground">
+            <span className="w-8 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
               {Math.round(settings.noiseVolume * 100)}%
             </span>
           </span>
@@ -1103,7 +1103,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   className="font-mono text-3xl font-semibold leading-none tabular-nums text-foreground"
                 />
                 {!isCountUpWork && (
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
                     / {formatTime(totalDuration)}
                   </span>
                 )}
@@ -1239,7 +1239,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               )}
             />
             {mode !== 'idle' && !isCountUpWork && (
-              <span className="text-xs tabular-nums text-muted-foreground">
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">
                 / {formatTime(totalDuration)}
               </span>
             )}
@@ -1373,34 +1373,34 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         </div>
       )}
 
-      {/* 今日统计 + 每日目标 + 连续达标 */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-2.5 sm:px-6">
-        <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="relative inline-flex">
-            <Flame
-              size={12}
-              weight={goalReached ? 'fill' : 'regular'}
-              className={cn(
-                'transition-transform duration-200 ease-standard motion-reduce:transition-none motion-reduce:transform-none',
-                goalReached
-                  ? 'text-[color:hsl(var(--success))]'
-                  : 'text-[color:hsl(var(--warning))]',
-                celebrate && 'scale-125',
-              )}
-            />
-            {celebrate && (
-              <Flame
-                size={12}
-                weight="fill"
-                aria-hidden="true"
-                className="absolute inset-0 text-[color:hsl(var(--success))] motion-safe:animate-[ping_400ms_ease-out_1] motion-reduce:hidden"
-              />
+      {/* 今日统计 + 每日目标 + 连续达标：极简行内 tabular-nums 状态条，以 `·` 分隔 */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2.5 font-mono text-xs tabular-nums text-muted-foreground sm:px-6">
+        <span
+          className="inline-flex items-center gap-1.5"
+          title={
+            settings.dailyGoal > 0
+              ? goalReached
+                ? t('pomodoro.stats.goalReached')
+                : t('pomodoro.stats.goalProgress', {
+                    done: todayCount,
+                    goal: settings.dailyGoal,
+                  })
+              : undefined
+          }
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 rounded-full transition-transform duration-200',
+              goalReached
+                ? 'bg-[color:hsl(var(--success))]'
+                : 'bg-[color:hsl(var(--warning))]',
+              celebrate && 'scale-125',
             )}
-          </span>
+          />
           <span>
             {t('pomodoro.stats.todayLabel')}{' '}
-            <strong className="font-semibold tabular-nums text-foreground">
-              {/* key 重挂：计数变化时一次性上滚（reduced-motion 下静态） */}
+            <strong className="font-medium text-foreground">
               <span key={todayCount} className="pomodoro-num-roll">
                 {todayCount}
               </span>
@@ -1410,57 +1410,43 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             </strong>{' '}
             {t('pomodoro.stats.pomodoroUnit')}
           </span>
-          {/* 目标进度（设置了目标才显示） */}
-          {settings.dailyGoal > 0 && (
-            <span
-              className="ml-1 inline-flex h-1 w-16 overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]"
-              title={
-                goalReached
-                  ? t('pomodoro.stats.goalReached')
-                  : t('pomodoro.stats.goalProgress', {
-                      done: todayCount,
-                      goal: settings.dailyGoal,
-                    })
-              }
-            >
-              <span
-                className={cn(
-                  'h-full rounded-full transition-all duration-500',
-                  goalReached
-                    ? 'bg-[color:hsl(var(--success))]'
-                    : 'bg-[color:hsl(var(--warning))]',
-                )}
-                style={{
-                  width: `${Math.min(100, (todayCount / settings.dailyGoal) * 100)}%`,
-                }}
-              />
-            </span>
-          )}
-          {goalReached && (
-            <span className="text-xs font-medium text-[color:hsl(var(--success))]">
+        </span>
+        {goalReached && (
+          <>
+            <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+            <span className="font-medium text-[color:hsl(var(--success))]">
               {t('pomodoro.stats.goalReached')}
             </span>
-          )}
-        </div>
+          </>
+        )}
         {/* 连续 N 天达成每日目标 */}
         {streakDays >= 2 && (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-[color:hsl(var(--warning))]">
-            <Fire size={12} weight="fill" aria-hidden="true" />
-            {t('pomodoro.stats.streak', { count: streakDays })}
-          </span>
+          <>
+            <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground/85">
+              <Fire size={12} weight="fill" aria-hidden="true" className="text-[color:hsl(var(--warning))]" />
+              {t('pomodoro.stats.streak', { count: streakDays })}
+            </span>
+          </>
         )}
         {todayStats && todayStats.totalFocusSeconds > 0 && (
-          <div className="text-xs text-muted-foreground">
-            {t('pomodoro.stats.focusLabel')}{' '}
-            <strong className="font-semibold text-foreground">
-              {formatMinutes(todayStats.totalFocusSeconds)}
-            </strong>
-          </div>
+          <>
+            <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+            <span>
+              {t('pomodoro.stats.focusLabel')}{' '}
+              <strong className="font-medium text-foreground">
+                {formatMinutes(todayStats.totalFocusSeconds)}
+              </strong>
+            </span>
+          </>
         )}
         {todayStats && todayStats.interruptedCount > 0 && (
-          <div className="text-xs text-muted-foreground/60">
-            {t('pomodoro.stats.interrupted', { value: todayStats.interruptedCount })}
-          </div>
+          <>
+            <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+            <span className="text-muted-foreground/70">
+              {t('pomodoro.stats.interrupted', { value: todayStats.interruptedCount })}
+            </span>
+          </>
         )}
       </div>
     </div>

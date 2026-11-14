@@ -30,6 +30,8 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import type { PlaygroundAskUserInteraction } from '../../dev/playground/blockingRuntime';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
+import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
+import { OpenUILangRenderer } from '@/features/generative-ui';
 
 // ============================================================================
 // 类型定义
@@ -60,7 +62,10 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
       multiple,
       allowCustom,
       context,
-    } = interaction;
+      html: htmlCanvas,
+      ui: uiSource,
+      title: panelTitle,
+    } = interaction as AskUserInteraction & { html?: string; ui?: string; title?: string };
 
     // 防御性归一化：即使上游归一化失效（如 LLM 直接传入 { label, value } 对象），
     // 也避免在 JSX 中渲染对象触发 "Objects are not valid as a React child"
@@ -256,8 +261,13 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium leading-6 text-foreground">
-              {question}
+              {panelTitle || question}
             </p>
+            {panelTitle && question && panelTitle !== question && (
+              <p className="mt-0.5 text-xs leading-5 text-foreground/90">
+                {question}
+              </p>
+            )}
             {context && (
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {context}
@@ -265,6 +275,29 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
             )}
           </div>
         </div>
+
+        {(htmlCanvas || uiSource) && (
+          <div className="pl-6">
+            {htmlCanvas ? (
+              <InteractiveHtmlCanvas
+                html={htmlCanvas}
+                title={panelTitle || question || 'interactive-decision-canvas'}
+                onSubmit={(data, summary) =>
+                  handleSubmit([summary], [], JSON.stringify(data), 'mixed')
+                }
+              />
+            ) : uiSource ? (
+              <OpenUILangRenderer
+                source={uiSource}
+                awaitAnswer
+                disabled={disabled}
+                onSubmit={({ summary, data }) =>
+                  handleSubmit([summary], [], JSON.stringify(data), 'mixed')
+                }
+              />
+            ) : null}
+          </div>
+        )}
 
         {options.length > 0 && (
           <div className="space-y-2 pl-6">

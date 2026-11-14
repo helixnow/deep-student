@@ -1,0 +1,2348 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_rag_search",
+    "vfs_get_lance_stats",
+    "vfs_optimize_lance",
+    "vfs_multimodal_index",
+    "vfs_multimodal_search",
+    "vfs_multimodal_search_detailed",
+    "vfs_inspect_retrieval_capabilities",
+    "vfs_multimodal_stats",
+    "vfs_multimodal_delete",
+    "vfs_multimodal_index_resource"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.rag.search.indexed_note_with_mock_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "导数笔记",
+              "content": "# 导数\n\n导数描述函数的变化率。求导是微积分的基本运算。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "如何求导",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "如何求导",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 1,
+              "enableReranking": false,
+              "modality": "text",
+              "enableCrossDimension": false
+            }
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "如何求导",
+              "folderIds": null,
+              "resourceTypes": [
+                "note"
+              ],
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "TEXT",
+              "enableCrossDimension": true
+            }
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "如何求导",
+              "folderIds": [
+                "fld_missing0000"
+              ],
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "",
+              "enableCrossDimension": true
+            }
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "导数"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.search.empty_index_with_mock_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "没有索引内容",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          }
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "没有索引内容",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "mm",
+              "enableCrossDimension": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.search.without_embedding_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "未配置嵌入模型",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "未配置嵌入模型",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "multimodal",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.search.validation_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "   \n\t",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "有效查询",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "image",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "有效查询",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "bogus",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "有效查询",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": -1,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_rag_search",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.lance_stats.modalities",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": null
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "unknown"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.lance_stats.after_index",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "统计笔记",
+              "content": "# 导数\n\n导数描述函数的变化率。求导是微积分的基本运算。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.optimize.empty_and_dims_without_tables",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": null
+          }
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": "unknown"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.lance.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_optimize_lance",
+          "args": {
+            "modality": [
+              "text"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index.empty_pages",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${0.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": []
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index.not_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${0.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "pageIndex": 0,
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/png",
+                  "textContent": "像素",
+                  "blobHash": null
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index.with_mock_vl",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${4.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "pageIndex": 0,
+                  "imageBase64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/png",
+                  "textContent": "像素",
+                  "blobHash": null
+                },
+                {
+                  "pageIndex": 1,
+                  "imageBase64": null,
+                  "imageMime": null,
+                  "textContent": "无图页",
+                  "blobHash": null
+                },
+                {
+                  "pageIndex": 2,
+                  "imageBase64": "!!!",
+                  "imageMime": "image/png",
+                  "textContent": null,
+                  "blobHash": null
+                },
+                {
+                  "pageIndex": 3,
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/jpeg",
+                  "textContent": null,
+                  "blobHash": null
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_stats",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_lance_stats",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "res_x",
+              "resourceType": "image"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "res_x",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search.without_vl_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "text"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search.with_mock_vl_index",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${4.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "pageIndex": 0,
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/png",
+                  "textContent": "像素",
+                  "blobHash": null
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "text"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 1,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": [
+                "${4.resourceId}"
+              ],
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": [
+                "fld_missing0000"
+              ],
+              "resourceIds": null,
+              "resourceTypes": [
+                "image"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "像素"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search.query_resolution_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "   ",
+              "queryText": "  ",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "   "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "Text"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": -1,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search_detailed.without_vl_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "text"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search_detailed.with_mock_vl_index",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${4.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "pageIndex": 0,
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/png",
+                  "textContent": "像素",
+                  "blobHash": null
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "text"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 1,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": [
+                "${4.resourceId}"
+              ],
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "queryImageMediaType": "image/png"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素",
+              "queryText": "像素",
+              "topK": 10,
+              "folderIds": [
+                "fld_missing0000"
+              ],
+              "resourceIds": null,
+              "resourceTypes": [
+                "image"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "像素"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_search_detailed.query_resolution_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "   ",
+              "queryText": "  ",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed",
+              "queryImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "mixed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "",
+              "queryText": "",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "image",
+              "queryImageBase64": "   "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": 10,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null,
+              "queryMode": "Text"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {
+            "params": {
+              "query": "x",
+              "queryText": "x",
+              "topK": -1,
+              "folderIds": null,
+              "resourceIds": null,
+              "resourceTypes": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_search_detailed",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.capabilities.unconfigured_with_dims",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_inspect_retrieval_capabilities",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_inspect_retrieval_capabilities",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.capabilities.unconfigured_and_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_inspect_retrieval_capabilities",
+          "args": {}
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_inspect_retrieval_capabilities",
+          "args": {}
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_inspect_retrieval_capabilities",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_stats.empty_and_dims",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_stats",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_delete.missing_and_unindexed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {
+            "resourceId": "res_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {
+            "resourceId": ""
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {
+            "resourceId": "${2.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_delete.after_mock_index",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index",
+          "args": {
+            "params": {
+              "resourceId": "${4.resourceId}",
+              "resourceType": "image",
+              "folderId": null,
+              "pages": [
+                {
+                  "pageIndex": 0,
+                  "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                  "imageMime": "image/png",
+                  "textContent": "像素",
+                  "blobHash": null
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_stats",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_delete.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_delete",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index_resource.text_attachment_no_pages",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "plain.txt",
+              "mimeType": "text/plain",
+              "base64Content": "5paH5pys"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "attachment",
+            "sourceId": "${0.sourceId}",
+            "folderId": null,
+            "forceRebuild": false
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "file",
+            "sourceId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index_resource.image_not_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "attachmentType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "image",
+            "sourceId": "${0.sourceId}",
+            "folderId": null,
+            "forceRebuild": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index_resource.image_and_pdf_with_mock_vl",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-vfs-vl-embedding",
+                "name": "W0 VFS VL Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-vl-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding",
+              "vl_embedding_model_config_id": "w0-vfs-vl-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "w0-vfs-vl-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "attachmentType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "image",
+            "sourceId": "${4.sourceId}",
+            "folderId": null,
+            "forceRebuild": true
+          }
+        },
+        {
+          "cmd": "vfs_multimodal_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.rag.mm_index_resource.missing_and_unsupported",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "textbook",
+            "sourceId": "tb_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "exam",
+            "sourceId": "exam_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "attachment",
+            "sourceId": "att_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "note",
+            "sourceId": "note_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "",
+            "sourceId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceId": "att_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_multimodal_index_resource",
+          "args": {
+            "sourceType": "image",
+            "sourceId": "att_x",
+            "forceRebuild": "yes"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

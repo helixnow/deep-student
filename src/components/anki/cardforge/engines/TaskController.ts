@@ -447,17 +447,10 @@ export class TaskController {
         status: normalizeTaskStatus(state.status) as DocumentState['status'],
       });
 
-      try {
-        // 优先使用最新命令名
-        return normalizeDocState(await invoke<DocumentState>('get_document_processing_state', {
-          documentId: trimmedId,
-        }));
-      } catch (error: unknown) {
-        // 兼容旧命令名
-        return normalizeDocState(await invoke<DocumentState>('get_document_state', {
-          documentId: trimmedId,
-        }));
-      }
+      // 旧命令名 get_document_state 在 Rust generate_handler! 中不存在，回退只会再失败一次。
+      return normalizeDocState(await invoke<DocumentState>('get_document_processing_state', {
+        documentId: trimmedId,
+      }));
     } catch (error: unknown) {
       // 如果后端未实现该命令，尝试从任务列表推导状态
       console.warn('[TaskController] get_document_processing_state 未实现，从任务列表推导状态');

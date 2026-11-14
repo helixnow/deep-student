@@ -39,7 +39,7 @@ import 'katex/contrib/mhchem';
 import type { CrepeEditorProps, CrepeEditorApi, CrepeBlockActionsHost, CrepeDocumentCapabilities } from './types';
 import { bindCrepeCommandHost, canEditCrepeView, canExecuteCrepeCommand, executeCrepeCommand,
   LAYOUT_COMMANDS, isLayoutCommand, notifyCrepeCommandState, subscribeCrepeCommandState, type CrepeCommandId, type CrepeCommandRequest } from './commandRegistry';
-import { wireCrepeCommandMenu, layoutCommandLabel } from './commandMenus';
+import { officialSelectionToolbarEntries, wireCrepeCommandMenu, layoutCommandLabel, officialSlashMenuEntries } from './commandMenus';
 import { COLUMNS_REQUIRED_CAPABILITY, exportColumnsPlainMarkdown } from './plugins/columns';
 import { copyBlockWithFreshIdentity } from './plugins/blockIdentity';
 import { preflightRootBlockIdentity } from './plugins/blockIdentity/commands';
@@ -60,16 +60,27 @@ import {
 } from './features/imageUpload';
 import { bindBrowserImageUploads, createUploadLifecycle, handleNativeImageDrop, type UploadLifecycle } from './uploadLifecycle';
 import { applyCrepePlugins } from './plugins';
-import { appendCalloutToggleSlashItems } from './plugins/slashMenuExtras';
+import { vfsFileApi } from '@/api/vfsFileApi';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
+import {
+  formatAnchorShortLocator,
+  isSemanticAnchorUri,
+  type ExcerptDragPayload,
+  type NoteSemanticAnchor,
+} from '@/ui-kernel/contracts/interop';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import type { SlotEntry } from '@/ui-sdk';
+import { adaptSelectionToolbar, buildEditorSelectionToolbar, buildEditorSlashMenu, collectEditorBlockMenuRows, mergeEditorEntries, type EditorContributionError, type EditorInstanceContext } from '@/ui-plugins/official/editor/editorSlots';
+import { officialBlockMenuEntries, registerBlockMenuContributions, contractBlockMenuTarget, type BlockMenuContributionRow } from './blockMenuContributions';
 import { createMermaidObserver } from './features/mermaidPreview';
-import { emitCrepeDebug, captureDOMSnapshot } from '../../debug-panel/plugins/CrepeEditorDebugPlugin';
+import { emitCrepeDebug, captureDOMSnapshot } from '@/shared/debug/channels/crepeEditor';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { debugMasterSwitch, debugLog } from '../../debug-panel/debugMasterSwitch';
 import { 
   emitImageUploadDebug, 
   captureDOMInfo, 
   captureImageBlockSnapshot 
-} from '../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
+} from '@/shared/debug/channels/crepeImageUpload';
 import './CrepeEditor.css';
 // A6：破图占位 + lightbox 样式（lightbox 插件注册后交互生效；破图样式始终可用）
 import './plugins/imageLightbox/imageLightbox.css';
@@ -99,7 +110,14 @@ import { isAndroid } from '@/utils/platform';
 const IME_PLACEHOLDER_ZWS = '\u200b';
 const stripImePlaceholder = (markdown: string) => markdown.split(IME_PLACEHOLDER_ZWS).join('');
 
-type BlockMenuState = { target: BlockTarget; noteId: string | undefined; x: number; y: number } | null;
+type BlockMenuState = {
+  target: BlockTarget;
+  noteId: string | undefined;
+  x: number;
+  y: number;
+  /** Merged official/community rows of this open; the target is fixed while the menu stays open. */
+  rows?: readonly BlockMenuContributionRow[];
+} | null;
 type BlockMenuHighlight = { pos: number; left: number; top: number; width: number; height: number };
 type BlockMenuAction = CrepeBlockTurnInto | typeof LAYOUT_COMMANDS[number] | 'duplicate' | 'delete' | 'copy-block-link' | 'move-to-note';
 
@@ -118,15 +136,15 @@ const BLOCK_MENU_TURN_INTO_ACTIONS: readonly CrepeBlockTurnInto[] = [
   'toggle',
 ];
 
-/** 键盘 ↑↓/Enter 导航遍历的完整动作序列（turn-into + duplicate + delete） */
-const BLOCK_MENU_ACTIONS: readonly BlockMenuAction[] = [
-  ...BLOCK_MENU_TURN_INTO_ACTIONS,
-  'duplicate',
-  'delete',
-  'copy-block-link',
-  'move-to-note',
-  ...LAYOUT_COMMANDS,
-];
+// RUST-FIX(RF-W18-block-menu-contributions): official segments and community rows share slot order.
+const desktopBlockEntries = (view: BlockTarget['view'], target: BlockTarget, run: (action: BlockMenuAction) => void,
+  blocked: (action: BlockMenuAction, target: BlockTarget) => string | undefined) => officialBlockMenuEntries(segment => {
+  const actions = segment === 'insert' ? [] : segment === 'turn-into' ? BLOCK_MENU_TURN_INTO_ACTIONS
+    : segment === 'actions' ? ['duplicate', 'delete', 'copy-block-link', 'move-to-note'] as const : LAYOUT_COMMANDS;
+  return actions.map(action => ({ id: action, label: getBlockMenuActionLabel(action),
+    disabled: Boolean(blocked(action, target)) || (action !== 'copy-block-link' && action !== 'move-to-note'
+      && !canExecuteCrepeCommand(view, action, { target })), run: () => run(action) }));
+});
 
 /** 空块按类型提示（Notion 式）：文案经 CSS 变量传给 ::before，随语言切换 */
 const TYPED_PLACEHOLDER_VARS = () => {
@@ -290,6 +308,21 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const onBlurRef = useRef(onBlur);
   const placeholderRef = useRef(placeholder);
   const pluginsOptionsRef = useRef(pluginsOptions);
+  const uiKernel = useOptionalUiKernel();
+  // 无 UI 内核时为 undefined：applyCrepePlugins 使用官方插件栈
+  const extensionEntries = useOptionalSlot('editor.extensions');
+  const slashMenuEntries = useOptionalSlot('editor.slashMenu') ?? officialSlashMenuEntries;
+  const selectionToolbarEntries = useOptionalSlot('editor.selectionToolbar');
+  const blockMenuEntries = useOptionalSlot('editor.blockMenu');
+  // Milkdown 插件与浮条在实例创建时取一次（create() 之后无法增删）；斜杠菜单、块菜单每次构建时取当前槽位
+  const editorContributionsRef = useRef({ extensionEntries, slashMenuEntries, selectionToolbarEntries, blockMenuEntries, uiKernel });
+  editorContributionsRef.current = { extensionEntries, slashMenuEntries, selectionToolbarEntries, blockMenuEntries, uiKernel };
+  const uiKernelRef = useRef(uiKernel);
+  uiKernelRef.current = uiKernel;
+  const editorInstanceRef = useRef<EditorInstanceContext>({ options: {} });
+  const blockMenuEntriesRef = useRef(blockMenuEntries);
+  const runOfficialBlockActionRef = useRef<(action: BlockMenuAction) => void>(() => {});
+  blockMenuEntriesRef.current = blockMenuEntries;
   const defaultValueRef = useRef(defaultValue);
   const identityOriginalRef = useRef(defaultValue);
   const blockActionsHostRef = useRef<CrepeBlockActionsHost | null>(null);
@@ -346,12 +379,19 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       const rect = handle.getBoundingClientRect();
       const target = resolveBlockHandleTarget(view, handle);
       if (!target) return;
+      const rows = collectEditorBlockMenuRows(
+        mergeEditorEntries(desktopBlockEntries(view, target, action => runOfficialBlockActionRef.current(action), identityActionBlockedReason), blockMenuEntriesRef.current),
+        contractBlockMenuTarget(view, target, 'desktop-handle'),
+        editorInstanceRef.current,
+        reportBlockMenuRunError,
+      );
       // 先按句柄位置放置；渲染后由 useLayoutEffect 按菜单实测尺寸钳入视口
       setBlockMenu({
         target,
         noteId: noteIdRef.current,
         x: rect.right + 6,
         y: Math.max(8, rect.top),
+        rows,
       });
     };
     const onPointerUp = (event: PointerEvent) => {
@@ -398,6 +438,173 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     };
   }, [isReady, readonly, noteId, setBlockMenu]);
 
+  // Intercept clicks on `ds-anchor://v1/...` links and route to AnchorRegistry (<50ms reveal).
+  useEffect(() => {
+    if (!isReady) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onAnchorClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest('a[href]');
+      const href = link?.getAttribute('href')?.trim();
+      if (!href || !isSemanticAnchorUri(href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const kernel = uiKernelRef.current ?? getAppKernel();
+      void kernel.anchors.reveal(href, { splitIfClosed: true, pulse: true });
+    };
+
+    container.addEventListener('click', onAnchorClick, true);
+    return () => {
+      container.removeEventListener('click', onAnchorClick, true);
+    };
+  }, [isReady]);
+
+  // Register `DS_EXCERPT_MIME` drop target when editable to insert cited Markdown + record anchor edge.
+  useEffect(() => {
+    if (!isReady || readonly) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const kernel = uiKernel ?? getAppKernel();
+    const escapeBracket = (text: string) => text.replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+
+    const resolveExcerptImageUrl = async (imageDataUrl: string): Promise<string> => {
+      const trimmed = imageDataUrl.trim();
+      if (!trimmed.startsWith('data:image/')) return trimmed;
+      const match = /^data:(image\/[A-Za-z0-9.+-]+);base64,([\s\S]+)$/.exec(trimmed);
+      if (!match) return trimmed;
+      try {
+        const uploaded = await vfsFileApi.upload({
+          name: `excerpt_${Date.now()}.png`,
+          mimeType: match[1],
+          base64Content: match[2],
+          fileType: 'image',
+        });
+        if (uploaded?.sourceId) {
+          return `vfs://${uploaded.sourceId}`;
+        }
+      } catch {
+        // Fallback to inline data URL when VFS IPC is unavailable in isolated tests.
+      }
+      return trimmed;
+    };
+
+    const handleExcerptDrop = async (payload: ExcerptDragPayload, event: DragEvent) => {
+      if (readonlyRef.current || reviewLeasesRef.current.size > 0) return;
+      const crepe = crepeRef.current;
+      if (!crepe) return;
+
+      const dropCoords = { left: event.clientX, top: event.clientY };
+      const title = payload.sourceTitle || payload.anchor.label || '';
+      const locator = formatAnchorShortLocator(payload.anchor);
+      const rawLabel =
+        title && locator && title !== locator
+          ? `${title} \u00b7 ${locator}`
+          : title || locator || payload.anchor.resourceId;
+      const escapedLabel = escapeBracket(rawLabel);
+
+      let markdown: string;
+      if (payload.imageDataUrl) {
+        const imageUrl = await resolveExcerptImageUrl(payload.imageDataUrl);
+        const prefix = i18next.t('notes:inlineCards.excerpt_source_prefix');
+        const bodyText = payload.text?.trim();
+        const quoteLines = bodyText && bodyText !== rawLabel
+          ? `${bodyText.split(/\r?\n/).map((line) => (line ? `> ${line}` : '>')).join('\n')}\n> \u2014 ${prefix} [${escapedLabel}](${payload.anchorUri})`
+          : `> \u2014 ${prefix} [${escapedLabel}](${payload.anchorUri})`;
+        markdown = `![](${imageUrl})\n\n${quoteLines}\n`;
+      } else {
+        const bodySource = (payload.text || rawLabel).trim();
+        const quoted = bodySource
+          .split(/\r?\n/)
+          .map((line) => (line ? `> ${line}` : '>'))
+          .join('\n');
+        markdown = `${quoted}\n> \u2014 [${escapedLabel}](${payload.anchorUri})\n`;
+      }
+
+      let insertedBlockId: string | undefined;
+      try {
+        crepe.editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx);
+          if (!view || view.isDestroyed || !canEditCrepeView(view)) return;
+          const parsed = ctx.get(parserCtx)(markdown);
+          if (!parsed || parsed.content.size === 0) return;
+
+          const hit = view.posAtCoords(dropCoords);
+          const rawPos = Math.max(
+            0,
+            Math.min(hit?.pos ?? view.state.selection.from, view.state.doc.content.size),
+          );
+          const $pos = view.state.doc.resolve(rawPos);
+          let replaceFrom = rawPos;
+          let replaceTo = rawPos;
+          if ($pos.depth >= 1) {
+            if ($pos.depth === 1 && $pos.parent.isTextblock && $pos.parent.content.size === 0) {
+              replaceFrom = $pos.before(1);
+              replaceTo = $pos.after(1);
+            } else {
+              replaceFrom = $pos.after(1);
+              replaceTo = replaceFrom;
+            }
+          }
+
+          const tr = view.state.tr.replace(
+            replaceFrom,
+            replaceTo,
+            new Slice(parsed.content, 0, 0),
+          );
+          const mappedStart = tr.mapping.map(replaceFrom, 1);
+          view.dispatch(tr.scrollIntoView());
+          view.focus();
+
+          const $inserted = view.state.doc.resolve(
+            Math.min(mappedStart, view.state.doc.content.size),
+          );
+          const rootNode = $inserted.depth >= 1 ? $inserted.node(1) : view.state.doc.nodeAt(replaceFrom);
+          const rawBlockId = (rootNode?.attrs as Record<string, unknown> | undefined)?.dsBlockId;
+          if (typeof rawBlockId === 'string' && rawBlockId) {
+            insertedBlockId = rawBlockId;
+          }
+        });
+      } catch (err) {
+        debugLog.error('[CrepeEditor] Excerpt drop insertion failed:', err);
+        return;
+      }
+
+      const currentNoteId = noteIdRef.current?.trim();
+      if (currentNoteId) {
+        const sourceAnchor: NoteSemanticAnchor = {
+          kind: 'note',
+          resourceId: currentNoteId,
+          ...(insertedBlockId ? { blockId: insertedBlockId } : {}),
+        };
+        const activeKernel = uiKernelRef.current ?? getAppKernel();
+        void activeKernel.anchors.upsertAnchorEdges([
+          {
+            sourceKind: 'note',
+            sourceResourceId: currentNoteId,
+            sourceSubId: insertedBlockId ?? '',
+            sourceAnchor,
+            sourceLabel: (payload.text || rawLabel).slice(0, 120),
+            targetAnchor: payload.anchor,
+          },
+        ]);
+      }
+    };
+
+    return kernel.dnd.registerExcerptDropTarget(
+      container,
+      (payload, event) => {
+        void handleExcerptDrop(payload, event);
+      },
+      {
+        canAccept: () => !readonlyRef.current && reviewLeasesRef.current.size === 0,
+      },
+    );
+  }, [isReady, readonly, uiKernel]);
+
   useLayoutEffect(() => {
     setBlockMenu(null);
     setBlockTransfer(null);
@@ -439,7 +646,6 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       observer.disconnect();
     };
   }, [blockMenu, setBlockMenu]);
-
   // 菜单开/关（对象变化）时重置键盘高亮
   useEffect(() => {
     blockMenuActiveRef.current = -1;
@@ -469,6 +675,50 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     blockMenuActiveRef.current = index;
     setBlockMenuActive(index);
   }, []);
+
+  /** A community block-menu row that throws or rejects only loses itself: it is counted against its plugin. */
+  const reportBlockMenuRunError = useCallback((entry: SlotEntry<unknown>, error: unknown) => {
+    const kernel = uiKernelRef.current;
+    if (kernel) {
+      kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'report', error, slot: 'editor.blockMenu', entryId: entry.id });
+    } else {
+      console.error(`[editor.blockMenu] "${entry.id}" failed`, error);
+    }
+  }, []);
+
+  const runContributedBlockMenuRow = useCallback(({ entry, row }: BlockMenuContributionRow) => {
+    const view = viewRef.current;
+    const menu = blockMenu;
+    if (row.disabled || !blockMenuEntriesRef.current?.includes(entry)) return;
+    if (!view || !menu || menu !== blockMenuRef.current || readonlyRef.current || !canEditCrepeView(view)
+      || menu.noteId !== noteIdRef.current || !isBlockTargetCurrent(view, menu.target)) {
+      setBlockMenu(null);
+      return;
+    }
+    // The menu closes and focus returns to the editor before the row runs (contract).
+    setBlockMenu(null);
+    if (!view.isDestroyed) view.focus();
+    try {
+      const result = row.run(view);
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        (result as Promise<void>).catch(error => reportBlockMenuRunError(entry, error));
+      }
+    } catch (error) {
+      reportBlockMenuRunError(entry, error);
+    }
+  }, [blockMenu, reportBlockMenuRunError, setBlockMenu]);
+
+  // The programmatic mobile block menu lives outside the React tree; hand it this instance's rows.
+  useEffect(() => {
+    if (!isReady) return;
+    const view = viewRef.current;
+    if (!view || view.isDestroyed) return;
+    return registerBlockMenuContributions(view, {
+      entries: blockMenuEntries ?? [],
+      editor: editorInstanceRef.current,
+      onError: reportBlockMenuRunError,
+    });
+  }, [blockMenuEntries, isReady, reportBlockMenuRunError]);
 
   const runBlockAction = useCallback((action: BlockMenuAction) => {
     const view = viewRef.current;
@@ -515,6 +765,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     }
     void executeCrepeCommand(view, action, { target: menu.target }).catch(error => showGlobalNotification('error', String(error)));
   }, [blockMenu, setBlockMenu]);
+  runOfficialBlockActionRef.current = runBlockAction;
 
   useEffect(() => {
     if (!blockMenu) return;
@@ -528,10 +779,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           return;
         }
         // 键盘导航：↑↓ 循环、Home/End 跳首尾、Enter 执行高亮项（未高亮时按原契约关闭菜单）
+        const communityRows = blockMenu.rows ?? [];
         const navIndex = getNextCrepeBlockMenuIndex({
           key: event.key,
           activeIndex: blockMenuActiveRef.current,
-          itemCount: BLOCK_MENU_ACTIONS.length,
+          itemCount: communityRows.length,
         });
         if (navIndex !== null) {
           event.preventDefault();
@@ -542,7 +794,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         if (event.key === 'Enter' && blockMenuActiveRef.current >= 0) {
           event.preventDefault();
           event.stopPropagation();
-          runBlockAction(BLOCK_MENU_ACTIONS[blockMenuActiveRef.current]);
+          const index = blockMenuActiveRef.current;
+          const selected = communityRows[index];
+          if (selected.row.disabled) {
+            if (selected.entry.origin === 'builtin') setBlockMenu(null);
+            return;
+          }
+          if (selected.entry.origin === 'builtin') selected.row.run(blockMenu.target.view);
+          else runContributedBlockMenuRow(selected);
           return;
         }
         // typeahead 先于 dismiss：单个可打印字符先尝试按 label 前缀命中
@@ -552,7 +811,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           && !event.isComposing
         ) {
           const typeaheadIndex = findCrepeBlockMenuTypeaheadIndex(
-            BLOCK_MENU_ACTIONS.map(getBlockMenuActionLabel),
+            communityRows.map(({ row }) => row.label),
             event.key,
             blockMenuActiveRef.current,
           );
@@ -593,7 +852,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       window.removeEventListener('beforeinput', closeOnBeforeInput, true);
       window.removeEventListener('resize', close);
     };
-  }, [blockMenu, runBlockAction, setBlockMenuActiveIndex]);
+  }, [blockMenu, runBlockAction, runContributedBlockMenuRow, setBlockMenuActiveIndex]);
 
   // 📱 Android 系统返回键：块菜单打开时先关菜单（overlay 级），避免返回键穿透到
   // 底层视图/导航。仅随开合注册注销，菜单位置变化不重挂 handler。
@@ -1669,11 +1928,18 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           const target = resolveBlockSelection(view);
           if (!target) return;
           const coords = view.coordsAtPos(Math.min(target.pos + 1, view.state.doc.content.size));
+          const rows = collectEditorBlockMenuRows(
+            mergeEditorEntries(desktopBlockEntries(view, target, action => runOfficialBlockActionRef.current(action), identityActionBlockedReason), blockMenuEntriesRef.current),
+            contractBlockMenuTarget(view, target, 'desktop-handle'),
+            editorInstanceRef.current,
+            reportBlockMenuRunError,
+          );
           setBlockMenu({
             target,
             noteId: noteIdRef.current,
             x: coords.left,
             y: Math.max(8, coords.bottom + 6),
+            rows,
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] openBlockMenuAtSelection failed:', e);
@@ -1844,6 +2110,19 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         blockActionsHostRef.current = null;
         capabilitiesRef.current = null;
         reviewLeasesRef.current = new Set();
+        const contributions = editorContributionsRef.current;
+        const reportContributionError = (slot: string): EditorContributionError => (entry, error) => {
+          if (contributions.uiKernel) contributions.uiKernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'render', error, slot, entryId: entry.id });
+          else console.error(`[CrepeEditor] ${slot} "${entry.id}" failed`, error);
+        };
+        const editorInstance: EditorInstanceContext = { options: { ...pluginsOptionsRef.current, columns: { canWrite: canWriteLayout } } };
+        editorInstanceRef.current = editorInstance;
+        // 浮条在 create() 前构建一次：官方条目按实例构建（宿主动作是实例状态），再按 order 并入槽位条目
+        // RUST-FIX(RF-W18-selection-toolbar-contributions): snapshot per editor instance.
+        const toolbarEntries = mergeEditorEntries(
+          officialSelectionToolbarEntries(() => selectionActionsRef.current ?? []),
+          contributions.selectionToolbarEntries,
+        );
         const crepe = new Crepe({
           root: container,
           defaultValue: processedDefaultValue,
@@ -1923,16 +2202,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 table: { label: i18next.t('notes:slashMenu.advancedGroup.table') },
                 math: { label: i18next.t('notes:slashMenu.advancedGroup.math') },
               },
-              // A3/A4：slash 菜单追加 callout / toggle（见 docs/revamp/03|04）
-              buildMenu: (builder) => {
-                appendCalloutToggleSlashItems(builder);
-                wireCrepeCommandMenu(builder, 'slash');
-              },
+              // editor.slashMenu：callout / toggle、编辑器命令表与页面布局分组（官方条目见 commandMenus.ts）
+              buildMenu: (builder) => buildEditorSlashMenu(editorContributionsRef.current.slashMenuEntries, builder, editorInstance, reportContributionError('editor.slashMenu')),
             },
             
             // 工具栏配置（使用默认）
             [CrepeFeature.Toolbar]: {
-              buildToolbar: builder => wireCrepeCommandMenu(builder, 'bubble', () => selectionActionsRef.current ?? []),
+              // editor.selectionToolbar：官方两条 + 社区条目按 order 合并（见 editorSlots.ts）
+              buildToolbar: builder => buildEditorSelectionToolbar(toolbarEntries, adaptSelectionToolbar(builder), editorInstance, reportContributionError('editor.selectionToolbar')),
             },
             
             // LaTeX 配置
@@ -1951,8 +2228,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           uploadWidgetFactory: uploadLifecycle.widgetFactory,
         })));
 
-        // 应用扩展插件（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
-        applyCrepePlugins(crepe, { ...pluginsOptionsRef.current, columns: { canWrite: canWriteLayout } });
+        // editor.extensions：按实例调用工厂（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
+        applyCrepePlugins(crepe, editorInstance.options, contributions.extensionEntries, reportContributionError('editor.extensions'));
 
         // 设置只读状态
         if (readonly) {
@@ -2871,7 +3148,21 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           style={{ left: blockMenu.x, top: blockMenu.y }}
         >
           <div className="crepe-block-menu__label">{i18next.t('notes:blockMenu.turnInto', 'Turn into')}</div>
-          {BLOCK_MENU_ACTIONS.map((action, index) => {
+          {(blockMenu.rows ?? []).map(({ entry, row }, index) => {
+            if (entry.origin !== 'builtin') {
+              const RowIcon = row.icon;
+              return <React.Fragment key={`${entry.owner}:${entry.id}:${row.id}:${index}`}>
+                <div className="crepe-block-menu__separator" />
+                <button type="button" role="menuitem" tabIndex={blockMenuActive === index ? 0 : -1}
+                  data-active={blockMenuActive === index || undefined} data-command={row.id}
+                  data-destructive={row.destructive || undefined} disabled={row.disabled === true}
+                  onMouseEnter={() => setBlockMenuActiveIndex(index)} onClick={() => runContributedBlockMenuRow({ entry, row })}>
+                  <span className="crepe-block-menu__icon" aria-hidden="true">{RowIcon && <RowIcon size={16} />}</span>
+                  <span className="crepe-block-menu__text">{row.label}</span>
+                </button>
+              </React.Fragment>;
+            }
+            const action = row.id as BlockMenuAction;
             const isActive = blockMenuActive === index;
             const button = (
               <button
@@ -2887,7 +3178,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                   || Boolean(identityActionBlockedReason(action, blockMenu.target))}
                 title={identityActionBlockedReason(action, blockMenu.target)}
                 onMouseEnter={() => setBlockMenuActiveIndex(index)}
-                onClick={() => runBlockAction(action)}
+                onClick={() => { if (!row.disabled) row.run(blockMenu.target.view); }}
               >
                 {(() => {
                   const ActionIcon = BLOCK_MENU_ICONS[action] ?? Columns;

@@ -20,13 +20,25 @@ import {
 import { skillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
+import { resolveBlockWithPreparingCleanup } from './toolCall';
 
 const generativeUIEventHandler: EventHandler = {
-  onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
-    if (backendBlockId) {
-      return store.createBlockWithId(messageId, GENERATIVE_UI_BLOCK_TYPE, backendBlockId);
+  onStart: (store: ChatStore, messageId: string, payload?: unknown, backendBlockId?: string) => {
+    const rawToolCallId =
+      payload && typeof payload === 'object' && 'toolCallId' in payload && typeof (payload as { toolCallId?: unknown }).toolCallId === 'string'
+        ? ((payload as { toolCallId: string }).toolCallId || undefined)
+        : undefined;
+    const blockId = resolveBlockWithPreparingCleanup(
+      store,
+      messageId,
+      GENERATIVE_UI_BLOCK_TYPE,
+      rawToolCallId,
+      backendBlockId,
+    );
+    if (rawToolCallId) {
+      store.updateBlock(blockId, { toolCallId: rawToolCallId });
     }
-    return store.createBlock(messageId, GENERATIVE_UI_BLOCK_TYPE);
+    return blockId;
   },
 
   onChunk: (store: ChatStore, blockId: string, chunk: string) => {

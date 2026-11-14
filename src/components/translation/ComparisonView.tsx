@@ -98,7 +98,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
       <div ref={setContainerRef} data-selectable="true" className="p-4 space-y-0">
         {/* 表头（窄容器合并为单行：语向 + 状态 + 段数） */}
         {isNarrow ? (
-          <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b sticky top-0 bg-background z-10 text-xs font-medium text-muted-foreground min-w-0">
+          <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background/95 backdrop-blur-sm z-10 text-xs font-medium text-muted-foreground min-w-0">
             <span className="truncate uppercase tracking-wider">
               {srcName} → {tgtName}
             </span>
@@ -108,17 +108,17 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                 {t('translation:actions.translating')}
               </span>
             )}
-            <span className="ml-auto shrink-0 tabular-nums text-muted-foreground/60">
+            <span className="ml-auto shrink-0 font-mono tabular-nums text-muted-foreground/60">
               {t('translation:panel_ux.segments', { count: pairs.length })}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-4 pt-1 pb-3 mb-1 border-b sticky top-0 bg-background z-10">
+          <div className="flex items-center gap-4 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
             <div className="w-5 shrink-0" />
             <div className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               {srcName}
             </div>
-            <div className="w-px h-4 bg-border shrink-0" />
+            <div className="w-px h-4 bg-border/35 shrink-0" />
             <div className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2 min-w-0">
               <span className="truncate">{tgtName}</span>
               {isTranslating && (
@@ -127,7 +127,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   {t('translation:actions.translating')}
                 </span>
               )}
-              <span className="ml-auto shrink-0 normal-case tracking-normal tabular-nums text-muted-foreground/60">
+              <span className="ml-auto shrink-0 normal-case tracking-normal font-mono tabular-nums text-muted-foreground/60">
                 {t('translation:panel_ux.segments', { count: pairs.length })}
               </span>
             </div>
@@ -189,10 +189,10 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             return (
               <div
                 key={index}
-                className="group relative flex flex-col gap-1.5 py-3 border-b border-border/40 last:border-b-0 rounded-md -mx-2 px-2 transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+                className="group relative flex flex-col gap-1.5 py-3 border-b border-border/35 last:border-b-0 rounded-lg -mx-2 px-2 transition-colors duration-150 hover:bg-foreground/[0.03]"
               >
                 <div className="flex items-center gap-2 min-h-6">
-                  <span className="text-[10px] font-mono select-none transition-colors text-muted-foreground/40 group-hover:text-primary/70">
+                  <span className="text-[10px] font-mono tabular-nums select-none transition-colors text-muted-foreground/40 group-hover:text-primary/70">
                     {index + 1}
                   </span>
                   <span className="ml-auto">{copyButton}</span>
@@ -210,10 +210,10 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           return (
             <div
               key={index}
-              className="group relative flex gap-4 py-3 border-b border-border/40 last:border-b-0 rounded-md -mx-2 px-2 transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+              className="group relative flex gap-4 py-3 border-b border-border/35 last:border-b-0 rounded-lg -mx-2 px-2 transition-colors duration-150 hover:bg-foreground/[0.03]"
             >
               {/* 段落序号 */}
-              <div className="text-[10px] font-mono pt-0.5 w-5 shrink-0 text-right select-none transition-colors text-muted-foreground/30 group-hover:text-primary/70">
+              <div className="text-[10px] font-mono tabular-nums pt-0.5 w-5 shrink-0 text-right select-none transition-colors text-muted-foreground/30 group-hover:text-primary/70">
                 {index + 1}
               </div>
 
@@ -225,7 +225,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
               </div>
 
               {/* 分隔线 */}
-              <div className="w-px bg-border/60 shrink-0 self-stretch" />
+              <div className="w-px bg-border/35 shrink-0 self-stretch" />
 
               {/* 译文段落 */}
               <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground pr-6">

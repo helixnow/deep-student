@@ -1,0 +1,1168 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_get_mindmap",
+    "vfs_get_mindmap_content",
+    "vfs_get_mindmap_versions",
+    "vfs_restore_mindmap_version",
+    "vfs_get_mindmap_version_content",
+    "vfs_get_mindmap_version",
+    "vfs_update_mindmap",
+    "vfs_list_mindmaps",
+    "vfs_set_mindmap_favorite"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.mindmap.get.created_full_and_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "默认内容导图"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "${3.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.get.missing_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "mm_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "mm_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "将删除导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.get.invalid_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "mv_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.update.content_title_and_meta",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "title": "函数（改名）",
+              "description": "新描述",
+              "defaultView": "outline",
+              "theme": "dark",
+              "settings": {
+                "layout": "right",
+                "zoom": 1.25
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {}
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.update.version_source_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}",
+              "versionSource": "auto"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数（第三版）\",\"children\":[]}}",
+              "versionSource": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "versionSource": "chat_tool"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}",
+              "versionSource": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.update.expected_updated_at",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}",
+              "expectedUpdatedAt": "${0.updatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数（第三版）\",\"children\":[]}}",
+              "expectedUpdatedAt": "${0.updatedAt}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数（第三版）\",\"children\":[]}}",
+              "expectedUpdatedAt": "${1.contentUpdatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "title": "仅改名",
+              "expectedUpdatedAt": "${3.updatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "expectedUpdatedAt": "${3.contentUpdatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "expectedUpdatedAt": "1970-01-01T00:00:00.000Z"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.update.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "mm_missing0000",
+            "params": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "note_abc",
+            "params": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "",
+            "params": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "将删除导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${3.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "mm_missing0000",
+            "params": {
+              "settings": "not-an-object",
+              "title": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "mm_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.versions.list_get_content_limits",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数（第三版）\",\"children\":[]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}",
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}",
+            "limit": 100000
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}",
+            "limit": null
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": "${4.0.versionId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": "${4.0.versionId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": "${4.1.versionId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": "${4.1.versionId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.versions.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "mm_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": "mv_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": "mv_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.versions.invalid_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "mv_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "mm_x",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": "mm_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {
+            "versionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": "mm_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.restore.old_version_and_same_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "${2.0.versionId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "${2.0.versionId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.restore.deleted_mindmap",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${0.id}",
+            "params": {
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "${2.0.versionId}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.restore.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "mv_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "mm_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.list.empty_multiple_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_list_mindmaps",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "导图甲",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "导图乙",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]},{\"id\":\"n2\",\"text\":\"二次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "导图丙"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_list_mindmaps",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "${2.id}",
+            "isFavorite": true
+          }
+        },
+        {
+          "cmd": "vfs_update_mindmap",
+          "args": {
+            "mindmapId": "${1.id}",
+            "params": {
+              "title": "导图甲（改）"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "vfs_list_mindmaps",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.list.in_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "导图文件夹",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "夹内导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_list_mindmaps",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_folder_get_items",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.favorite.toggle_and_repeat",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "函数导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "${0.id}",
+            "isFavorite": true
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "${0.id}",
+            "isFavorite": true
+          }
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "${0.id}",
+            "isFavorite": false
+          }
+        },
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.mindmap.favorite.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "mm_missing0000",
+            "isFavorite": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "note_abc",
+            "isFavorite": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "",
+            "isFavorite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "将删除导图",
+              "description": "测试导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"函数\",\"children\":[{\"id\":\"n1\",\"text\":\"一次函数\",\"children\":[]}]}}",
+              "defaultView": "mindmap",
+              "theme": null,
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_mindmap",
+          "args": {
+            "mindmapId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "${3.id}",
+            "isFavorite": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "mm_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "mindmapId": "mm_missing0000",
+            "isFavorite": "true"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_mindmap_favorite",
+          "args": {
+            "isFavorite": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

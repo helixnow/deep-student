@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApiConfig } from '@/types';
+import { expectInvokeCallsMatchContract } from '@/__tests__/helpers/ipcContract';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
@@ -86,14 +87,26 @@ describe('ShadApiEditModal Codex OAuth connection test', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
 
+    // 契约键（contracts/ipc test_api_connection）；snake_case 键会被后端静默丢弃。
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(
       'test_api_connection',
       expect.objectContaining({
-        api_key: '',
-        provider_type: 'openai_codex',
-        auth_mode: 'openai_codex_oauth',
+        apiKey: '',
+        providerType: 'openai_codex',
+        authMode: 'openai_codex_oauth',
       }),
     ));
+  });
+
+  it('sends the test_api_connection contract keys, including supportsOpenaiResponses', async () => {
+    invokeMock.mockResolvedValueOnce({ ok: true, latencyMs: 5 });
+    renderEditor('openai_codex_oauth');
+
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('test_api_connection', expect.anything()));
+    expectInvokeCallsMatchContract(invokeMock.mock.calls, 'test_api_connection');
+    expect(invokeMock).toHaveBeenCalledWith('test_api_connection', expect.objectContaining({ supportsOpenaiResponses: true }));
   });
 
   it('keeps the generic connection test available for API-key models', () => {

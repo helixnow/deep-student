@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
@@ -17,6 +17,7 @@ function makeBlob(size: number): Blob {
 }
 
 describe('stagedUpload', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     invokeMock.mockReset();
   });
@@ -55,6 +56,15 @@ describe('stagedUpload', () => {
       { uploadId: 'u2', offset: 0, data: 'AQID' },
       { uploadId: 'u2', offset: 3, data: 'BAU=' },
     ]);
+  });
+
+  it('uses binary chunks in Android WebUI rather than the native base64 fallback', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 15)', platform: 'Linux armv8l' });
+    vi.stubGlobal('__DS_WEBUI__', true);
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'staged_upload_begin' ? 'web-upload' : 0);
+    await stageBlobUpload(makeBlob(5), { name: 'web.bin', chunkSize: 3 });
+    const appends = invokeMock.mock.calls.filter(([cmd]) => cmd === 'staged_upload_append');
+    expect(appends.map(([, body]) => body)).toEqual([new Uint8Array([0, 1, 2]), new Uint8Array([3, 4])]);
   });
 
   it('aborts the staged upload on chunk failure', async () => {
@@ -115,5 +125,30 @@ describe('stagedUpload', () => {
       concurrent -= 1;
     })));
     expect(peak).toBe(3);
+  });
+
+  it.each([0, -1, 0.5, Infinity, NaN, 16 * 1024 * 1024 + 1])('rejects invalid chunk size %s before creating a temp file', async (chunkSize) => {
+    await expect(stageBlobUpload(makeBlob(1), { name: 'bad', chunkSize })).rejects.toThrow(RangeError);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty staged file with its UTF-8 name unchanged', async () => {
+    invokeMock.mockResolvedValue('empty');
+    expect(await stageBlobUpload(makeBlob(0), { name: '空文件.bin' })).toBe('empty');
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith('staged_upload_begin', { name: '空文件.bin', totalSize: 0 });
+  });
+
+  it.each([0, 4])('cleans up cancellation during begin/final append for %s bytes', async (size) => {
+    const controller = new AbortController();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'staged_upload_begin') {
+        if (size === 0) controller.abort();
+        return 'cancelled';
+      }
+      if (cmd === 'staged_upload_append') controller.abort();
+    });
+    await expect(stageBlobUpload(makeBlob(size), { name: 'cancel', chunkSize: 4, signal: controller.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' });
+    expect(invokeMock).toHaveBeenCalledWith('staged_upload_abort', { uploadId: 'cancelled' });
   });
 });

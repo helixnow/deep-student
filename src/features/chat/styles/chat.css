@@ -360,6 +360,38 @@
 }
 
 /* ============================================================================
+   回到底部悬浮按钮流式生成进度环
+   ----------------------------------------------------------------------------
+   通过 --scroll-ring-progress (0~1) 在按钮外围绘制 1.5px conic-gradient 进度环，
+   让用户上翻看历史时也能直观看到底部流式输出正在推进。
+   ============================================================================ */
+
+.chat-v2 .chat-scroll-bottom-ring,
+.chat-scroll-bottom-ring {
+  --scroll-ring-progress: 0;
+}
+
+.chat-v2 .chat-scroll-bottom-ring::before,
+.chat-scroll-bottom-ring::before {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    hsl(var(--primary)) calc(var(--scroll-ring-progress, 0) * 360deg),
+    transparent 0deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  transition: opacity var(--chat-motion-fast, 150ms) var(--chat-motion-ease, ease);
+}
+
+/* ============================================================================
    遗留 keyframes
    ----------------------------------------------------------------------------
    `pulse` 仍可能被内联样式（如调试面板 animation: 'pulse …'）按全局

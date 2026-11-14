@@ -1,0 +1,2183 @@
+<body .light-theme>
+  <div data-demo-app="notes" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div data-wb-window-id="demo-notes">
+        <div>
+          <div .wb-title-app-slot data-wb-titlebar-slot data-window-id="demo-notes">
+            <div .notes-titlebar-tabs>
+              <div .notes-tabstrip.scrollbar-none aria-label="打开的文件" data-notes-tabstrip="true" role="tablist">
+                <div .notes-tab data-active="true" data-pinned="false" data-right-split="false" data-save-state="saved" draggable="true">
+                  <button aria-expanded="false" aria-haspopup="menu" aria-selected="true" role="tab" tabindex="0" type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    <span>
+                      "特征值与特征向量"
+                  <button .notes-icon-button aria-label="关闭 特征值与特征向量" title="关闭 特征值与特征向量" type="button">
+                    <svg viewBox="0 0 256 256" />
+                <div .notes-tab data-active="false" data-pinned="false" data-right-split="false" data-save-state="saved" draggable="true">
+                  <button aria-expanded="false" aria-haspopup="menu" aria-selected="false" role="tab" tabindex="-1" type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    <span>
+                      "矩阵的相似对角化"
+                  <button .notes-icon-button aria-label="关闭 矩阵的相似对角化" title="关闭 矩阵的相似对角化" type="button">
+                    <svg viewBox="0 0 256 256" />
+                <div .notes-tab data-active="false" data-pinned="false" data-right-split="false" data-save-state="saved" draggable="true">
+                  <button aria-expanded="false" aria-haspopup="menu" aria-selected="false" role="tab" tabindex="-1" type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                    <span>
+                      "第 5 章 · 特征值与特征向量"
+                  <button .notes-icon-button aria-label="关闭 第 5 章 · 特征值与特征向量" title="关闭 第 5 章 · 特征值与特征向量" type="button">
+                    <svg viewBox="0 0 256 256" />
+              <div .notes-tabs-overflow>
+                <button .notes-icon-button aria-expanded="false" aria-haspopup="menu" aria-label="显示全部打开的文件" title="显示全部打开的文件" type="button">
+                  <svg viewBox="0 0 256 256" />
+              <div .notes-tab-actions-slot.notes-titlebar-actions data-tab-actions-slot="true" />
+        <div>
+          <div .notes-workspace data-compact="true" data-explorer-open="false" data-focus-mode="false" data-wb-notes-workspace="true">
+            <div .wb-sys-split data-wb-sys-drawer-mode="true" data-wb-sys-sidebar-collapsed="false">
+              <div .wb-sys-aside aria-hidden="true" inert />
+              <div .wb-sys-content>
+                <main .notes-workspace-main data-notes-split="false">
+                  <div .notes-main-content data-backlinks-open="false" data-backlinks-overlay="true">
+                    <div .notes-panes data-panel-group data-panel-group-direction="vertical" data-panel-group-id="notes-workspace-panes" id="@2">
+                      <div .notes-pane-panel data-panel data-panel-group-id="notes-workspace-panes" data-panel-id="notes-workspace-main-pane" data-panel-size="1.0" id="@3">
+                        <section .notes-workspace-pane aria-label="主编辑器" data-focused="true" data-notes-pane="main" data-resource-id="note_demo_eigen" data-resource-type="note" role="region">
+                          <div .notes-pane-content>
+                            <div .notes-document-host>
+                              <div .bg-background.flex.flex-col.h-full.min-h-0.overflow-hidden>
+                                <div .bg-background.flex.h-full.min-w-0.overflow-hidden.relative>
+                                  <div .flex.flex-1.flex-col.min-h-0.min-w-0 data-note-content-area="true">
+                                    <div .bg-background.flex.flex-1.flex-col.min-h-0.notes-crepe-shell.relative data-focus-chrome="visible" data-focus-mode="false">
+                                      <div .bg-background.flex-shrink-0.notes-editor-header-section.sticky.top-0.w-full.z-10>
+                                        <div .flex.gap-1.items-center.notes-column.notes-editor-chrome-row>
+                                          <div .flex.gap-1.items-center.ml-auto.shrink-0>
+                                            <span .gap-1.inline-flex.items-center.notes-save-indicator.px-1.5.tabular-nums.text-muted-foreground/55.text-xs.whitespace-nowrap aria-live="polite" data-status="saved" title="字符数 1239 · 约 5 分钟">
+                                              <span>
+                                                "已保存"
+                                            <div .inline-flex.relative>
+                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.notes-chrome-text-button.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" aria-haspopup="dialog" aria-label="更多笔记操作" type="button">
+                                                <svg .notes-chrome-compact-icon aria-hidden="true" viewBox="0 0 256 256" />
+                                                <span>
+                                                  "页面"
+                                                <svg .notes-chrome-caret viewBox="0 0 256 256" />
+                                      <div .relative.shrink-0 />
+                                      <div .flex-1.h-full.min-h-0.min-w-0.notes-editor-content-scroll.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                                        <div .h-full.max-h-[inherit].min-h-0.min-w-0.overflow-x-visible.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                                          <div .flex.flex-col.min-h-full.notes-column.notes-editor-content.relative>
+                                            <header .group.notes-document-header.pb-2.pt-10.relative data-notes-font="default" data-notes-preset="standard">
+                                              <div .notes-document-affordances>
+                                                <div .inline-flex.relative>
+                                                  <button .notes-document-affordance aria-expanded="false" aria-haspopup="dialog" aria-label="页面图标" type="button">
+                                                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                                                    <span>
+                                                      "添加图标"
+                                              <textarea .bg-transparent.border-none.focus-visible:ring-0.font-semibold.notes-document-title.outline-none.p-0.placeholder:text-muted-foreground/40.shadow-none.text-foreground.w-full aria-label="笔记标题" placeholder="未命名">
+                                                "特征值与特征向量"
+                                              <div .flex.flex-wrap.gap-1.5.items-center.mt-2.notes-document-tags data-testid="notes-editor-tags">
+                                                <svg .h-3.shrink-0.text-muted-foreground/60.w-3 aria-hidden="true" viewBox="0 0 256 256" />
+                                                <span .[@media(pointer:coarse)]:py-1.5.bg-primary/10.gap-0.5.inline-flex.items-center.leading-none.pl-2.pr-1.py-0.5.rounded-full.text-[11px].text-primary>
+                                                  <span .max-w-[140px].truncate>
+                                                    "线性代数"
+                                                  <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.duration-150.h-4.hover:bg-primary/15.hover:text-primary.inline-flex.items-center.justify-center.rounded-full.text-primary/60.transition-colors.w-4 aria-label="移除标签" title="移除标签" type="button">
+                                                    <svg .h-2.5.w-2.5 aria-hidden="true" viewBox="0 0 256 256" />
+                                                <span .[@media(pointer:coarse)]:py-1.5.bg-primary/10.gap-0.5.inline-flex.items-center.leading-none.pl-2.pr-1.py-0.5.rounded-full.text-[11px].text-primary>
+                                                  <span .max-w-[140px].truncate>
+                                                    "期末复习"
+                                                  <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.duration-150.h-4.hover:bg-primary/15.hover:text-primary.inline-flex.items-center.justify-center.rounded-full.text-primary/60.transition-colors.w-4 aria-label="移除标签" title="移除标签" type="button">
+                                                    <svg .h-2.5.w-2.5 aria-hidden="true" viewBox="0 0 256 256" />
+                                                <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:px-3.border.border-border/70.border-dashed.duration-150.gap-0.5.h-6.hover:border-border.hover:text-foreground.inline-flex.items-center.leading-none.px-2.rounded-full.text-[11px].text-muted-foreground/70.transition-colors aria-label="添加标签..." type="button">
+                                                  <svg .h-3.w-3 aria-hidden="true" viewBox="0 0 256 256" />
+                                                  <span>
+                                                    "添加标签..."
+                                            <div .crepe-editor-wrapper.flex-1.min-h-[40vh].ui-rise-in data-ready="true">
+                                              <div .crepe-editor-container>
+                                                <div .milkdown>
+                                                  <div .ProseMirror.ProseMirror-focused.editor.virtual-cursor-enabled contenteditable="true" role="textbox">
+                                                    <div .prosemirror-virtual-cursor.prosemirror-virtual-cursor-animation contenteditable="false" />
+                                                    <h2 id="@4">
+                                                      "定义"
+                                                    <p>
+                                                      "设"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="A" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "A"
+                                                                <annotation>
+                                                                  "A"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                      "是"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="n" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "n"
+                                                                <annotation>
+                                                                  "n"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "n"
+                                                      "阶方阵，若存在数"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\lambda" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "λ"
+                                                                <annotation>
+                                                                  "\\lambda"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                      "和"
+                                                      <strong>
+                                                        "非零"
+                                                      "向量"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\boldsymbol{x}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "x"
+                                                                <annotation>
+                                                                  "\\boldsymbol{x}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                <span .mord>
+                                                                  <span .boldsymbol.mord>
+                                                                    "x"
+                                                      "使"
+                                                    <div .milkdown-code-block contenteditable="false" data-v-app>
+                                                      <div .tools>
+                                                        <button .language-button data-expanded="false" type="button">
+                                                          "LaTeX"
+                                                          <div .expand-icon>
+                                                            <span .milkdown-icon>
+                                                              <svg .h-6.w-6 viewBox="0 0 24 24" />
+                                                        <div .language-picker />
+                                                        <div .tools-button-group>
+                                                          <button .copy-button type="button">
+                                                            <span .milkdown-icon>
+                                                              <svg viewBox="0 -960 960 960" />
+                                                            "复制"
+                                                          <button .preview-toggle-button>
+                                                            <span .milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                              "编辑"
+                                                      <div .codemirror-host.hidden>
+                                                        <div .cm-editor.ͼ1.ͼ3.ͼ4.ͼo>
+                                                          <div .cm-announced aria-live="polite" />
+                                                          <div .cm-scroller tabindex="-1">
+                                                            <div .cm-gutters.cm-gutters-before aria-hidden="true">
+                                                              <div .cm-gutter.cm-lineNumbers>
+                                                                <div .cm-gutterElement>
+                                                                  "9"
+                                                                <div .cm-activeLineGutter.cm-gutterElement>
+                                                                  "1"
+                                                              <div .cm-foldGutter.cm-gutter>
+                                                                <div .cm-gutterElement>
+                                                                  <span title="Unfold line">
+                                                                    "›"
+                                                                <div .cm-activeLineGutter.cm-gutterElement />
+                                                            <div .cm-content.cm-lineWrapping aria-multiline="true" contenteditable="true" data-language="stex" role="textbox">
+                                                              <div .cm-activeLine.cm-line>
+                                                                "A"
+                                                                <span .ͼu>
+                                                                  "\\boldsymbol"
+                                                                "{x}="
+                                                                <span .ͼu>
+                                                                  "\\lambda\\boldsymbol"
+                                                                "{x}"
+                                                            <div .cm-cursorLayer.cm-layer.cm-layer-above aria-hidden="true" />
+                                                            <div .cm-layer.cm-selectionLayer aria-hidden="true" />
+                                                      <div .preview-panel>
+                                                        <div .preview>
+                                                          <span .katex-display>
+                                                            <span .katex>
+                                                              <span .katex-mathml>
+                                                                <math>
+                                                                  <mrow>
+                                                                    <mi>
+                                                                      "A"
+                                                                    <mi>
+                                                                      "x"
+                                                                    <mo>
+                                                                      "="
+                                                                    <mi>
+                                                                      "λ"
+                                                                    <mi>
+                                                                      "x"
+                                                                  "A\\boldsymbol{x}=\\lambda\\boldsymbol{x}"
+                                                              <span .katex-html aria-hidden="true">
+                                                                <span .katex-base>
+                                                                  <span .katex-strut />
+                                                                  <span .mathnormal.mord>
+                                                                    "A"
+                                                                  <span .mord>
+                                                                    <span .mord>
+                                                                      <span .boldsymbol.mord>
+                                                                        "x"
+                                                                  <span .mspace />
+                                                                  <span .mrel>
+                                                                    "="
+                                                                  <span .mspace />
+                                                                <span .katex-base>
+                                                                  <span .katex-strut />
+                                                                  <span .mathnormal.mord>
+                                                                    "λ"
+                                                                  <span .mord>
+                                                                    <span .mord>
+                                                                      <span .boldsymbol.mord>
+                                                                        "x"
+                                                    <p>
+                                                      "则称"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\lambda" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "λ"
+                                                                <annotation>
+                                                                  "\\lambda"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                      "为"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="A" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "A"
+                                                                <annotation>
+                                                                  "A"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                      "的"
+                                                      <strong>
+                                                        "特征值"
+                                                      "，"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\boldsymbol{x}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "x"
+                                                                <annotation>
+                                                                  "\\boldsymbol{x}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                <span .mord>
+                                                                  <span .boldsymbol.mord>
+                                                                    "x"
+                                                      "为对应的"
+                                                      <strong>
+                                                        "特征向量"
+                                                      "。移项得齐次方程组"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="(\\lambda E-A)\\boldsymbol{x}=\\boldsymbol{0}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mo>
+                                                                    "("
+                                                                  <mi>
+                                                                    "λ"
+                                                                  <mi>
+                                                                    "E"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mi>
+                                                                    "A"
+                                                                  <mo>
+                                                                    ")"
+                                                                  <mi>
+                                                                    "x"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mi>
+                                                                    "0"
+                                                                <annotation>
+                                                                  "(\\lambda E-A)\\boldsymbol{x}=\\boldsymbol{0}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                              <span .mathnormal.mord>
+                                                                "E"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                              <span .mclose>
+                                                                ")"
+                                                              <span .mord>
+                                                                <span .mord>
+                                                                  <span .boldsymbol.mord>
+                                                                    "x"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                <span .mord>
+                                                                  <span .mathbf.mord>
+                                                                    "0"
+                                                      "，它有非零解当且仅当"
+                                                    <div .milkdown-code-block contenteditable="false" data-v-app>
+                                                      <div .tools>
+                                                        <button .language-button data-expanded="false" type="button">
+                                                          "LaTeX"
+                                                          <div .expand-icon>
+                                                            <span .milkdown-icon>
+                                                              <svg .h-6.w-6 viewBox="0 0 24 24" />
+                                                        <div .language-picker />
+                                                        <div .tools-button-group>
+                                                          <button .copy-button type="button">
+                                                            <span .milkdown-icon>
+                                                              <svg viewBox="0 -960 960 960" />
+                                                            "复制"
+                                                          <button .preview-toggle-button>
+                                                            <span .milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                              "编辑"
+                                                      <div .codemirror-host.hidden>
+                                                        <div .cm-editor.ͼ1.ͼ3.ͼ4.ͼo>
+                                                          <div .cm-announced aria-live="polite" />
+                                                          <div .cm-scroller tabindex="-1">
+                                                            <div .cm-gutters.cm-gutters-before aria-hidden="true">
+                                                              <div .cm-gutter.cm-lineNumbers>
+                                                                <div .cm-gutterElement>
+                                                                  "9"
+                                                                <div .cm-activeLineGutter.cm-gutterElement>
+                                                                  "1"
+                                                              <div .cm-foldGutter.cm-gutter>
+                                                                <div .cm-gutterElement>
+                                                                  <span title="Unfold line">
+                                                                    "›"
+                                                                <div .cm-activeLineGutter.cm-gutterElement />
+                                                            <div .cm-content.cm-lineWrapping aria-multiline="true" contenteditable="true" data-language="stex" role="textbox">
+                                                              <div .cm-activeLine.cm-line>
+                                                                <span .ͼu>
+                                                                  "\\lvert"
+                                                                <span .ͼu>
+                                                                  "\\lambda"
+                                                                "E-A"
+                                                                <span .ͼu>
+                                                                  "\\rvert"
+                                                                "= 0"
+                                                            <div .cm-cursorLayer.cm-layer.cm-layer-above aria-hidden="true" />
+                                                            <div .cm-layer.cm-selectionLayer aria-hidden="true" />
+                                                      <div .preview-panel>
+                                                        <div .preview>
+                                                          <span .katex-display>
+                                                            <span .katex>
+                                                              <span .katex-mathml>
+                                                                <math>
+                                                                  <mrow>
+                                                                    <mo>
+                                                                      "∣"
+                                                                    <mi>
+                                                                      "λ"
+                                                                    <mi>
+                                                                      "E"
+                                                                    <mo>
+                                                                      "−"
+                                                                    <mi>
+                                                                      "A"
+                                                                    <mo>
+                                                                      "∣"
+                                                                    <mo>
+                                                                      "="
+                                                                    <mn>
+                                                                      "0"
+                                                                  "\\lvert \\lambda E-A\\rvert = 0"
+                                                              <span .katex-html aria-hidden="true">
+                                                                <span .katex-base>
+                                                                  <span .katex-strut />
+                                                                  <span .mopen>
+                                                                    "∣"
+                                                                  <span .mathnormal.mord>
+                                                                    "λ"
+                                                                  <span .mathnormal.mord>
+                                                                    "E"
+                                                                  <span .mspace />
+                                                                  <span .mbin>
+                                                                    "−"
+                                                                  <span .mspace />
+                                                                <span .katex-base>
+                                                                  <span .katex-strut />
+                                                                  <span .mathnormal.mord>
+                                                                    "A"
+                                                                  <span .mclose>
+                                                                    "∣"
+                                                                  <span .mspace />
+                                                                  <span .mrel>
+                                                                    "="
+                                                                  <span .mspace />
+                                                                <span .katex-base>
+                                                                  <span .katex-strut />
+                                                                  <span .mord>
+                                                                    "0"
+                                                    <p>
+                                                      "这就是"
+                                                      <strong>
+                                                        "特征方程"
+                                                      "，左边是关于"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\lambda" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "λ"
+                                                                <annotation>
+                                                                  "\\lambda"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                      "的"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="n" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "n"
+                                                                <annotation>
+                                                                  "n"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "n"
+                                                      "次多项式（特征多项式）。行列式的展开技巧见"
+                                                      <span .crepe-wikilink contenteditable="false" data-label data-resolved="true" data-target="行列式的计算" data-type="wikilink" draggable="true" title="行列式的计算">
+                                                        "行列式的计算"
+                                                      "。"
+                                                    <h2 id="@5">
+                                                      "求解步骤"
+                                                    <ol data-spread="false">
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .label.milkdown-icon.ordered>
+                                                              "1."
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "写出特征多项式"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\lvert \\lambda E-A\\rvert" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mo>
+                                                                              "∣"
+                                                                            <mi>
+                                                                              "λ"
+                                                                            <mi>
+                                                                              "E"
+                                                                            <mo>
+                                                                              "−"
+                                                                            <mi>
+                                                                              "A"
+                                                                            <mo>
+                                                                              "∣"
+                                                                          <annotation>
+                                                                            "\\lvert \\lambda E-A\\rvert"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mopen>
+                                                                          "∣"
+                                                                        <span .mathnormal.mord>
+                                                                          "λ"
+                                                                        <span .mathnormal.mord>
+                                                                          "E"
+                                                                        <span .mspace />
+                                                                        <span .mbin>
+                                                                          "−"
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                        <span .mclose>
+                                                                          "∣"
+                                                                "，因式分解求出全部特征值"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\lambda_1,\\dots,\\lambda_n" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mn>
+                                                                                "1"
+                                                                            <mo>
+                                                                              ","
+                                                                            <mo>
+                                                                              "…"
+                                                                            <mo>
+                                                                              ","
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "n"
+                                                                          <annotation>
+                                                                            "\\lambda_1,\\dots,\\lambda_n"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        "1"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mpunct>
+                                                                          ","
+                                                                        <span .mspace />
+                                                                        <span .minner>
+                                                                          "…"
+                                                                        <span .mspace />
+                                                                        <span .mpunct>
+                                                                          ","
+                                                                        <span .mspace />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "n"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                <img .ProseMirror-separator alt />
+                                                                <br .ProseMirror-trailingBreak />
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .label.milkdown-icon.ordered>
+                                                              "2."
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "对每个"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\lambda_i" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "i"
+                                                                          <annotation>
+                                                                            "\\lambda_i"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "i"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                "，解齐次方程组"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="(\\lambda_i E-A)\\boldsymbol{x}=\\boldsymbol{0}" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mo>
+                                                                              "("
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "i"
+                                                                            <mi>
+                                                                              "E"
+                                                                            <mo>
+                                                                              "−"
+                                                                            <mi>
+                                                                              "A"
+                                                                            <mo>
+                                                                              ")"
+                                                                            <mi>
+                                                                              "x"
+                                                                            <mo>
+                                                                              "="
+                                                                            <mi>
+                                                                              "0"
+                                                                          <annotation>
+                                                                            "(\\lambda_i E-A)\\boldsymbol{x}=\\boldsymbol{0}"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mopen>
+                                                                          "("
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "i"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mathnormal.mord>
+                                                                          "E"
+                                                                        <span .mspace />
+                                                                        <span .mbin>
+                                                                          "−"
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                        <span .mclose>
+                                                                          ")"
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .boldsymbol.mord>
+                                                                              "x"
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "="
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .mathbf.mord>
+                                                                              "0"
+                                                                <img .ProseMirror-separator alt />
+                                                                <br .ProseMirror-trailingBreak />
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .label.milkdown-icon.ordered>
+                                                              "3."
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "基础解系就是属于"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\lambda_i" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "i"
+                                                                          <annotation>
+                                                                            "\\lambda_i"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "i"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                "的线性无关特征向量，全体非零线性组合即全部特征向量"
+                                                    <h2 id="@6">
+                                                      "重要性质"
+                                                    <ul data-spread="false">
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "特征值之和等于迹："
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\sum_{i=1}^{n}\\lambda_i=\\operatorname{tr}A" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msubsup>
+                                                                              <mo>
+                                                                                "∑"
+                                                                              <mrow>
+                                                                                <mi>
+                                                                                  "i"
+                                                                                <mo>
+                                                                                  "="
+                                                                                <mn>
+                                                                                  "1"
+                                                                              <mi>
+                                                                                "n"
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "i"
+                                                                            <mo>
+                                                                              "="
+                                                                            <mi>
+                                                                              "tr"
+                                                                            <mo>
+                                                                              "⁡"
+                                                                            <mi>
+                                                                              "A"
+                                                                          <annotation>
+                                                                            "\\sum_{i=1}^{n}\\lambda_i=\\operatorname{tr}A"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mop>
+                                                                          <span .mop.op-symbol.small-op>
+                                                                            "∑"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        <span .mathnormal.mord.mtight>
+                                                                                          "i"
+                                                                                        <span .mrel.mtight>
+                                                                                          "="
+                                                                                        <span .mord.mtight>
+                                                                                          "1"
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        <span .mathnormal.mord.mtight>
+                                                                                          "n"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mspace />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "i"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "="
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mop>
+                                                                          <span .mathrm.mord>
+                                                                            "tr"
+                                                                        <span .mspace />
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                <img .ProseMirror-separator alt />
+                                                                <br .ProseMirror-trailingBreak />
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "特征值之积等于行列式："
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\prod_{i=1}^{n}\\lambda_i=\\lvert A\\rvert" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msubsup>
+                                                                              <mo>
+                                                                                "∏"
+                                                                              <mrow>
+                                                                                <mi>
+                                                                                  "i"
+                                                                                <mo>
+                                                                                  "="
+                                                                                <mn>
+                                                                                  "1"
+                                                                              <mi>
+                                                                                "n"
+                                                                            <msub>
+                                                                              <mi>
+                                                                                "λ"
+                                                                              <mi>
+                                                                                "i"
+                                                                            <mo>
+                                                                              "="
+                                                                            <mo>
+                                                                              "∣"
+                                                                            <mi>
+                                                                              "A"
+                                                                            <mo>
+                                                                              "∣"
+                                                                          <annotation>
+                                                                            "\\prod_{i=1}^{n}\\lambda_i=\\lvert A\\rvert"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mop>
+                                                                          <span .mop.op-symbol.small-op>
+                                                                            "∏"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        <span .mathnormal.mord.mtight>
+                                                                                          "i"
+                                                                                        <span .mrel.mtight>
+                                                                                          "="
+                                                                                        <span .mord.mtight>
+                                                                                          "1"
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        <span .mathnormal.mord.mtight>
+                                                                                          "n"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mspace />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "λ"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mathnormal.mord.mtight>
+                                                                                        "i"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "="
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mopen>
+                                                                          "∣"
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                        <span .mclose>
+                                                                          "∣"
+                                                                "，所以"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="A" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mi>
+                                                                              "A"
+                                                                          <annotation>
+                                                                            "A"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                "可逆"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\iff" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mo>
+                                                                              "⟺"
+                                                                          <annotation>
+                                                                            "\\iff"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "⟺"
+                                                                        <span .mspace />
+                                                                "没有零特征值"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "属于"
+                                                                <strong>
+                                                                  "不同"
+                                                                "特征值的特征向量线性无关"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "若"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="A\\boldsymbol{x}=\\lambda\\boldsymbol{x}" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mi>
+                                                                              "A"
+                                                                            <mi>
+                                                                              "x"
+                                                                            <mo>
+                                                                              "="
+                                                                            <mi>
+                                                                              "λ"
+                                                                            <mi>
+                                                                              "x"
+                                                                          <annotation>
+                                                                            "A\\boldsymbol{x}=\\lambda\\boldsymbol{x}"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .boldsymbol.mord>
+                                                                              "x"
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "="
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "λ"
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .boldsymbol.mord>
+                                                                              "x"
+                                                                "，则"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="f(A)\\boldsymbol{x}=f(\\lambda)\\boldsymbol{x}" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mi>
+                                                                              "f"
+                                                                            <mo>
+                                                                              "("
+                                                                            <mi>
+                                                                              "A"
+                                                                            <mo>
+                                                                              ")"
+                                                                            <mi>
+                                                                              "x"
+                                                                            <mo>
+                                                                              "="
+                                                                            <mi>
+                                                                              "f"
+                                                                            <mo>
+                                                                              "("
+                                                                            <mi>
+                                                                              "λ"
+                                                                            <mo>
+                                                                              ")"
+                                                                            <mi>
+                                                                              "x"
+                                                                          <annotation>
+                                                                            "f(A)\\boldsymbol{x}=f(\\lambda)\\boldsymbol{x}"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "f"
+                                                                        <span .mopen>
+                                                                          "("
+                                                                        <span .mathnormal.mord>
+                                                                          "A"
+                                                                        <span .mclose>
+                                                                          ")"
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .boldsymbol.mord>
+                                                                              "x"
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "="
+                                                                        <span .mspace />
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "f"
+                                                                        <span .mopen>
+                                                                          "("
+                                                                        <span .mathnormal.mord>
+                                                                          "λ"
+                                                                        <span .mclose>
+                                                                          ")"
+                                                                        <span .mord>
+                                                                          <span .mord>
+                                                                            <span .boldsymbol.mord>
+                                                                              "x"
+                                                                "，例如"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="A^{-1}" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <msup>
+                                                                              <mi>
+                                                                                "A"
+                                                                              <mrow>
+                                                                                <mo>
+                                                                                  "−"
+                                                                                <mn>
+                                                                                  "1"
+                                                                          <annotation>
+                                                                            "A^{-1}"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mathnormal.mord>
+                                                                            "A"
+                                                                          <span .msupsub>
+                                                                            <span .vlist-t>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .katex-sizing.mtight.reset-size6.size3>
+                                                                                      <span .mord.mtight>
+                                                                                        <span .mord.mtight>
+                                                                                          "−"
+                                                                                        <span .mord.mtight>
+                                                                                          "1"
+                                                                "的特征值为"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\dfrac{1}{\\lambda}" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mstyle>
+                                                                              <mfrac>
+                                                                                <mn>
+                                                                                  "1"
+                                                                                <mi>
+                                                                                  "λ"
+                                                                          <annotation>
+                                                                            "\\dfrac{1}{\\lambda}"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mord>
+                                                                          <span .mopen.nulldelimiter />
+                                                                          <span .mfrac>
+                                                                            <span .vlist-t.vlist-t2>
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .mord>
+                                                                                      <span .mathnormal.mord>
+                                                                                        "λ"
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .frac-line />
+                                                                                  <span>
+                                                                                    <span .pstrut />
+                                                                                    <span .mord>
+                                                                                      <span .mord>
+                                                                                        "1"
+                                                                                <span .vlist-s>
+                                                                                  "​"
+                                                                              <span .vlist-r>
+                                                                                <span .vlist>
+                                                                                  <span />
+                                                                          <span .mclose.nulldelimiter />
+                                                                <img .ProseMirror-separator alt />
+                                                                <br .ProseMirror-trailingBreak />
+                                                    <blockquote>
+                                                      <p>
+                                                        "易错：特征向量必须非零；同一个特征值的特征向量有无穷多个。错题见"
+                                                        <span .crepe-wikilink contenteditable="false" data-label data-resolved="true" data-target="错题复盘 · 第 5 章" data-type="wikilink" draggable="true" title="错题复盘 · 第 5 章">
+                                                          "错题复盘 · 第 5 章"
+                                                        "。"
+                                                    <h2 id="@7">
+                                                      "例题"
+                                                    <p>
+                                                      "求"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="A=\\begin{pmatrix}2&1\\\\1&2\\end{pmatrix}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mi>
+                                                                    "A"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mrow>
+                                                                    <mo>
+                                                                      "("
+                                                                    <mtable>
+                                                                      <mtr>
+                                                                        <mtd>
+                                                                          <mstyle>
+                                                                            <mn>
+                                                                              "2"
+                                                                        <mtd>
+                                                                          <mstyle>
+                                                                            <mn>
+                                                                              "1"
+                                                                      <mtr>
+                                                                        <mtd>
+                                                                          <mstyle>
+                                                                            <mn>
+                                                                              "1"
+                                                                        <mtd>
+                                                                          <mstyle>
+                                                                            <mn>
+                                                                              "2"
+                                                                    <mo>
+                                                                      ")"
+                                                                <annotation>
+                                                                  "A=\\begin{pmatrix}2&1\\\\1&2\\end{pmatrix}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .minner>
+                                                                <span .delimcenter.mopen>
+                                                                  <span .delimsizing.size3>
+                                                                    "("
+                                                                <span .mord>
+                                                                  <span .mtable>
+                                                                    <span .col-align-c>
+                                                                      <span .vlist-t.vlist-t2>
+                                                                        <span .vlist-r>
+                                                                          <span .vlist>
+                                                                            <span>
+                                                                              <span .pstrut />
+                                                                              <span .mord>
+                                                                                <span .mord>
+                                                                                  "2"
+                                                                            <span>
+                                                                              <span .pstrut />
+                                                                              <span .mord>
+                                                                                <span .mord>
+                                                                                  "1"
+                                                                          <span .vlist-s>
+                                                                            "​"
+                                                                        <span .vlist-r>
+                                                                          <span .vlist>
+                                                                            <span />
+                                                                    <span .arraycolsep />
+                                                                    <span .arraycolsep />
+                                                                    <span .col-align-c>
+                                                                      <span .vlist-t.vlist-t2>
+                                                                        <span .vlist-r>
+                                                                          <span .vlist>
+                                                                            <span>
+                                                                              <span .pstrut />
+                                                                              <span .mord>
+                                                                                <span .mord>
+                                                                                  "1"
+                                                                            <span>
+                                                                              <span .pstrut />
+                                                                              <span .mord>
+                                                                                <span .mord>
+                                                                                  "2"
+                                                                          <span .vlist-s>
+                                                                            "​"
+                                                                        <span .vlist-r>
+                                                                          <span .vlist>
+                                                                            <span />
+                                                                <span .delimcenter.mclose>
+                                                                  <span .delimsizing.size3>
+                                                                    ")"
+                                                      "的特征值。"
+                                                    <p>
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\lvert \\lambda E-A\\rvert=(\\lambda-2)^2-1=(\\lambda-1)(\\lambda-3)" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mo>
+                                                                    "∣"
+                                                                  <mi>
+                                                                    "λ"
+                                                                  <mi>
+                                                                    "E"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mi>
+                                                                    "A"
+                                                                  <mo>
+                                                                    "∣"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mo>
+                                                                    "("
+                                                                  <mi>
+                                                                    "λ"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mn>
+                                                                    "2"
+                                                                  <msup>
+                                                                    <mo>
+                                                                      ")"
+                                                                    <mn>
+                                                                      "2"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mo>
+                                                                    "("
+                                                                  <mi>
+                                                                    "λ"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    ")"
+                                                                  <mo>
+                                                                    "("
+                                                                  <mi>
+                                                                    "λ"
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mn>
+                                                                    "3"
+                                                                  <mo>
+                                                                    ")"
+                                                                <annotation>
+                                                                  "\\lvert \\lambda E-A\\rvert=(\\lambda-2)^2-1=(\\lambda-1)(\\lambda-3)"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "∣"
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                              <span .mathnormal.mord>
+                                                                "E"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                              <span .mclose>
+                                                                "∣"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "2"
+                                                              <span .mclose>
+                                                                <span .mclose>
+                                                                  ")"
+                                                                <span .msupsub>
+                                                                  <span .vlist-t>
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span>
+                                                                          <span .pstrut />
+                                                                          <span .katex-sizing.mtight.reset-size6.size3>
+                                                                            <span .mord.mtight>
+                                                                              "2"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mclose>
+                                                                ")"
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mathnormal.mord>
+                                                                "λ"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "−"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "3"
+                                                              <span .mclose>
+                                                                ")"
+                                                      "，所以"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="\\lambda_1=1,\\ \\lambda_2=3" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <msub>
+                                                                    <mi>
+                                                                      "λ"
+                                                                    <mn>
+                                                                      "1"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    ","
+                                                                  <mtext>
+                                                                  <msub>
+                                                                    <mi>
+                                                                      "λ"
+                                                                    <mn>
+                                                                      "2"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mn>
+                                                                    "3"
+                                                                <annotation>
+                                                                  "\\lambda_1=1,\\ \\lambda_2=3"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                <span .mathnormal.mord>
+                                                                  "λ"
+                                                                <span .msupsub>
+                                                                  <span .vlist-t.vlist-t2>
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span>
+                                                                          <span .pstrut />
+                                                                          <span .katex-sizing.mtight.reset-size6.size3>
+                                                                            <span .mord.mtight>
+                                                                              "1"
+                                                                      <span .vlist-s>
+                                                                        "​"
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span />
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mpunct>
+                                                                ","
+                                                              <span .mspace>
+                                                              <span .mspace />
+                                                              <span .mord>
+                                                                <span .mathnormal.mord>
+                                                                  "λ"
+                                                                <span .msupsub>
+                                                                  <span .vlist-t.vlist-t2>
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span>
+                                                                          <span .pstrut />
+                                                                          <span .katex-sizing.mtight.reset-size6.size3>
+                                                                            <span .mord.mtight>
+                                                                              "2"
+                                                                      <span .vlist-s>
+                                                                        "​"
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span />
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "3"
+                                                      "；对应特征向量"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="(1,-1)^{\\mathrm T}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mo>
+                                                                    "("
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    ","
+                                                                  <mo>
+                                                                    "−"
+                                                                  <mn>
+                                                                    "1"
+                                                                  <msup>
+                                                                    <mo>
+                                                                      ")"
+                                                                    <mi>
+                                                                      "T"
+                                                                <annotation>
+                                                                  "(1,-1)^{\\mathrm T}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mpunct>
+                                                                ","
+                                                              <span .mspace />
+                                                              <span .mord>
+                                                                "−"
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mclose>
+                                                                <span .mclose>
+                                                                  ")"
+                                                                <span .msupsub>
+                                                                  <span .vlist-t>
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span>
+                                                                          <span .pstrut />
+                                                                          <span .katex-sizing.mtight.reset-size6.size3>
+                                                                            <span .mord.mtight>
+                                                                              <span .mathrm.mord.mtight>
+                                                                                "T"
+                                                      "与"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="(1,1)^{\\mathrm T}" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mo>
+                                                                    "("
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    ","
+                                                                  <mn>
+                                                                    "1"
+                                                                  <msup>
+                                                                    <mo>
+                                                                      ")"
+                                                                    <mi>
+                                                                      "T"
+                                                                <annotation>
+                                                                  "(1,1)^{\\mathrm T}"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "("
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mpunct>
+                                                                ","
+                                                              <span .mspace />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mclose>
+                                                                <span .mclose>
+                                                                  ")"
+                                                                <span .msupsub>
+                                                                  <span .vlist-t>
+                                                                    <span .vlist-r>
+                                                                      <span .vlist>
+                                                                        <span>
+                                                                          <span .pstrut />
+                                                                          <span .katex-sizing.mtight.reset-size6.size3>
+                                                                            <span .mord.mtight>
+                                                                              <span .mathrm.mord.mtight>
+                                                                                "T"
+                                                      "。验算："
+                                                      <span contenteditable="false" data-type="math_inline" data-value="1+3=4=\\operatorname{tr}A" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    "+"
+                                                                  <mn>
+                                                                    "3"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mn>
+                                                                    "4"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mi>
+                                                                    "tr"
+                                                                  <mo>
+                                                                    "⁡"
+                                                                  <mi>
+                                                                    "A"
+                                                                <annotation>
+                                                                  "1+3=4=\\operatorname{tr}A"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "+"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "3"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "4"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mop>
+                                                                <span .mathrm.mord>
+                                                                  "tr"
+                                                              <span .mspace />
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                      "，"
+                                                      <span contenteditable="false" data-type="math_inline" data-value="1\\times3=3=\\lvert A\\rvert" draggable="true">
+                                                        <span .katex>
+                                                          <span .katex-mathml>
+                                                            <math>
+                                                              <semantics>
+                                                                <mrow>
+                                                                  <mn>
+                                                                    "1"
+                                                                  <mo>
+                                                                    "×"
+                                                                  <mn>
+                                                                    "3"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mn>
+                                                                    "3"
+                                                                  <mo>
+                                                                    "="
+                                                                  <mo>
+                                                                    "∣"
+                                                                  <mi>
+                                                                    "A"
+                                                                  <mo>
+                                                                    "∣"
+                                                                <annotation>
+                                                                  "1\\times3=3=\\lvert A\\rvert"
+                                                          <span .katex-html aria-hidden="true">
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "1"
+                                                              <span .mspace />
+                                                              <span .mbin>
+                                                                "×"
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "3"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mord>
+                                                                "3"
+                                                              <span .mspace />
+                                                              <span .mrel>
+                                                                "="
+                                                              <span .mspace />
+                                                            <span .katex-base>
+                                                              <span .katex-strut />
+                                                              <span .mopen>
+                                                                "∣"
+                                                              <span .mathnormal.mord>
+                                                                "A"
+                                                              <span .mclose>
+                                                                "∣"
+                                                      "。"
+                                                    <h2 id="@8">
+                                                      "和后面章节的联系"
+                                                    <ul data-spread="false">
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                <span .crepe-wikilink contenteditable="false" data-label data-resolved="true" data-target="矩阵的相似对角化" data-type="wikilink" draggable="true" title="矩阵的相似对角化">
+                                                                  "矩阵的相似对角化"
+                                                                "：有"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="n" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mi>
+                                                                              "n"
+                                                                          <annotation>
+                                                                            "n"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mathnormal.mord>
+                                                                          "n"
+                                                                "个线性无关的特征向量"
+                                                                <span contenteditable="false" data-type="math_inline" data-value="\\iff" draggable="true">
+                                                                  <span .katex>
+                                                                    <span .katex-mathml>
+                                                                      <math>
+                                                                        <semantics>
+                                                                          <mrow>
+                                                                            <mo>
+                                                                              "⟺"
+                                                                          <annotation>
+                                                                            "\\iff"
+                                                                    <span .katex-html aria-hidden="true">
+                                                                      <span .katex-base>
+                                                                        <span .katex-strut />
+                                                                        <span .mspace />
+                                                                        <span .mrel>
+                                                                          "⟺"
+                                                                        <span .mspace />
+                                                                "可对角化"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                <span .crepe-wikilink contenteditable="false" data-label data-resolved="true" data-target="二次型与正定矩阵" data-type="wikilink" draggable="true" title="二次型与正定矩阵">
+                                                                  "二次型与正定矩阵"
+                                                                "：实对称矩阵的特征值决定二次型的标准形与正定性"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .bullet.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "机器学习里的 PCA 就是对协方差矩阵做特征分解，见"
+                                                                <span .crepe-wikilink contenteditable="false" data-label data-resolved="true" data-target="数据并行训练" data-type="wikilink" draggable="true" title="数据并行训练">
+                                                                  "数据并行训练"
+                                                                "前置的数学复习"
+                                                    <h2 id="@9">
+                                                      "待办"
+                                                    <ul data-spread="false">
+                                                      <div .milkdown-list-item-block data-has-checked="true" data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .checked.label.milkdown-icon>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "整理课本例 5.3、5.5"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .label.milkdown-icon.unchecked>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "做完习题 5-2 第 4、7、9 题"
+                                                      <div .milkdown-list-item-block data-v-app>
+                                                        <li .list-item>
+                                                          <div .label-wrapper contenteditable="false">
+                                                            <span .label.milkdown-icon.unchecked>
+                                                              <svg viewBox="0 0 24 24" />
+                                                          <div .children>
+                                                            <div .content-dom data-content-dom="true">
+                                                              <p>
+                                                                "周五前把本章生成导图背一遍"
+                                                    <p>
+                                                      <br .ProseMirror-trailingBreak />
+                                                  <div .crepe-drop-cursor.milkdown-drop-indicator />
+                                                  <div .milkdown-link-preview data-show="false" data-v-app>
+                                                    <div .link-preview>
+                                                      <span .button.link-icon.milkdown-icon>
+                                                        <svg viewBox="0 -960 960 960" />
+                                                      <a .link-display href />
+                                                      <span .button.link-edit-button.milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                      <span .button.link-remove-button.milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                  <div .milkdown-link-edit data-show="false" data-v-app>
+                                                    <div .link-edit>
+                                                      <input .input-area id="@10" placeholder="输入或粘贴链接地址…" value />
+                                                  <div .milkdown-toolbar data-show="false" data-v-app>
+                                                    <button .toolbar-item aria-keyshortcuts="Meta+B" aria-label="Bold" data-toolbar-item="bold" title="Bold (⌘B)" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <button .toolbar-item aria-keyshortcuts="Meta+I" aria-label="Italic" data-toolbar-item="italic" title="Italic (⌘I)" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <button .toolbar-item aria-keyshortcuts="Meta+Alt+X" aria-label="Strikethrough" data-toolbar-item="strikethrough" title="Strikethrough (⌥⌘X)" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <div .divider />
+                                                    <button .toolbar-item aria-keyshortcuts="Meta+E" aria-label="Inline code" data-toolbar-item="code" title="Inline code (⌘E)" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <button .toolbar-item aria-label="Inline math" data-toolbar-item="latex" title="Inline math" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <button .toolbar-item aria-label="Link" data-toolbar-item="link" title="Link" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <div .divider />
+                                                    <button .toolbar-item aria-label="添加到聊天" data-toolbar-item="add-to-chat" title="添加到聊天" type="button">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                  <div .milkdown-latex-inline-edit data-show="false" data-v-app>
+                                                    <div .container>
+                                                      <button type="button">
+                                                        <span .milkdown-icon>
+                                                          <svg viewBox="0 0 24 24" />
+                                                  <div .milkdown-block-handle data-show="false" data-v-app draggable="true">
+                                                    <div .operation-item aria-haspopup="menu" aria-label="在下方添加块" role="button" tabindex="0" title="在下方添加块">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                    <div .operation-item aria-haspopup="menu" aria-label="拖动块或打开块菜单" role="button" tabindex="0" title="拖动块或打开块菜单">
+                                                      <span .milkdown-icon>
+                                                        <svg viewBox="0 0 24 24" />
+                                                  <div .milkdown-slash-menu data-show="false" data-v-app>
+                                                    <div>
+                                                      <nav .tab-group>
+                                                        <ul>
+                                                          <li .selected>
+                                                            "文本"
+                                                          <li>
+                                                            "列表"
+                                                          <li>
+                                                            "高级"
+                                                          <li>
+                                                            "页面布局"
+                                                      <div .ds-slash-scroll-viewport.menu-groups data-ds-scroll-enhanced="true">
+                                                        <div .menu-group>
+                                                          <h6>
+                                                            "文本"
+                                                          <ul>
+                                                            <li .hover data-index="0">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "普通文本"
+                                                            <li data-index="1">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "一级标题"
+                                                            <li data-index="2">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "二级标题"
+                                                            <li data-index="3">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "三级标题"
+                                                            <li data-index="4">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "四级标题"
+                                                            <li data-index="5">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "五级标题"
+                                                            <li data-index="6">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "六级标题"
+                                                            <li data-index="7">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "引用"
+                                                            <li data-index="8">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "分隔线"
+                                                        <div .menu-group>
+                                                          <h6>
+                                                            "列表"
+                                                          <ul>
+                                                            <li data-index="9">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "无序列表"
+                                                            <li data-index="10">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "有序列表"
+                                                            <li data-index="11">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "任务列表"
+                                                        <div .menu-group>
+                                                          <h6>
+                                                            "高级"
+                                                          <ul>
+                                                            <li data-index="12">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "图片"
+                                                            <li data-index="13">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "代码块"
+                                                            <li data-index="14">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "表格"
+                                                            <li data-index="15">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 24 24" />
+                                                              <span>
+                                                                "数学公式"
+                                                            <li data-index="16">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "高亮块"
+                                                            <li data-index="17">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "折叠块"
+                                                        <div .menu-group>
+                                                          <h6>
+                                                            "页面布局"
+                                                          <ul>
+                                                            <li data-index="18">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "插入双列"
+                                                            <li data-index="19">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "插入康奈尔布局"
+                                                            <li data-index="20">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "转为双列"
+                                                            <li data-index="21">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "转为康奈尔布局"
+                                                            <li data-index="22">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "转换康奈尔模板"
+                                                            <li data-index="23">
+                                                              <span .milkdown-icon>
+                                                                <svg viewBox="0 0 256 256" />
+                                                              <span>
+                                                                "展开为普通块"
+                                                    <div .ds-slash-scroll-track data-enabled="false" data-visible="false">
+                                                      <div .ds-slash-scroll-thumb />
+                                              <div .crepe-drop-indicator />
+                                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                          <div .os-scrollbar-track>
+                                            <div .os-scrollbar-handle />
+                                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                                          <div .os-scrollbar-track>
+                                            <div .os-scrollbar-handle />
+                  <footer .notes-statusbar data-notes-statusbar="true">
+                    <span>
+                      "11 个文件"
+                    <span />
+              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-handle.whitespace-nowrap aria-expanded="false" aria-label="显示导航" data-wb-sys-drawer-handle="true" title="显示导航" type="button">
+                <svg aria-hidden="true" viewBox="0 0 256 256" />
+              <div .wb-sys-scrim aria-hidden="true" data-open="false" />
+              <div .wb-sys-drawer aria-hidden="true" aria-label="文件" aria-modal="true" data-open="false" data-wb-sys-drawer="true" inert role="dialog" tabindex="-1">
+                <div .wb-sys-drawer-head>
+                  <span .wb-sys-drawer-title>
+                    "文件"
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-close.whitespace-nowrap aria-label="收起导航" title="收起导航" type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                <div .h-full.min-h-0.min-w-0.relative.wb-sys-drawer-body data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-bottom data-scroll-track-right data-scroll-track-top data-slot="scroll-area">
+                  <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full.wb-sys-drawer-body-viewport data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1" />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+        <div .notification-container aria-label="通知" role="region" />
+  <div id="@11" />
+  <div .mobile-editor-toolbar aria-label="移动端编辑工具条" data-testid="mobile-editor-toolbar" role="toolbar">
+    <div .mobile-editor-toolbar__main-row>
+      <button .mobile-editor-toolbar__btn aria-expanded="false" aria-label="插入" data-action="insert-toggle" type="button">
+        <svg aria-hidden="true" viewBox="0 0 256 256" />
+      <div .mobile-editor-toolbar__scroller.scrollbar-none data-testid="mobile-editor-toolbar-scroller">
+        <span .mobile-editor-toolbar__sep aria-hidden="true" data-testid="mobile-editor-toolbar-sep" role="separator" />
+        <button .mobile-editor-toolbar__btn aria-label="撤销" data-action="undo" disabled type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="重做" data-action="redo" disabled type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <span .mobile-editor-toolbar__sep aria-hidden="true" data-testid="mobile-editor-toolbar-sep" role="separator" />
+        <button .mobile-editor-toolbar__btn aria-label="粗体" aria-pressed="false" data-action="bold" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="斜体" aria-pressed="false" data-action="italic" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="删除线" aria-pressed="false" data-action="strikethrough" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <span .mobile-editor-toolbar__sep aria-hidden="true" data-testid="mobile-editor-toolbar-sep" role="separator" />
+        <button .mobile-editor-toolbar__btn aria-label="一级标题" aria-pressed="false" data-action="h1" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="二级标题" aria-pressed="true" data-action="h2" data-active="true" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="三级标题" aria-pressed="false" data-action="h3" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="无序列表" aria-pressed="false" data-action="bullet" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="任务列表" aria-pressed="false" data-action="task" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <span .mobile-editor-toolbar__sep aria-hidden="true" data-testid="mobile-editor-toolbar-sep" role="separator" />
+        <button .mobile-editor-toolbar__btn aria-label="减少缩进" data-action="outdent" disabled type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="增加缩进" data-action="indent" disabled type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <span .mobile-editor-toolbar__sep aria-hidden="true" data-testid="mobile-editor-toolbar-sep" role="separator" />
+        <button .mobile-editor-toolbar__btn aria-label="块操作" data-action="blockActions" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="查找" data-action="find" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+        <button .mobile-editor-toolbar__btn aria-label="生成卡片" data-action="generateCards" type="button">
+          <svg aria-hidden="true" viewBox="0 0 256 256" />
+      <button .mobile-editor-toolbar__btn.mobile-editor-toolbar__expand aria-expanded="false" aria-label="展开全部工具" type="button">
+        <svg aria-hidden="true" viewBox="0 0 256 256" />

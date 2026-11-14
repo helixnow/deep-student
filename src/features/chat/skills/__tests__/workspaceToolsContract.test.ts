@@ -3,7 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { subagentWorkerSkill } from '../builtin-tools/subagent-worker';
 import { workspaceToolsSkill } from '../builtin-tools/workspace-tools';
 
-const WORKSPACE_QUERY_TYPES = ['agents', 'messages', 'documents', 'context', 'tasks', 'all'] as const;
+const RETIRED_WORKSPACE_TOOLS = [
+  'builtin-workspace_create',
+  'builtin-workspace_create_agent',
+  'builtin-workspace_send',
+  'builtin-workspace_query',
+  'builtin-workspace_set_context',
+  'builtin-workspace_get_context',
+  'builtin-workspace_update_document',
+  'builtin-workspace_read_document',
+] as const;
 
 const MUTATION_TOOLS = [
   'builtin-workspace_file_write',
@@ -258,20 +267,20 @@ describe('workspace mutation tool contracts', () => {
     expect(content).toMatch(/coordinator_sleep\*\*（决策树第 2 条）/);
   });
 
-  it('documents background dispatch with tasks polling and auto-wake', () => {
-    // 后台异步派发：查询任务状态 + 空闲自动唤醒（每完成一个唤一次）
+  it('retires legacy workspace tools and documents task-style subagent dispatch with auto-wake', () => {
+    for (const tool of RETIRED_WORKSPACE_TOOLS) {
+      expect(workspaceToolsSkill.allowedTools).not.toContain(tool);
+      expect(workspaceToolsSkill.embeddedTools.map((item) => item.name)).not.toContain(tool);
+      expect(workspaceToolsSkill.content).not.toContain(tool.replace('builtin-', ''));
+      expect(subagentWorkerSkill.allowedTools).not.toContain(tool);
+      expect(subagentWorkerSkill.embeddedTools.map((item) => item.name)).not.toContain(tool);
+    }
+
     expect(workspaceToolsSkill.content).toContain('后台异步');
-    expect(workspaceToolsSkill.content).toContain('query_type="tasks"');
+    expect(workspaceToolsSkill.content).toContain('coordinator_sleep');
+    expect(workspaceToolsSkill.content).toContain('resume_agent_session_id');
     expect(workspaceToolsSkill.content).toContain('内部唤醒回合');
     expect(workspaceToolsSkill.content).toContain('[子代理完成通知]');
-
-    const query = workspaceToolsSkill.embeddedTools.find(
-      (item) => item.name === 'builtin-workspace_query',
-    );
-    const schema = query?.inputSchema as {
-      properties?: { query_type?: { enum?: string[] } };
-    };
-    expect(schema.properties?.query_type?.enum).toEqual([...WORKSPACE_QUERY_TYPES]);
 
     const subagent = workspaceToolsSkill.embeddedTools.find(
       (item) => item.name === 'builtin-subagent_call',
@@ -282,15 +291,12 @@ describe('workspace mutation tool contracts', () => {
     expect(subagentSchema.properties?.wait?.description).toContain('自动唤醒');
   });
 
-  it('aligns subagent-worker workspace_query query_type with workspace-tools', () => {
-    const query = subagentWorkerSkill.embeddedTools.find(
-      (item) => item.name === 'builtin-workspace_query',
-    );
-    const schema = query?.inputSchema as {
-      properties?: { query_type?: { enum?: string[]; description?: string } };
-    };
-    expect(schema.properties?.query_type?.enum).toEqual([...WORKSPACE_QUERY_TYPES]);
-    expect(schema.properties?.query_type?.description).toContain('tasks');
+  it('keeps subagent-worker free of legacy workspace tools', () => {
+    expect(subagentWorkerSkill.embeddedTools).toEqual([]);
+    expect(subagentWorkerSkill.allowedTools).toEqual([]);
+    expect(subagentWorkerSkill.content).not.toContain('workspace_send');
+    expect(subagentWorkerSkill.content).not.toContain('workspace_query');
+    expect(subagentWorkerSkill.content).not.toContain('workspace_get_context');
   });
 
   it('defaults parent environment inheritance to deny', () => {

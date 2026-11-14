@@ -14,7 +14,6 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowClockwise,
   ArrowLeft,
   ArrowRight,
   ArrowSquareOut,
@@ -68,9 +67,8 @@ const NavControls: React.FC<{
   loading: boolean;
   onBack: () => void;
   onForward: () => void;
-  onReload: () => void;
   onStop: () => void;
-}> = ({ canGoBack, canGoForward, loading, onBack, onForward, onReload, onStop }) => {
+}> = ({ canGoBack, canGoForward, loading, onBack, onForward, onStop }) => {
   const { t } = useTranslation('workbench');
   return (
     <div className="wb-browser-nav" role="group" aria-label={t('browser.nav')}>
@@ -95,8 +93,8 @@ const NavControls: React.FC<{
       >
         <ArrowRight size={16} weight="bold" />
       </button>
-      {/* 加载中 刷新 ↔ 停止 复用同一格位（Chrome/Safari 惯例） */}
-      {loading ? (
+      {/* 加载期间允许中止导航。 */}
+      {loading && (
         <button
           type="button"
           className="wb-browser-icon-btn"
@@ -105,16 +103,6 @@ const NavControls: React.FC<{
           title={t('browser.stop')}
         >
           <X size={16} weight="bold" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="wb-browser-icon-btn"
-          onClick={onReload}
-          aria-label={t('browser.reload')}
-          title={t('browser.reload')}
-        >
-          <ArrowClockwise size={16} weight="bold" />
         </button>
       )}
     </div>
@@ -1022,10 +1010,6 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
           loading={session.loading || gatesDisabled}
           onBack={handleBack}
           onForward={handleForward}
-          onReload={() => {
-            if (gatesDisabled) return;
-            void session.reload().catch(() => {});
-          }}
           onStop={handleStop}
         />
         <AddressBar

@@ -6,6 +6,7 @@ import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useComposerDockHeight } from '@/hooks/useComposerDockHeight';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { springSoft, tweenFast, motionSafe } from '@/styles/motion-springs';
@@ -416,6 +417,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     isPomodoroMiniWindowOpen,
     () => false,
   );
+  const composerDockHeight = useComposerDockHeight();
 
   const hasVisiblePomodoroHost = currentView === 'todo' || hasVisibleWindowHost;
   const showPill =
@@ -456,10 +458,10 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
               x,
               y,
               // 触屏上避开底部停靠的聊天输入栏 + 安全区：输入栏实际高度由输入栏侧
-              // 写入 --composer-dock-height（未写入时回退 96px），避免硬编码与实际高度脱节
+              // 发布到 useComposerDockHeight（未发布时回退 96px），避免硬编码与实际高度脱节
               // （Android env() 不可靠，统一走 --android-safe-area-bottom 兜底，SA-1 注入真实值）
               bottom: isTouchPrimary
-                ? 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--composer-dock-height, 96px))'
+                ? `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${composerDockHeight ?? '96px'})`
                 : '1.5rem',
             }}
             onMouseEnter={isTouchPrimary ? undefined : () => setHovered(true)}

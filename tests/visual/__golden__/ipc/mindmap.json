@@ -1,0 +1,18 @@
+{
+  "scene": "mindmap",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:tauri://close-requested",
+        "vfs_get_mindmap(mindmapId)",
+        "vfs_get_mindmap_content(mindmapId)",
+        "dstu_watch(path)",
+        "listen:dstu:change",
+        "get_setting(key)",
+        "save_setting(key,value)"
+      ]
+    }
+  ]
+}

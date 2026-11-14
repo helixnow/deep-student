@@ -35,7 +35,8 @@
 }
 
 .wb-titlebar.wb-title-bar[data-wb-app-tabs='notes']::after,
-.wb-titlebar.wb-title-bar[data-wb-app-tabs='files']::after {
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='files']::after,
+.wb-titlebar.wb-title-bar[data-wb-title-seamless]::after {
   display: none;
 }
 
@@ -50,7 +51,23 @@
  *   视觉增益有限；一旦视觉分区把窗顶背景调透（连续玻璃），此层即生效。
  * ========================================================================== */
 
-:root[data-wb-material='full'] .wb-titlebar.wb-title-bar:not([data-wb-app-tabs]) {
+.wb-titlebar.wb-title-bar[data-wb-title-seamless] {
+  position: absolute;
+  inset: 0 0 auto;
+  border-bottom: 0;
+  background: transparent;
+}
+
+/* A visible Agent status strip still starts below the window controls. */
+[data-wb-title-seamless] + .acr-agent-strip-host {
+  margin-top: var(--wb-titlebar-height);
+}
+
+[data-wb-title-seamless] + [data-wb-window-content] {
+  --wb-chat-top-inset: var(--wb-titlebar-height);
+}
+
+:root[data-wb-material='full'] .wb-titlebar.wb-title-bar:not([data-wb-app-tabs], [data-wb-title-seamless]) {
   -webkit-backdrop-filter: var(--wb-glass-blur, none);
   backdrop-filter: var(--wb-glass-blur, none);
 }

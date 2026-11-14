@@ -1,0 +1,1781 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_cancel_variant",
+    "chat_v2_create_session",
+    "chat_v2_compact_session",
+    "chat_v2_continue_message",
+    "chat_v2_delete_message",
+    "chat_v2_upsert_streaming_block",
+    "chat_v2_delete_variant",
+    "chat_v2_edit_and_resend",
+    "chat_v2_get_anki_cards_from_block_by_document_id",
+    "chat_v2_load_messages_page",
+    "chat_v2_load_session",
+    "chat_v2_retry_message",
+    "chat_v2_retry_variant",
+    "chat_v2_retry_variants",
+    "chat_v2_switch_variant",
+    "chat_v2_undo_compaction",
+    "chat_v2_update_block_content",
+    "chat_v2_update_block_tool_output",
+    "chat_v2_wake_session"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.chat.chat_v2_cancel_variant.variant_not_in_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_cancel_variant",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_compact_session.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "cfg_g3w",
+            "contextLimit": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_compact_session.empty_model_config_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_compact_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "modelConfigId": "  ",
+            "contextLimit": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_continue_message.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantId": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_continue_message.no_incomplete_todo_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_continue_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantId": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_message.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_message.invalid_message_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "bad_id"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_message.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_message.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_message.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${1.id}",
+            "messageId": "msg_g3w_c04_a"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_variant.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_variant.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_variant",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_variant.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_variant",
+          "args": {
+            "sessionId": "${1.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_variant.message_has_no_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_edit_and_resend.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_edit_and_resend",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "newContent": "edited",
+            "newContextRefs": null,
+            "newPathMap": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_edit_and_resend.empty_new_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_edit_and_resend",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "newContent": "   ",
+            "newContextRefs": null,
+            "newPathMap": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_edit_and_resend.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_edit_and_resend",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "newContent": "edited",
+            "newContextRefs": null,
+            "newPathMap": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_edit_and_resend.not_user_message",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_edit_and_resend",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "newContent": "edited",
+            "newContextRefs": null,
+            "newPathMap": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_get_anki_cards_from_block_by_document_id.empty_document_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_get_anki_cards_from_block_by_document_id",
+          "args": {
+            "documentId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_load_messages_page.empty_session_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "  ",
+            "offset": 0,
+            "limit": 100
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_load_session.empty_session_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_load_session.session_not_found_full",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_load_session.session_not_found_tail",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "tailLimit": 50
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_message.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_message.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_retry_message",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_message.no_preceding_user_message",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variant.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w",
+            "modelOverride": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variant.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_retry_variant",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w",
+            "modelOverride": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variant.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variant",
+          "args": {
+            "sessionId": "${1.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w",
+            "modelOverride": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variant.variant_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w",
+            "modelOverride": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variants.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variants",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantIds": [
+              "var_missing_g3w"
+            ],
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variants.empty_variant_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_retry_variants",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "variantIds": [],
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variants.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_retry_variants",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "variantIds": [
+              "var_missing_g3w"
+            ],
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variants.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variants",
+          "args": {
+            "sessionId": "${1.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantIds": [
+              "var_missing_g3w"
+            ],
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_retry_variants.message_has_no_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_retry_variants",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantIds": [
+              "var_missing_g3w"
+            ],
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_switch_variant.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_switch_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_switch_variant.message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_switch_variant",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "messageId": "msg_missing_g3w",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_switch_variant.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_switch_variant",
+          "args": {
+            "sessionId": "${1.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_switch_variant.variant_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_switch_variant",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_g3w_c04_a",
+            "variantId": "var_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_undo_compaction.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_undo_compaction",
+          "args": {
+            "sessionId": "${0.id}",
+            "compactionId": "cmp_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_undo_compaction.no_active_compaction",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_undo_compaction",
+          "args": {
+            "sessionId": "${0.id}",
+            "compactionId": "cmp_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_content.invalid_block_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "bad_id",
+            "content": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_content.block_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_missing_g3w",
+            "content": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_content.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "content": "edited"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_tool_output.invalid_block_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "bad_id",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_tool_output.invalid_tool_output_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_missing_g3w",
+            "toolOutputJson": "{not json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_tool_output.block_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_missing_g3w",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_block_tool_output.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "toolOutputJson": "{\"cards\":[]}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_upsert_streaming_block.invalid_block_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "bad_id",
+            "messageId": "msg_g3w_c04_b",
+            "sessionId": "sess_missing_g3w",
+            "blockType": "workspace_status",
+            "content": "",
+            "status": "success",
+            "toolName": "workspace_status",
+            "toolInputJson": "{}",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_upsert_streaming_block.invalid_message_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_b",
+            "messageId": "bad_id",
+            "sessionId": "sess_missing_g3w",
+            "blockType": "workspace_status",
+            "content": "",
+            "status": "success",
+            "toolName": "workspace_status",
+            "toolInputJson": "{}",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_upsert_streaming_block.message_in_other_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_a",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "g3w seed",
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_c",
+            "messageId": "msg_g3w_c04_a",
+            "blockType": "content",
+            "content": "cross",
+            "sessionId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_upsert_streaming_block.invalid_tool_input_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_b",
+            "messageId": "msg_g3w_c04_b",
+            "sessionId": "sess_missing_g3w",
+            "blockType": "workspace_status",
+            "content": "",
+            "status": "success",
+            "toolName": "workspace_status",
+            "toolInputJson": "{not json",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_upsert_streaming_block.invalid_tool_output_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_g3w_c04_b",
+            "messageId": "msg_g3w_c04_b",
+            "sessionId": "sess_missing_g3w",
+            "blockType": "workspace_status",
+            "content": "",
+            "status": "success",
+            "toolName": "workspace_status",
+            "toolInputJson": "{}",
+            "toolOutputJson": "{not json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_wake_session.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_wake_session",
+          "args": {
+            "sessionId": "bad_id",
+            "content": "wake",
+            "assistantMessageId": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_wake_session.subagent_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": null,
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_wake_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "content": "wake",
+            "assistantMessageId": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_wake_session.empty_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_wake_session",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "content": "   ",
+            "assistantMessageId": null,
+            "options": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

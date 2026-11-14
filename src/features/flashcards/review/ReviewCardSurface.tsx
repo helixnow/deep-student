@@ -234,6 +234,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
           data-enter={enterAnim === 'none' ? undefined : enterAnim}
           className={cn(
             'wb-fc-card relative min-h-[16rem] min-w-0 flex-1 cursor-pointer',
+            !templateMode && 'rounded-[20px] border border-border/50 bg-card shadow-[0_18px_40px_-20px_rgba(15,23,42,0.12)]',
             'text-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             disabled && 'cursor-default opacity-70',
@@ -241,7 +242,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
         >
           <div
             ref={contentRef}
-            className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-5 py-6')}
+            className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}
             data-template-mode={templateMode ? 'true' : undefined}
           >
             {/* 正/背面由内容本身表达；仅保留给读屏 */}

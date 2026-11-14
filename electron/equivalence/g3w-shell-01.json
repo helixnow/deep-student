@@ -1,0 +1,17 @@
+{
+  "domain": "shell",
+  "commands": [
+    "pdfstream_check_access"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.shell.pdfstream_check_access.err_missing_path",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pdfstream_check_access", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

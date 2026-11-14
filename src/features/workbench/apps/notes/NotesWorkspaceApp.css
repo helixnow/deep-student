@@ -1,5 +1,5 @@
 .notes-workspace {
-  --notes-statusbar-height: 22px;
+  --notes-statusbar-height: 0px;
 
   position: absolute;
   inset: 0;
@@ -90,7 +90,7 @@
   min-width: 0;
   flex-direction: column;
   overflow: clip;
-  background: color-mix(in hsl, hsl(var(--muted)) 34%, hsl(var(--background)) 66%);
+  background: transparent;
 }
 
 .notes-explorer header {
@@ -335,8 +335,9 @@
   padding: 1px 6px 12px;
 }
 
-/* 树行对齐对话标准的行配方；树形内容保留 13px/30px 密度档（最小妥协） */
+/* 树行收紧圆角至 8px（Bear 2 / Craft 笔记树标准），悬停树区域时显现缩进引导线 */
 .notes-tree-row {
+  position: relative;
   width: 100%;
   height: 30px;
   min-height: 30px;
@@ -344,7 +345,7 @@
   align-items: center;
   gap: 5px;
   border: 0;
-  border-radius: var(--shell-nav-row-radius, 14px);
+  border-radius: 8px;
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
@@ -354,13 +355,30 @@
   transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
 }
 
+.notes-tree-row::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 14px;
+  width: 1px;
+  background: var(--notes-hairline, hsl(var(--border) / 50%));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-tree:hover .notes-tree-row::before {
+  opacity: 1;
+}
+
 .notes-tree-row:hover {
-  background: var(--interactive-hover, hsl(var(--accent)));
+  background: var(--notes-surface-hover, var(--interactive-hover, hsl(var(--accent))));
 }
 
 .notes-tree-row[data-active='true'],
 .notes-tree-row[data-selected='true'] {
-  background: var(--interactive-selected, hsl(var(--accent)));
+  background: var(--notes-surface-selected, var(--interactive-selected, hsl(var(--accent))));
 }
 
 /* 拖放目标保留主色调提示（与选中态区分） */
@@ -532,11 +550,11 @@
 .notes-pane-resize {
   position: relative;
   z-index: 2;
-  flex: 0 0 6px;
-  width: 6px;
-  min-width: 6px;
+  flex: 0 0 1px;
+  width: 1px;
+  min-width: 1px;
   cursor: col-resize;
-  background: hsl(var(--border) / 62%);
+  background: var(--notes-hairline, hsl(var(--border) / 62%));
   transition: background-color var(--notes-hover-transition);
 }
 
@@ -573,12 +591,14 @@
 
 .notes-tabstrip {
   min-width: 0;
-  height: 40px;
+  height: 38px;
+  padding: 4px 6px;
+  gap: 2px;
   display: flex;
-  align-items: end;
+  align-items: center;
   overflow-x: auto;
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 30%);
+  border-bottom: 0;
+  background: transparent;
 }
 
 .notes-titlebar-tabs {
@@ -696,38 +716,40 @@
 }
 
 .notes-titlebar-tabs .notes-tab {
-  height: 100%;
+  height: 28px;
+  align-self: center;
   pointer-events: auto;
 }
 
 .notes-titlebar-tabs .notes-tab[data-active='true'] {
-  height: 100%;
+  height: 28px;
 }
 
 .notes-tab {
   position: relative;
-  height: 36px;
+  height: 30px;
   width: 180px;
   min-width: 104px;
   max-width: 200px;
   flex: 1 1 180px;
   display: flex;
   align-items: center;
-  border-right: 1px solid hsl(var(--border));
+  border-right: 0;
+  border-radius: 7px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 22%);
+  background: transparent;
   transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
 }
 
 .notes-tab:hover {
   color: hsl(var(--foreground));
-  background: hsl(var(--accent) / 60%);
+  background: var(--notes-surface-hover, hsl(var(--accent) / 60%));
 }
 
 .notes-tab[data-active='true'] {
-  height: 40px;
+  height: 30px;
   color: hsl(var(--foreground));
-  background: hsl(var(--background));
+  background: var(--notes-surface-selected, hsl(var(--foreground) / 0.065));
 }
 
 .notes-tab[data-right-split='true'] {
@@ -873,14 +895,18 @@
 .notes-statusbar {
   min-width: 0;
   height: var(--notes-statusbar-height);
+  min-height: 0;
   padding: 0 9px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid hsl(var(--border));
+  overflow: hidden;
+  border-top: 0;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 26%);
+  background: transparent;
   font-size: 11px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .notes-statusbar button,

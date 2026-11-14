@@ -99,16 +99,16 @@ describe('generativeUiSkill contract', () => {
     expect(generativeUiSkill.content).toMatch(/JSON Schema enum/);
   });
 
-  it('Rust executor tool name matches skill allowedTools mapping', () => {
-    const rustSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/chat_v2/tools/generative_ui_executor.rs'),
+  it('Host executor tool name matches skill allowedTools mapping', () => {
+    const hostSrc = fs.readFileSync(
+      path.join(process.cwd(), 'host/plugins/vfs/src/tools/generative-ui.ts'),
       'utf8',
     );
-    expect(rustSrc).toContain('render_generative_ui');
-    expect(rustSrc).toContain('researchSessionId');
-    expect(rustSrc).toContain('fn validate_intent_version');
-    expect(rustSrc).toContain('"1.1"');
-    expect(rustSrc).toContain('layout');
+    expect(hostSrc).toContain('render_generative_ui');
+    expect(hostSrc).toContain('researchSessionId');
+    expect(hostSrc).toContain('export function validateIntentVersion');
+    expect(hostSrc).toContain("'1.1'");
+    expect(hostSrc).toContain('layout');
     expect(generativeUiSkill.allowedTools).toContain('builtin-render_generative_ui');
   });
 

@@ -66,23 +66,18 @@ describe('profile auto-recall contract (issue #90)', () => {
   describe('backend injection source contract', () => {
     // vfs-memory 声称"画像已随会话自动注入 system prompt"——用源码契约钉住该事实，
     // 后端注入路径变化时此测试会失败，提醒同步更新技能提示词。
-    const promptBuilderSource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/prompt_builder.rs'),
-      'utf-8',
-    );
+    const read = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf-8');
+    const promptBuilderSource = read('host/plugins/chat-pipeline/src/prompt-builder.ts');
+    const capabilitiesSource = read('host/plugins/chat-pipeline/src/execution-capabilities.ts');
 
     it('injects the learner profile block into the system prompt', () => {
       expect(promptBuilderSource).toContain('<learner_profile>');
-      expect(promptBuilderSource).toContain('fn load_learner_profile_block');
-      expect(promptBuilderSource).toContain(
-        '.with_learner_profile(load_learner_profile_block(options))',
-      );
+      expect(promptBuilderSource).toContain('.withLearnerProfile(input.learnerProfile ?? null)');
+      expect(capabilitiesSource).toContain('export function loadLearnerProfileBlock');
     });
 
     it('skips injection when memory is disabled, so the profile block is conditional', () => {
-      expect(promptBuilderSource).toContain(
-        'if options.memory_enabled == Some(false)',
-      );
+      expect(capabilitiesSource).toContain('if (memoryEnabled === false) return null;');
     });
   });
 });

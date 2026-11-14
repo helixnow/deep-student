@@ -1,0 +1,1524 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_get_file",
+    "vfs_list_files",
+    "vfs_get_file_content",
+    "vfs_upload_attachment",
+    "vfs_set_attachment_root_folder",
+    "vfs_get_pdf_page_image",
+    "vfs_get_pdf_processing_status",
+    "vfs_retry_pdf_processing",
+    "vfs_start_pdf_processing",
+    "vfs_get_media_cache_stats"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.file.get_file.uploaded_text_and_pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "notes.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "doc.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${3.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "${3.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.get_file.missing_returns_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "file_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "tb_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "file_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "tb_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.get_file.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg==",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.sourceId}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "${0.sourceId}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "res_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {
+            "fileId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file_content",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.list_files.empty_and_paging",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "one.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "two.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "fileType": null,
+            "limit": null,
+            "offset": null
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "limit": 1,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "limit": 1,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "offset": 100
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "fileType": "document"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "fileType": "image"
+          }
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "fileType": "nonexistent_type"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.list_files.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "offset": "1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_list_files",
+          "args": {
+            "fileType": 3
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.text_reuse_and_readback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "answer.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "answer.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.sourceId}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.image_with_front_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "photo.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "stagedUploadId": null,
+              "attachmentType": "image",
+              "folderId": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "photo-dataurl.png",
+              "mimeType": "image/png",
+              "base64Content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "paper.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo=",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.explicit_folder_and_empty_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "附件目录",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "in-folder.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg==",
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "empty-folder.md",
+              "mimeType": "text/markdown",
+              "base64Content": "IyB0aXRsZQ==",
+              "folderId": ""
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_items",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.validation_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "   ",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "virus.exe",
+              "mimeType": "application/x-msdownload",
+              "base64Content": "TVo="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "noext",
+              "mimeType": "",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg==",
+              "attachmentType": "video"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg==",
+              "attachmentType": "image"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "attachmentType": "file"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "data:text/plain;base64"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "!!!not-base64!!!"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "fake.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "tiny.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBE"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "fake.zip",
+              "mimeType": "application/zip",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.zip",
+              "mimeType": "application/x-7z-compressed",
+              "base64Content": "UEsDBA=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "",
+              "stagedUploadId": "staged_missing0000"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg==",
+              "folderId": "fld_missing0000"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "a.txt",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "name": "a.txt",
+            "mimeType": "text/plain",
+            "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.empty_content_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "empty.txt",
+              "mimeType": "text/plain"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.staged_complete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_begin",
+          "args": {
+            "name": "staged.txt",
+            "totalSize": 5
+          }
+        },
+        {
+          "cmd": "staged_upload_append",
+          "args": {
+            "uploadId": "${0}",
+            "offset": 0,
+            "data": "aGVsbG8="
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "staged.txt",
+              "mimeType": "text/plain",
+              "base64Content": "",
+              "stagedUploadId": "${0}"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "staged.txt",
+              "mimeType": "text/plain",
+              "base64Content": "",
+              "stagedUploadId": "${0}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.upload_attachment.staged_incomplete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_begin",
+          "args": {
+            "name": "partial.txt",
+            "totalSize": 10
+          }
+        },
+        {
+          "cmd": "staged_upload_append",
+          "args": {
+            "uploadId": "${0}",
+            "offset": 0,
+            "data": "aGVsbG8="
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "partial.txt",
+              "mimeType": "text/plain",
+              "base64Content": "",
+              "stagedUploadId": "${0}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.attachment_root.set_then_upload",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "自定义附件根",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "root.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_items",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "第二个根",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {
+            "folderId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.attachment_root.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {
+            "folderId": "fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {
+            "folderId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "已删除根",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {
+            "folderId": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_attachment_root_folder",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.pdf_page_image.attachment_pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "page.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo=",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${0.attachment.resourceId}",
+            "pageIndex": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${0.attachment.resourceId}",
+            "pageIndex": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${0.attachment.resourceId}",
+            "pageIndex": 99
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.pdf_page_image.uploaded_file_pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "textbook.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${0.file.resourceId}",
+            "pageIndex": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.pdf_page_image.no_preview_and_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "plain.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${0.attachment.resourceId}",
+            "pageIndex": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "非 PDF 资源",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "pageIndex": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "res_missing0000",
+            "pageIndex": 0
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.pdf_page_image.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "res_missing0000",
+            "pageIndex": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "resourceId": "res_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_page_image",
+          "args": {
+            "pageIndex": 0
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.processing_status.prefixes_and_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "status.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "file_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "tb_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "att_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.processing_status.invalid_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "res_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "att_​abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.retry.after_upload",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "retry.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo=",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.retry.text_file_without_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "plain.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.retry.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "file_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "res_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {
+            "fileId": "file_‮abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_retry_pdf_processing",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.start.pdf_and_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "start.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo=",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "start.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "attachmentType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${3.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${3.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.start.explicit_stages",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "stages.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}",
+            "startFromStage": "page_compression"
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}",
+            "startFromStage": "UNKNOWN_STAGE"
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}",
+            "startFromStage": null
+          }
+        },
+        {
+          "cmd": "vfs_get_pdf_processing_status",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.start.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "unsupported.txt",
+              "mimeType": "text/plain",
+              "base64Content": "56ys5LiA6KGMCnNlY29uZCBsaW5lCg=="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "file_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "res_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {
+            "fileId": "tb_﻿abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_start_pdf_processing",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.file.media_cache_stats.empty_and_populated",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_media_cache_stats",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "stats.pdf",
+              "mimeType": "application/pdf",
+              "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDEwMCBUZCAoSGVsbG8gUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDMzMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQwMQolJUVPRgo=",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "stats.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "attachmentType": "image"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_media_cache_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

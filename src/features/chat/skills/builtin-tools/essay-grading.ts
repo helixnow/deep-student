@@ -48,6 +48,9 @@ export const essayGradingSkill: SkillDefinition = {
 - **builtin-essay_list_sessions**: 列出历史批改会话
 - **builtin-essay_list_results**: 列出某会话的所有批改轮次摘要
 - **builtin-essay_get_result**: 获取某轮完整批改结果（原文 + 批改 + 评分）
+- **builtin-essay_delete_session**: 删除批改会话（High，软删除，不可在会话内恢复；调用前必须获得用户明确确认）
+- **builtin-essay_create_custom_mode** / **builtin-essay_update_custom_mode**：创建/更新自定义批阅模式（名称、说明、提示词模板、评分维度与满分）
+- **builtin-essay_delete_custom_mode**：删除自定义批阅模式（High，删除前必须获得用户明确确认）
 
 ## 多轮修改批改
 
@@ -105,6 +108,10 @@ export const essayGradingSkill: SkillDefinition = {
     'builtin-essay_list_sessions',
     'builtin-essay_list_results',
     'builtin-essay_get_result',
+    'builtin-essay_delete_session',
+    'builtin-essay_create_custom_mode',
+    'builtin-essay_update_custom_mode',
+    'builtin-essay_delete_custom_mode',
   ],
   embeddedTools: [
     {
@@ -212,6 +219,96 @@ export const essayGradingSkill: SkillDefinition = {
           round_number: { type: 'integer', description: '轮次号，不传取最新' },
         },
         required: ['session_id'],
+      },
+    },
+    {
+      name: 'builtin-essay_delete_session',
+      description:
+        '删除批改会话及其轮次（High，软删除，不可撤销）。必须先用 ask_user 列明 session_id 与标题并取得明确确认。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          session_id: { type: 'string', minLength: 1, description: 'essay_list_sessions 返回的真实会话 ID' },
+        },
+        required: ['session_id'],
+      },
+    },
+    {
+      name: 'builtin-essay_create_custom_mode',
+      description:
+        '创建自定义作文批阅模式（Medium）。定义名称、说明、系统提示词模板、评分维度与总分；创建后 mode_id 可直接用于 essay_grade。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 200, description: '模式名称' },
+          description: { type: 'string', maxLength: 1000, description: '模式说明' },
+          prompt_template: { type: 'string', minLength: 1, description: '批改系统提示词模板' },
+          dimensions: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            description: '评分维度，按展示顺序排列',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string', minLength: 1, maxLength: 100 },
+                max_score: { type: 'number', minimum: 0, maximum: 1000 },
+                description: { type: 'string', maxLength: 1000 },
+              },
+              required: ['name', 'max_score'],
+            },
+          },
+          max_score: { type: 'number', minimum: 0, maximum: 1000, description: '总分上限' },
+        },
+        required: ['name', 'prompt_template', 'dimensions', 'max_score'],
+      },
+    },
+    {
+      name: 'builtin-essay_update_custom_mode',
+      description:
+        '更新自定义批阅模式（Medium）。只传需要修改的字段；name/description/prompt_template/dimensions/max_score 至少一项。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: '自定义模式 ID（来自 essay_list_modes）' },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          description: { type: 'string', maxLength: 1000 },
+          prompt_template: { type: 'string', minLength: 1 },
+          dimensions: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string', minLength: 1, maxLength: 100 },
+                max_score: { type: 'number', minimum: 0, maximum: 1000 },
+                description: { type: 'string', maxLength: 1000 },
+              },
+              required: ['name', 'max_score'],
+            },
+          },
+          max_score: { type: 'number', minimum: 0, maximum: 1000 },
+        },
+        required: ['id'],
+      },
+    },
+    {
+      name: 'builtin-essay_delete_custom_mode',
+      description:
+        '删除自定义批阅模式（High，不可撤销）。必须先用 ask_user 列明模式 ID 与名称并取得明确确认；内置模式不可删除。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: 'essay_list_modes 返回的自定义模式 ID' },
+        },
+        required: ['id'],
       },
     },
   ],

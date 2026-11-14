@@ -23,7 +23,7 @@ import {
   hasAnySelectedInjectModeReady,
   resolveExplicitInjectModes,
 } from './injectModeUtils';
-import { resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
+import { keepsTurnsWithoutChatModel, resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 import { clearComposerDraft } from './composerDraftStorage';
 // ============================================================================
 // InputBar 选项
@@ -38,6 +38,13 @@ export interface UseInputBarV2Options {
   clearSelectedModels?: () => void;
   /** ★ 构建 PDF 页码引用标签字符串（如 [PDF@sourceId:1][PDF@sourceId:3]） */
   buildPdfRefTags?: () => string;
+  /** ★ 获取「选择此页」抽取的页面正文快照（发送时自动注入 <selection> 上下文） */
+  getSelectedPagesContext?: () => {
+    sourceId: string;
+    sourceName: string;
+    locator: string;
+    text: string;
+  } | null;
   /** ★ 清除 PDF 页码选择（发送成功后调用） */
   clearPdfPageRefs?: () => void;
   /** 队列是否启用（来自设置开关）。默认 false（关闭则保持原冻结行为）。 */
@@ -136,8 +143,12 @@ export function useInputBarV2(
     // 守卫检查
     // ★ B5 修复：所有 early-return 路径统一给出可见反馈（与注入模式守卫一致），
     // 竞态下用户点发送不再「无声失败」
-    // 队列模式：sessionStatus 为 streaming 时也允许（会走 enqueue 分支）
-    const willEnqueue = state.sessionStatus !== 'idle';
+    // 队列模式：sessionStatus 为 streaming 时也允许（会走 enqueue 分支）；
+    // 若处于 aborting 过渡态且未开启队列，允许走后续抢占/发送恢复路径而不丢弃草稿
+    const isAbortingTransition = state.sessionStatus === 'aborting';
+    const willEnqueue =
+      state.sessionStatus === 'streaming' ||
+      (isAbortingTransition && queueEnabled);
     if (willEnqueue) {
       // 队列守卫：必须启用且未满
       if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
@@ -150,7 +161,7 @@ export function useInputBarV2(
         );
         return;
       }
-    } else if (!state.canSend()) {
+    } else if (!isAbortingTransition && !state.canSend()) {
       console.warn('[useInputBarV2] Cannot send: guard check failed');
       showGlobalNotification(
         'warning',
@@ -173,11 +184,9 @@ export function useInputBarV2(
     const rawContent = state.inputValue.trim();
 
     const readiness = await resolveChatReadiness();
-    if (!readiness.ok) {
+    if (!readiness.ok && !keepsTurnsWithoutChatModel()) {
       showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
-      if (readiness.cta === 'OPEN_SETTINGS_MODELS') {
-        triggerOpenSettingsModels();
-      }
+      if (readiness.cta === 'OPEN_SETTINGS_MODELS') triggerOpenSettingsModels();
       return;
     }
 
@@ -355,9 +364,10 @@ export function useInputBarV2(
     });
 
     // ========== PDF 页码引用注入 ==========
-    // 如果用户选中了 PDF 页码，在消息末尾追加引用标签
+    // 如果用户选中了 PDF 页码，在消息末尾追加引用标签，并将所选页面的正文快照静默挂入本轮上下文
     let finalContent = content;
     const pdfRefTags = opts?.buildPdfRefTags?.() || '';
+    const selectedPagesSnapshot = pdfRefTags ? opts?.getSelectedPagesContext?.() ?? null : null;
     if (pdfRefTags) {
       finalContent = content ? `${content}\n${pdfRefTags}` : pdfRefTags;
       console.log('[useInputBarV2] 📄 Appending PDF page ref tags:', pdfRefTags);
@@ -385,16 +395,48 @@ export function useInputBarV2(
     state.setInputValue('');
 
     try {
-      // 路由：streaming 时入队，idle 时直发
-      if (willEnqueue) {
+      if (selectedPagesSnapshot?.text) {
+        const { selectionToChat } = await import('@/features/chat/context/selectionRef');
+        await selectionToChat({
+          text: selectedPagesSnapshot.text,
+          source: {
+            kind: 'pdf',
+            sourceId: selectedPagesSnapshot.sourceId || undefined,
+            locator: selectedPagesSnapshot.locator,
+            title: selectedPagesSnapshot.sourceName,
+          },
+          silent: true,
+        });
+      }
+
+      // 路由：streaming 时入队；aborting 过渡态优先走队首抢占（若 store 尚未回到 idle）；idle 时直发
+      const latestBeforeCommit = store.getState();
+      const shouldEnqueueForAborting =
+        latestBeforeCommit.sessionStatus === 'aborting' &&
+        typeof latestBeforeCommit.canSend === 'function' &&
+        !latestBeforeCommit.canSend() &&
+        typeof latestBeforeCommit.enqueueMessage === 'function' &&
+        (latestBeforeCommit.queuedMessages?.length ?? 0) < QUEUE_HARD_CAP;
+
+      if (willEnqueue || shouldEnqueueForAborting) {
         // 入队：将当前 pending contextRefs（非 sticky）随消息一起快照入队，
         // 但保留 pendingContextRefs 不清除 —— 用户还在为后续消息组合上下文。
-        const nonStickyRefs = state.pendingContextRefs.filter((r) => r.isSticky !== true);
-        state.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
-        state.clearAttachments();
+        const nonStickyRefs = (latestBeforeCommit.pendingContextRefs ?? []).filter(
+          (r) => r.isSticky !== true
+        );
+        latestBeforeCommit.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
+        latestBeforeCommit.clearAttachments();
+        if (shouldEnqueueForAborting) {
+          const postQueue = store.getState().queuedMessages ?? [];
+          const tail = postQueue[postQueue.length - 1];
+          if (tail) {
+            store.getState().markSteered?.(tail.id);
+            store.getState().promoteQueued?.(tail.id);
+          }
+        }
       } else {
         // 直发：sendMessage 内部会再清空 attachments/contextRefs（保留 sticky）
-        await state.sendMessage(finalContent, allAttachments);
+        await latestBeforeCommit.sendMessage(finalContent, allAttachments);
       }
 
       // ★ 发送成功后清除 PDF 页码选择
@@ -412,7 +454,11 @@ export function useInputBarV2(
       console.error('[useInputBarV2] Send message failed:', error);
       // 本地回合尚未提交时恢复正文，便于重试；已 commit 则保持空输入
       const latest = store.getState();
-      if (latest.sessionStatus === 'idle' && !latest.inputValue.trim() && previousInput) {
+      if (
+        (latest.sessionStatus === 'idle' || latest.sessionStatus === 'aborting') &&
+        !latest.inputValue.trim() &&
+        previousInput
+      ) {
         latest.setInputValue(previousInput);
       }
       throw error;
@@ -437,6 +483,41 @@ export function useInputBarV2(
       throw error;
     }
   }, [store]);
+
+  // 抢占打断并发送（Steer）
+  const steerMessage = useCallback(async () => {
+    const state = store.getState();
+    if (queueEnabled) {
+      const prevQueueLen = state.queuedMessages?.length ?? 0;
+      await sendMessage();
+      const postSendState = store.getState();
+      const queue = postSendState.queuedMessages ?? [];
+      if (queue.length <= prevQueueLen) {
+        return;
+      }
+      const newest = queue[queue.length - 1];
+      if (newest) {
+        postSendState.markSteered?.(newest.id);
+        postSendState.promoteQueued?.(newest.id);
+      }
+      if (store.getState().sessionStatus === 'streaming') {
+        try {
+          await abortStream();
+        } catch (err) {
+          console.error('[useInputBarV2] abort during steer failed:', err);
+        }
+      }
+      if (store.getState().sessionStatus === 'idle') {
+        await store.getState().maybeDequeue?.();
+      }
+      return;
+    }
+
+    if (state.sessionStatus === 'streaming' && state.canAbort()) {
+      await abortStream();
+    }
+    await sendMessage();
+  }, [store, queueEnabled, sendMessage, abortStream]);
 
   // 添加附件
   const addAttachment = useCallback(
@@ -528,6 +609,7 @@ export function useInputBarV2(
       // Actions
       setInputValue,
       sendMessage,
+      steerMessage,
       abortStream,
       addAttachment,
       updateAttachment,
@@ -547,6 +629,7 @@ export function useInputBarV2(
       panelStates,
       setInputValue,
       sendMessage,
+      steerMessage,
       abortStream,
       addAttachment,
       updateAttachment,

@@ -117,7 +117,7 @@ describe('phase 3 session tool contracts', () => {
 
     expect(metadata.description).toContain('不返回消息正文');
     expect(sessionManagerSkill.content).toContain('`session_get` 仅返回元数据');
-    expect(sessionManagerSkill.content).toContain('不暴露会话硬删除工具');
+    expect(sessionManagerSkill.content).toContain('永远不要硬删除会话或消息');
     expect(sessionManagerSkill.content).toContain('不创建、切换或删除消息变体');
     expect(names).not.toContain('builtin-session_delete');
     expect(names).not.toContain('builtin-session_message_edit');

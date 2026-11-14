@@ -1,6 +1,8 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setupMilkdownTimers } from '@/components/crepe/__tests__/milkdownTimers';
+setupMilkdownTimers();
 import { Crepe } from '@milkdown/crepe';
 import { editorViewCtx } from '@milkdown/kit/core';
 import { undo, redo, undoDepth } from '@milkdown/prose/history';

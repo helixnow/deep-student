@@ -61,6 +61,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
   onToggleDarkMode,
   isDarkMode = false,
 }) => {
+  // RUST-FIX(RF-W09-chat-dev-integration-test-copy-localized): Rust 已有 chatV2:dev.testControls.{title,messages}，标题与消息计数仍写死中文
   const { t } = useTranslation('chatV2');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,7 +179,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm flex items-center gap-2">
             <Gear size={16} />
-            测试控制
+            {t('dev.testControls.title')}
           </span>
           <div className="flex items-center gap-2">
             <span
@@ -194,7 +195,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               {sessionStatus}
             </span>
             <span className="text-xs text-muted-foreground">
-              {messageCount} 条消息
+              {messageCount} {t('dev.testControls.messages')}
             </span>
           </div>
         </div>

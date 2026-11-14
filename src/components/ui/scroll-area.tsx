@@ -1,9 +1,14 @@
 import * as React from "react";
 import { useOverlayScrollbars } from "overlayscrollbars-react";
+import type { EventListeners, PartialOptions } from "overlayscrollbars";
 
 import { cn } from "../../lib/utils";
 import { detectScrollPlatform } from "../../lib/scroll-platform";
 import { useScrollbarTheme } from "../../lib/scroll-theme";
+import {
+  detachOverlayNoContentChildRule,
+  restoreOverlayNoContentChildRule,
+} from "../../lib/scroll-overlay-stylesheet";
 
 /**
  * Unified scroll primitive for DeepStudent (milestone v1.1).
@@ -138,6 +143,64 @@ type ScrollAreaCssVars = {
   "--scroll-area-track-right"?: string;
 };
 
+// OverlayScrollbars 按引用比较选项里的函数，overlayscrollbars-react 又在 options 引用变化时
+// 重新下发选项：每次渲染新建函数会被判成「选项已变」而触发一次完整 update（切换视口
+// data-overlayscrollbars-viewport → 整个视口子树样式重算）。函数与事件放模块级，其余选项按值 memo。
+const OVERLAY_UPDATE_OPTIONS: NonNullable<PartialOptions["update"]> = {
+  // LTR 使用标准顺向流，跳过 Chromium 容易误判的坐标探测；
+  // RTL 则保留方向信号，确保横向滑块与负 scrollLeft 正确映射。
+  // 只有这里返回方向时库才会给视口设 noContent 做原点量测（见 scroll-overlay-stylesheet）
+  flowDirectionStyles: (viewport) => {
+    const direction = getComputedStyle(viewport).direction;
+    if (direction !== "rtl") return {};
+    restoreOverlayNoContentChildRule(viewport.ownerDocument);
+    return { direction };
+  },
+};
+
+const OVERLAY_EVENTS: EventListeners = {
+  initialized: (instance) => {
+    const elements = instance.elements();
+    refreshScrollTimelineHandleGeometry([
+      elements.scrollbarHorizontal?.handle,
+      elements.scrollbarVertical.handle,
+    ].filter((h): h is HTMLElement => Boolean(h)));
+  },
+  updated: (instance) => {
+    const elements = instance.elements();
+    refreshScrollTimelineHandleGeometry([
+      elements.scrollbarHorizontal?.handle,
+      elements.scrollbarVertical.handle,
+    ].filter((h): h is HTMLElement => Boolean(h)));
+  },
+};
+
+const skipFocus = () => {};
+
+// 库包裹/解包视口内容后会对当前焦点元素再调一次 focus()，防止被移动的节点丢焦点。焦点在目标之外时
+// 没有节点被移动，这次 focus() 是空操作（不派发事件、不动选区与 :focus-visible），却要先强制结算整份文档的
+// 样式与布局；虚拟列表滚动时每一行的挂载、卸载各来一次。
+function runWithoutOutsideRefocus(target: HTMLElement, run: () => void): void {
+  const active = target.ownerDocument.activeElement;
+  if (!(active instanceof HTMLElement) || target.contains(active)) {
+    run();
+    return;
+  }
+  const focusDescriptor = Object.getOwnPropertyDescriptor(active, "focus");
+  if (focusDescriptor && !focusDescriptor.configurable) {
+    run();
+    return;
+  }
+  // focus 也可能是原型上的只读 accessor；赋值会抛错，需用自身属性临时遮蔽。
+  Object.defineProperty(active, "focus", { configurable: true, value: skipFocus });
+  try {
+    run();
+  } finally {
+    if (focusDescriptor) Object.defineProperty(active, "focus", focusDescriptor);
+    else delete (active as { focus?: unknown }).focus;
+  }
+}
+
 export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
   function ScrollArea(
     {
@@ -196,6 +259,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     } = viewportProps ?? {};
     const overlayTargetRef = React.useRef<HTMLDivElement | null>(null);
     const overlayViewportRef = React.useRef<HTMLDivElement | null>(null);
+    const justInitializedRef = React.useRef(false);
     const setOverlayTargetRef = React.useCallback(
       (value: HTMLDivElement | null) => {
         overlayTargetRef.current = value;
@@ -210,50 +274,32 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       },
       [viewportRef],
     );
+    const overlayOptions = React.useMemo<PartialOptions>(() => ({
+      update: OVERLAY_UPDATE_OPTIONS,
+      scrollbars: {
+        theme,
+        // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
+        // 改为滚动时显影、停止后按 delay 隐藏；显式传入 scrollAutoHide 时以调用方为准
+        autoHide:
+          scrollHideDelay > 0
+            ? (scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave"))
+            : "never",
+        autoHideDelay: scrollHideDelay,
+        autoHideSuspend: scrollAutoHideSuspend,
+        dragScroll: true,
+        // 点击轨道跳转遵循平台惯例：macOS 原生滚动条无此行为，点击轨道
+        // 不应跳转（聊天右缘是高频点击区，误触会意外跳走）；
+        // Windows/Linux 惯例是点击跳转，保持开启。
+        clickScroll: platform.isMac ? false : true,
+      },
+      overflow: { x: overflowX, y: overflowY },
+    }), [theme, scrollHideDelay, scrollAutoHide, scrollAutoHideSuspend, platform, overflowX, overflowY]);
+    const destroyOverlayRef = React.useRef<(() => void) | null>(null);
+    // 必须声明在 useOverlayScrollbars 之前：卸载时 React 按声明顺序执行清理，hook 自带的清理会直接 destroy
+    React.useEffect(() => () => destroyOverlayRef.current?.(), []);
     const [initializeOverlay, getOverlayInstance] = useOverlayScrollbars({
-      options: {
-        update: {
-          // LTR 使用标准顺向流，跳过 Chromium 容易误判的坐标探测；
-          // RTL 则保留方向信号，确保横向滑块与负 scrollLeft 正确映射。
-          flowDirectionStyles: (viewport) => {
-            const direction = getComputedStyle(viewport).direction;
-            return direction === "rtl" ? { direction } : {};
-          },
-        },
-        scrollbars: {
-          theme,
-          // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
-          // 改为滚动时显影、停止后按 delay 隐藏；显式传入 scrollAutoHide 时以调用方为准
-          autoHide:
-            scrollHideDelay > 0
-              ? (scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave"))
-              : "never",
-          autoHideDelay: scrollHideDelay,
-          autoHideSuspend: scrollAutoHideSuspend,
-          dragScroll: true,
-          // 点击轨道跳转遵循平台惯例：macOS 原生滚动条无此行为，点击轨道
-          // 不应跳转（聊天右缘是高频点击区，误触会意外跳走）；
-          // Windows/Linux 惯例是点击跳转，保持开启。
-          clickScroll: platform.isMac ? false : true,
-        },
-        overflow: { x: overflowX, y: overflowY },
-      },
-      events: {
-        initialized: (instance) => {
-          const elements = instance.elements();
-          refreshScrollTimelineHandleGeometry([
-            elements.scrollbarHorizontal?.handle,
-            elements.scrollbarVertical.handle,
-          ].filter((h): h is HTMLElement => Boolean(h)));
-        },
-        updated: (instance) => {
-          const elements = instance.elements();
-          refreshScrollTimelineHandleGeometry([
-            elements.scrollbarHorizontal?.handle,
-            elements.scrollbarVertical.handle,
-          ].filter((h): h is HTMLElement => Boolean(h)));
-        },
-      },
+      options: overlayOptions,
+      events: OVERLAY_EVENTS,
     });
 
     React.useEffect(() => {
@@ -262,12 +308,17 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       const viewport = overlayViewportRef.current;
       if (!target || !viewport) return;
 
-      initializeOverlay({
+      detachOverlayNoContentChildRule(target.ownerDocument);
+      runWithoutOutsideRefocus(target, () => initializeOverlay({
         target,
         elements: { viewport },
-      });
+      }));
+      justInitializedRef.current = true;
+      const destroyOverlay = () => runWithoutOutsideRefocus(target, () => getOverlayInstance()?.destroy());
+      destroyOverlayRef.current = destroyOverlay;
       return () => {
-        getOverlayInstance()?.destroy();
+        destroyOverlayRef.current = null;
+        destroyOverlay();
       };
     }, [getOverlayInstance, initializeOverlay, useNative]);
 
@@ -275,6 +326,12 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       if (useNative) return;
       const instance = getOverlayInstance();
       if (!instance) return;
+      // 同一次提交里刚初始化：初始化已按当前 trackOffset 完整量测，再强制 update 只是重复一轮
+      //（每轮都切换视口属性、强制整片视口子树样式重算）
+      if (justInitializedRef.current) {
+        justInitializedRef.current = false;
+        return;
+      }
       instance.update(true);
       const elements = instance.elements();
       refreshScrollTimelineHandleGeometry([

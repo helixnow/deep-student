@@ -121,6 +121,89 @@ export function canSwitchToVariant(variant: Variant): boolean {
   return variant.status !== 'error';
 }
 
+export interface VariantBlockCleanupResult {
+  updatedCount: number;
+  removedPreparingIds: string[];
+}
+
+/**
+ * 收口变体终态（success / error / cancelled / interrupted）下残留的 running / isPreparing 块，
+ * 避免切换查看多分支回复时卡片永远停在"正在准备"或"执行中"。
+ */
+export function cleanupVariantTerminalBlocks(
+  blocks: Map<string, Block>,
+  activeBlockIds: Set<string>,
+  variantBlockIds: readonly string[],
+  status: VariantStatus,
+  error?: string,
+  now: number = Date.now(),
+): VariantBlockCleanupResult {
+  if (
+    status !== 'success' &&
+    status !== 'error' &&
+    status !== 'cancelled' &&
+    status !== 'interrupted'
+  ) {
+    return { updatedCount: 0, removedPreparingIds: [] };
+  }
+
+  let updatedCount = 0;
+  const removedPreparingIds: string[] = [];
+  const trimmedError = error?.trim();
+  const preparingError =
+    trimmedError ||
+    (status === 'error'
+      ? 'Variant ended with error before tool execution'
+      : 'Variant cancelled before tool execution');
+  const runningError =
+    trimmedError ||
+    (status === 'error' ? 'Variant ended with error' : 'cancelled');
+
+  for (const blockId of variantBlockIds) {
+    const block = blocks.get(blockId);
+    if (!block) continue;
+
+    if (block.isPreparing) {
+      if (status === 'success') {
+        blocks.delete(blockId);
+        removedPreparingIds.push(blockId);
+      } else {
+        blocks.set(blockId, {
+          ...block,
+          isPreparing: false,
+          status: 'error',
+          error: preparingError,
+          endedAt: now,
+        });
+      }
+      activeBlockIds.delete(blockId);
+      updatedCount++;
+      continue;
+    }
+
+    if (block.status === 'running') {
+      if (status === 'success') {
+        blocks.set(blockId, {
+          ...block,
+          status: 'success',
+          endedAt: now,
+        });
+      } else {
+        blocks.set(blockId, {
+          ...block,
+          status: 'error',
+          error: runningError,
+          endedAt: now,
+        });
+      }
+      activeBlockIds.delete(blockId);
+      updatedCount++;
+    }
+  }
+
+  return { updatedCount, removedPreparingIds };
+}
+
 /**
  * 确定 active_variant_id（按优先级）
  * 1. 第一个 success 变体
@@ -228,6 +311,7 @@ interface StoreAccessor {
   get: () => {
     messageMap: Map<string, Message>;
     blocks: Map<string, Block>;
+    activeBlockIds?: Set<string>;
     streamingVariantIds: Set<string>;
     sessionId: string;
   };
@@ -236,15 +320,18 @@ interface StoreAccessor {
       | Partial<{
           messageMap: Map<string, Message>;
           blocks: Map<string, Block>;
+          activeBlockIds?: Set<string>;
           streamingVariantIds: Set<string>;
         }>
       | ((state: {
           messageMap: Map<string, Message>;
           blocks: Map<string, Block>;
+          activeBlockIds?: Set<string>;
           streamingVariantIds: Set<string>;
         }) => Partial<{
           messageMap: Map<string, Message>;
           blocks: Map<string, Block>;
+          activeBlockIds?: Set<string>;
           streamingVariantIds: Set<string>;
         }>)
   ) => void;
@@ -731,11 +818,31 @@ export function createVariantActions(
       store.set((s) => {
         const newMessageMap = new Map(s.messageMap);
         const newStreamingVariantIds = new Set(s.streamingVariantIds);
+        let newBlocks = s.blocks;
+        let newActiveBlockIds = s.activeBlockIds;
 
         // 找到包含此变体的消息
         for (const [msgId, message] of newMessageMap.entries()) {
           const variant = message.variants?.find((v) => v.id === variantId);
           if (variant) {
+            const candidateBlocks = new Map(s.blocks);
+            const candidateActiveIds = new Set(s.activeBlockIds ?? []);
+            const { updatedCount, removedPreparingIds } = cleanupVariantTerminalBlocks(
+              candidateBlocks,
+              candidateActiveIds,
+              variant.blockIds,
+              status,
+              error,
+            );
+            if (updatedCount > 0) {
+              newBlocks = candidateBlocks;
+              if (s.activeBlockIds) {
+                newActiveBlockIds = candidateActiveIds;
+              }
+            }
+            const removedSet =
+              removedPreparingIds.length > 0 ? new Set(removedPreparingIds) : null;
+
             const newVariants = (message.variants ?? []).map((v) =>
               v.id === variantId
                 ? {
@@ -744,6 +851,9 @@ export function createVariantActions(
                     error: error ?? undefined,
                     // 🆕 P0修复：存储变体级别的 Token 统计
                     usage: usage ?? v.usage,
+                    ...(removedSet
+                      ? { blockIds: v.blockIds.filter((id) => !removedSet.has(id)) }
+                      : {}),
                   }
                 : v
             );
@@ -756,6 +866,9 @@ export function createVariantActions(
 
             newMessageMap.set(msgId, {
               ...message,
+              ...(removedSet
+                ? { blockIds: message.blockIds.filter((id) => !removedSet.has(id)) }
+                : {}),
               variants: newVariants,
               activeVariantId: newActiveId,
             });
@@ -766,6 +879,8 @@ export function createVariantActions(
         newStreamingVariantIds.delete(variantId);
 
         return {
+          blocks: newBlocks,
+          ...(newActiveBlockIds !== undefined ? { activeBlockIds: newActiveBlockIds } : {}),
           messageMap: newMessageMap,
           streamingVariantIds: newStreamingVariantIds,
         };

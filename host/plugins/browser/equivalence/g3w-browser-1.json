@@ -1,0 +1,943 @@
+{
+  "domain": "browser",
+  "commands": [
+    "browser_open_session",
+    "browser_navigate",
+    "browser_back",
+    "browser_forward",
+    "browser_reload",
+    "browser_get_state",
+    "browser_focus",
+    "browser_release_surface_focus",
+    "browser_set_surface_bounds",
+    "browser_set_surface_visibility",
+    "browser_take_over",
+    "browser_set_input_files",
+    "browser_list_downloads",
+    "browser_list_task_downloads",
+    "save_setting",
+    "browser_close"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.browser.open_session.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_open_session",
+          "args": {
+            "url": "https://example.com"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.navigate.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_navigate",
+          "args": {
+            "sessionId": "bs_missing",
+            "url": "https://example.com/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.back.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_back",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.forward.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_forward",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.reload.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_reload",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.get_state.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_get_state",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.focus.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_focus",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.release_surface_focus.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_release_surface_focus",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_surface_bounds.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_set_surface_bounds",
+          "args": {
+            "sessionId": "bs_missing",
+            "x": 0,
+            "y": 0,
+            "width": 800,
+            "height": 600,
+            "viewportWidth": 1280,
+            "viewportHeight": 800,
+            "occlusions": [],
+            "inputOcclusions": [],
+            "sequence": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_surface_visibility.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_set_surface_visibility",
+          "args": {
+            "sessionId": "bs_missing",
+            "visible": true,
+            "focus": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.take_over.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_take_over",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_input_files.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_set_input_files",
+          "args": {
+            "sessionId": "bs_missing",
+            "ref": "e1",
+            "files": [
+              {
+                "name": "a.txt",
+                "mimeType": "text/plain",
+                "base64": "aGk="
+              }
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.list_downloads.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_list_downloads",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.list_task_downloads.gates_closed_child",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_list_task_downloads",
+          "args": {
+            "chatSessionId": "sess_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.open_session.gates_closed_parent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchMode",
+            "value": "false"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_open_session",
+          "args": {
+            "url": "https://example.com"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.get_state.feature_flags_corrupt",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "feature_flags.config",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "browser_get_state",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.open_session.forbidden_scheme",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_open_session",
+          "args": {
+            "url": "javascript:alert(1)"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.open_session.invalid_url",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_open_session",
+          "args": {
+            "url": "not a url"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.open_session.from_agent_unsupported_linux",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_open_session",
+          "args": {
+            "url": "https://example.com",
+            "fromAgent": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.navigate.forbidden_scheme",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_navigate",
+          "args": {
+            "sessionId": "bs_missing",
+            "url": "file:///etc/passwd"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.navigate.invalid_url",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_navigate",
+          "args": {
+            "sessionId": "bs_missing",
+            "url": "not a url"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.navigate.no_content_window",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_navigate",
+          "args": {
+            "sessionId": "bs_missing",
+            "url": "https://example.com/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.navigate.from_agent_unsupported_linux",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_navigate",
+          "args": {
+            "sessionId": "bs_missing",
+            "url": "https://example.com/",
+            "fromAgent": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.back.no_content_window",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_back",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.forward.no_content_window",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_forward",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.reload.no_content_window",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_reload",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.get_state.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_get_state",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.close.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "browser_close",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.focus.no_active_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_focus",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.focus.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_focus",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.release_surface_focus.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_release_surface_focus",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_surface_bounds.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_set_surface_bounds",
+          "args": {
+            "sessionId": "bs_missing",
+            "x": 0,
+            "y": 0,
+            "width": 800,
+            "height": 600,
+            "viewportWidth": 1280,
+            "viewportHeight": 800,
+            "occlusions": [],
+            "inputOcclusions": [],
+            "sequence": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_surface_visibility.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_set_surface_visibility",
+          "args": {
+            "sessionId": "bs_missing",
+            "visible": true,
+            "focus": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.take_over.no_active_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_take_over",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.set_input_files.bridge_unsupported_linux",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_set_input_files",
+          "args": {
+            "sessionId": "bs_missing",
+            "ref": "e1",
+            "files": [
+              {
+                "name": "a.txt",
+                "mimeType": "text/plain",
+                "base64": "aGk="
+              }
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.browser.list_downloads.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "desktop.workbenchBrowserEnabled",
+            "value": "true"
+          }
+        },
+        {
+          "cmd": "browser_list_downloads",
+          "args": {
+            "sessionId": "bs_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

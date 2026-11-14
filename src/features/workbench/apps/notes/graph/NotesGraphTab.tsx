@@ -10,7 +10,7 @@
  */
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowClockwise, CircleNotch, Graph } from '@phosphor-icons/react';
+import { CircleNotch, Graph } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuNode } from '@/dstu';
 import { getWikiLinkRelationships } from '@/features/notes/wikilinks';
@@ -322,16 +322,6 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
             </span>
           </div>
         )}
-        <button
-          type="button"
-          className="notes-backlinks-panel-icon-button"
-          disabled={loadState.status === 'loading'}
-          onClick={refresh}
-          aria-label={t('notesWorkspace.graph.refresh', { defaultValue: '刷新图谱' })}
-          title={t('notesWorkspace.graph.refresh', { defaultValue: '刷新图谱' })}
-        >
-          <ArrowClockwise size={15} aria-hidden="true" />
-        </button>
       </div>
 
       <div className="notes-graph-body">

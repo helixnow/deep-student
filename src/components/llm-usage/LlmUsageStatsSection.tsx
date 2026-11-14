@@ -5,6 +5,7 @@
  * 遵循 简洁风格设计：极简、大留白、精致排版
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   AreaChart,
@@ -534,6 +535,8 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     }
   }, [days]);
 
+  useRefreshOnReturn(loadData);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -596,20 +599,6 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
   return (
     <div className={cn('w-full', className)}>
       {/* 刷新按钮 */}
-      {!statsOnly && (
-        <div className="flex justify-end mb-4">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={loadData}
-            className="text-muted-foreground hover:text-foreground h-8 px-2 [@media(pointer:coarse)]:min-h-11"
-            aria-label={t('actions.refresh')}
-            title={t('actions.refresh')}
-          >
-            <ArrowsClockwise size={14} />
-          </DsButton>
-        </div>
-      )}
 
       {/* 统计属性列表 */}
       {!chartsOnly && (

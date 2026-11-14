@@ -6,6 +6,8 @@ import { Editor, editorViewCtx, rootCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { describe, expect, it } from 'vitest';
+import { setupMilkdownTimers } from '../../__tests__/milkdownTimers';
+setupMilkdownTimers();
 
 import { calloutPlugin } from '../callout';
 import { TOGGLE_TYPE, togglePlugin } from '../toggle';

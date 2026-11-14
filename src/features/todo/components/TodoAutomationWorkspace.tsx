@@ -21,7 +21,6 @@ import { cn } from '@/lib/utils';
 import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
 import {
   TITLEBAR_CONTROL_CLASS,
-  TITLEBAR_ICON_CONTROL_CLASS,
   TITLEBAR_TITLE_CLASS,
 } from '@/app/shell/titlebarUiTokens';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -192,53 +191,30 @@ interface StatCardProps {
   valueClassName?: string;
   highlight?: boolean;
   iconClassName?: string;
-  /** 卡片外层附加类（如失败态的 automation-card--danger） */
-  className?: string;
   /** 变化时触发数字的轻量入场过渡（key 变化 → span 重挂载播放动画） */
   animateKey?: React.Key;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, valueTitle, valueClassName, highlight, iconClassName, className, animateKey }) => (
-  <div
-    className={cn(
-      'automation-card flex min-w-[150px] flex-1 items-center gap-3 rounded-lg px-4 py-3',
-      highlight && 'automation-card--highlight',
-      className,
-    )}
-  >
-    <span
-      className={cn(
-        'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
-        highlight ? 'bg-[color:hsl(var(--primary)/0.12)] text-primary' : 'bg-muted text-muted-foreground',
-        iconClassName,
-      )}
-    >
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, valueTitle, valueClassName, highlight, iconClassName, animateKey }) => (
+  <div className="inline-flex min-w-0 items-center gap-1.5 py-1">
+    <span className={cn('shrink-0 text-muted-foreground', highlight && 'text-primary', iconClassName)} aria-hidden>
       {icon}
     </span>
-    <span className="min-w-0 flex-1">
-      <span className="block text-ui text-muted-foreground">{label}</span>
-      <span
-        key={animateKey}
-        className={cn(
-          'block truncate text-[20px] font-semibold leading-tight tabular-nums text-foreground',
-          animateKey !== undefined && 'automation-value-pop',
-          valueClassName,
-        )}
-        title={valueTitle}
-      >
-        {value}
-      </span>
+    <span className="text-xs text-muted-foreground">{label}</span>
+    <span
+      key={animateKey}
+      className={cn('text-xs font-semibold tabular-nums text-foreground', valueClassName)}
+      title={valueTitle}
+    >
+      {value}
     </span>
   </div>
 );
 
 const StatCardSkeleton: React.FC = () => (
-  <div className="automation-card flex min-w-[150px] flex-1 items-center gap-3 rounded-lg px-4 py-3">
-    <Skeleton className="h-9 w-9 shrink-0" />
-    <span className="min-w-0 flex-1 space-y-1.5">
-      <Skeleton className="h-3 w-16" />
-      <Skeleton className="h-5 w-10" />
-    </span>
+  <div className="inline-flex items-center gap-1.5 py-1">
+    <Skeleton className="h-4 w-4" />
+    <Skeleton className="h-3 w-16" />
   </div>
 );
 
@@ -592,39 +568,22 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
   // 标题栏内容（页内内联 / portal 进全局顶栏两种承载共用）
   const headerClusters = (
     <>
-      <div className={cn('flex min-w-0 items-center gap-2.5', headerPortalTarget && 'pointer-events-auto')}>
-        <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
+      <div className={cn('flex min-w-0 items-center gap-2', headerPortalTarget && 'pointer-events-auto')}>
+        <Robot size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0">
           <h1 className={headerPortalTarget
             ? TITLEBAR_TITLE_CLASS
             : 'truncate text-base font-semibold text-foreground'}>
             {t('todo:automation.title')}
           </h1>
-          <p className="truncate text-xs text-muted-foreground">
-            {t('todo:automation.subtitle')}
-          </p>
         </div>
       </div>
       <div className={cn('flex shrink-0 items-center gap-1.5', headerPortalTarget && 'pointer-events-auto')}>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className={headerPortalTarget
-            ? TITLEBAR_ICON_CONTROL_CLASS
-            : '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11'}
-          aria-label={t('common:actions.refresh')}
-          title={t('common:actions.refresh')}
-          disabled={refreshing}
-          onClick={handleRefresh}
-        >
-          <ArrowsClockwise size={16} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
-        </DsButton>
         {/* 容量门禁：与 AutomationSettingsSection 的新建按钮同一判定与提示文案 */}
         <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
           <DsButton
             ref={newTaskButtonRef}
-            variant="primary"
+            variant={headerPortalTarget ? 'shell' : 'primary'}
             size="sm"
             className={headerPortalTarget ? TITLEBAR_CONTROL_CLASS : '[@media(pointer:coarse)]:!min-h-11'}
             aria-expanded={createOpen}
@@ -660,11 +619,11 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
       )}
 
       <CustomScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
+        <div className="w-full pb-6">
           {globalError ? (
             <div
               role="alert"
-              className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+              className="m-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
             >
               <WarningCircle size={16} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1 break-words">{globalError}</span>
@@ -683,7 +642,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
           {successMessage ? (
             <div
               role="status"
-              className="automation-rise-in mb-4 flex items-center gap-2 rounded-lg border border-[color:hsl(var(--success,142_71%_45%)/0.35)] bg-[color:hsl(var(--success,142_71%_45%)/0.08)] px-3 py-2.5 text-sm text-success"
+              className="m-4 flex items-center gap-2 rounded-lg border border-[color:hsl(var(--success,142_71%_45%)/0.35)] bg-[color:hsl(var(--success,142_71%_45%)/0.08)] px-3 py-2.5 text-sm text-success"
             >
               <CheckCircle size={16} weight="fill" className="shrink-0" />
               <span className="min-w-0 break-words">{successMessage}</span>
@@ -693,7 +652,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
           {capacityFull ? (
             <div
               role="status"
-              className="automation-rise-in mb-4 flex items-center gap-2 rounded-lg border border-[color:var(--border-soft,hsl(var(--border)))] bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
+              className="m-4 flex items-center gap-2 rounded-lg border border-[color:var(--border-soft,hsl(var(--border)))] bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
             >
               <WarningCircle size={16} className="shrink-0" />
               <span className="min-w-0 break-words">
@@ -703,12 +662,12 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
           ) : null}
 
           {/* 概览区 */}
-          <section aria-label={t('todo:automation.summary')}>
+          <section aria-label={t('todo:automation.summary')} className="divide-y divide-border/10 border-b border-border/20">
             {summaryLoading ? (
               <div
                 data-testid="automation-summary-skeleton"
                 aria-label={t('todo:automation.loading')}
-                className="flex flex-wrap gap-3"
+                className="flex flex-wrap gap-x-5 gap-y-1 px-4 py-2.5 sm:px-6"
               >
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -716,15 +675,15 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 <StatCardSkeleton />
               </div>
             ) : (
-              <div className="automation-rise-in flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-x-5 gap-y-1 px-4 py-2.5 sm:px-6">
                 <StatCard
-                  icon={<CalendarCheck size={18} />}
+                  icon={<CalendarCheck size={14} />}
                   label={t('todo:automation.enabled')}
                   animateKey={summary?.enabledCount ?? 0}
                   value={summary?.enabledCount ?? 0}
                 />
                 <StatCard
-                  icon={<Pulse size={18} />}
+                  icon={<Pulse size={14} />}
                   label={t('todo:automation.running')}
                   highlight={runningCount > 0}
                   animateKey={runningCount}
@@ -736,10 +695,9 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   ) : runningCount}
                 />
                 <StatCard
-                  icon={<WarningCircle size={18} />}
+                  icon={<WarningCircle size={14} />}
                   label={t('todo:automation.failed24h')}
-                  className={failedCount > 0 ? 'automation-card--danger' : undefined}
-                  iconClassName={failedCount > 0 ? 'bg-destructive/10 text-destructive' : undefined}
+                  iconClassName={failedCount > 0 ? 'text-destructive' : undefined}
                   valueClassName={failedCount > 0 ? 'text-destructive' : undefined}
                   animateKey={failedCount}
                   value={failedCount > 0 ? (
@@ -750,29 +708,27 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   ) : failedCount}
                 />
                 <StatCard
-                  icon={<ClockCountdown size={18} />}
+                  icon={<ClockCountdown size={14} />}
                   label={t('todo:automation.next')}
                   highlight={nextRunImminent}
                   animateKey={summary?.nextRunAt ?? 'never'}
                   value={nextRunRelative || t('todo:automation.never')}
                   valueTitle={nextRunAbsolute || undefined}
-                  valueClassName={cn('text-[15px] leading-snug', nextRunImminent && 'text-primary')}
+                  valueClassName={nextRunImminent ? 'text-primary' : undefined}
                 />
               </div>
             )}
             {backgroundKeepAliveUnsupported ? (
               <p
-                className="mt-3 px-1 text-xs leading-relaxed text-muted-foreground"
+                className="px-4 py-2.5 text-xs leading-relaxed text-muted-foreground sm:px-6"
                 data-testid="automation-background-mobile-note"
               >
                 {t('todo:automation.backgroundMobileNote')}
               </p>
             ) : (
-            <div className="automation-card mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                  <ClockCountdown size={18} />
-                </span>
+                <ClockCountdown size={16} className="shrink-0 text-muted-foreground" aria-hidden />
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-foreground">{t('todo:automation.background')}</div>
                   <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint')}</div>
@@ -799,7 +755,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
 
           {/* 内联创建面板（禁模态：概览下方 grid 0fr→1fr 展开） */}
           <div
-            className="automation-collapse mt-5"
+            className="automation-collapse px-4 sm:px-6"
             data-open={createOpen}
             aria-hidden={!createOpen}
           >
@@ -808,12 +764,11 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 id={CREATE_PANEL_ID}
                 ref={createPanelRef}
                 aria-label={t('todo:automation.createTitle')}
-                className="automation-card rounded-[var(--radius-shell-panel,12px)]"
+                className="automation-card my-3 rounded-[var(--radius-shell-panel,12px)]"
                 onKeyDown={handlePanelKeyDown}
               >
                 <div className="flex items-center justify-between border-b border-[color:var(--border-soft)] px-4 py-3 sm:px-5">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <CalendarBlank size={16} className="text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">
                     {t('todo:automation.createTitle')}
                   </h2>
                   <div className="flex items-center gap-2">
@@ -1032,7 +987,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* agent_turn 专属字段 */}
                   <div className="automation-collapse" data-open={draft.actionType === 'agent_turn'} aria-hidden={draft.actionType !== 'agent_turn'}>
                     <div className="automation-collapse__inner">
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-4 rounded-xl border border-[color:var(--border-soft)] bg-muted/20 p-3 sm:grid-cols-2">
                         <div className="space-y-1.5 text-sm sm:col-span-2">
                           <label htmlFor="automation-create-agent-prompt" className="font-medium text-foreground">
                             {t('todo:automation.createPanel.agentPrompt')}
@@ -1277,12 +1232,12 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
           ) : null}
 
           {/* 任务卡片列表（空列表且非加载中时自渲染为 null，让位给上方空状态） */}
-          <AutomationList className="mt-5" />
+          <AutomationList />
 
           {/* 运行历史（默认展开） */}
-          <section className="automation-card mt-5 rounded-[var(--radius-shell-control,8px)] px-1 py-4 sm:px-2">
-            <div className="flex items-center justify-between px-3">
-              <h2 className="text-sm font-semibold text-foreground">{t('todo:automation.history.title')}</h2>
+          <section className="border-t border-border/20">
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 sm:px-6">
+              <h2 className="text-xs font-semibold text-muted-foreground">{t('todo:automation.history.title')}</h2>
               <button
                 type="button"
                 aria-expanded={historyOpen}
@@ -1298,7 +1253,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 />
               </button>
             </div>
-            <div className="automation-collapse mt-3" data-open={historyOpen} aria-hidden={!historyOpen}>
+            <div className="automation-collapse" data-open={historyOpen} aria-hidden={!historyOpen}>
               <div className="automation-collapse__inner">
                 <div id={HISTORY_PANEL_ID}>
                   <AutomationRunHistory

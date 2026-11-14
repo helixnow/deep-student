@@ -7,7 +7,7 @@ import { NOTE_RELATIONS_CHANGED, isNoteRelationUsable, noteRelationsService, typ
 import { NoteRelationPreview } from './NoteRelationPreview';
 import { NoteRelationTargetPicker } from './NoteRelationTargetPicker';
 import { NoteRelationTitle } from './NoteRelationTitle';
-import { ArrowClockwise, ArrowSquareOut, Cards, FilePdf, LinkBreak, LinkSimple, PencilSimple, Plus, Question, WarningCircle } from '@phosphor-icons/react';
+import { ArrowSquareOut, Cards, FilePdf, LinkBreak, LinkSimple, PencilSimple, Plus, Question, WarningCircle } from '@phosphor-icons/react';
 import '../styles/notes-form-controls.css';
 import './NoteLearningRelations.css';
 
@@ -68,10 +68,6 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
       <LinkSimple size={13} aria-hidden="true" />
       <h3>{title}</h3>
       {relations.length > 0 && <span className="notes-props-count">{relations.length}</span>}
-      <button type="button" className="notes-rel-icon-button" disabled={busy} onClick={() => void load()}
-        aria-label={t('learning.reload')} title={t('learning.reload')}>
-        <ArrowClockwise size={12} aria-hidden="true" />
-      </button>
     </div>
     {loading && <p role="status" className="notes-props-empty">{t('learning.loading')}</p>}
     {!loading && !relations.length && <p className="notes-props-empty">{t('learning.relations.empty', { defaultValue: '尚未关联学习资源' })}</p>}

@@ -22,6 +22,7 @@ import {
 import { CustomScrollArea } from '../custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 
 interface PromptPanelProps {
   customPrompt: string;
@@ -71,10 +72,9 @@ interface CustomTemplate {
   prompt: string;
 }
 
-function readCustomTemplates(): CustomTemplate[] {
+function parseCustomTemplates(raw: string | null): CustomTemplate[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(CUSTOM_TEMPLATES_STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -86,11 +86,50 @@ function readCustomTemplates(): CustomTemplate[] {
   }
 }
 
-function writeCustomTemplates(templates: CustomTemplate[]) {
+function readCustomTemplates(): CustomTemplate[] {
   try {
-    window.localStorage.setItem(CUSTOM_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+    return parseCustomTemplates(window.localStorage.getItem(CUSTOM_TEMPLATES_STORAGE_KEY));
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomTemplates(templates: CustomTemplate[]) {
+  let serialized: string | null = null;
+  try {
+    serialized = JSON.stringify(templates);
+    window.localStorage.setItem(CUSTOM_TEMPLATES_STORAGE_KEY, serialized);
   } catch {
     // localStorage 不可用时静默降级（模板仅在本次会话内有效）
+  }
+  // ★ BUG-9: 镜像到 SQLite settings（localStorage 丢失后仍能恢复自定义模板）
+  if (serialized !== null) {
+    void saveSetting(CUSTOM_TEMPLATES_STORAGE_KEY, serialized).catch((error: unknown) => {
+      console.warn('[PromptPanel] Failed to mirror prompt templates to settings:', error);
+    });
+  }
+}
+
+/**
+ * 从 SQLite settings 回填自定义模板（localStorage 缺失时）。
+ * @returns 回填的模板；无副本/读取失败时为 null
+ */
+async function hydrateCustomTemplatesFromSettings(): Promise<CustomTemplate[] | null> {
+  try {
+    const stored = await getSetting(CUSTOM_TEMPLATES_STORAGE_KEY);
+    const templates = parseCustomTemplates(stored);
+    if (templates.length === 0) return null;
+    try {
+      if (window.localStorage.getItem(CUSTOM_TEMPLATES_STORAGE_KEY) === null) {
+        window.localStorage.setItem(CUSTOM_TEMPLATES_STORAGE_KEY, stored as string);
+      }
+    } catch {
+      // localStorage 不可用时仅更新本次会话状态
+    }
+    return templates;
+  } catch (error: unknown) {
+    console.warn('[PromptPanel] Failed to load prompt templates from settings:', error);
+    return null;
   }
 }
 
@@ -368,6 +407,21 @@ const PromptTemplates: React.FC<{
   const [isNaming, setIsNaming] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
+  // ★ BUG-9: localStorage 为空（origin 变更 / WebView 清理）时从 SQLite settings 回填
+  useEffect(() => {
+    if (customTemplates.length > 0) return;
+    let cancelled = false;
+    void hydrateCustomTemplatesFromSettings().then((templates) => {
+      if (cancelled || !templates) return;
+      setCustomTemplates(templates);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // 只在挂载时尝试一次：用户随后主动保存的模板以 state 为准
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const normalizedPrompt = customPrompt.trim();
 
   const presetItems = useMemo(
@@ -616,6 +670,7 @@ const PromptEditorContent: React.FC<{
             onValueChange={(v) => setDomain(v)}
             width={160}
             size="sm"
+            className="rounded-full bg-foreground/[0.03] px-3 hover:bg-foreground/[0.06]"
             options={DOMAIN_OPTIONS.map((d) => ({
               value: d.value,
               label: t(d.labelKey),
@@ -758,8 +813,8 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
   // 桌面端：设置整页视图内容（由 TranslationMain 以占满主区的独立页承载）
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-4 h-12 border-b border-border/30 shrink-0">
+      {/* 头部：无底框线轻量行，与主工具栏自然衔接 */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
         <span className="text-sm font-medium text-foreground/80">
           {t('translation:prompt_editor.title')}
         </span>

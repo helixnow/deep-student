@@ -14,6 +14,11 @@
  * reduced-motion / minimal 材质档下过渡归零（状态仍生效）。
  */
 
+[data-wb-chat-session-window],
+[data-wb-chat-session-window-empty] {
+  padding-top: var(--wb-chat-top-inset, 0px);
+}
+
 /* 窗口内容根 = 容器查询锚（inline-size 由 WindowShell 决定，安全） */
 .wb-chat-surface {
   container-type: inline-size;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowClockwise, SidebarSimple, X } from '@phosphor-icons/react';
+import { SidebarSimple, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { DsButton } from '@/components/ui/DsButton';
@@ -9,7 +9,6 @@ interface SandboxToolbarProps {
   subtitle?: string;
   meta?: string;
   inspectorOpen: boolean;
-  onReload: () => void;
   onToggleInspector: () => void;
   onClose: () => void;
 }
@@ -19,7 +18,6 @@ export function SandboxToolbar({
   subtitle,
   meta,
   inspectorOpen,
-  onReload,
   onToggleInspector,
   onClose,
 }: SandboxToolbarProps) {
@@ -39,17 +37,6 @@ export function SandboxToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onReload}
-          title={t('sandbox.refresh')}
-          aria-label={t('sandbox.refresh')}
-          className={iconBtnClass}
-        >
-          <ArrowClockwise size={16} />
-        </DsButton>
         <DsButton
           variant="ghost"
           size="icon"

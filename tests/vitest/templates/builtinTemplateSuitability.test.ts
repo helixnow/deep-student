@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { chatAnkiSkill } from '@/features/chat/skills/builtin';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
-const BACKEND_PATH = path.join(REPO_ROOT, 'src-tauri/src/data/builtin-templates.json');
+const BACKEND_PATH = path.join(REPO_ROOT, 'host/plugins/anki/data/builtin-templates.json');
 
 interface RawBuiltinTemplate {
   id: string;

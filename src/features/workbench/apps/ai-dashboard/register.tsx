@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { AppDefinition } from '../../core/types';
 import { aiDashboardAgentManifest, AI_DASHBOARD_TYPE_ID } from './agentManifest';
 
@@ -24,7 +24,7 @@ let registered = false;
 export function registerAiDashboardApp(): void {
   if (registered) return;
   registered = true;
-  appRegistry.register(aiDashboardAppDefinition);
+  contributeWorkbenchApp(aiDashboardAppDefinition);
 }
 
 registerAiDashboardApp();

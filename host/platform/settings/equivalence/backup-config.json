@@ -1,0 +1,1216 @@
+{
+  "domain": "settings",
+  "commands": [
+    "get_backup_config",
+    "set_backup_config"
+  ],
+  "scenarios": [
+    {
+      "id": "settings.backup.get.default_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.full_roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.frontend_field_update",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "${0.backupDirectory}",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": "${0.autoBackupIntervalHours}",
+              "maxBackupCount": "${0.maxBackupCount}",
+              "slimBackup": "${0.slimBackup}"
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.same_value_resave",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.nulls_and_tiers_absent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": null,
+              "autoBackupEnabled": false,
+              "autoBackupIntervalHours": 24,
+              "maxBackupCount": null,
+              "slimBackup": false,
+              "backupTiers": null
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.tiers_empty_array",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": []
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.tiers_all_names_and_aliases",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important",
+                "rebuildable",
+                "large_assets",
+                "core_config_chat",
+                "vfs_full",
+                "large_files",
+                "core"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.empty_object_serde_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {}
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.partial_object_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "autoBackupEnabled": true
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.u32_bounds_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 0,
+              "maxBackupCount": 0,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 4294967295,
+              "maxBackupCount": 4294967295,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.number_type_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 4294967296,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": -1,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 1.5,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": "24",
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 4294967296,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": -5,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.null_non_option_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": null,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": null,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": null,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": "true",
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.tier_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "everything"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "Core"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": "core"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                null
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.unknown_fields_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ],
+              "extraField": 1,
+              "backup_directory": "/ignored",
+              "autoBackup": true
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.config_arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": "{}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": [
+              true
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.seq_form",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": [
+              "/tmp/seq",
+              true,
+              12,
+              3,
+              false,
+              [
+                "rebuildable"
+              ]
+            ]
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": [
+              "/tmp/seq-short",
+              false
+            ]
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.directory_strings",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/不存在的目录/备份 ✓",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.overwrite_replaces_whole_record",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "autoBackupIntervalHours": 48
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_valid_extra_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"autoBackupEnabled\":true,\"autoBackupIntervalHours\":12,\"maxBackupCount\":null,\"slimBackup\":false,\"futureField\":{\"x\":1}}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_number_precision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"autoBackupIntervalHours\":4294967295,\"maxBackupCount\":4294967295}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.malformed_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_null_bool",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"autoBackupEnabled\":null}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_duplicate_field",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"slimBackup\":true,\"slimBackup\":false}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_float_interval",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"autoBackupIntervalHours\":24.0}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_exponent_interval",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"autoBackupIntervalHours\":1e1}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_u32_overflow",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"maxBackupCount\":4294967296}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_unknown_tier",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"backupTiers\":[\"everything\"]}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_trailing_chars",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{}x"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_empty_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": ""
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_json_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "null"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.get.stored_proto_tier",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{\"backupTiers\":[\"constructor\"]}"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "settings.backup.set.repairs_malformed_store",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "backup.config",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_backup_config",
+          "args": {
+            "config": {
+              "backupDirectory": "/tmp/ds-equivalence-backups",
+              "autoBackupEnabled": true,
+              "autoBackupIntervalHours": 6,
+              "maxBackupCount": 10,
+              "slimBackup": true,
+              "backupTiers": [
+                "core",
+                "important"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "get_backup_config",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

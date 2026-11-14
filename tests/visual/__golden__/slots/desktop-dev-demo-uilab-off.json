@@ -1,0 +1,4901 @@
+{
+  "scenario": {
+    "platform": "desktop",
+    "mode": "dev",
+    "shell": "demo",
+    "uiLab": false
+  },
+  "plugins": [
+    "dstu.plugin-workshop",
+    "dstu.ui.anki",
+    "dstu.ui.app",
+    "dstu.ui.chat",
+    "dstu.ui.content",
+    "dstu.ui.dashboard",
+    "dstu.ui.debug",
+    "dstu.ui.dev",
+    "dstu.ui.editor",
+    "dstu.ui.genui",
+    "dstu.ui.learning-hub",
+    "dstu.ui.learning-today",
+    "dstu.ui.menu",
+    "dstu.ui.navigation",
+    "dstu.ui.notes",
+    "dstu.ui.settings",
+    "dstu.ui.shell",
+    "dstu.ui.todo",
+    "dstu.ui.workbench"
+  ],
+  "slots": {
+    "app.menu": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "chat.toolResults": {
+      "cardinality": "keyed",
+      "entries": []
+    },
+    "dashboard.charts": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "dashboard.stats": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "dashboard.widgets": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "debug.panels": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "editor.blockMenu": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "editor.extensions": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "editor.selectionToolbar": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "editor.slashMenu": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "genui.components": {
+      "cardinality": "keyed",
+      "entries": []
+    },
+    "markdown.codeBlocks": {
+      "cardinality": "keyed",
+      "entries": [
+        {
+          "id": "codeblock:math",
+          "key": "math",
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "component": "<MathCodeBlock>",
+            "matches": "ƒ"
+          }
+        },
+        {
+          "id": "codeblock:latex",
+          "key": "latex",
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "component": "<MathCodeBlock>",
+            "matches": "ƒ"
+          }
+        },
+        {
+          "id": "codeblock:mermaid",
+          "key": "mermaid",
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "kind": "mermaid"
+            }
+          }
+        },
+        {
+          "id": "codeblock:svg",
+          "key": "svg",
+          "order": 40,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "kind": "svg"
+            }
+          }
+        },
+        {
+          "id": "codeblock:html",
+          "key": "html",
+          "order": 50,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "kind": "html"
+            }
+          }
+        },
+        {
+          "id": "codeblock:htm",
+          "key": "htm",
+          "order": 60,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "kind": "html"
+            }
+          }
+        },
+        {
+          "id": "codeblock:xml",
+          "key": "xml",
+          "order": 70,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "kind": "xml"
+            }
+          }
+        },
+        {
+          "id": "codeblock:vega-lite",
+          "key": "vega-lite",
+          "order": 80,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "charts",
+              "kind": "rich",
+              "richRendererKind": "vega-lite"
+            }
+          }
+        },
+        {
+          "id": "codeblock:vega",
+          "key": "vega",
+          "order": 90,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "charts",
+              "kind": "rich",
+              "richRendererKind": "vega-lite"
+            }
+          }
+        },
+        {
+          "id": "codeblock:dot",
+          "key": "dot",
+          "order": 100,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "graphviz",
+              "kind": "rich",
+              "richRendererKind": "dot"
+            }
+          }
+        },
+        {
+          "id": "codeblock:abc",
+          "key": "abc",
+          "order": 110,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "music",
+              "kind": "rich",
+              "richRendererKind": "abc"
+            }
+          }
+        },
+        {
+          "id": "codeblock:wavedrom",
+          "key": "wavedrom",
+          "order": 120,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "timing",
+              "kind": "rich",
+              "richRendererKind": "wavedrom"
+            }
+          }
+        },
+        {
+          "id": "codeblock:mol",
+          "key": "mol",
+          "order": 130,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "chemicalFiles",
+              "kind": "rich",
+              "richRendererKind": "molecule-2d"
+            }
+          }
+        },
+        {
+          "id": "codeblock:molfile",
+          "key": "molfile",
+          "order": 140,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "chemicalFiles",
+              "kind": "rich",
+              "richRendererKind": "molecule-2d"
+            }
+          }
+        },
+        {
+          "id": "codeblock:sdf",
+          "key": "sdf",
+          "order": 150,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "chemicalFiles",
+              "kind": "rich",
+              "richRendererKind": "molecule-2d"
+            }
+          }
+        },
+        {
+          "id": "codeblock:pdb",
+          "key": "pdb",
+          "order": 160,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "molecular3d",
+              "kind": "rich",
+              "richRendererKind": "molecule-3d"
+            }
+          }
+        },
+        {
+          "id": "codeblock:geojson",
+          "key": "geojson",
+          "order": 170,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "codeBlock": {
+              "capability": "geojson",
+              "kind": "rich",
+              "richRendererKind": "geojson"
+            }
+          }
+        }
+      ]
+    },
+    "markdown.rehype": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "markdown.remark": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "nav": {
+      "cardinality": "list",
+      "entries": [
+        {
+          "id": "chat-v2",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "action": "new-session",
+              "chatScope": true,
+              "omitFallback": true,
+              "placement": "primary"
+            },
+            "fallback": "新会话",
+            "icon": "<StudyChatIcon>",
+            "id": "chat-v2",
+            "labelKey": "sidebar:navigation.chat_v2",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "会话",
+                "key": "sidebar:navigation.sessions"
+              },
+              "label": {
+                "fallback": "会话",
+                "key": "sidebar:navigation.launcher.chat_v2"
+              },
+              "placement": "launcher"
+            },
+            "order": 10,
+            "viewId": "chat-v2"
+          }
+        },
+        {
+          "id": "learning-hub",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "fallback": "资源库",
+            "icon": "<StudyBooksIcon>",
+            "id": "learning-hub",
+            "labelKey": "sidebar:navigation.learning_hub",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "资源库",
+                "key": "sidebar:navigation.learning_hub"
+              },
+              "label": {
+                "fallback": "资源",
+                "key": "sidebar:navigation.launcher.learning_hub"
+              },
+              "placement": "launcher"
+            },
+            "order": 20,
+            "viewId": "learning-hub"
+          }
+        },
+        {
+          "id": "media",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "fallback": "音视频",
+            "icon": "<StudyMediaIcon>",
+            "id": "media",
+            "labelKey": "sidebar:navigation.media",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "音视频",
+                "key": "sidebar:navigation.media"
+              },
+              "label": {
+                "fallback": "音视频",
+                "key": "sidebar:navigation.launcher.media"
+              },
+              "placement": "launcher"
+            },
+            "order": 30,
+            "viewId": "media"
+          }
+        },
+        {
+          "id": "todo",
+          "key": null,
+          "order": 40,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "icon": "<StudyTodoIcon>",
+            "id": "todo",
+            "labelKey": "sidebar:navigation.todo",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "待办",
+                "key": "sidebar:navigation.todo"
+              },
+              "label": {
+                "fallback": "待办",
+                "key": "sidebar:navigation.launcher.todo"
+              },
+              "placement": "launcher"
+            },
+            "order": 40,
+            "viewId": "todo"
+          }
+        },
+        {
+          "id": "skills-management",
+          "key": null,
+          "order": 50,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "fallback": "技能管理",
+            "icon": "<StudyMagicWandIcon>",
+            "id": "skills-management",
+            "labelKey": "sidebar:navigation.skills_management",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "技能管理",
+                "key": "sidebar:navigation.skills_management"
+              },
+              "label": {
+                "fallback": "技能",
+                "key": "sidebar:navigation.launcher.skills_management"
+              },
+              "placement": "launcher"
+            },
+            "order": 50,
+            "viewId": "skills-management"
+          }
+        },
+        {
+          "id": "flashcards",
+          "key": null,
+          "order": 60,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "fallback": "闪卡",
+            "icon": "<StudyCardsIcon>",
+            "id": "flashcards",
+            "labelKey": "sidebar:navigation.flashcards",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "闪卡",
+                "key": "sidebar:navigation.flashcards"
+              },
+              "label": {
+                "fallback": "闪卡",
+                "key": "sidebar:navigation.launcher.flashcards"
+              },
+              "placement": "launcher"
+            },
+            "order": 60,
+            "viewId": "flashcards"
+          }
+        },
+        {
+          "id": "ui-lab",
+          "key": null,
+          "order": 70,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "primary"
+            },
+            "icon": "<StudyBlocksIcon>",
+            "id": "ui-lab",
+            "labelKey": "sidebar:navigation.ui_lab",
+            "order": 70,
+            "viewId": "ui-lab",
+            "visible": {
+              "ƒ=": false
+            }
+          }
+        },
+        {
+          "id": "data-management",
+          "key": null,
+          "order": 80,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "fallback": "数据管理",
+            "icon": "<DatabaseIcon>",
+            "id": "data-management",
+            "labelKey": "common:navigation.data_management",
+            "mobile": {
+              "ariaLabel": {
+                "fallback": "数据管理",
+                "key": "common:navigation.data_management"
+              },
+              "label": {
+                "fallback": "数据",
+                "key": "sidebar:navigation.launcher.data_management"
+              },
+              "placement": "launcher"
+            },
+            "order": 80,
+            "viewId": "data-management"
+          }
+        },
+        {
+          "id": "settings",
+          "key": null,
+          "order": 90,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "desktop": {
+              "placement": "settings"
+            },
+            "fallback": "设置",
+            "icon": "<StudySettingsIcon>",
+            "id": "settings",
+            "labelKey": "sidebar:navigation.settings",
+            "mobile": {
+              "placement": "settings"
+            },
+            "order": 90,
+            "viewId": "settings"
+          }
+        }
+      ]
+    },
+    "resource.contextMenu": {
+      "cardinality": "list",
+      "entries": [
+        {
+          "id": "empty:1",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Clipboard",
+            "id": "empty:1",
+            "labelKey": "ƒ",
+            "labelParams": "ƒ",
+            "order": 10,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:1",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "FolderOpen",
+            "id": "folder:1",
+            "labelKey": "contextMenu.open",
+            "order": 10,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:1",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "ArrowSquareOut",
+            "id": "resource:1",
+            "labelKey": "contextMenu.open",
+            "order": 10,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-empty:1",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "danger": true,
+            "icon": "Warning",
+            "id": "trash-empty:1",
+            "labelKey": "finder.trash.emptyAction",
+            "order": 10,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-item:1",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "ArrowCounterClockwise",
+            "id": "trash-item:1",
+            "labelKey": "finder.contextMenu.restore",
+            "order": 10,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:2",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:2",
+            "order": 20,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:2",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:2",
+            "order": 20,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:2",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:2",
+            "order": 20,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-empty:2",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "trash-empty:2",
+            "order": 20,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-item:2",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "trash-item:2",
+            "order": 20,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:3",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "FolderPlus",
+            "id": "empty:3",
+            "labelKey": "folder.newFolder",
+            "order": 30,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:3",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "FolderPlus",
+            "id": "folder:3",
+            "labelKey": "contextMenu.newSubfolder",
+            "order": 30,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:3",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Chat",
+            "id": "resource:3",
+            "labelKey": "contextMenu.referenceToChat",
+            "order": 30,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-empty:3",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "ArrowClockwise",
+            "id": "trash-empty:3",
+            "labelKey": "common.refresh",
+            "order": 30,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "trash-item:3",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "danger": true,
+            "icon": "Trash",
+            "id": "trash-item:3",
+            "labelKey": "finder.contextMenu.permanentDelete",
+            "order": 30,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:4",
+          "key": null,
+          "order": 40,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:4",
+            "order": 40,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:4",
+          "key": null,
+          "order": 40,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "FileText",
+            "id": "folder:4",
+            "labelKey": "contextMenu.newNoteHere",
+            "order": 40,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:4",
+          "key": null,
+          "order": 40,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Cards",
+            "id": "resource:4",
+            "labelKey": "contextMenu.makeCards",
+            "order": 40,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:5",
+          "key": null,
+          "order": 50,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "FileText",
+            "id": "empty:5",
+            "labelKey": "contextMenu.newNote",
+            "order": 50,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:5",
+          "key": null,
+          "order": 50,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:5",
+            "labelKey": "contextMenu.importMarkdownHere",
+            "order": 50,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:5",
+          "key": null,
+          "order": 50,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Copy",
+            "id": "resource:5",
+            "labelKey": "contextMenu.copy",
+            "order": 50,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:6",
+          "key": null,
+          "order": 60,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:6",
+            "labelKey": "contextMenu.importMarkdown",
+            "order": 60,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:6",
+          "key": null,
+          "order": 60,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:6",
+            "order": 60,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:6",
+          "key": null,
+          "order": 60,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:6",
+            "labelKey": "contextMenu.duplicate",
+            "order": 60,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:7",
+          "key": null,
+          "order": 70,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:7",
+            "labelKey": "contextMenu.newExam",
+            "order": 70,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:7",
+          "key": null,
+          "order": 70,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Copy",
+            "id": "folder:7",
+            "labelKey": "contextMenu.copy",
+            "order": 70,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:7",
+          "key": null,
+          "order": 70,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:7",
+            "labelKey": "contextMenu.moveTo",
+            "order": 70,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:8",
+          "key": null,
+          "order": 80,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:8",
+            "labelKey": "contextMenu.newTextbook",
+            "order": 80,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:8",
+          "key": null,
+          "order": 80,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:8",
+            "labelKey": "contextMenu.duplicate",
+            "order": 80,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:8",
+          "key": null,
+          "order": 80,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:8",
+            "order": 80,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:9",
+          "key": null,
+          "order": 90,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:9",
+            "labelKey": "contextMenu.newTranslation",
+            "order": 90,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:9",
+          "key": null,
+          "order": 90,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:9",
+            "labelKey": "contextMenu.moveTo",
+            "order": 90,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:9",
+          "key": null,
+          "order": 90,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Pencil",
+            "id": "resource:9",
+            "labelKey": "contextMenu.rename",
+            "order": 90,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:10",
+          "key": null,
+          "order": 100,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:10",
+            "labelKey": "contextMenu.newEssay",
+            "order": 100,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:10",
+          "key": null,
+          "order": 100,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "Pencil",
+            "id": "folder:10",
+            "labelKey": "contextMenu.rename",
+            "order": 100,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:10",
+          "key": null,
+          "order": 100,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:10",
+            "order": 100,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:11",
+          "key": null,
+          "order": 110,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:11",
+            "labelKey": "contextMenu.newMindMap",
+            "order": 110,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:11",
+          "key": null,
+          "order": 110,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "folder:11",
+            "labelKey": "contextMenu.exportFolderZip",
+            "order": 110,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:11",
+          "key": null,
+          "order": 110,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "ƒ",
+            "id": "resource:11",
+            "labelKey": "ƒ",
+            "order": 110,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:12",
+          "key": null,
+          "order": 120,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "empty:12",
+            "order": 120,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "folder:12",
+          "key": null,
+          "order": 120,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "danger": true,
+            "icon": "Trash",
+            "id": "folder:12",
+            "labelKey": "contextMenu.delete",
+            "order": 120,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:12",
+          "key": null,
+          "order": 120,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "disabled": "ƒ",
+            "icon": "ƒ",
+            "iconClassName": "ƒ",
+            "id": "resource:12",
+            "labelKey": "ƒ",
+            "order": 120,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "empty:13",
+          "key": null,
+          "order": 130,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "icon": "ArrowClockwise",
+            "id": "empty:13",
+            "labelKey": "common.refresh",
+            "order": 130,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:13",
+          "key": null,
+          "order": 130,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:13",
+            "order": 130,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:14",
+          "key": null,
+          "order": 140,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:14",
+            "labelKey": "contextMenu.export",
+            "order": 140,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:15",
+          "key": null,
+          "order": 150,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "id": "resource:15",
+            "order": 150,
+            "separator": true,
+            "visible": "ƒ"
+          }
+        },
+        {
+          "id": "resource:16",
+          "key": null,
+          "order": 160,
+          "owner": "dstu.ui.content",
+          "origin": "builtin",
+          "value": {
+            "danger": true,
+            "icon": "Trash",
+            "id": "resource:16",
+            "labelKey": "contextMenu.delete",
+            "order": 160,
+            "run": "ƒ",
+            "visible": "ƒ"
+          }
+        }
+      ]
+    },
+    "resource.types": {
+      "cardinality": "keyed",
+      "entries": [
+        {
+          "id": "resource-type:note",
+          "key": "note",
+          "order": 10,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "icon": "FileText",
+            "labelKey": "learningHub:resourceType.note",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 10,
+            "preview": "markdown",
+            "type": "note"
+          }
+        },
+        {
+          "id": "resource-type:textbook",
+          "key": "textbook",
+          "order": 20,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "labelKey": "learningHub:resourceType.textbook",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 20,
+            "preview": "pdf",
+            "type": "textbook"
+          }
+        },
+        {
+          "id": "resource-type:exam",
+          "key": "exam",
+          "order": 30,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "icon": "Clipboard",
+            "labelKey": "learningHub:resourceType.exam",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 30,
+            "preview": "exam",
+            "type": "exam"
+          }
+        },
+        {
+          "id": "resource-type:translation",
+          "key": "translation",
+          "order": 40,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "labelKey": "learningHub:resourceType.translation",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 40,
+            "preview": "markdown",
+            "type": "translation"
+          }
+        },
+        {
+          "id": "resource-type:essay",
+          "key": "essay",
+          "order": 50,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "icon": "Pencil",
+            "labelKey": "learningHub:resourceType.essay",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 50,
+            "preview": "markdown",
+            "type": "essay"
+          }
+        },
+        {
+          "id": "resource-type:image",
+          "key": "image",
+          "order": 60,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "labelKey": "learningHub:resourceType.image",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 60,
+            "preview": "image",
+            "type": "image"
+          }
+        },
+        {
+          "id": "resource-type:file",
+          "key": "file",
+          "order": 70,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "icon": "FileText",
+            "labelKey": "learningHub:resourceType.file",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 70,
+            "preview": "none",
+            "type": "file"
+          }
+        },
+        {
+          "id": "resource-type:mindmap",
+          "key": "mindmap",
+          "order": 80,
+          "owner": "dstu.ui.learning-hub",
+          "origin": "builtin",
+          "value": {
+            "labelKey": "learningHub:resourceType.mindmap",
+            "operations": [
+              "open",
+              "preview",
+              "rename",
+              "move",
+              "delete",
+              "copy",
+              "favorite",
+              "add-to-chat",
+              "add-to-desktop"
+            ],
+            "order": 80,
+            "preview": "mindmap",
+            "type": "mindmap"
+          }
+        }
+      ]
+    },
+    "settings.sections": {
+      "cardinality": "keyed",
+      "entries": [
+        {
+          "id": "apis",
+          "key": "apis",
+          "order": 10,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "ai",
+            "id": "apis",
+            "navigation": {
+              "category": {
+                "icon": "<RobotIcon>",
+                "id": "ai",
+                "order": 10,
+                "titleKey": "settings:categories.ai"
+              },
+              "categoryOrder": 10,
+              "icon": "<RobotIcon>",
+              "legacyGroup": 0,
+              "mobileAccent": "var(--settings-nav-accent-amber)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.apis",
+              "order": 10,
+              "tourId": "settings-tab-apis"
+            },
+            "order": 10,
+            "placement": "before-preview",
+            "searchDetails": [
+              {
+                "keywords": [
+                  "API",
+                  "add",
+                  "config"
+                ],
+                "labelKey": "settings:api.add_api_config",
+                "order": 200
+              },
+              {
+                "keywords": [
+                  "basic",
+                  "API name",
+                  "endpoint"
+                ],
+                "labelKey": "settings:api.modal.basic_info",
+                "order": 210
+              },
+              {
+                "keywords": [
+                  "apikey",
+                  "api key",
+                  "key"
+                ],
+                "labelKey": "settings:api.modal.fields.api_key",
+                "order": 220
+              },
+              {
+                "keywords": [
+                  "adapter",
+                  "openai",
+                  "azure",
+                  "gemini",
+                  "claude"
+                ],
+                "labelKey": "settings:api.modal.model_adapter",
+                "order": 230
+              }
+            ],
+            "titleKey": "settings:tabs.api_config"
+          }
+        },
+        {
+          "id": "search",
+          "key": "search",
+          "order": 20,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "integrations",
+            "id": "search",
+            "navigation": {
+              "category": {
+                "icon": "<PlugIcon>",
+                "id": "integrations",
+                "order": 40,
+                "titleKey": "settings:categories.integrations"
+              },
+              "categoryOrder": 20,
+              "icon": "<GlobeIcon>",
+              "legacyGroup": 2,
+              "mobileAccent": "var(--settings-nav-accent-sky)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.search",
+              "order": 110
+            },
+            "order": 20,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "search engine",
+                  "google",
+                  "bing",
+                  "tavily",
+                  "searxng",
+                  "deepseek"
+                ],
+                "labelKey": "settings:search_engine.title",
+                "order": 320
+              },
+              {
+                "keywords": [
+                  "searxng",
+                  "search"
+                ],
+                "label": "SearXNG",
+                "order": 330
+              },
+              {
+                "keywords": [
+                  "tavily",
+                  "search",
+                  "api"
+                ],
+                "label": "Tavily",
+                "order": 340
+              },
+              {
+                "keywords": [
+                  "exa",
+                  "search"
+                ],
+                "label": "Exa",
+                "order": 350
+              }
+            ],
+            "titleKey": "settings:tabs.external_search"
+          }
+        },
+        {
+          "id": "models",
+          "key": "models",
+          "order": 30,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "ai",
+            "id": "models",
+            "navigation": {
+              "category": {
+                "icon": "<RobotIcon>",
+                "id": "ai",
+                "order": 10,
+                "titleKey": "settings:categories.ai"
+              },
+              "categoryOrder": 20,
+              "icon": "<FlaskIcon>",
+              "legacyGroup": 0,
+              "mobileAccent": "var(--settings-nav-accent-blue)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.models",
+              "order": 20,
+              "tourId": "settings-tab-models"
+            },
+            "order": 30,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "chat model",
+                  "conversation",
+                  "reasoning"
+                ],
+                "labelKey": "settings:api.model2_title",
+                "order": 240
+              },
+              {
+                "keywords": [
+                  "embedding",
+                  "RAG",
+                  "vector"
+                ],
+                "labelKey": "settings:api.embedding_title",
+                "order": 250
+              },
+              {
+                "keywords": [
+                  "reranker",
+                  "RAG"
+                ],
+                "labelKey": "settings:api.reranker_title",
+                "order": 260
+              },
+              {
+                "keywords": [
+                  "anki",
+                  "card"
+                ],
+                "labelKey": "settings:api.anki_card_title",
+                "order": 270
+              }
+            ],
+            "titleKey": "settings:tabs.model_assignment"
+          }
+        },
+        {
+          "id": "plugins",
+          "key": "plugins",
+          "order": 40,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "contentVisible": {
+              "ƒ=": true
+            },
+            "group": "integrations",
+            "id": "plugins",
+            "mobileFallbackKey": "settings:plugins.mobile_hidden",
+            "navigation": {
+              "category": {
+                "icon": "<PlugIcon>",
+                "id": "integrations",
+                "order": 40,
+                "titleKey": "settings:categories.integrations"
+              },
+              "categoryOrder": 30,
+              "icon": "<PuzzlePieceIcon>",
+              "legacyGroup": 2,
+              "mobileAccent": "var(--settings-nav-accent-purple)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.plugins",
+              "order": 120
+            },
+            "order": 40,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "plugin",
+                  "ilink",
+                  "wechat",
+                  "微信",
+                  "clawbot",
+                  "集成"
+                ],
+                "labelKey": "settings:tabs.plugins",
+                "order": 300
+              },
+              {
+                "keywords": [
+                  "qr",
+                  "扫码",
+                  "绑定"
+                ],
+                "labelKey": "settings:plugins.scan_qr",
+                "order": 310
+              }
+            ],
+            "titleKey": "settings:tabs.plugins",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "mcp",
+          "key": "mcp",
+          "order": 50,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "integrations",
+            "id": "mcp",
+            "navigation": {
+              "category": {
+                "icon": "<PlugIcon>",
+                "id": "integrations",
+                "order": 40,
+                "titleKey": "settings:categories.integrations"
+              },
+              "categoryOrder": 10,
+              "icon": "<PlugIcon>",
+              "legacyGroup": 2,
+              "mobileAccent": "var(--settings-nav-accent-green)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.mcp",
+              "order": 100
+            },
+            "order": 50,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "mcp",
+                  "server",
+                  "tool"
+                ],
+                "labelKey": "settings:mcp.server",
+                "order": 280
+              },
+              {
+                "keywords": [
+                  "add server",
+                  "mcp"
+                ],
+                "labelKey": "settings:mcp.add_server",
+                "order": 290
+              }
+            ],
+            "titleKey": "settings:tabs.mcp_tools"
+          }
+        },
+        {
+          "id": "statistics",
+          "key": "statistics",
+          "order": 60,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "data",
+            "id": "statistics",
+            "navigation": {
+              "category": {
+                "icon": "<ShieldIcon>",
+                "id": "data",
+                "order": 60,
+                "titleKey": "settings:categories.data"
+              },
+              "categoryOrder": 10,
+              "icon": "<ChartBarIcon>",
+              "legacyGroup": 3,
+              "mobileAccent": "var(--settings-nav-accent-sky)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.statistics",
+              "order": 130
+            },
+            "order": 60,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "learning time",
+                  "statistics"
+                ],
+                "labelKey": "settings:statistics.learning_time",
+                "order": 360
+              },
+              {
+                "keywords": [
+                  "chat stats",
+                  "session"
+                ],
+                "labelKey": "settings:statistics.chat_stats",
+                "order": 370
+              },
+              {
+                "keywords": [
+                  "heatmap",
+                  "activity"
+                ],
+                "labelKey": "settings:statistics.heatmap",
+                "order": 380
+              }
+            ],
+            "titleKey": "settings:tabs.statistics"
+          }
+        },
+        {
+          "id": "automation",
+          "key": "automation",
+          "order": 70,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "ƒ",
+            "group": "workflow",
+            "id": "automation",
+            "navigation": {
+              "category": {
+                "icon": "<ClockCountdownIcon>",
+                "id": "workflow",
+                "order": 50,
+                "titleKey": "settings:categories.workflow"
+              },
+              "categoryOrder": 10,
+              "icon": "<ClockCountdownIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-orange)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.automation",
+              "order": 90
+            },
+            "order": 70,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "automation",
+                  "schedule",
+                  "reminder",
+                  "agent",
+                  "自动化",
+                  "定时",
+                  "调度"
+                ],
+                "labelKey": "settings:automation.title",
+                "order": 110
+              },
+              {
+                "keywords": [
+                  "subagent",
+                  "profile",
+                  "persona",
+                  "agent",
+                  "子代理",
+                  "档案",
+                  "智能体"
+                ],
+                "labelKey": "settings:subagentProfiles.title",
+                "order": 120
+              }
+            ],
+            "titleKey": "settings:tabs.automation"
+          }
+        },
+        {
+          "id": "data-governance",
+          "key": "data-governance",
+          "order": 80,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "ƒ",
+            "group": "data",
+            "id": "data-governance",
+            "navigation": {
+              "category": {
+                "icon": "<ShieldIcon>",
+                "id": "data",
+                "order": 60,
+                "titleKey": "settings:categories.data"
+              },
+              "categoryOrder": 20,
+              "icon": "<ShieldIcon>",
+              "legacyGroup": 3,
+              "mobileAccent": "var(--settings-nav-accent-sky)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.data_governance",
+              "order": 140
+            },
+            "order": 80,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "data governance",
+                  "import",
+                  "export"
+                ],
+                "labelKey": "data:governance.title",
+                "order": 390
+              },
+              {
+                "keywords": [
+                  "backup",
+                  "export"
+                ],
+                "labelKey": "data:governance.backup",
+                "order": 400
+              },
+              {
+                "keywords": [
+                  "restore",
+                  "import"
+                ],
+                "labelKey": "data:governance.restore",
+                "order": 410
+              }
+            ],
+            "titleKey": "settings:tabs.data_governance"
+          }
+        },
+        {
+          "id": "general",
+          "key": "general",
+          "order": 90,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "experience",
+            "id": "general",
+            "navigation": {
+              "category": {
+                "icon": "<SlidersHorizontalIcon>",
+                "id": "experience",
+                "order": 20,
+                "titleKey": "settings:categories.experience"
+              },
+              "categoryOrder": 10,
+              "icon": "<SlidersHorizontalIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-slate)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.general",
+              "order": 30
+            },
+            "order": 90,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "language"
+                ],
+                "labelKey": "settings:language.title",
+                "order": 80
+              },
+              {
+                "keywords": [
+                  "permission",
+                  "authorization",
+                  "notification",
+                  "microphone",
+                  "file access",
+                  "权限",
+                  "授权",
+                  "通知",
+                  "麦克风",
+                  "文件访问"
+                ],
+                "labelKey": "settings:system_authorization.title",
+                "order": 90
+              }
+            ],
+            "titleKey": "settings:tabs.general"
+          }
+        },
+        {
+          "id": "appearance",
+          "key": "appearance",
+          "order": 100,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "experience",
+            "id": "appearance",
+            "navigation": {
+              "category": {
+                "icon": "<SlidersHorizontalIcon>",
+                "id": "experience",
+                "order": 20,
+                "titleKey": "settings:categories.experience"
+              },
+              "categoryOrder": 20,
+              "icon": "<PaletteIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-purple)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.appearance",
+              "order": 70
+            },
+            "order": 100,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "theme",
+                  "dark",
+                  "light",
+                  "appearance"
+                ],
+                "labelKey": "settings:appearance.theme.title",
+                "order": 10
+              },
+              {
+                "keywords": [
+                  "font",
+                  "typeface"
+                ],
+                "labelKey": "settings:appearance.font.title",
+                "order": 20
+              },
+              {
+                "keywords": [
+                  "font size"
+                ],
+                "labelKey": "settings:appearance.font.size_label",
+                "order": 30
+              },
+              {
+                "keywords": [
+                  "heading font"
+                ],
+                "labelKey": "settings:appearance.font.heading_label",
+                "order": 40
+              },
+              {
+                "keywords": [
+                  "body font"
+                ],
+                "labelKey": "settings:appearance.font.body_label",
+                "order": 50
+              },
+              {
+                "keywords": [
+                  "sidebar",
+                  "navigation"
+                ],
+                "labelKey": "settings:appearance.sidebar.title",
+                "order": 60
+              },
+              {
+                "keywords": [
+                  "sidebar position"
+                ],
+                "labelKey": "settings:appearance.sidebar.position",
+                "order": 70
+              }
+            ],
+            "titleKey": "settings:tabs.appearance"
+          }
+        },
+        {
+          "id": "params",
+          "key": "params",
+          "order": 110,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "ai",
+            "id": "params",
+            "navigation": {
+              "category": {
+                "icon": "<RobotIcon>",
+                "id": "ai",
+                "order": 10,
+                "titleKey": "settings:categories.ai"
+              },
+              "categoryOrder": 30,
+              "icon": "<WrenchIcon>",
+              "legacyGroup": 4,
+              "mobileAccent": "var(--settings-nav-accent-amber)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.params",
+              "order": 150
+            },
+            "order": 110,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "timeout",
+                  "stream",
+                  "超时",
+                  "流式"
+                ],
+                "labelKey": "common:settings.chat_stream.card_title",
+                "order": 420
+              },
+              {
+                "keywords": [
+                  "fts",
+                  "semantic",
+                  "search",
+                  "语义搜索"
+                ],
+                "labelKey": "settings:cards.search_settings_title",
+                "order": 430
+              }
+            ],
+            "titleKey": "settings:tabs.params"
+          }
+        },
+        {
+          "id": "voice-input",
+          "key": "voice-input",
+          "order": 120,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "personalization",
+            "id": "voice-input",
+            "navigation": {
+              "category": {
+                "icon": "<BrainIcon>",
+                "id": "personalization",
+                "order": 30,
+                "titleKey": "settings:categories.personalization"
+              },
+              "categoryOrder": 10,
+              "icon": "<MicrophoneIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-coral)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.voice_input",
+              "order": 40
+            },
+            "order": 120,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "voice input",
+                  "dictation",
+                  "asr",
+                  "microphone",
+                  "speech to text",
+                  "听写",
+                  "语音输入"
+                ],
+                "labelKey": "settings:voice_input.title",
+                "order": 100
+              },
+              {
+                "keywords": [
+                  "hotkey",
+                  "shortcut",
+                  "keyboard",
+                  "press to talk",
+                  "toggle dictation",
+                  "快捷键"
+                ],
+                "labelKey": "settings:voice_input.shortcut_title",
+                "order": 130
+              },
+              {
+                "keywords": [
+                  "dictionary",
+                  "vocabulary",
+                  "pronunciation hints",
+                  "词典",
+                  "短语"
+                ],
+                "labelKey": "settings:voice_input.dictionary_title",
+                "order": 140
+              },
+              {
+                "keywords": [
+                  "history",
+                  "recent dictation",
+                  "transcript recovery",
+                  "历史记录",
+                  "转写记录"
+                ],
+                "labelKey": "settings:voice_input.history_title",
+                "order": 150
+              }
+            ],
+            "titleKey": "settings:tabs.voice_input"
+          }
+        },
+        {
+          "id": "memory",
+          "key": "memory",
+          "order": 130,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "personalization",
+            "id": "memory",
+            "navigation": {
+              "category": {
+                "icon": "<BrainIcon>",
+                "id": "personalization",
+                "order": 30,
+                "titleKey": "settings:categories.personalization"
+              },
+              "categoryOrder": 20,
+              "icon": "<BrainIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-teal)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.memory",
+              "order": 50
+            },
+            "order": 130,
+            "searchDetails": [
+              {
+                "keywords": [
+                  "memory",
+                  "记忆",
+                  "本地记忆"
+                ],
+                "labelKey": "settings:memory.title",
+                "order": 160
+              }
+            ],
+            "titleKey": "settings:tabs.memory"
+          }
+        },
+        {
+          "id": "workbench",
+          "key": "workbench",
+          "order": 140,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "contentVisible": {
+              "ƒ=": true
+            },
+            "group": "experience",
+            "id": "workbench",
+            "navigation": {
+              "category": {
+                "icon": "<SlidersHorizontalIcon>",
+                "id": "experience",
+                "order": 20,
+                "titleKey": "settings:categories.experience"
+              },
+              "categoryOrder": 30,
+              "icon": "<SquaresFourIcon>",
+              "legacyGroup": 1,
+              "mobileAccent": "var(--settings-nav-accent-indigo)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.workbench",
+              "order": 60
+            },
+            "order": 140,
+            "redirect": {
+              "ƒ=": null
+            },
+            "searchDetails": [
+              {
+                "keywords": [
+                  "workbench",
+                  "工作台",
+                  "工作区",
+                  "workspace"
+                ],
+                "labelKey": "workbench:settings.sectionTitle",
+                "order": 170
+              }
+            ],
+            "titleKey": "settings:tabs.workbench",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "document-processing",
+          "key": "document-processing",
+          "order": 150,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "workflow",
+            "id": "document-processing",
+            "navigation": {
+              "category": {
+                "icon": "<ClockCountdownIcon>",
+                "id": "workflow",
+                "order": 50,
+                "titleKey": "settings:categories.workflow"
+              },
+              "categoryOrder": 20,
+              "icon": "<FileTextIcon>",
+              "legacyGroup": 4,
+              "mobileAccent": "var(--settings-nav-accent-violet)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.document_processing",
+              "order": 160
+            },
+            "order": 150,
+            "searchDetails": [
+              {
+                "defaultValue": "PDF 设置",
+                "keywords": [
+                  "pdf",
+                  "PDF"
+                ],
+                "labelKey": "settings:pdf.title",
+                "order": 180
+              },
+              {
+                "defaultValue": "OCR 设置",
+                "keywords": [
+                  "ocr",
+                  "OCR",
+                  "文字识别"
+                ],
+                "labelKey": "settings:ocr.title",
+                "order": 190
+              }
+            ],
+            "titleKey": "settings:tabs.document_processing"
+          }
+        },
+        {
+          "id": "shortcuts",
+          "key": "shortcuts",
+          "order": 160,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "group": "experience",
+            "id": "shortcuts",
+            "navigation": {
+              "category": {
+                "icon": "<SlidersHorizontalIcon>",
+                "id": "experience",
+                "order": 20,
+                "titleKey": "settings:categories.experience"
+              },
+              "categoryOrder": 40,
+              "icon": "<KeyboardIcon>",
+              "legacyGroup": 4,
+              "mobileAccent": "var(--settings-nav-accent-slate)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.shortcuts",
+              "order": 170
+            },
+            "order": 160,
+            "placement": "after-modals",
+            "searchDetails": [
+              {
+                "keywords": [
+                  "shortcuts",
+                  "keyboard",
+                  "hotkey"
+                ],
+                "labelKey": "settings:tabs.shortcuts",
+                "order": 440
+              }
+            ],
+            "titleKey": "settings:tabs.shortcuts",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "about",
+          "key": "about",
+          "order": 170,
+          "owner": "dstu.ui.settings",
+          "origin": "builtin",
+          "value": {
+            "component": "<SettingsSection>",
+            "desktopHeadingKey": "settings:tabs.about",
+            "group": "about",
+            "id": "about",
+            "navigation": {
+              "icon": "<BookOpenIcon>",
+              "legacyGroup": 4,
+              "mobileAccent": "var(--settings-nav-accent-pink)",
+              "mobileDescriptionKey": "settings:mobile_descriptions.about",
+              "order": 180
+            },
+            "order": 170,
+            "placement": "after-modals",
+            "searchDetails": [
+              {
+                "keywords": [
+                  "about",
+                  "version",
+                  "acknowledgements"
+                ],
+                "labelKey": "settings:tabs.about",
+                "order": 450
+              }
+            ],
+            "titleKey": "settings:tabs.about"
+          }
+        }
+      ]
+    },
+    "views": {
+      "cardinality": "keyed",
+      "entries": [
+        {
+          "id": "dashboard",
+          "key": "dashboard",
+          "order": 10,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "dashboardContent",
+            "extraClass": "overflow-hidden",
+            "id": "dashboard",
+            "keepAlive": true,
+            "order": 10,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.dashboard"
+          }
+        },
+        {
+          "id": "settings",
+          "key": "settings",
+          "order": 20,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "settingsContent",
+            "extraClass": "overflow-hidden",
+            "id": "settings",
+            "keepAlive": true,
+            "order": 20,
+            "shell": {
+              "contentClass": "settings-view",
+              "hideExpandedSidebarToggle": true,
+              "mobileBackToHome": true,
+              "sidebarKind": "settings",
+              "sidebarOwnsBackNavigation": true
+            },
+            "titleKey": "sidebar:navigation.settings"
+          }
+        },
+        {
+          "id": "task-dashboard",
+          "key": "task-dashboard",
+          "order": 30,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "taskDashboardContent",
+            "id": "task-dashboard",
+            "keepAlive": true,
+            "order": 30,
+            "shell": {
+              "cardsHubTabs": true,
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "sidebar:navigation.flashcards"
+          }
+        },
+        {
+          "id": "skills-management",
+          "key": "skills-management",
+          "order": 40,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "skillsManagementContent",
+            "id": "skills-management",
+            "keepAlive": true,
+            "order": 40,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main",
+              "toolbarSlot": "skills-toolbar"
+            },
+            "titleKey": "sidebar:navigation.skills_management"
+          }
+        },
+        {
+          "id": "data-management",
+          "key": "data-management",
+          "order": 50,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "dataManagementContent",
+            "id": "data-management",
+            "keepAlive": true,
+            "order": 50,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.data_management"
+          }
+        },
+        {
+          "id": "template-management",
+          "key": "template-management",
+          "order": 60,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "templateManagementContent",
+            "id": "template-management",
+            "keepAlive": true,
+            "order": 60,
+            "shell": {
+              "cardsHubTabs": true,
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "sidebar:navigation.flashcards"
+          }
+        },
+        {
+          "id": "ui-lab",
+          "key": "ui-lab",
+          "order": 70,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "styleDebugContent",
+            "id": "ui-lab",
+            "keepAlive": true,
+            "order": 70,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "sidebar:navigation.ui_lab",
+            "visible": {
+              "ƒ=": false
+            }
+          }
+        },
+        {
+          "id": "learning-hub",
+          "key": "learning-hub",
+          "order": 80,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "learningHubContent",
+            "id": "learning-hub",
+            "keepAlive": true,
+            "order": 80,
+            "shell": {
+              "mobileBackToHome": true,
+              "pageBackButton": true,
+              "sidebarKind": "desktop-page",
+              "toolbarSlot": "learning-hub-toolbar"
+            },
+            "titleKey": "sidebar:navigation.learning_hub"
+          }
+        },
+        {
+          "id": "media",
+          "key": "media",
+          "order": 90,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "mediaStudioContent",
+            "id": "media",
+            "keepAlive": true,
+            "order": 90,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main",
+              "toolbarSlot": "media-toolbar"
+            },
+            "titleKey": "sidebar:navigation.media"
+          }
+        },
+        {
+          "id": "sandbox-workbench",
+          "key": "sandbox-workbench",
+          "order": 100,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "sandboxWorkbenchContent",
+            "id": "sandbox-workbench",
+            "keepAlive": true,
+            "order": 100,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.sandbox_workbench"
+          }
+        },
+        {
+          "id": "pdf-reader",
+          "key": "pdf-reader",
+          "order": 110,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "pdfReaderContent",
+            "id": "pdf-reader",
+            "keepAlive": true,
+            "order": 110,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.pdf_reader"
+          }
+        },
+        {
+          "id": "todo",
+          "key": "todo",
+          "order": 120,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "todoContent",
+            "id": "todo",
+            "keepAlive": true,
+            "order": 120,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "todo",
+              "sidebarOwnsBackNavigation": true,
+              "toolbarSlot": "todo-toolbar"
+            },
+            "titleKey": "sidebar:navigation.todo"
+          }
+        },
+        {
+          "id": "flashcards",
+          "key": "flashcards",
+          "order": 130,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "flashcardsContent",
+            "id": "flashcards",
+            "keepAlive": true,
+            "order": 130,
+            "shell": {
+              "cardsHubTabs": true,
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "sidebar:navigation.flashcards"
+          }
+        },
+        {
+          "id": "crepe-demo",
+          "key": "crepe-demo",
+          "order": 140,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "crepeDemoContent",
+            "id": "crepe-demo",
+            "keepAlive": true,
+            "order": 140,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.crepe_demo",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "chat-v2-test",
+          "key": "chat-v2-test",
+          "order": 150,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "chatV2TestContent",
+            "id": "chat-v2-test",
+            "keepAlive": true,
+            "order": 150,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.chat_v2_test",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "llm-playground",
+          "key": "llm-playground",
+          "order": 160,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "component": "<OfficialViewContent>",
+            "contentKey": "llmPlaygroundContent",
+            "id": "llm-playground",
+            "keepAlive": true,
+            "order": 160,
+            "shell": {
+              "mobileBackToHome": true,
+              "sidebarKind": "main"
+            },
+            "titleKey": "common:navigation.llm_playground",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
+          "id": "chat-v2",
+          "key": "chat-v2",
+          "order": 170,
+          "owner": "dstu.ui.shell",
+          "origin": "builtin",
+          "value": {
+            "allowInDemo": true,
+            "component": "<OfficialViewContent>",
+            "contentKey": "chatV2Content",
+            "id": "chat-v2",
+            "keepAlive": true,
+            "order": 170,
+            "shell": {
+              "chatHeader": true,
+              "mobileBackToHome": false,
+              "sidebarKind": "main"
+            },
+            "titleKey": "sidebar:navigation.chat_v2"
+          }
+        }
+      ]
+    }
+  },
+  "adapters": {
+    "commands": [
+      {
+        "category": "navigation",
+        "description": "Chat V2 - AI chat main entry",
+        "execute": "ƒ",
+        "icon": "<ChatIcon>",
+        "id": "nav.goto.chat-v2",
+        "keywords": [
+          "chat",
+          "conversation",
+          "ai",
+          "smart",
+          "v2"
+        ],
+        "name": "Go to Smart Chat",
+        "priority": 100,
+        "shortcut": "mod+1"
+      },
+      {
+        "category": "navigation",
+        "description": "MCP skills and tools management",
+        "execute": "ƒ",
+        "icon": "<LightningIcon>",
+        "id": "nav.goto.skills-management",
+        "keywords": [
+          "skills",
+          "mcp",
+          "tools",
+          "management"
+        ],
+        "name": "Go to Skills Management",
+        "priority": 95
+      },
+      {
+        "category": "navigation",
+        "description": "Media: transcripts, handouts, Q&A and practice for lectures and recordings",
+        "execute": "ƒ",
+        "icon": "<MonitorPlayIcon>",
+        "id": "nav.goto.media",
+        "keywords": [
+          "media",
+          "video",
+          "audio",
+          "lecture",
+          "course",
+          "recording",
+          "subtitles",
+          "transcript",
+          "handout"
+        ],
+        "name": "Go to Media",
+        "priority": 96
+      },
+      {
+        "category": "navigation",
+        "description": "Flashcards › Review: today's queue, card library and statistics",
+        "execute": "ƒ",
+        "icon": "<CardsIcon>",
+        "id": "nav.goto.flashcards",
+        "keywords": [
+          "flashcards",
+          "review",
+          "cards",
+          "library",
+          "memory",
+          "anki",
+          "fsrs"
+        ],
+        "name": "Go to Flashcards Review",
+        "priority": 94
+      },
+      {
+        "category": "navigation",
+        "description": "Flashcards › Generate: manage card generation tasks",
+        "execute": "ƒ",
+        "icon": "<StackIcon>",
+        "id": "nav.goto.task-dashboard",
+        "keywords": [
+          "anki",
+          "flashcard",
+          "cards",
+          "memory",
+          "tasks"
+        ],
+        "name": "Go to Card Tasks",
+        "priority": 94,
+        "shortcut": "mod+shift+6"
+      },
+      {
+        "category": "navigation",
+        "description": "Todo lists and pomodoro focus",
+        "execute": "ƒ",
+        "icon": "<CheckSquareIcon>",
+        "id": "nav.goto.todo",
+        "keywords": [
+          "todo",
+          "task",
+          "list",
+          "pomodoro",
+          "focus"
+        ],
+        "name": "Go to Todo",
+        "priority": 92
+      },
+      {
+        "category": "navigation",
+        "description": "Files: manage and search textbooks, notes, exam sets and documents",
+        "execute": "ƒ",
+        "icon": "<GraduationCapIcon>",
+        "id": "nav.goto.learning-hub",
+        "keywords": [
+          "files",
+          "library",
+          "resources",
+          "learning",
+          "hub",
+          "translate",
+          "essay"
+        ],
+        "name": "Go to Files",
+        "priority": 93,
+        "shortcut": "mod+shift+7"
+      },
+      {
+        "category": "navigation",
+        "description": "Flashcards › Templates: manage card templates",
+        "execute": "ƒ",
+        "icon": "<PaletteIcon>",
+        "id": "nav.goto.template-management",
+        "keywords": [
+          "template",
+          "card template",
+          "flashcards",
+          "anki"
+        ],
+        "name": "Go to Card Templates",
+        "priority": 88
+      },
+      {
+        "category": "navigation",
+        "description": "Read and annotate PDF documents",
+        "execute": "ƒ",
+        "icon": "<FileTextIcon>",
+        "id": "nav.goto.pdf-reader",
+        "keywords": [
+          "pdf",
+          "reader",
+          "document",
+          "annotate"
+        ],
+        "name": "Go to PDF Reader",
+        "priority": 87
+      },
+      {
+        "category": "navigation",
+        "description": "HTML / preview sandbox workbench",
+        "execute": "ƒ",
+        "icon": "<CubeIcon>",
+        "id": "nav.goto.sandbox-workbench",
+        "keywords": [
+          "sandbox",
+          "workbench",
+          "preview",
+          "html"
+        ],
+        "name": "Go to Sandbox Workbench",
+        "priority": 86
+      },
+      {
+        "category": "navigation",
+        "description": "Data statistics and overview",
+        "execute": "ƒ",
+        "icon": "<ChartBarIcon>",
+        "id": "nav.goto.dashboard",
+        "keywords": [
+          "dashboard",
+          "statistics",
+          "overview",
+          "data",
+          "today",
+          "weekly report",
+          "summary"
+        ],
+        "name": "Go to Dashboard",
+        "priority": 85,
+        "shortcut": "mod+5"
+      },
+      {
+        "category": "navigation",
+        "description": "Data import/export and backup",
+        "execute": "ƒ",
+        "icon": "<DatabaseIcon>",
+        "id": "nav.goto.data-management",
+        "keywords": [
+          "data",
+          "management",
+          "backup",
+          "import",
+          "export"
+        ],
+        "name": "Go to Data Management",
+        "priority": 84,
+        "shortcut": "mod+e"
+      },
+      {
+        "category": "navigation",
+        "description": "App settings and preferences",
+        "execute": "ƒ",
+        "icon": "<GearIcon>",
+        "id": "nav.goto.settings",
+        "keywords": [
+          "settings",
+          "system",
+          "preferences"
+        ],
+        "name": "Go to Settings",
+        "priority": 80,
+        "shortcut": "mod+,"
+      },
+      {
+        "category": "navigation",
+        "description": "Go back to previous page",
+        "execute": "ƒ",
+        "icon": "<CaretLeftIcon>",
+        "id": "nav.back",
+        "keywords": [
+          "back",
+          "previous"
+        ],
+        "name": "Go Back",
+        "priority": 70,
+        "shortcut": "mod+["
+      },
+      {
+        "category": "navigation",
+        "description": "Go forward to next page",
+        "execute": "ƒ",
+        "icon": "<CaretRightIcon>",
+        "id": "nav.forward",
+        "keywords": [
+          "forward",
+          "next"
+        ],
+        "name": "Go Forward",
+        "priority": 69,
+        "shortcut": "mod+]"
+      },
+      {
+        "category": "navigation",
+        "description": "Return to app home page",
+        "execute": "ƒ",
+        "icon": "<HouseIcon>",
+        "id": "nav.home",
+        "keywords": [
+          "home",
+          "start"
+        ],
+        "name": "Go to Home",
+        "priority": 68,
+        "shortcut": "mod+shift+h"
+      },
+      {
+        "category": "chat",
+        "description": "Start a new AI conversation",
+        "execute": "ƒ",
+        "icon": "<ChatDotsIcon>",
+        "id": "chat.new-session",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "new",
+          "conversation",
+          "chat",
+          "session",
+          "create",
+          "start"
+        ],
+        "name": "New Conversation",
+        "priority": 100,
+        "shortcut": "mod+n",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Upload images for OCR recognition and question analysis",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassIcon>",
+        "id": "chat.new-analysis-session",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "new",
+          "analysis",
+          "question",
+          "ocr",
+          "image",
+          "scan",
+          "recognize"
+        ],
+        "name": "New Question Analysis",
+        "priority": 99,
+        "shortcut": "mod+shift+a",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Stop AI response generation",
+        "execute": "ƒ",
+        "icon": "<SquareIcon>",
+        "id": "chat.stop",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "stop",
+          "generation",
+          "cancel",
+          "halt",
+          "abort"
+        ],
+        "name": "Stop Generation",
+        "priority": 98,
+        "shortcut": "mod+.",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Copy last AI response",
+        "execute": "ƒ",
+        "icon": "<CopyIcon>",
+        "id": "chat.copy-last-response",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "copy",
+          "response",
+          "clipboard",
+          "last",
+          "reply"
+        ],
+        "name": "Copy Last Response",
+        "priority": 85,
+        "shortcut": "mod+shift+c",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Enable/disable retrieval augmentation",
+        "execute": "ƒ",
+        "icon": "<BooksIcon>",
+        "id": "chat.toggle-rag",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "rag",
+          "retrieval",
+          "augmented",
+          "augmentation",
+          "knowledge",
+          "toggle",
+          "mode"
+        ],
+        "name": "Toggle RAG Mode",
+        "priority": 90,
+        "shortcut": "mod+shift+r",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Enable/disable knowledge graph query",
+        "execute": "ƒ",
+        "icon": "<TreeStructureIcon>",
+        "id": "chat.toggle-graph",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "graph",
+          "knowledge",
+          "network",
+          "toggle",
+          "mode"
+        ],
+        "name": "Toggle Graph Mode",
+        "priority": 89,
+        "shortcut": "mod+shift+g",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Enable/disable real-time web search",
+        "execute": "ƒ",
+        "icon": "<GlobeIcon>",
+        "id": "chat.toggle-web-search",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "web",
+          "search",
+          "internet",
+          "online",
+          "toggle"
+        ],
+        "name": "Toggle Web Search",
+        "priority": 88,
+        "shortcut": "mod+shift+w",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Enable/disable MCP tool calling",
+        "execute": "ƒ",
+        "icon": "<WrenchIcon>",
+        "id": "chat.toggle-mcp",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "mcp",
+          "tools",
+          "toggle",
+          "plugin",
+          "function",
+          "calling"
+        ],
+        "name": "Toggle MCP Tools",
+        "priority": 87,
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Show/hide conversation history sidebar",
+        "execute": "ƒ",
+        "icon": "<SidebarSimpleIcon>",
+        "id": "chat.toggle-sidebar",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "sidebar",
+          "history",
+          "toggle",
+          "panel",
+          "left"
+        ],
+        "name": "Toggle History Sidebar",
+        "priority": 60,
+        "shortcut": "mod+\\",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Show/hide right feature panel",
+        "execute": "ƒ",
+        "icon": "<SidebarSimpleIcon>",
+        "id": "chat.toggle-panel",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "panel",
+          "feature",
+          "toggle",
+          "right",
+          "tools"
+        ],
+        "name": "Toggle Feature Panel",
+        "priority": 59,
+        "shortcut": "mod+shift+\\",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Add current conversation to favorites",
+        "execute": "ƒ",
+        "icon": "<BookmarkSimpleIcon>",
+        "id": "chat.bookmark",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "bookmark",
+          "favorite",
+          "star",
+          "save",
+          "collection"
+        ],
+        "name": "Bookmark Conversation",
+        "priority": 57,
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "chat",
+        "description": "Let AI continue current content",
+        "execute": "ƒ",
+        "icon": "<RobotIcon>",
+        "id": "chat.ai-continue",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "continue",
+          "ai",
+          "extend",
+          "more",
+          "generate"
+        ],
+        "name": "AI Continue",
+        "priority": 50,
+        "shortcut": "mod+j",
+        "visibleInViews": [
+          "chat-v2",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "chat"
+        ]
+      },
+      {
+        "category": "global",
+        "description": "Quick access to all commands",
+        "execute": "ƒ",
+        "icon": "<CommandIcon>",
+        "id": "global.command-palette",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "command",
+          "palette",
+          "search",
+          "quick",
+          "actions",
+          "menu"
+        ],
+        "name": "Open Command Palette",
+        "priority": 100,
+        "shortcut": "mod+k"
+      },
+      {
+        "category": "global",
+        "description": "Search notes, conversations, documents",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassIcon>",
+        "id": "global.quick-search",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "search",
+          "global",
+          "find",
+          "notes",
+          "documents",
+          "conversations"
+        ],
+        "name": "Global Search",
+        "priority": 99,
+        "shortcut": "mod+p"
+      },
+      {
+        "category": "global",
+        "description": "Customize keyboard shortcuts",
+        "execute": "ƒ",
+        "icon": "<KeyboardIcon>",
+        "id": "global.shortcut-settings",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "shortcut",
+          "keyboard",
+          "hotkey",
+          "keybinding",
+          "settings",
+          "customize"
+        ],
+        "name": "Shortcut Settings",
+        "priority": 90
+      },
+      {
+        "category": "global",
+        "description": "Reload application page",
+        "execute": "ƒ",
+        "icon": "<ArrowClockwiseIcon>",
+        "id": "global.reload",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "reload",
+          "refresh",
+          "restart",
+          "page"
+        ],
+        "name": "Reload App",
+        "priority": 50,
+        "shortcut": "mod+alt+r"
+      },
+      {
+        "category": "global",
+        "description": "Toggle fullscreen display mode",
+        "execute": "ƒ",
+        "icon": "<ArrowsOutIcon>",
+        "id": "global.toggle-fullscreen",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "fullscreen",
+          "toggle",
+          "maximize",
+          "screen",
+          "expand",
+          "window"
+        ],
+        "name": "Toggle Fullscreen",
+        "priority": 49,
+        "shortcut": "f11"
+      },
+      {
+        "category": "global",
+        "description": "Increase interface zoom level",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassPlusIcon>",
+        "id": "global.zoom-in",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "zoom",
+          "in",
+          "enlarge",
+          "bigger",
+          "magnify",
+          "increase"
+        ],
+        "name": "Zoom In",
+        "priority": 48,
+        "shortcut": "mod+="
+      },
+      {
+        "category": "global",
+        "description": "Decrease interface zoom level",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassMinusIcon>",
+        "id": "global.zoom-out",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "zoom",
+          "out",
+          "shrink",
+          "smaller",
+          "reduce",
+          "decrease"
+        ],
+        "name": "Zoom Out",
+        "priority": 47,
+        "shortcut": "mod+-"
+      },
+      {
+        "category": "global",
+        "description": "Restore default zoom level",
+        "execute": "ƒ",
+        "icon": "<ArrowCounterClockwiseIcon>",
+        "id": "global.zoom-reset",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "zoom",
+          "reset",
+          "default",
+          "restore",
+          "normal"
+        ],
+        "name": "Reset Zoom",
+        "priority": 46,
+        "shortcut": "mod+0"
+      },
+      {
+        "category": "global",
+        "description": "Toggle light/dark theme",
+        "execute": "ƒ",
+        "icon": "<MoonIcon>",
+        "id": "global.toggle-theme",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "theme",
+          "toggle",
+          "dark",
+          "light",
+          "mode",
+          "appearance"
+        ],
+        "name": "Toggle Theme",
+        "priority": 80,
+        "shortcut": "mod+shift+t"
+      },
+      {
+        "category": "global",
+        "description": "Switch to light theme",
+        "execute": "ƒ",
+        "icon": "<SunIcon>",
+        "id": "global.theme-light",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "light",
+          "theme",
+          "bright",
+          "day",
+          "white"
+        ],
+        "name": "Light Theme",
+        "priority": 79
+      },
+      {
+        "category": "global",
+        "description": "Switch to dark theme",
+        "execute": "ƒ",
+        "icon": "<MoonIcon>",
+        "id": "global.theme-dark",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "dark",
+          "theme",
+          "night",
+          "black"
+        ],
+        "name": "Dark Theme",
+        "priority": 78
+      },
+      {
+        "category": "global",
+        "description": "Use system default theme setting",
+        "execute": "ƒ",
+        "icon": "<MonitorIcon>",
+        "id": "global.theme-system",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "system",
+          "theme",
+          "auto",
+          "default",
+          "os"
+        ],
+        "name": "System Theme",
+        "priority": 77
+      },
+      {
+        "category": "global",
+        "description": "Enable/disable app notifications",
+        "execute": "ƒ",
+        "icon": "<BellIcon>",
+        "id": "global.toggle-notifications",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "notifications",
+          "toggle",
+          "alerts",
+          "bell"
+        ],
+        "name": "Toggle Notifications",
+        "priority": 60
+      },
+      {
+        "category": "global",
+        "description": "Mute all sound alerts",
+        "execute": "ƒ",
+        "icon": "<SpeakerSlashIcon>",
+        "id": "global.mute-sounds",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "mute",
+          "sounds",
+          "sound",
+          "silent",
+          "quiet",
+          "volume"
+        ],
+        "name": "Mute Sounds",
+        "priority": 59
+      },
+      {
+        "category": "global",
+        "description": "Check API connection status",
+        "execute": "ƒ",
+        "icon": "<WifiHighIcon>",
+        "id": "global.check-connection",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "connection",
+          "check",
+          "network",
+          "api",
+          "status",
+          "online"
+        ],
+        "name": "Check Connection",
+        "priority": 55
+      },
+      {
+        "category": "global",
+        "description": "Manually trigger data sync",
+        "execute": "ƒ",
+        "icon": "<ArrowClockwiseIcon>",
+        "id": "global.sync-now",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "sync",
+          "synchronize",
+          "update",
+          "refresh",
+          "data"
+        ],
+        "name": "Sync Now",
+        "priority": 54
+      },
+      {
+        "category": "global",
+        "description": "Copy current page URL",
+        "execute": "ƒ",
+        "icon": "<CopyIcon>",
+        "id": "global.copy-current-url",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "copy",
+          "url",
+          "link",
+          "address",
+          "clipboard"
+        ],
+        "name": "Copy Current URL",
+        "priority": 40
+      },
+      {
+        "category": "global",
+        "description": "Read clipboard content",
+        "execute": "ƒ",
+        "icon": "<ClipboardIcon>",
+        "id": "global.paste-from-clipboard",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "paste",
+          "clipboard",
+          "content",
+          "read"
+        ],
+        "name": "Paste from Clipboard",
+        "priority": 39
+      },
+      {
+        "category": "global",
+        "description": "Open help documentation",
+        "execute": "ƒ",
+        "icon": "<QuestionIcon>",
+        "id": "global.show-help",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "help",
+          "documentation",
+          "docs",
+          "guide",
+          "support",
+          "faq"
+        ],
+        "name": "Help Documentation",
+        "priority": 30,
+        "shortcut": "f1"
+      },
+      {
+        "category": "global",
+        "description": "View app version and information",
+        "execute": "ƒ",
+        "icon": "<InfoIcon>",
+        "id": "global.about",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "about",
+          "version",
+          "info",
+          "information",
+          "app"
+        ],
+        "name": "About App",
+        "priority": 29
+      },
+      {
+        "category": "global",
+        "description": "View version update log",
+        "execute": "ƒ",
+        "icon": "<InfoIcon>",
+        "id": "global.changelog",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "changelog",
+          "update",
+          "updates",
+          "version",
+          "history",
+          "release",
+          "notes"
+        ],
+        "name": "Changelog",
+        "priority": 28
+      },
+      {
+        "category": "global",
+        "description": "Submit bug report",
+        "execute": "ƒ",
+        "icon": "<BugIcon>",
+        "id": "global.report-bug",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "bug",
+          "report",
+          "issue",
+          "feedback",
+          "problem",
+          "error"
+        ],
+        "name": "Report Bug",
+        "priority": 27
+      },
+      {
+        "category": "global",
+        "description": "Export all application data",
+        "execute": "ƒ",
+        "icon": "<DownloadIcon>",
+        "id": "global.export-all",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "export",
+          "all",
+          "data",
+          "backup",
+          "download"
+        ],
+        "name": "Export All Data",
+        "priority": 35
+      },
+      {
+        "category": "global",
+        "description": "Import data from file",
+        "execute": "ƒ",
+        "icon": "<UploadIcon>",
+        "id": "global.import-data",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "import",
+          "data",
+          "upload",
+          "restore",
+          "load"
+        ],
+        "name": "Import Data",
+        "priority": 34
+      },
+      {
+        "category": "global",
+        "description": "Lock app, requires password to unlock",
+        "execute": "ƒ",
+        "icon": "<LockIcon>",
+        "id": "global.lock-app",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "lock",
+          "app",
+          "security",
+          "password",
+          "protect"
+        ],
+        "name": "Lock App",
+        "priority": 20,
+        "shortcut": "mod+l"
+      },
+      {
+        "category": "global",
+        "description": "Tasks currently being processed",
+        "execute": "ƒ",
+        "icon": "<CircleNotchIcon>",
+        "id": "global.show-loading",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "loading",
+          "status",
+          "progress",
+          "tasks",
+          "processing"
+        ],
+        "name": "Show Loading Status",
+        "priority": 10
+      },
+      {
+        "category": "settings",
+        "description": "Open app settings and preferences",
+        "execute": "ƒ",
+        "icon": "<GearIcon>",
+        "id": "settings.open",
+        "keywords": [
+          "settings",
+          "system",
+          "preferences"
+        ],
+        "name": "Open Settings",
+        "priority": 100
+      },
+      {
+        "category": "settings",
+        "description": "Light/Dark toggle",
+        "execute": "ƒ",
+        "icon": "<MoonIcon>",
+        "id": "settings.toggle-theme",
+        "keywords": [
+          "theme",
+          "dark",
+          "light"
+        ],
+        "name": "Toggle Theme",
+        "priority": 99
+      },
+      {
+        "category": "settings",
+        "description": "Switch between Chinese and English",
+        "execute": "ƒ",
+        "icon": "<TranslateIcon>",
+        "id": "settings.switch-language",
+        "keywords": [
+          "language",
+          "chinese",
+          "english"
+        ],
+        "name": "Switch Language",
+        "priority": 98
+      },
+      {
+        "category": "settings",
+        "description": "Manage AI model API settings",
+        "execute": "ƒ",
+        "icon": "<KeyIcon>",
+        "id": "settings.api-config",
+        "keywords": [
+          "api",
+          "config",
+          "openai",
+          "model"
+        ],
+        "name": "Configure API",
+        "priority": 90
+      },
+      {
+        "category": "settings",
+        "description": "Export all data locally",
+        "execute": "ƒ",
+        "icon": "<DownloadIcon>",
+        "id": "settings.backup",
+        "keywords": [
+          "backup",
+          "export"
+        ],
+        "name": "Backup Data",
+        "priority": 80
+      },
+      {
+        "category": "settings",
+        "description": "Restore from backup file",
+        "execute": "ƒ",
+        "icon": "<UploadIcon>",
+        "id": "settings.restore",
+        "keywords": [
+          "restore",
+          "import"
+        ],
+        "name": "Restore Data",
+        "priority": 79
+      },
+      {
+        "category": "settings",
+        "description": "Open cloud storage settings",
+        "execute": "ƒ",
+        "icon": "<CloudIcon>",
+        "id": "settings.cloud-sync",
+        "keywords": [
+          "cloud",
+          "sync",
+          "webdav"
+        ],
+        "name": "Cloud Sync",
+        "priority": 78
+      },
+      {
+        "category": "notes",
+        "description": "Create a new note",
+        "execute": "ƒ",
+        "icon": "<FilePlusIcon>",
+        "id": "notes.new",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "new",
+          "note",
+          "create"
+        ],
+        "name": "New Note",
+        "priority": 100,
+        "shortcut": "mod+n",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Create a new folder",
+        "execute": "ƒ",
+        "icon": "<FolderPlusIcon>",
+        "id": "notes.new-folder",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "folder",
+          "directory",
+          "new"
+        ],
+        "name": "New Folder",
+        "priority": 99,
+        "shortcut": "mod+shift+n",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "files",
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Quickly open a note or mind map",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassIcon>",
+        "id": "notes.quick-switch",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "quick",
+          "switch",
+          "open",
+          "note"
+        ],
+        "name": "Quick Switcher",
+        "priority": 120,
+        "shortcut": "mod+p",
+        "visibleInViews": [
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Search notes or filter files",
+        "execute": "ƒ",
+        "icon": "<MagnifyingGlassIcon>",
+        "id": "notes.search",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "search",
+          "find"
+        ],
+        "name": "Search Notes",
+        "priority": 98,
+        "shortcut": "mod+shift+f",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "files",
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Force save current note",
+        "execute": "ƒ",
+        "icon": "<FloppyDiskIcon>",
+        "id": "notes.save",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "save",
+          "store"
+        ],
+        "name": "Save Note",
+        "priority": 97,
+        "shortcut": "mod+s",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Show/hide notes sidebar",
+        "execute": "ƒ",
+        "icon": "<SidebarSimpleIcon>",
+        "id": "notes.toggle-sidebar",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "sidebar",
+          "toggle"
+        ],
+        "name": "Toggle Sidebar",
+        "priority": 90,
+        "shortcut": "mod+\\",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Show or hide linked notes",
+        "execute": "ƒ",
+        "icon": "<LinkIcon>",
+        "id": "notes.toggle-backlinks",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "backlinks",
+          "links",
+          "references"
+        ],
+        "name": "Toggle Backlinks",
+        "priority": 89,
+        "visibleInViews": [
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Show or hide the current note's document outline panel",
+        "execute": "ƒ",
+        "icon": "<ListIcon>",
+        "id": "notes.toggle-outline",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "note",
+          "outline",
+          "toc"
+        ],
+        "name": "Note: Toggle document outline",
+        "priority": 89,
+        "shortcut": "mod+shift+o",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Switch the active mind map between outline and canvas",
+        "execute": "ƒ",
+        "icon": "<GitBranchIcon>",
+        "id": "mindmap.toggle-view",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "mind map",
+          "canvas",
+          "outline",
+          "switch view"
+        ],
+        "name": "Mind map: switch outline / canvas",
+        "priority": 88,
+        "shortcut": "mod+alt+shift+m",
+        "visibleInViews": [
+          "workbench"
+        ],
+        "workbenchApps": [
+          "mindmap",
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Export current note as file",
+        "execute": "ƒ",
+        "icon": "<FileArrowDownIcon>",
+        "id": "notes.export-current",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "export",
+          "current"
+        ],
+        "name": "Export Current Note",
+        "priority": 80,
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Export all notes as a Markdown ZIP",
+        "execute": "ƒ",
+        "icon": "<FileArchiveIcon>",
+        "id": "notes.export-all",
+        "isEnabled": "ƒ",
+        "name": "Export All Notes",
+        "priority": 79,
+        "visibleInViews": [
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Import a notes library from a Markdown ZIP",
+        "execute": "ƒ",
+        "icon": "<PackageIcon>",
+        "id": "notes.import-library",
+        "isEnabled": "ƒ",
+        "name": "Import Notes Library",
+        "priority": 78,
+        "visibleInViews": [
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Insert LaTeX math formula",
+        "execute": "ƒ",
+        "icon": "<CalculatorIcon>",
+        "id": "notes.insert-math",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "math",
+          "latex",
+          "formula"
+        ],
+        "name": "Insert Math Formula",
+        "priority": 70,
+        "shortcut": "mod+m",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Insert a table",
+        "execute": "ƒ",
+        "icon": "<TableIcon>",
+        "id": "notes.insert-table",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "table",
+          "insert"
+        ],
+        "name": "Insert Table",
+        "priority": 69,
+        "shortcut": "mod+shift+e",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Insert a code block",
+        "execute": "ƒ",
+        "icon": "<CodeIcon>",
+        "id": "notes.insert-codeblock",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "code",
+          "block",
+          "codeblock"
+        ],
+        "name": "Insert Code Block",
+        "priority": 68,
+        "shortcut": "mod+shift+c",
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Insert a hyperlink",
+        "execute": "ƒ",
+        "icon": "<LinkIcon>",
+        "id": "notes.insert-link",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "link",
+          "url"
+        ],
+        "name": "Insert Link",
+        "priority": 67,
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "notes",
+        "description": "Insert an image",
+        "execute": "ƒ",
+        "icon": "<ImageIcon>",
+        "id": "notes.insert-image",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "image"
+        ],
+        "name": "Insert Image",
+        "priority": 66,
+        "visibleInViews": [
+          "learning-hub",
+          "workbench"
+        ],
+        "workbenchApps": [
+          "notes"
+        ]
+      },
+      {
+        "category": "learning",
+        "description": "Launch AI translation workbench",
+        "execute": "ƒ",
+        "icon": "<TranslateIcon>",
+        "id": "learning.translate",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "translate",
+          "language"
+        ],
+        "name": "Open Translator",
+        "priority": 100,
+        "shortcut": "mod+t",
+        "visibleInViews": [
+          "learning-hub"
+        ]
+      },
+      {
+        "category": "learning",
+        "description": "Launch AI essay grading tool",
+        "execute": "ƒ",
+        "icon": "<NotePencilIcon>",
+        "id": "learning.essay-grading",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "essay",
+          "grading",
+          "score"
+        ],
+        "name": "Open Essay Grading",
+        "priority": 95,
+        "visibleInViews": [
+          "learning-hub"
+        ]
+      },
+      {
+        "category": "learning",
+        "description": "AI grade current essay",
+        "execute": "ƒ",
+        "icon": "<FileTextIcon>",
+        "id": "learning.grade-essay",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "grade",
+          "score"
+        ],
+        "name": "Grade Essay",
+        "priority": 94,
+        "shortcut": "mod+g",
+        "visibleInViews": [
+          "learning-hub"
+        ]
+      },
+      {
+        "category": "learning",
+        "description": "Get essay improvement suggestions",
+        "execute": "ƒ",
+        "icon": "<LightbulbIcon>",
+        "id": "learning.essay-suggestions",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "suggestion",
+          "improve"
+        ],
+        "name": "Get Suggestions",
+        "priority": 93,
+        "visibleInViews": [
+          "learning-hub"
+        ]
+      },
+      {
+        "category": "global",
+        "description": "Switch to the todo automations view",
+        "execute": "ƒ",
+        "icon": "<RobotIcon>",
+        "id": "automation.open",
+        "keywords": [
+          "自动化",
+          "定时任务",
+          "定时",
+          "automation",
+          "automations",
+          "schedule",
+          "scheduled",
+          "cron"
+        ],
+        "name": "Open Scheduled Tasks",
+        "priority": 60
+      },
+      {
+        "category": "global",
+        "description": "Open the automations view and start creating a task",
+        "execute": "ƒ",
+        "icon": "<PlusIcon>",
+        "id": "automation.create",
+        "keywords": [
+          "自动化",
+          "定时任务",
+          "定时",
+          "automation",
+          "automations",
+          "schedule",
+          "scheduled",
+          "cron"
+        ],
+        "name": "New Scheduled Task",
+        "priority": 59
+      },
+      {
+        "category": "global",
+        "description": "Turn off the background switch: tasks stop running after the window closes; per-task enabled states are untouched",
+        "execute": "ƒ",
+        "icon": "<PauseIcon>",
+        "id": "automation.pause-background",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "自动化",
+          "定时任务",
+          "定时",
+          "automation",
+          "automations",
+          "schedule",
+          "scheduled",
+          "cron"
+        ],
+        "name": "Pause Background Automations",
+        "priority": 58
+      },
+      {
+        "category": "global",
+        "description": "Allow scheduled tasks to keep running in the background after the window closes",
+        "execute": "ƒ",
+        "icon": "<PlayIcon>",
+        "id": "automation.resume-background",
+        "isEnabled": "ƒ",
+        "keywords": [
+          "自动化",
+          "定时任务",
+          "定时",
+          "automation",
+          "automations",
+          "schedule",
+          "scheduled",
+          "cron"
+        ],
+        "name": "Resume Background Automations",
+        "priority": 57
+      },
+      {
+        "category": "anki",
+        "description": "Choose a local .apkg file and import it into the card library",
+        "execute": "ƒ",
+        "icon": "<UploadSimpleIcon>",
+        "id": "anki.import-apkg",
+        "keywords": [
+          "anki",
+          "apkg",
+          "import",
+          "deck",
+          "flashcard",
+          "cards"
+        ],
+        "name": "Import Anki Deck (.apkg)",
+        "priority": 90
+      },
+      {
+        "category": "dev",
+        "description": "Show/hide debug panel",
+        "execute": "ƒ",
+        "icon": "<BugIcon>",
+        "id": "dev.toggle-debug-panel",
+        "keywords": [
+          "debug",
+          "panel"
+        ],
+        "name": "Toggle Debug Panel",
+        "priority": 100,
+        "shortcut": "mod+shift+d"
+      },
+      {
+        "category": "dev",
+        "description": "Open browser developer tools",
+        "execute": "ƒ",
+        "icon": "<TerminalIcon>",
+        "id": "dev.open-devtools",
+        "keywords": [
+          "devtools",
+          "console"
+        ],
+        "name": "Open DevTools",
+        "priority": 99,
+        "shortcut": "f12"
+      },
+      {
+        "category": "dev",
+        "description": "Open database debug panel",
+        "execute": "ƒ",
+        "icon": "<DatabaseIcon>",
+        "id": "dev.view-database",
+        "keywords": [
+          "database",
+          "sqlite",
+          "cozo"
+        ],
+        "name": "View Database",
+        "priority": 90
+      },
+      {
+        "category": "dev",
+        "description": "Export current app state as JSON",
+        "execute": "ƒ",
+        "icon": "<FileJsIcon>",
+        "id": "dev.export-state",
+        "keywords": [
+          "export",
+          "state"
+        ],
+        "name": "Export App State",
+        "priority": 80
+      },
+      {
+        "category": "dev",
+        "description": "Open performance monitoring",
+        "execute": "ƒ",
+        "icon": "<CpuIcon>",
+        "id": "dev.view-performance",
+        "keywords": [
+          "performance",
+          "monitor"
+        ],
+        "name": "Performance Monitor",
+        "priority": 70
+      },
+      {
+        "category": "dev",
+        "description": "Force reload the application",
+        "execute": "ƒ",
+        "icon": "<ArrowClockwiseIcon>",
+        "id": "dev.reload-app",
+        "keywords": [
+          "reload",
+          "refresh"
+        ],
+        "name": "Force Reload App",
+        "priority": 60
+      },
+      {
+        "category": "dev",
+        "description": "Clear localStorage and IndexedDB",
+        "execute": "ƒ",
+        "icon": "<TrashIcon>",
+        "id": "dev.clear-cache",
+        "keywords": [
+          "clear",
+          "cache"
+        ],
+        "name": "Clear Cache",
+        "priority": 50
+      },
+      {
+        "category": "dev",
+        "description": "View application logs",
+        "execute": "ƒ",
+        "icon": "<EyeIcon>",
+        "id": "dev.view-logs",
+        "keywords": [
+          "logs",
+          "view"
+        ],
+        "name": "View Logs",
+        "priority": 40
+      },
+      {
+        "category": "dev",
+        "description": "Open Crepe editor demo page",
+        "execute": "ƒ",
+        "icon": "<CodeIcon>",
+        "id": "dev.crepe-demo",
+        "keywords": [
+          "crepe",
+          "editor",
+          "demo"
+        ],
+        "name": "Open Crepe Editor Demo",
+        "priority": 30
+      }
+    ],
+    "chatBlocks": [],
+    "chatEvents": [],
+    "chatModes": [],
+    "workbenchApps": [],
+    "i18n": []
+  },
+  "consumers": {
+    "views": [
+      {
+        "key": "dashboard",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "settings",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "task-dashboard",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "skills-management",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "data-management",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "template-management",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "ui-lab",
+        "visible": false,
+        "navigable": false
+      },
+      {
+        "key": "learning-hub",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "media",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "sandbox-workbench",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "pdf-reader",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "todo",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "flashcards",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "crepe-demo",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "chat-v2-test",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "llm-playground",
+        "visible": true,
+        "navigable": false
+      },
+      {
+        "key": "chat-v2",
+        "visible": true,
+        "navigable": true
+      }
+    ],
+    "nav": [
+      {
+        "id": "chat-v2",
+        "viewId": "chat-v2",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "learning-hub",
+        "viewId": "learning-hub",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "media",
+        "viewId": "media",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "todo",
+        "viewId": "todo",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "skills-management",
+        "viewId": "skills-management",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "flashcards",
+        "viewId": "flashcards",
+        "placement": "primary",
+        "defaultPlacement": false
+      },
+      {
+        "id": "data-management",
+        "viewId": "data-management",
+        "placement": null,
+        "defaultPlacement": false
+      },
+      {
+        "id": "settings",
+        "viewId": "settings",
+        "placement": "settings",
+        "defaultPlacement": false
+      }
+    ],
+    "settings": {
+      "groups": [
+        [
+          "apis",
+          "models"
+        ],
+        [
+          "general",
+          "voice-input",
+          "memory",
+          "workbench",
+          "appearance",
+          "automation"
+        ],
+        [
+          "mcp",
+          "search",
+          "plugins"
+        ],
+        [
+          "statistics",
+          "data-governance"
+        ],
+        [
+          "params",
+          "document-processing",
+          "shortcuts",
+          "about"
+        ]
+      ],
+      "categories": [
+        {
+          "id": "ai",
+          "items": [
+            "apis",
+            "models",
+            "params"
+          ]
+        },
+        {
+          "id": "experience",
+          "items": [
+            "general",
+            "appearance",
+            "workbench",
+            "shortcuts"
+          ]
+        },
+        {
+          "id": "personalization",
+          "items": [
+            "voice-input",
+            "memory"
+          ]
+        },
+        {
+          "id": "integrations",
+          "items": [
+            "mcp",
+            "search",
+            "plugins"
+          ]
+        },
+        {
+          "id": "workflow",
+          "items": [
+            "automation",
+            "document-processing"
+          ]
+        },
+        {
+          "id": "data",
+          "items": [
+            "statistics",
+            "data-governance"
+          ]
+        }
+      ],
+      "content": [
+        {
+          "id": "apis",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "search",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "models",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "plugins",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "mcp",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "statistics",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "automation",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "data-governance",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "general",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "appearance",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "params",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "voice-input",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "memory",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "workbench",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "document-processing",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "shortcuts",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "about",
+          "contentVisible": true,
+          "redirect": null
+        }
+      ],
+      "search": [
+        "apis:settings:tabs.api_config",
+        "models:settings:tabs.model_assignment",
+        "general:settings:tabs.general",
+        "voice-input:settings:tabs.voice_input",
+        "memory:settings:tabs.memory",
+        "workbench:settings:tabs.workbench",
+        "appearance:settings:tabs.appearance",
+        "automation:settings:tabs.automation",
+        "mcp:settings:tabs.mcp_tools",
+        "search:settings:tabs.external_search",
+        "plugins:settings:tabs.plugins",
+        "statistics:settings:tabs.statistics",
+        "data-governance:settings:tabs.data_governance",
+        "params:settings:tabs.params",
+        "document-processing:settings:tabs.document_processing",
+        "shortcuts:settings:tabs.shortcuts",
+        "about:settings:tabs.about",
+        "appearance:settings:appearance.theme.title",
+        "appearance:settings:appearance.font.title",
+        "appearance:settings:appearance.font.size_label",
+        "appearance:settings:appearance.font.heading_label",
+        "appearance:settings:appearance.font.body_label",
+        "appearance:settings:appearance.sidebar.title",
+        "appearance:settings:appearance.sidebar.position",
+        "general:settings:language.title",
+        "general:settings:system_authorization.title",
+        "voice-input:settings:voice_input.title",
+        "automation:settings:automation.title",
+        "automation:settings:subagentProfiles.title",
+        "voice-input:settings:voice_input.shortcut_title",
+        "voice-input:settings:voice_input.dictionary_title",
+        "voice-input:settings:voice_input.history_title",
+        "memory:settings:memory.title",
+        "workbench:workbench:settings.sectionTitle",
+        "document-processing:settings:pdf.title",
+        "document-processing:settings:ocr.title",
+        "apis:settings:api.add_api_config",
+        "apis:settings:api.modal.basic_info",
+        "apis:settings:api.modal.fields.api_key",
+        "apis:settings:api.modal.model_adapter",
+        "models:settings:api.model2_title",
+        "models:settings:api.embedding_title",
+        "models:settings:api.reranker_title",
+        "models:settings:api.anki_card_title",
+        "mcp:settings:mcp.server",
+        "mcp:settings:mcp.add_server",
+        "plugins:settings:plugins.scan_qr",
+        "search:settings:search_engine.title",
+        "search:SearXNG",
+        "search:Tavily",
+        "search:Exa",
+        "statistics:settings:statistics.learning_time",
+        "statistics:settings:statistics.chat_stats",
+        "statistics:settings:statistics.heatmap",
+        "data-governance:data:governance.title",
+        "data-governance:data:governance.backup",
+        "data-governance:data:governance.restore",
+        "params:common:settings.chat_stream.card_title",
+        "params:settings:cards.search_settings_title"
+      ]
+    }
+  }
+}

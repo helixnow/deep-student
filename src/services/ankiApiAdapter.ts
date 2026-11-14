@@ -90,14 +90,9 @@ export const ankiApiAdapter = {
       // 降级：使用旧接口
       if (params.format === 'apkg') {
         return await invoke('export_cards_as_apkg_with_template', {
-          // 双写兼容：后端 snake_case，部分旧前端/桥接可能校验 camelCase
-          selected_cards: cardsForExport,
           selectedCards: cardsForExport,
-          deck_name: params.options.deckName || 'Default',
           deckName: params.options.deckName || 'Default',
-          note_type: params.options.noteType || 'Basic',
           noteType: params.options.noteType || 'Basic',
-          template_id: params.options.templateId || null,
           templateId: params.options.templateId || null
         });
       }

@@ -1,0 +1,4490 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "dstu_move",
+    "dstu_copy",
+    "dstu_move_many",
+    "dstu_move_to_folder",
+    "dstu_batch_move"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.dstu.move.note_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "目标",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.note_cross_folder_then_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "甲",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "乙",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.id}",
+            "dst": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.path}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.id}",
+            "dst": ""
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.id}",
+            "dst": "  /  "
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.same_folder_noop",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "同",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.translation_exam_essay_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "t1",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "e1",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "s1",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${3.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${3.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.mindmap_file_image_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "m1",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "a.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "image",
+              "name": "p.png",
+              "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "metadata": {
+                "mimeType": "image/png"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${2.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${3.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${3.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.errors_src_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "keep",
+              "content": "正文-keep",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/res_abc",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/abc",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/@trash",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/数学/note_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.errors_dst",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n2",
+              "content": "正文-n2",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/00000000-0000-4000-8000-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/@trash"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.missing_src_inserts_orphan",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/note_missing0000",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/exam_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/file_missing0000",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/essay_session_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "file_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.folder_src_unsupported",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "A",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "B",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.deleted_target_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.deleted_src_note",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.unique_conflict_insert",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "img_missing0000",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "/img_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/img_missing0000"
+            ],
+            "dest_folder": "/",
+            "destFolder": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "img_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move.args_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": 1,
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.note_to_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原笔记",
+              "content": "正文-原笔记",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.path}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get_content",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.note_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_content",
+          "args": {
+            "path": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.translation_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "译文",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_content",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.exam_to_root_and_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "期中",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.path}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${3.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "typeFilter": "exam"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.essay_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "作文",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.mindmap_to_root_and_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.path}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_content",
+          "args": {
+            "path": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${3.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.file_and_image_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "a.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "image",
+              "name": "p.png",
+              "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "metadata": {
+                "mimeType": "image/png"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.path}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${2.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${2.id}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${3.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${4.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${5.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.folder_recursive_to_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "A",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "B",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "na",
+              "content": "正文-na",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "ta",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto",
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "ea",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0,
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "sa",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0,
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "ma",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap",
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "fa.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain",
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "image",
+              "name": "ia.png",
+              "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "metadata": {
+                "mimeType": "image/png",
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "nb",
+              "content": "正文-nb",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${1.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${10.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.folder_into_other_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "A",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "na",
+              "content": "正文-na",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "D",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${3.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.folder_circular",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "A",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "B",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "C",
+            "parentId": "${1.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.folder_depth_limit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L1",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L2",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L3",
+            "parentId": "${1.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L4",
+            "parentId": "${2.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L5",
+            "parentId": "${3.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L6",
+            "parentId": "${4.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L7",
+            "parentId": "${5.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L8",
+            "parentId": "${6.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L9",
+            "parentId": "${7.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "L10",
+            "parentId": "${8.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "S",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${10.id}",
+            "dst": "${9.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "X",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${13.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.folder_missing_src_or_dst",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "S",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/fld_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/00000000-0000-4000-8000-000000000000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.missing_sources",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/note_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/tr_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/exam_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/essay_session_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/essay_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/file_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/img_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/tb_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/att_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/mm_missing0000",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.errors_paths",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/res_abc",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "/abc",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/@trash"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.exam_mindmap_missing_dst_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "e1",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "m1",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.note_like_missing_dst_folder_silent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "t1",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "s1",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "a.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/fld_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/fld_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${2.id}",
+            "dst": "/fld_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${3.id}",
+            "dst": "/fld_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${4.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.note_title_overflow",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_rename",
+          "args": {
+            "path": "${0.id}",
+            "newName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.copy.args_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${0.id}",
+            "dst": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.mixed_types_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "t1",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "e1",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "s1",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "m1",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "a.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "image",
+              "name": "p.png",
+              "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "metadata": {
+                "mimeType": "image/png"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.path}",
+              "${2.id}",
+              "${3.path}",
+              "${4.id}",
+              "${5.path}",
+              "${6.path}",
+              "${7.id}"
+            ],
+            "dest_folder": "${0.id}",
+            "destFolder": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.back_to_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "a",
+              "content": "正文-a",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "b",
+              "content": "正文-b",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.id}",
+              "${2.id}"
+            ],
+            "dest_folder": "/",
+            "destFolder": "/"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.id}"
+            ],
+            "dest_folder": "${0.id}",
+            "destFolder": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.id}"
+            ],
+            "dest_folder": "",
+            "destFolder": ""
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.skips_invalid_paths",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F2",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/abc",
+              "/res_abc",
+              "",
+              "${2.id}",
+              "/note_missing0000",
+              "${1.id}"
+            ],
+            "dest_folder": "${0.id}",
+            "destFolder": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.missing_dest_folder_zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${0.id}"
+            ],
+            "dest_folder": "/fld_missing0000",
+            "destFolder": "/fld_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${0.id}"
+            ],
+            "dest_folder": "/00000000-0000-4000-8000-000000000000",
+            "destFolder": "/00000000-0000-4000-8000-000000000000"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.errors_dest",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n2",
+              "content": "正文-n2",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${0.id}"
+            ],
+            "dest_folder": "${1.id}",
+            "destFolder": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${0.id}"
+            ],
+            "dest_folder": "/abc",
+            "destFolder": "/abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${0.id}"
+            ],
+            "dest_folder": "/@trash",
+            "destFolder": "/@trash"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [],
+            "dest_folder": "/",
+            "destFolder": "/"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.batch_limit_boundary",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}"
+            ],
+            "dest_folder": "${0.id}",
+            "destFolder": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}",
+              "${1.id}"
+            ],
+            "dest_folder": "${0.id}",
+            "destFolder": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_many.args_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": "/note_missing0000",
+            "dest_folder": "/",
+            "destFolder": "/"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/note_missing0000"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.refreshed_note_to_folder_and_back",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.null_cached_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move",
+          "args": {
+            "src": "${1.id}",
+            "dst": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.no_row_insert",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_copy",
+          "args": {
+            "src": "${1.id}",
+            "dst": "/"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${2.id}",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${2.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.missing_and_unknown_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "note_missing0000",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "abc_unknown",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "img_missing0000",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "abc_unknown"
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.fk_missing_target",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${0.id}",
+            "targetFolderId": "fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "note_missing0000",
+            "targetFolderId": "fld_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${0.id}",
+            "targetFolderId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.unique_conflict_insert",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/img_missing0000"
+            ],
+            "dest_folder": "/",
+            "destFolder": "/"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "img_missing0000",
+            "targetFolderId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "img_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.folder_as_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "A",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "B",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${0.id}",
+            "targetFolderId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get_tree",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.soft_deleted_target_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.move_to_folder.args_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "targetFolderId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "note_missing0000",
+            "targetFolderId": 123
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.refreshed_items_to_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "t1",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh",
+                "formality": "auto"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "m1",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "s1",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "a.txt",
+              "fileBase64": "aGVsbG8gd29ybGQ=",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": null
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "${1.id}",
+                "${2.id}",
+                "${3.id}",
+                "${4.id}",
+                "${5.id}"
+              ],
+              "targetFolderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "${1.id}"
+              ],
+              "targetFolderId": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.empty_items",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": []
+            }
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [],
+              "targetFolderId": "fld_missing0000"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.partial_failures",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "fresh",
+              "content": "正文-fresh",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n2",
+              "content": "正文-n2",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_move_many",
+          "args": {
+            "paths": [
+              "/img_missing0000"
+            ],
+            "dest_folder": "/",
+            "destFolder": "/"
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "${2.id}",
+                "${1.id}",
+                "img_missing0000",
+                "note_missing0000",
+                "abc_unknown"
+              ],
+              "targetFolderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {
+              "folderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.missing_target_all_fail",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "${0.id}",
+                "note_missing0000"
+              ],
+              "targetFolderId": "fld_missing0000"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.over_100_no_limit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": [
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000",
+                "note_missing0000"
+              ],
+              "targetFolderId": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get_resource_location",
+          "args": {
+            "resourceId": "note_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.batch_move.args_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "n1",
+              "content": "正文-n1",
+              "metadata": {
+                "tags": [
+                  "t1"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_batch_move",
+          "args": {
+            "request": {
+              "itemIds": "note_missing0000"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_list",
+          "args": {
+            "path": "/",
+            "options": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

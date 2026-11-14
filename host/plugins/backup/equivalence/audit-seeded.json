@@ -1,0 +1,215 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_audit_logs"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.audit.seeded.filters_paging",
+      "seed": "l21-audit-history-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "limit": 50,
+            "offset": 50
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "limit": 50,
+            "offset": 100
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "limit": 50,
+            "offset": 100000
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Migration",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Backup",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Restore",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Sync",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Maintenance",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "status": "Started",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "status": "Completed",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "status": "Failed",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "status": "Partial",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Backup",
+            "status": "Failed",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Restore",
+            "status": "Partial",
+            "limit": 50,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.audit.seeded.corrupt_rows",
+      "seed": "l21-audit-corrupt-rows-v1",
+      "steps": [
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "CorruptTimestamp"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "CorruptOperationData"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "NegativeDuration"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "CorruptDetails"
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "UnknownStatus"
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "UnknownStatus",
+            "status": "Started"
+          }
+        },
+        {
+          "cmd": "data_governance_get_audit_logs",
+          "args": {
+            "operationType": "Backup",
+            "limit": 50,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

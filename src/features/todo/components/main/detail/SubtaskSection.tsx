@@ -31,6 +31,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { springSoft, tweenFast } from '@/styles/motion-springs';
 import { useTodoStore } from '../../../stores/useTodoStore';
@@ -363,20 +364,16 @@ export const SubtaskSection: React.FC<{
             </span>
           )}
         </span>
-        <button
+        <DsButton
+          variant="ghost"
+          size="sm"
           onClick={() => void handleAiBreakdown()}
           disabled={aiBreaking}
-          className={cn(
-            'flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs transition-colors duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
-            aiBreaking
-              ? 'cursor-default text-muted-foreground/50'
-              : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)] hover:text-foreground',
-          )}
           title={t('todo:subtasks.aiBreakdownHint')}
         >
           {aiBreaking ? <CircleNotch size={12} className="animate-spin" /> : <Sparkle size={12} />}
           {aiBreaking ? t('todo:subtasks.aiBreaking') : t('todo:subtasks.aiBreakdown')}
-        </button>
+        </DsButton>
       </div>
 
       <InlineReveal open={inlineError !== null}>

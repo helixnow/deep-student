@@ -40,7 +40,7 @@ export const InputSummaryBar: React.FC<InputSummaryBarProps> = ({
 
   return (
     <div
-      className="flex min-h-[41px] shrink-0 items-center gap-1 border-b border-border/30 px-2 py-0.5 sm:gap-1.5 sm:px-4"
+      className="flex min-h-[38px] shrink-0 items-center gap-1 border-b border-border/25 bg-foreground/[0.015] px-2 py-0.5 sm:gap-1.5 sm:px-4"
       data-essay-input-summary
     >
       <div className="flex min-w-0 flex-1 items-center gap-3 text-xs text-muted-foreground">

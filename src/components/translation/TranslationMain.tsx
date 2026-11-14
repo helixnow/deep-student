@@ -278,13 +278,13 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   const canSwap = !isTranslating && !isEditingTranslation && (srcLang !== 'auto' || !!detectedLang);
 
   const toolbar = (
-    // 📱 minmax(0,*) 让三列都能收缩到内容以下：400px 窄屏下语言组不再把
+    // minmax(0,*) 让三列都能收缩到内容以下：400px 窄屏下语言组不再把
     // 工具栏挤出容器（此前源语言按钮 x=-14 左侧被裁剪）
-    <div data-wb-blur-surface className="h-12 shrink-0 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-1 sm:gap-2 px-3 sm:px-4 border-b bg-background/50 backdrop-blur z-20">
+    <div data-wb-blur-surface className="h-12 shrink-0 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-1 sm:gap-2 px-3 sm:px-4 border-b border-border/35 bg-background/80 backdrop-blur-md z-20">
       {/* 左：布局切换（仅桌面；窄容器时强制上下布局并禁用）。
           断点用 md 与 isSmallScreen(md=768) 对齐：sm(640-767) 属移动壳、
           effectiveStacked 已强制上下分栏，若在此区间显示切换器则控件失真。
-          ⚠️ display:none 的子项会从 grid 流中移除，后续列会左移错位，
+          注意：display:none 的子项会从 grid 流中移除，后续列会左移错位，
           三列都用 col-start 显式定位（P1：移动端语言组曾因此掉进 1fr 列溢出） */}
       <div className="col-start-1 hidden md:flex items-center justify-start">
         <SegmentedControl<LayoutMode>
@@ -392,9 +392,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </Label>
         </div>
 
-        {!settingsAsPage && <div className={cn('hidden w-px h-4 bg-border', !isToolbarCompact && 'lg:block')} />}
+        {!settingsAsPage && <div className={cn('hidden w-px h-4 bg-border/35', !isToolbarCompact && 'lg:block')} />}
 
-        {/* 📱 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
+        {/* 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
             （learning-hub rightActions 更多菜单 → 设置，经 translation:openSettings
             事件开合），页内保留会形成重复次级入口 */}
         {!settingsAsPage && !isSmallScreen && (

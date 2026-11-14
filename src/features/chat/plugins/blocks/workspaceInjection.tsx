@@ -15,19 +15,21 @@
 
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, EnvelopeSimple } from '@phosphor-icons/react';
+import { EnvelopeSimple } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { useWorkspaceStore, isWorkerSessionId } from '../../workspace/workspaceStore';
 import type { MessageType } from '../../workspace/types';
 
 // ============================================================================
 // 消息类型语义色 chip（语义 token，与 WorkspaceMessageItem.typeColors /
-// WorkspaceLogInline 同一语义映射，暗色模式自动跟随主题；
-// workspaceStatus 的硬编码调色板是遗留写法，新代码不沿用）
+// WorkspaceLogInline 同一语义映射，暗色模式自动跟随主题）
 // ============================================================================
 
-const messageTypeClassNames: Record<MessageType, string> = {
+export const WORKSPACE_MESSAGE_TYPE_CLASSES: Record<MessageType, string> = {
   task: 'bg-info/10 text-info',
   progress: 'bg-warning/10 text-warning',
   result: 'bg-success/10 text-success',
@@ -40,7 +42,7 @@ const messageTypeClassNames: Record<MessageType, string> = {
 export const WorkspaceMessageTypeChip: React.FC<{ type: string }> = ({ type }) => {
   const { t } = useTranslation('workspace');
   const colorClass =
-    messageTypeClassNames[type as MessageType]
+    WORKSPACE_MESSAGE_TYPE_CLASSES[type as MessageType]
     ?? 'border border-border/60 text-muted-foreground';
   return (
     <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded flex-shrink-0', colorClass)}>
@@ -116,35 +118,60 @@ const WorkspaceInjectionBlockComponent: React.FC<BlockComponentProps> = React.me
   const isCollapsible = lineCount > COLLAPSE_LINE_THRESHOLD;
 
   const injectedAt = output?.injected_at;
+  const isRunning = block.status === 'running' || block.status === 'pending';
+  const isFailed = block.status === 'error';
+  const titleText = isFromCoordinatorOnly
+    ? t('workspaceInjection.titleFromCoordinator')
+    : t('workspaceInjection.titleFromWorkspace');
 
   return (
-    <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 my-1">
-      {/* 头部：图标 + 标题 + 消息类型徽标 */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <EnvelopeSimple size={14} className="text-muted-foreground flex-shrink-0" />
-        <span className="text-xs font-medium text-muted-foreground">
-          {isFromCoordinatorOnly
-            ? t('workspaceInjection.titleFromCoordinator')
-            : t('workspaceInjection.titleFromWorkspace')}
-        </span>
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80 px-3 py-2.5 my-1',
+        isFailed ? 'border-destructive/30' : 'border-border/50'
+      )}
+    >
+      {/* 头部：图标徽标 + 标题 + 消息类型徽标 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <ToolActivitySweep
+          active={isRunning}
+          className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+        >
+          <EnvelopeSimple size={16} className="text-muted-foreground" />
+        </ToolActivitySweep>
+        <ToolActivitySweep active={isRunning} className="min-w-0 max-w-full leading-4">
+          {isRunning ? (
+            <TextShimmer
+              className="text-xs font-medium leading-4 text-muted-foreground"
+              duration={1.5}
+              spread={3}
+            >
+              {titleText}
+            </TextShimmer>
+          ) : (
+            <span className="text-xs font-medium leading-4 text-muted-foreground">
+              {titleText}
+            </span>
+          )}
+        </ToolActivitySweep>
         {messageTypes.map((mt) => (
           <WorkspaceMessageTypeChip key={mt} type={mt} />
         ))}
-        {block.status === 'running' && (
-          <CircleNotch size={12} className="text-muted-foreground animate-spin flex-shrink-0" />
-        )}
-        {injectedAt && (
-          <span className="ml-auto text-2xs text-muted-foreground/70 flex-shrink-0">
-            {new Date(injectedAt).toLocaleTimeString(locale)}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+          {isRunning && <PulseDot className="w-1.5 h-1.5 text-primary" />}
+          {injectedAt && (
+            <span className="text-2xs text-muted-foreground/70 tabular-nums">
+              {new Date(injectedAt).toLocaleTimeString(locale)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 正文：超 6 行折叠可展开 */}
       {content && (
         <div
           className={cn(
-            'mt-1.5 text-xs text-foreground/80 whitespace-pre-wrap break-words',
+            'mt-2 text-xs text-foreground/80 whitespace-pre-wrap break-words',
             isCollapsible && !isExpanded && 'line-clamp-6'
           )}
         >
@@ -156,7 +183,7 @@ const WorkspaceInjectionBlockComponent: React.FC<BlockComponentProps> = React.me
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-1 text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:min-h-11"
+          className="mt-1 inline-flex items-center text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:!min-h-11"
         >
           {isExpanded ? t('workspaceInjection.collapse') : t('workspaceInjection.expand')}
         </button>

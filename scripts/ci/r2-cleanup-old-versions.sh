@@ -13,7 +13,6 @@ set -euo pipefail
 
 R2_BUCKET="${R2_BUCKET:-deepstudent}"
 KEEP_VERSIONS="${KEEP_VERSIONS:-10}"
-# 固定 wrangler 版本, 禁止隐式 latest 漂移（与 r2-put.sh 保持一致）
 WRANGLER_SPEC="wrangler@${WRANGLER_VERSION:-4.112.0}"
 
 echo "🧹 Checking for old versions to clean up..."

@@ -14,6 +14,7 @@ export interface MindMapDraftPayload {
   currentView: MindMapViewType;
   focusedNodeId: string | null;
   savedAt: string;
+  baseUpdatedAt?: string;
   layoutId?: string;
   layoutDirection?: LayoutDirection;
   styleId?: string;

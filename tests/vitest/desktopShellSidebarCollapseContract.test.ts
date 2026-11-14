@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { readOfficialShellEntries, shellViewsWhere } from '@/app/__tests__/officialShellEntries';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -26,12 +27,17 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toContain('transform: translateX(var(--shell-sidebar-translate-x));');
   });
 
-  it('declares currentView before using it to compute desktop shell navigation width', () => {
-    const currentViewIndex = appSource.indexOf("const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');");
-    const desktopNavigationWidthIndex = appSource.indexOf("const desktopNavigationWidth = workbenchActive");
+  it('initializes view state before sidebar layout without a cross-module currentView TDZ', () => {
+    const entrySource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    const layoutSource = readFileSync(resolve(process.cwd(), 'src/app/shell/useDesktopSidebarLayout.ts'), 'utf-8');
+    const currentViewIndex = entrySource.indexOf('} = useAppViewState({ isSmallScreen, isDemoShell });');
+    const desktopNavigationWidthIndex = entrySource.indexOf('const layout = useDesktopSidebarLayout({ isSmallScreen, workbenchActive, topbarTopMargin, t });');
 
     expect(currentViewIndex).toBeGreaterThanOrEqual(0);
     expect(desktopNavigationWidthIndex).toBeGreaterThan(currentViewIndex);
+    expect(appSource).toContain("const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');");
+    expect(layoutSource).toContain('const desktopNavigationWidth = workbenchActive');
+    expect(layoutSource).not.toMatch(/\bcurrentView\b/);
   });
 
   it('adds a titlebar leading inset when the desktop sidebar is fully collapsed so the header content does not overlap the floating controls', () => {
@@ -102,9 +108,13 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toContain('transform var(--resize-dur) var(--resize-ease)');
   });
 
-  it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
-    expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
-    expect(appSource).toContain(": currentView === 'todo'");
+  it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', async () => {
+    expect(appSource).toContain("const desktopShellSidebarKind = activeShell?.sidebarKind ?? 'main';");
+    const { views } = await readOfficialShellEntries();
+    expect(shellViewsWhere(views, (shell) => shell.sidebarKind === 'settings')).toEqual(['settings']);
+    expect(shellViewsWhere(views, (shell) => shell.sidebarKind === 'todo')).toEqual(['todo']);
+    expect(shellViewsWhere(views, (shell) => shell.sidebarKind === 'desktop-page')).toEqual(['learning-hub']);
+    expect(shellViewsWhere(views, (shell) => (shell.sidebarKind ?? 'main') !== 'main')).toEqual(['learning-hub', 'settings', 'todo']);
     // 侧栏按类型分层常驻（DesktopShellSidebarLayers），路由只决定哪一层可见，
     // 因此桌面外壳对所有路由都渲染同一个轨道，而不是按路由换整棵子树。
     expect(appSource).toContain('const desktopShellSidebarLayers = useMemo(() => [');
@@ -152,13 +162,15 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toContain('background: var(--shell-workspace-panel);');
   });
 
-  it('renders the settings custom left rail in the global desktop shell nav slot', () => {
+  it('renders the settings custom left rail in the global desktop shell nav slot', async () => {
     expect(appSource).toContain("import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';");
     expect(appSource).toContain('const settingsShellSidebarElement = useMemo(() => (');
     expect(appSource).toContain('<SettingsShellSidebar');
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
     expect(appSource).toContain("onBack={() => setCurrentView('chat-v2')}");
-    expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
+    expect(appSource).toContain("const desktopShellSidebarKind = activeShell?.sidebarKind ?? 'main';");
+    const { views } = await readOfficialShellEntries();
+    expect(views.get('settings')?.shell?.sidebarKind).toBe('settings');
     expect(appSource).toContain("['settings', settingsShellSidebarElement],");
   });
 
@@ -166,7 +178,7 @@ describe('desktop shell sidebar collapse contract', () => {
     // 桌面左栏由 App 的 desktopShellSidebarElement 承载；Settings 本体不再渲染任何自有侧栏
     // （移动端分区导航为 chip rail），因此不应再引入 SettingsShellSidebar
     expect(settingsSource).not.toContain("import { SettingsShellSidebar } from './SettingsShellSidebar';");
-    expect(settingsSource).toContain("import { useSettingsNavigation } from './useSettingsNavigation';");
+    expect(settingsSource).toContain("import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';");
     expect(settingsSource).toContain("import { useSettingsShellStore } from '@/stores/settingsShellStore';");
     expect(settingsSource).not.toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");
     expect(settingsSource).not.toContain("settings-main-pane study-shell-pane study-shell-pane--flush-top");

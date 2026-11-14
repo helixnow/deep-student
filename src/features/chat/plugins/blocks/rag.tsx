@@ -5,12 +5,16 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
-import { FileText, CircleNotch, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react';
+import { FileText } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
+import {
+  RetrievalBlockShell,
+  RetrievalErrorNotice,
+  RetrievalQueryRow,
+} from './components/RetrievalBlockShell';
 import { convertBackendSources, type BackendSourceInfo } from './components/types';
 
 /**
@@ -54,12 +58,20 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
   // 状态判断
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
+  const isActive = isPending || isRunning;
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const durationMs =
+    block.startedAt && block.endedAt
+      ? block.endedAt - block.startedAt
+      : data?.durationMs;
 
   // 统计信息
   const statsText = useMemo(() => {
-    if (!isSuccess || sources.length === 0) return null;
+    if (!isSuccess) return null;
+    if (sources.length === 0) return t('blocks.rag.noResults');
     if (totalResults > sources.length) {
       return t('blocks.rag.stats', {
         shown: sources.length,
@@ -69,111 +81,41 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
     return t('blocks.rag.statsSimple', { count: sources.length });
   }, [isSuccess, sources.length, totalResults, t]);
 
+  const statusText = isActive
+    ? t('blocks.rag.searching')
+    : isError
+      ? t('blocks.rag.error')
+      : statsText;
+
+  const hasBody = Boolean(query) || isError || (isSuccess && sources.length > 0);
+
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
-      )}
+    <RetrievalBlockShell
+      icon={FileText}
+      title={t('blocks.rag.title')}
+      statusText={statusText}
+      isActive={!!isActive}
+      isError={isError}
+      isSuccess={isSuccess}
+      durationMs={durationMs}
+      collapsible={hasBody}
+      isExpanded={isExpanded}
+      onToggleExpand={() => setIsExpanded((prev) => !prev)}
     >
-      {/* 头部 */}
-      <div
-        className={cn(
-          'flex items-center gap-2 px-3 py-2',
-          'border-b border-border/30'
-        )}
-      >
-        {/* 图标 */}
-        <div
-          className={cn(
-            'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-primary/10',
-            'dark:bg-primary/20'
-          )}
-        >
-          <FileText size={16} className="text-primary" />
-        </div>
+      {query && <RetrievalQueryRow query={query} />}
 
-        {/* 标题 */}
-        <span className="font-medium text-sm text-foreground">
-          {t('blocks.rag.title')}
-        </span>
+      {isError && (
+        <RetrievalErrorNotice message={block.error || t('blocks.rag.errorMessage')} />
+      )}
 
-        {/* 状态指示器 */}
-        {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground" role="status">
-            <CircleNotch size={12} className="animate-spin" aria-hidden="true" />
-            <span>{t('blocks.rag.searching')}</span>
-          </span>
-        )}
-
-        {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
-            <WarningCircle size={12} aria-hidden="true" />
-            <span>{t('blocks.rag.error')}</span>
-          </span>
-        )}
-
-        {isSuccess && statsText && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {statsText}
-          </span>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className="p-3">
-        {/* 查询信息 */}
-        {query && (
-          <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-            <MagnifyingGlass size={16} />
-            <span className="truncate" title={query}>
-              {query}
-            </span>
-          </div>
-        )}
-
-        {/* 加载状态 */}
-        {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6" role="status">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" aria-hidden="true" />
-              <span className="text-sm">{t('blocks.rag.loadingDocs')}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 错误状态 */}
-        {isError && (
-          <div className="flex items-center justify-center py-6" role="alert">
-            <div className="flex items-center gap-2 text-destructive">
-              <WarningCircle size={20} className="shrink-0" aria-hidden="true" />
-              <span className="text-sm break-words">
-                {block.error || t('blocks.rag.errorMessage')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* 成功状态：来源列表 */}
-        {isSuccess && sources.length > 0 && (
-          <SourceList
-            sources={sources}
-            maxVisible={3}
-            defaultExpanded={false}
-          />
-        )}
-
-        {/* 成功但无结果 */}
-        {isSuccess && sources.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <span className="text-sm">{t('blocks.rag.noResults')}</span>
-          </div>
-        )}
-      </div>
-    </div>
+      {isSuccess && sources.length > 0 && (
+        <SourceList
+          sources={sources}
+          maxVisible={3}
+          defaultExpanded={false}
+        />
+      )}
+    </RetrievalBlockShell>
   );
 });
 

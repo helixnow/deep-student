@@ -402,18 +402,24 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
 
     if (fieldName === 'is_correct') {
       return value === 'true' ? (
-        <Badge className="bg-success/10 text-success">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+          <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
           {t('practice:questionBank.correctLabel')}
-        </Badge>
+        </span>
       ) : (
-        <Badge className="bg-destructive/10 text-destructive">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <span className="w-1.5 h-1.5 rounded-full bg-destructive" aria-hidden="true" />
           {t('practice:questionBank.incorrectLabel')}
-        </Badge>
+        </span>
       );
     }
 
     if (fieldName === 'status') {
-      return <Badge variant="secondary">{statusLabelKeys[value] ? t(statusLabelKeys[value]) : value}</Badge>;
+      return (
+        <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-xs text-muted-foreground">
+          {statusLabelKeys[value] ? t(statusLabelKeys[value]) : value}
+        </span>
+      );
     }
 
     // 折叠时只显示张数，展开后按需取图，避免一次加载整页历史图片。
@@ -492,25 +498,25 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
             }
           } : undefined}
           className={cn(
-            'bg-card rounded-lg p-3 border border-border/50 border-l-2 transition-colors',
+            'rounded-xl bg-card/40 p-3.5 border border-border/40 border-l-2 transition-colors',
             correct && 'border-l-success/70 bg-success/[0.03]',
             wrong && 'border-l-destructive/70 bg-destructive/[0.03]',
-            !correct && !wrong && 'border-l-border',
-            expandable && 'cursor-pointer hover:border-border hover:bg-[var(--interactive-hover)]'
+            !correct && !wrong && 'border-l-border/70',
+            expandable && 'cursor-pointer hover:border-border/70 hover:bg-foreground/[0.03]'
           )}
         >
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Badge variant="outline" className="text-xs flex-shrink-0">
+              <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-xs text-muted-foreground flex-shrink-0">
                 {changeTypeLabelKeys[item.change_type] ? t(changeTypeLabelKeys[item.change_type]) : item.change_type}
-              </Badge>
-              <span className="text-sm text-muted-foreground truncate">
+              </span>
+              <span className="text-sm text-foreground/85 truncate">
                 {fieldNameLabelKeys[item.field_name] ? t(fieldNameLabelKeys[item.field_name]) : item.field_name}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-shrink-0">
+            <div className="flex items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground flex-shrink-0">
               <Clock size={12} />
-              <span className="tabular-nums">{formatTime(item.created_at)}</span>
+              <span>{formatTime(item.created_at)}</span>
               {expandable && (
                 <CaretDown
                   size={12}

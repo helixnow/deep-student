@@ -8,7 +8,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
-import { SettingSection } from './SettingsCommon';
+import { SettingSection, settingsQuietInteractiveRowClassName } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
 import { EngineSettingsSection } from './EngineSettingsSection';
 import WebSearchAdvancedConfig from '@/components/WebSearchAdvancedConfig';
@@ -59,7 +59,7 @@ const SettingRow = ({
   className?: string;
 }) => (
   // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden", className)}>
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-2 rounded-lg overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -79,11 +79,13 @@ const SettingRow = ({
 interface ExternalSearchTabProps {
   config: any;
   setConfig: (fn: (prev: any) => any) => void;
+  deepseekProviderConfigured?: boolean;
 }
 
 export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
   config,
   setConfig,
+  deepseekProviderConfigured,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
 
@@ -96,7 +98,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
       >
         {/* 1. 搜索引擎配置 */}
         <div className="mt-2">
-          <EngineSettingsSection config={config} setConfig={setConfig} />
+          <EngineSettingsSection config={config} setConfig={setConfig} deepseekProviderConfigured={deepseekProviderConfigured} />
         </div>
 
         {/* 2. 高级搜索配置 */}

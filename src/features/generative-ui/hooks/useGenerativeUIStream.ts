@@ -41,6 +41,11 @@ export function useGenerativeUIStream(
 
   const append = useCallback(
     (chunk: string) => {
+      if (!chunk) return;
+      if (!parser.getBuffer()) {
+        setIntentState(null);
+        setPartialIntent(null);
+      }
       setIsStreaming(true);
       if (chunk) setErrors([]);
       const partial = parser.append(chunk);
@@ -66,7 +71,8 @@ export function useGenerativeUIStream(
       if (isGenerativeUIParseFailure(parsed)) {
         const recovered = finalPartial ?? coercePartialIntent(buffer).intent;
         setErrors(parsed.errors);
-        if (recovered) setPartialIntent(recovered);
+        setIntentState(recovered);
+        setPartialIntent(recovered);
         options.onComplete?.(recovered);
         return recovered;
       }
@@ -77,11 +83,15 @@ export function useGenerativeUIStream(
       options.onComplete?.(parsed.intent);
       return parsed.intent;
     }
+    setIntentState(finalPartial);
+    setPartialIntent(finalPartial);
     options.onComplete?.(finalPartial);
     return finalPartial;
   }, [parser, options]);
 
   const setIntent = useCallback((raw: string | GenerativeUIIntent) => {
+    parser.reset();
+    setIsStreaming(false);
     if (typeof raw === 'string') {
       const parsed = parseGenerativeUIIntent(raw);
       if (isGenerativeUIParseFailure(parsed)) {
@@ -104,7 +114,7 @@ export function useGenerativeUIStream(
     setPartialIntent(validatedIntent);
     setErrors([]);
     pushDefaultGenerativeUIIntentSnapshot(validatedIntent);
-  }, []);
+  }, [parser]);
 
   const displayIntent = useMemo(
     () => (isStreaming ? partialIntent ?? intent : intent ?? partialIntent),

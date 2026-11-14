@@ -1,0 +1,38 @@
+{
+  "domain": "chat-session",
+  "commands": ["chat_v2_rollback_migration"],
+  "scenarios": [
+    {
+      "id": "chat-session.wp227.rollback_migration.seeded.migrate_rollback_remigrate",
+      "seed": "wp227-legacy-chat-w0",
+      "steps": [
+        { "cmd": "chat_v2_check_migration_status", "args": {} },
+        { "cmd": "chat_v2_rollback_migration", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_migrate_legacy_chat", "args": {} },
+        { "cmd": "chat_v2_check_migration_status", "args": {} },
+        { "cmd": "chat_v2_list_sessions", "args": { "status": null, "groupId": null, "limit": 50, "offset": 0 } },
+        { "cmd": "chat_v2_rollback_migration", "args": {} },
+        { "cmd": "chat_v2_check_migration_status", "args": {} },
+        { "cmd": "chat_v2_list_sessions", "args": { "status": null, "groupId": null, "limit": 50, "offset": 0 } },
+        { "cmd": "chat_v2_rollback_migration", "args": {} },
+        { "cmd": "chat_v2_migrate_legacy_chat", "args": {} },
+        { "cmd": "chat_v2_list_sessions", "args": { "status": null, "groupId": null, "limit": 50, "offset": 0 } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.rollback_migration.seeded.rollback_keeps_user_sessions",
+      "seed": "wp227-legacy-chat-w0",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "用户自建会话", "metadata": { "migratedFrom": "manual" }, "groupId": null } },
+        { "cmd": "chat_v2_migrate_legacy_chat", "args": {} },
+        { "cmd": "chat_v2_rollback_migration", "args": {} },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${0.id}" } },
+        { "cmd": "chat_v2_list_sessions", "args": { "status": null, "groupId": null, "limit": 50, "offset": 0 } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

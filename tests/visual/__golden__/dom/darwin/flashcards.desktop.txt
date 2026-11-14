@@ -1,0 +1,103 @@
+<body .light-theme>
+  <div data-demo-app="flashcards" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .h-full.min-w-0.overflow-hidden.relative.w-full.wb-fc-host data-wb-sys-app="flashcards" data-wb-sys-h="tall" data-wb-sys-size="wide">
+        <div .wb-sys-fade>
+          <div .flex.flex-col.overflow-hidden.wb-fc-root data-flashcards-app="true">
+            <nav .wb-fc-nav aria-label="闪卡导航">
+              <button .wb-fc-tab.wb-fcx-tab aria-current="page" data-active="true" type="button">
+                <svg viewBox="0 0 256 256" />
+                "今日"
+                <span .wb-fcx-tab-badge aria-hidden="true">
+                  "3"
+              <button .wb-fc-tab.wb-fcx-tab type="button">
+                <svg viewBox="0 0 256 256" />
+                "库"
+              <button .wb-fc-tab.wb-fcx-tab type="button">
+                <svg viewBox="0 0 256 256" />
+                "统计"
+            <div .wb-fc-body>
+              <div .wb-fcx-screen-anim>
+                <div .wb-fc-screen.wb-fc-today>
+                  <header .wb-fc-header>
+                    <div .min-w-0>
+                      <h2 .wb-fc-title>
+                        "今日复习"
+                      <p .wb-fc-subtitle>
+                        "3月2日星期一 · 3 张待复习"
+                    <div .shrink-0.wb-fc-toolbar>
+                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:w-[var(--button-height-sm)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="刷新到期队列" title="刷新到期队列" type="button">
+                        <svg viewBox="0 0 256 256" />
+                  <div .flex-1.min-h-0.overflow-hidden.relative>
+                    <div .absolute.flex.inset-x-0.justify-center.pointer-events-none.top-0.z-[1] aria-hidden="true">
+                      <span .bg-muted.flex.h-8.items-center.justify-center.mb-2.mt-auto.rounded-pill.shadow-soft.text-muted-foreground.w-8 aria-live="polite" role="status">
+                        <svg viewBox="0 0 16 16" />
+                    <div .h-full.overflow-y-auto.wb-fcx-scroll data-pull-to-refresh="true">
+                      <section .wb-fcx-hero.wb-fcx-panel>
+                        <div .wb-fcx-hero-ring>
+                          <div .wb-fcx-ring aria-label="今日已复习 18 张，还剩 3 张到期" role="img">
+                            <svg aria-hidden="true" viewBox="0 0 104 104" />
+                            <div .wb-fcx-ring-center>
+                              <span .wb-fcx-ring-percent>
+                                "86"
+                                "%"
+                              <span .wb-fcx-ring-caption>
+                                "今日进度"
+                        <div .wb-fcx-hero-main>
+                          <div .wb-fcx-counts>
+                            <div .wb-fcx-count data-tone="due">
+                              <div .wb-fcx-count-label>
+                                "待复习"
+                              <div .wb-fcx-count-value>
+                                "3"
+                            <div .wb-fcx-count data-tone="new">
+                              <div .wb-fcx-count-label>
+                                "新卡"
+                              <div .wb-fcx-count-value>
+                                "0"
+                            <div .wb-fcx-count data-tone="learning">
+                              <div .wb-fcx-count-label>
+                                "学习中"
+                              <div .wb-fcx-count-value>
+                                "0"
+                          <div .wb-fcx-hero-actions>
+                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.wb-fcx-cta.whitespace-nowrap type="button">
+                              <svg viewBox="0 0 256 256" />
+                              "开始复习"
+                            <span .wb-fcx-chip title="按本地日历日的复习活动计算；后端日志不可用时回退到最近复习记录估算">
+                              <svg viewBox="0 0 256 256" />
+                              "连续学习 17 天"
+                      <section .wb-fcx-panel>
+                        <div .wb-fcx-panel-head>
+                          <h3 .wb-fcx-panel-title>
+                            <svg viewBox="0 0 256 256" />
+                            "接下来"
+                          <p .wb-fcx-panel-sub>
+                            "3 张"
+                        <div .wb-fcx-panel-list>
+                          <ul .wb-fc-list-ul>
+                            <li .wb-fc-row data-agent-entity="flashcards:fsrs-demo-1">
+                              <div .wb-fc-row-front>
+                                "洛必达法则使用前要先确认什么？"
+                              <div .wb-fc-tags>
+                                <span .wb-fc-tag>
+                                  "高等数学"
+                                <span .wb-fc-tag>
+                                  "极限"
+                            <li .wb-fc-row data-agent-entity="flashcards:fsrs-demo-2">
+                              <div .wb-fc-row-front>
+                                "eˣ 在 x = 0 处的三阶麦克劳林展开是什么？"
+                              <div .wb-fc-tags>
+                                <span .wb-fc-tag>
+                                  "高等数学"
+                                <span .wb-fc-tag>
+                                  "泰勒公式"
+                            <li .wb-fc-row data-agent-entity="flashcards:fsrs-demo-3">
+                              <div .wb-fc-row-front>
+                                "分部积分求 ∫ x·eˣ dx 时，u 和 dv 怎么选？"
+                              <div .wb-fc-tags>
+                                <span .wb-fc-tag>
+                                  "高等数学"
+                                <span .wb-fc-tag>
+                                  "不定积分"
+  <div id="@2" />

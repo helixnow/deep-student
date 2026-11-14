@@ -55,6 +55,8 @@ export { connectorToolsSkill } from './connector-tools';
 export { fileManagerToolsSkill } from './file-manager-tools';
 export { taskGovernanceToolsSkill } from './task-governance-tools';
 export { goalToolsSkill } from './goal-tools';
+export { selfConfigToolsSkill } from './self-config-tools';
+export { pluginWorkshopToolsSkill } from './plugin-workshop-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -104,6 +106,8 @@ import { connectorToolsSkill } from './connector-tools';
 import { fileManagerToolsSkill } from './file-manager-tools';
 import { taskGovernanceToolsSkill } from './task-governance-tools';
 import { goalToolsSkill } from './goal-tools';
+import { selfConfigToolsSkill } from './self-config-tools';
+import { pluginWorkshopToolsSkill } from './plugin-workshop-tools';
 import type { SkillDefinition } from '../types';
 import { getPlatform } from '@/utils/platform';
 
@@ -172,6 +176,8 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   fileManagerToolsSkill,
   taskGovernanceToolsSkill,
   goalToolsSkill,
+  selfConfigToolsSkill,
+  pluginWorkshopToolsSkill,
 ];
 
 // The result-returning browser bridge is implemented for Windows WebView2 and

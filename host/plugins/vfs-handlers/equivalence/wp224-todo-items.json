@@ -1,0 +1,2602 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "todo_restore_item",
+    "todo_list_deleted_items",
+    "todo_purge_item",
+    "todo_purge_deleted_items",
+    "todo_list_items",
+    "todo_update_item",
+    "todo_toggle_item",
+    "todo_reorder_items",
+    "todo_move_item"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.todo_restore_item.ok_restore_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目",
+              "tags": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_restore_item.ok_not_deleted_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 活跃"
+            }
+          }
+        },
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_restore_item.ok_parent_deleted_becomes_top_level",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_restore_item.err_list_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_restore_item.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "tdi_wp224_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_deleted_items.ok_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 C"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {
+            "limit": 2,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_deleted_items.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {
+            "limit": 100,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_deleted_items.err_limit_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {
+            "limit": "10",
+            "offset": 0
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_purge_item.ok_with_descendants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_purge_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_deleted_items",
+          "args": {
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "todo_trash_counts",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_purge_item.err_not_in_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 活跃"
+            }
+          }
+        },
+        {
+          "cmd": "todo_purge_item",
+          "args": {
+            "itemId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_purge_item.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_purge_item",
+          "args": {
+            "itemId": "tdi_wp224_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_purge_deleted_items.ok_purges_all",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 保留"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_purge_deleted_items",
+          "args": {}
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_purge_deleted_items.ok_zero_no_event",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 保留"
+            }
+          }
+        },
+        {
+          "cmd": "todo_purge_deleted_items",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items.ok_pending_vs_all_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 C"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true,
+            "limit": 1,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true,
+            "limit": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items.ok_unknown_list_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "tdl_wp224_missing",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items.err_missing_include_completed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_fields_normalized",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 原"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 新",
+              "description": "说明",
+              "priority": "urgent",
+              "dueDate": "2030-6-1",
+              "dueTime": "9:05:30",
+              "reminder": "2030-06-01T08:30:15",
+              "tags": [
+                "数学",
+                "exam"
+              ],
+              "attachments": [
+                "att_wp224_none"
+              ],
+              "estimatedPomodoros": 1200
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_complete_then_reopen",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "status": "pending"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "status": "cancelled"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_clear_due_date_clears_time",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目",
+              "dueDate": "2030-01-02",
+              "dueTime": "10:00",
+              "description": "d"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "dueDate": "",
+              "description": ""
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_repeat_complete_spawns_next",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 重复",
+              "dueDate": "2030-01-02",
+              "reminder": "2030-01-02T08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "repeatJson": "{\"freq\":\"daily\",\"interval\":1}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_expected_updated_at_match_and_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 v2",
+              "expectedUpdatedAt": "${1.updatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 v3",
+              "expectedUpdatedAt": ""
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.ok_set_valid_parent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${2.id}",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${2.id}",
+              "parentId": "  "
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_completed_pomodoros_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "completedPomodoros": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "tdi_wp224_missing",
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_soft_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_stale_expected_updated_at",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 v2"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 v3",
+              "expectedUpdatedAt": "${1.updatedAt}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_empty_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "   "
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "status": "done"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_priority",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "priority": "critical"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_due_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "dueDate": "2030/01/02"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_due_time",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目",
+              "dueDate": "2030-01-02"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "dueTime": "25:00"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_reminder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "reminder": "2030-01-02 08:00"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_invalid_repeat_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "repeatJson": "{\"freq\":\"hourly\",\"interval\":1}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_parent_self",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "parentId": "${1.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_parent_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "parentId": "tdi_wp224_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_parent_other_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 他清单父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${2.id}",
+              "parentId": "${3.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_parent_cycle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "parentId": "${2.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_update_item.err_missing_input",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_update_item",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_toggle_item.ok_toggle_twice",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_toggle_item.ok_expected_updated_at_match",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${1.id}",
+            "expectedUpdatedAt": "${1.updatedAt}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_toggle_item.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "tdi_wp224_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_toggle_item.err_stale_expected_updated_at",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 条目"
+            }
+          }
+        },
+        {
+          "cmd": "todo_update_item",
+          "args": {
+            "input": {
+              "id": "${1.id}",
+              "title": "WP224 v2"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${1.id}",
+            "expectedUpdatedAt": "${1.updatedAt}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_toggle_item.err_missing_item_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_toggle_item",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.ok_no_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 C"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": [
+                "${3.id}",
+                "${1.id}",
+                "${2.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.ok_with_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_get_list",
+          "args": {
+            "listId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": [
+                "${2.id}",
+                "${1.id}"
+              ],
+              "expectedUpdatedAt": "${3.updatedAt}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_get_list",
+          "args": {
+            "listId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.ok_empty_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 空清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": []
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_duplicates",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": [
+                "${1.id}",
+                "${1.id}",
+                "${2.id}"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_not_exact_cover",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": [
+                "${1.id}"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_stale_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_get_list",
+          "args": {
+            "listId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "todo_update_list",
+          "args": {
+            "input": {
+              "id": "${0.id}",
+              "title": "WP224 改名"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "${0.id}",
+              "itemIds": [
+                "${1.id}"
+              ],
+              "expectedUpdatedAt": "${2.updatedAt}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_list_missing_with_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "tdl_wp224_missing",
+              "itemIds": [],
+              "expectedUpdatedAt": "2030-01-01T00:00:00.000Z"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_list_missing_no_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "input": {
+              "listId": "tdl_wp224_missing",
+              "itemIds": []
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_reorder_items.err_legacy_flat_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_items",
+          "args": {
+            "listId": "${0.id}",
+            "itemIds": []
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.ok_with_subtree",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 源"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 目标"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 目标已有"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${3.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "${3.id}",
+              "targetListId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${1.id}",
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_items",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.ok_child_detached",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 源"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 目标"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${2.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "${3.id}",
+              "targetListId": "${1.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.ok_same_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 同清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "${1.id}",
+              "targetListId": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.err_item_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 目标"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "tdi_wp224_missing",
+              "targetListId": "${0.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.err_target_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 源"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "${1.id}",
+              "targetListId": "tdl_wp224_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.err_target_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 源"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 已删目标"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "input": {
+              "itemId": "${2.id}",
+              "targetListId": "${1.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_move_item.err_legacy_flat_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 源"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 目标"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_move_item",
+          "args": {
+            "itemId": "${2.id}",
+            "targetListId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

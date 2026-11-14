@@ -12,7 +12,7 @@ describe('hidden draft session lifecycle contract', () => {
     'utf-8'
   );
   const repoSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/repo.rs'),
+    resolve(process.cwd(), 'host/plugins/chat/repository/sessions.ts'),
     'utf-8'
   );
   const sessionActionsSource = readFileSync(
@@ -49,7 +49,7 @@ describe('hidden draft session lifecycle contract', () => {
 
   it('hides hidden draft sessions from backend list and count queries', () => {
     expect(repoSource).toContain("json_extract(metadata_json, '$.chatV2Draft.hidden')");
-    expect(repoSource).toContain('append_visible_session_filter');
+    expect(repoSource).toContain('VISIBLE_SESSION_FILTER');
   });
 
   it('keeps unsent input text attached to the reusable draft session', () => {

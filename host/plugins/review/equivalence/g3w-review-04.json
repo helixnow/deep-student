@@ -1,0 +1,437 @@
+{
+  "domain": "review",
+  "commands": [
+    "dstu_create",
+    "review_plan_create",
+    "qbank_create_question",
+    "review_plan_get_or_create",
+    "review_plan_process",
+    "review_plan_suspend",
+    "review_plan_resume",
+    "review_plan_delete",
+    "review_plan_refresh_stats"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.review.review_plan_create.question-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_create",
+          "args": {
+            "questionId": "q_g3w_missing",
+            "examId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_create.exam-mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集 A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "求 f(x)=x² 的导数",
+              "explanation": "2x",
+              "tags": [
+                "导数"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集 B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_create",
+          "args": {
+            "questionId": "${1.id}",
+            "examId": "${2.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_create.already-exists",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "求 f(x)=x² 的导数",
+              "explanation": "2x",
+              "tags": [
+                "导数"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_create",
+          "args": {
+            "questionId": "${1.id}",
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "review_plan_create",
+          "args": {
+            "questionId": "${1.id}",
+            "examId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_get_or_create.question-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_get_or_create",
+          "args": {
+            "questionId": "q_g3w_missing",
+            "examId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_get_or_create.exam-mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集 A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "求 f(x)=x² 的导数",
+              "explanation": "2x",
+              "tags": [
+                "导数"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集 B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_get_or_create",
+          "args": {
+            "questionId": "${1.id}",
+            "examId": "${2.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_process.quality-over-5",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "G3W 题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "求 f(x)=x² 的导数",
+              "explanation": "2x",
+              "tags": [
+                "导数"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "review_plan_create",
+          "args": {
+            "questionId": "${1.id}",
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "review_plan_process",
+          "args": {
+            "planId": "${2.id}",
+            "quality": 6,
+            "userAnswer": null,
+            "timeSpentSeconds": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_process.plan-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "review_plan_process",
+          "args": {
+            "planId": "rp_g3wmissing",
+            "quality": 4,
+            "userAnswer": null,
+            "timeSpentSeconds": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_suspend.plan-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "review_plan_suspend",
+          "args": {
+            "planId": "rp_g3wmissing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_resume.plan-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "review_plan_resume",
+          "args": {
+            "planId": "rp_g3wmissing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_delete.plan-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "review_plan_delete",
+          "args": {
+            "planId": "rp_g3wmissing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.review_plan_refresh_stats.unknown-exam-fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "review_plan_refresh_stats",
+          "args": {
+            "examId": "exam_g3w_unknown"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

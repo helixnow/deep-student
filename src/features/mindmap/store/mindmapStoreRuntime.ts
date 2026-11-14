@@ -144,6 +144,7 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
       currentView: overrides?.currentView ?? s.currentView,
       focusedNodeId: overrides?.focusedNodeId ?? s.focusedNodeId,
       savedAt: new Date().toISOString(),
+      baseUpdatedAt: s.metadata?.updatedAt,
       layoutId: s.layoutId,
       layoutDirection: s.layoutDirection,
       styleId: s.styleId,

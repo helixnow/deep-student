@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>clipboard</title></head>
+<body><script>
+(async () => {
+  const I = window.__TAURI_INTERNALS__;
+  const r = {};
+  const call = async (name, cmd, args) => {
+    try { r[name] = { ok: await I.invoke(cmd, args) }; } catch (e) { r[name] = { err: e }; }
+    return r[name].ok;
+  };
+  await call('clear', 'plugin:clipboard-manager|clear', {});
+  await call('readTextAfterClear', 'plugin:clipboard-manager|read_text', {});
+  await call('readImageAfterClear', 'plugin:clipboard-manager|read_image', {});
+
+  await call('writeText', 'plugin:clipboard-manager|write_text', { text: 'WP-078 剪贴板 ✓' });
+  await call('readText', 'plugin:clipboard-manager|read_text', {});
+  await call('readImageAfterText', 'plugin:clipboard-manager|read_image', {});
+
+  await call('writeHtml', 'plugin:clipboard-manager|write_html', { html: '<b>WP-078</b>' });
+  await call('readTextAfterHtml', 'plugin:clipboard-manager|read_text', {});
+  await call('writeHtmlAlt', 'plugin:clipboard-manager|write_html', { html: '<b>WP-078</b>', altText: 'WP-078 alt' });
+  await call('readTextAfterHtmlAlt', 'plugin:clipboard-manager|read_text', {});
+
+  const pixels = [255, 0, 0, 255, 0, 128, 255, 255, 10, 20, 30, 128];
+  const source = await I.invoke('plugin:image|new', { rgba: pixels, width: 3, height: 1 });
+  await call('writeImage', 'plugin:clipboard-manager|write_image', { image: source });
+  const rid = await call('readImage', 'plugin:clipboard-manager|read_image', {});
+  if (typeof rid === 'number') {
+    r.imagePixels = await I.invoke('plugin:image|rgba', { rid });
+    r.imageSize = await I.invoke('plugin:image|size', { rid });
+  }
+  await call('readTextAfterImage', 'plugin:clipboard-manager|read_text', {});
+
+  await call('writeTextAgain', 'plugin:clipboard-manager|write_text', { text: 'before clear' });
+  await call('clearAgain', 'plugin:clipboard-manager|clear', {});
+  await call('readTextAfterSecondClear', 'plugin:clipboard-manager|read_text', {});
+  await call('writeTextMissingArg', 'plugin:clipboard-manager|write_text', {});
+  await I.invoke('smoke_report', r);
+})();
+</script></body></html>

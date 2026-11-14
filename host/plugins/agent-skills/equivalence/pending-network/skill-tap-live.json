@@ -1,0 +1,200 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_tap_catalog",
+    "skill_tap_install",
+    "skill_check_updates",
+    "skill_update_from_source",
+    "skill_list_directories",
+    "skill_list_package_files"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.tap_live.catalog_install_update",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/anthropics/skills"
+          }
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "  https://www.github.com/anthropics/skills.git/  "
+          }
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf"
+          }
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/main"
+          }
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          }
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": "abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": "${4.package_sha256}"
+          }
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": "${4.package_sha256}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": true,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          }
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/pdf",
+            "overwrite": true,
+            "dryRun": false,
+            "expectedPackageSha256": "${4.package_sha256}"
+          }
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "skills/zz-no-such-skill-w0",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "${0.resolvedZipUrl}",
+            "subdir": "../outside",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/anthropics/skills/zip/refs/heads/zz-no-such-branch-w0",
+            "subdir": "skills/pdf",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/zz-no-such-owner-w0/zz-no-such-repo-w0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "${8.skill_id}"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "${8.skill_id}"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "${11.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

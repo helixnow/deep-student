@@ -1,0 +1,84 @@
+{
+  "note": "Runner bindings that WAVE0 v0 cannot express for WP-227. Keyed by scenario id; step = index into steps[]. Values shaped like ${n.path} are whole-value references to prior step results, resolved with the same rule as scenario-v0.mjs resolveReferences. See README.md (WP-227).",
+  "scripts": {
+    "x5.builtin-route": "ApiConfig.baseUrl is written as http://127.0.0.1:18461/s/<scriptId>/v1. The runner replaces only the origin (http://127.0.0.1:18461) with the X5 server url; <scriptId> is an X5 built-in script (success.answer, success.thinking, error.http-500, interrupt.hold-after-partial). One scenario can therefore bind several scripts through several ApiConfig ids."
+  },
+  "scenarios": {
+    "chat-session.wp227.retry_message.success_and_model_switch": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 2, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_retry_answer" } },
+        { "step": 4, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_retry_answer" } },
+        { "step": 6, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_retry_answer" } }
+      ]
+    },
+    "chat-session.wp227.retry_message.errors": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_rerr_answer" } },
+        { "step": 10, "waitAfter": { "event": "stream_start", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_rerr_answer2" } },
+        { "step": 12, "waitAfter": { "event": "stream_cancelled|stream_complete|stream_error", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_rerr_answer2" } }
+      ]
+    },
+    "chat-session.wp227.variants.switch_and_retry": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 2, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_var_answer" } },
+        { "step": 10, "waitAfter": { "event": "variant_end", "channelPrefix": "chat_v2_event_", "variantId": "${3.messages.0.variants.1.id}" } },
+        { "step": 13, "waitAfter": { "event": "variant_end", "channelPrefix": "chat_v2_event_", "variantIds": ["${3.messages.0.variants.0.id}", "${3.messages.0.variants.1.id}"] } }
+      ]
+    },
+    "chat-session.wp227.variants.streaming_and_readonly_guards": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 2, "waitAfter": { "event": "stream_start", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_guard_answer" } },
+        { "step": 3, "waitAfter": { "event": "stream_cancelled|stream_complete|stream_error", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_guard_answer" } },
+        { "step": 5, "waitAfter": { "event": "stream_start", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_guard_answer2" } },
+        { "step": 11, "waitAfter": { "event": "stream_cancelled|stream_complete|stream_error", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_guard_answer2" } },
+        { "step": 12, "waitAfter": { "event": "variant_end", "channelPrefix": "chat_v2_event_", "variantId": "${4.messages.0.variants.1.id}" } }
+      ]
+    },
+    "chat-session.wp227.wake_session.success_and_errors": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_wake_a1" } },
+        { "step": 5, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_wake_a2" } }
+      ]
+    },
+    "chat-session.wp227.undo_compaction.compact_then_undo": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_cmp_a1" } },
+        { "step": 4, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_cmp_a2" } },
+        { "step": 5, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_cmp_a3" } }
+      ]
+    },
+    "chat-session.wp227.search_content.filters_and_rebuild": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_fts_a1" } },
+        { "step": 4, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "messageId": "msg_wp227_fts_a2" } }
+      ]
+    },
+    "chat-session.wp227.workspace.run_agent_reminder_answer": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 4, "waitAfter": { "event": "stream_complete|stream_error|stream_cancelled", "channelPrefix": "chat_v2_session_", "sessionId": "${3.agent_session_id}", "messageId": "${4.message_id}" } }
+      ]
+    },
+    "chat-session.wp227.workspace.cancel_running_worker": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_start", "channelPrefix": "chat_v2_session_", "sessionId": "${3.agent_session_id}" } },
+        { "step": 5, "waitAfter": { "event": "stream_cancelled|stream_complete|stream_error", "channelPrefix": "chat_v2_session_", "sessionId": "${3.agent_session_id}" } }
+      ]
+    },
+    "chat-session.wp227.workspace.close_cancels_running_worker": {
+      "llm": "x5.builtin-route",
+      "steps": [
+        { "step": 3, "waitAfter": { "event": "stream_start", "channelPrefix": "chat_v2_session_", "sessionId": "${3.agent_session_id}" } },
+        { "step": 4, "waitAfter": { "event": "stream_cancelled|stream_complete|stream_error", "channelPrefix": "chat_v2_session_", "sessionId": "${3.agent_session_id}" } }
+      ]
+    }
+  }
+}

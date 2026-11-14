@@ -11,7 +11,7 @@
 #   scale/<case-name>/...
 #
 # Sources, in priority order:
-#   1. Checked-in fixtures at src-tauri/tests/migration-fixtures/ (small,
+#   1. Checked-in fixtures at tests/fixtures/migration-upgrade/ (small,
 #      public cases; currently optional).
 #   2. Private archive downloaded from $MIGRATION_FIXTURE_URL, authenticated
 #      with optional $MIGRATION_FIXTURE_TOKEN (Bearer), integrity-pinned by
@@ -54,7 +54,7 @@ case "$TIER" in representative|full|scale) ;; *) usage ;; esac
 case "$MODE" in skip|require) ;; *) usage ;; esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-LOCAL_FIXTURES="${REPO_ROOT}/src-tauri/tests/migration-fixtures"
+LOCAL_FIXTURES="${REPO_ROOT}/tests/fixtures/migration-upgrade"
 
 emit() {
   local key="$1" value="$2"
@@ -86,7 +86,7 @@ if [[ -z "${MIGRATION_FIXTURE_URL:-}" ]]; then
     echo "::error::MIGRATION_FIXTURE_URL is not configured and no checked-in fixtures exist." \
          "The release migration gate is fail-closed: configure the MIGRATION_FIXTURE_URL /" \
          "MIGRATION_FIXTURE_SHA256 (and optional MIGRATION_FIXTURE_TOKEN) secrets, or commit" \
-         "fixtures under src-tauri/tests/migration-fixtures/${TIER}/." >&2
+         "fixtures under tests/fixtures/migration-upgrade/${TIER}/." >&2
     exit 1
   fi
   echo "::warning::Migration fixtures unavailable (no MIGRATION_FIXTURE_URL secret, no checked-in fixtures). Fixture upgrade checks are SKIPPED for tier '${TIER}'."

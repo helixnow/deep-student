@@ -120,7 +120,9 @@ describe('safe-area invariant: mobileShell contract variables', () => {
   });
 
   it('keeps App.tsx spreading the shell vars onto the app tree', () => {
-    expect(appSource).toContain("from './app/shell/mobileShell'");
+    const layoutSource = read('src/app/shell/useDesktopSidebarLayout.ts');
+    expect(layoutSource).toContain("from './mobileShell'");
+    expect(layoutSource).toContain('...getMobileShellCssVars()');
     expect(appSource).toContain('...getMobileShellCssVars()');
   });
 });

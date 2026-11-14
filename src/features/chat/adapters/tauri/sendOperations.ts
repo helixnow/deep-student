@@ -6,12 +6,16 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18n from 'i18next';
+import { keepsTurnsWithoutChatModel, triggerOpenSettingsModels } from '../../readiness/readinessGate';
+import { MissingChatModelError } from './modelSelection';
 import { formatUserFacingErrorWithThinkingBudgetHint, getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { buildPinnedArtifactContextHint } from '@/components/previews/pinnedArtifactContextBridge';
 import type { AttachmentMeta, DeliverOutcome } from '../../core/types';
 import { resetBridgeState } from '../../core/middleware/eventBridge';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
-import type { SendMessageRequest } from '../types';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
+import type { SendMessageRequest, SendOptions } from '../types';
 import {
   buildSendContextRefsWithPaths,
   getPendingContextRefs,
@@ -39,6 +43,25 @@ import type { TauriAdapterHost } from './adapterHost';
  */
 export function generateMessageId(host: TauriAdapterHost): string {
   return `msg_${crypto.randomUUID()}`;
+}
+
+async function selectModelForSend(host: TauriAdapterHost, options: SendOptions): Promise<boolean> {
+  try {
+    await host.applyRuntimeModelSelection(options);
+    return true;
+  } catch (error) {
+    if (!(error instanceof MissingChatModelError) || !keepsTurnsWithoutChatModel()) throw error;
+    // The Node Host will select a model or save a failed reply beside the question.
+    options.modelId = undefined;
+    options.model2OverrideId = undefined;
+    return false;
+  }
+}
+
+function showModelSetupAction(): void {
+  showGlobalNotification('warning', i18n.t('chatV2:readiness.retry_after_setup'), undefined, {
+    action: { label: i18n.t('chatV2:modelPicker.goToSettings'), onClick: triggerOpenSettingsModels },
+  });
 }
 
 export async function sendMessage(host: TauriAdapterHost, content: string, attachments?: AttachmentMeta[]): Promise<void> {
@@ -87,7 +110,7 @@ export async function sendMessage(host: TauriAdapterHost, content: string, attac
       state: sendStateSnapshot,
       pendingContextRefs,
     });
-    await host.applyRuntimeModelSelection(options);
+    const hasModel = await selectModelForSend(host, options);
     let localTurnCommitted = false;
     const commitLocalTurn = async () => {
       if (localTurnCommitted) return;
@@ -162,6 +185,14 @@ export async function sendMessage(host: TauriAdapterHost, content: string, attac
     // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
     const attachedWorkspaceId = resolveWorkspaceIdForSession(host.sessionId);
 
+    const pinnedArtifactHint = buildPinnedArtifactContextHint(host.sessionId);
+    if (pinnedArtifactHint) {
+      options.contextTypeHints = [
+        ...(options.contextTypeHints ?? []),
+        pinnedArtifactHint,
+      ];
+    }
+
     // 5. 调用后端（传递前端生成的消息 ID）
     const request: SendMessageRequest = {
       sessionId: host.sessionId,
@@ -186,6 +217,7 @@ export async function sendMessage(host: TauriAdapterHost, content: string, attac
     const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
       request,
     });
+    if (!hasModel) showModelSetupAction();
 
     // 发送成功后才清空多变体 ID，确保失败时用户可以重试
     host.store.setPendingParallelModelIds(null);
@@ -413,7 +445,7 @@ export async function executeSendMessage(
       state: sendStateSnapshot,
       pendingContextRefs,
     });
-    await host.applyRuntimeModelSelection(options);
+    const hasModel = await selectModelForSend(host, options);
     let localTurnCommitted = false;
     const commitLocalTurn = async () => {
       if (localTurnCommitted) return;
@@ -548,6 +580,14 @@ export async function executeSendMessage(
     // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
     const attachedWorkspaceId = resolveWorkspaceIdForSession(host.sessionId);
 
+    const pinnedArtifactHint = buildPinnedArtifactContextHint(host.sessionId);
+    if (pinnedArtifactHint) {
+      options.contextTypeHints = [
+        ...(options.contextTypeHints ?? []),
+        pinnedArtifactHint,
+      ];
+    }
+
     // 5. 调用后端
     const request: SendMessageRequest = {
       sessionId: host.sessionId,
@@ -571,6 +611,7 @@ export async function executeSendMessage(
     const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
       request,
     });
+    if (!hasModel) showModelSetupAction();
 
     // 发送成功后才清空多变体 ID，确保失败时用户可以重试
     host.store.setPendingParallelModelIds(null);

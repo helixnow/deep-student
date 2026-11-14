@@ -19,7 +19,7 @@
  */
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import type { ChatStore } from '@/features/chat/core/types';
 import type { StoreApi } from 'zustand';
@@ -356,8 +356,8 @@ let registered = false;
 export function registerChatApp(): void {
   if (registered) return;
   registered = true;
-  appRegistry.register(chatAppDefinition);
-  appRegistry.register(chatSessionAppDefinition);
+  contributeWorkbenchApp(chatAppDefinition);
+  contributeWorkbenchApp(chatSessionAppDefinition);
 }
 
 registerChatApp();

@@ -25,7 +25,6 @@ import {
   FileVideo,
   CheckCircle,
   ArrowCounterClockwise,
-  Gear,
   FileArrowDown,
 } from '@phosphor-icons/react';
 
@@ -40,6 +39,7 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { GroupTitle } from '../settingsTabPrimitives';
 import { localizeCloudStorageError } from './localizeCloudError';
 import type {
   BackupInfoResponse,
@@ -69,7 +69,6 @@ export type BackupVerificationStatus = 'verified' | 'unverified' | 'failed' | 'v
 export interface BackupTabProps {
   backups: BackupInfoResponse[];
   loading: boolean;
-  onRefresh: () => void;
   onBackupAndExportZip: (options: {
     compressionLevel: number;
     addToBackupList: boolean;
@@ -173,7 +172,6 @@ const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, pr
 export const BackupTab: React.FC<BackupTabProps> = ({
   backups,
   loading,
-  onRefresh,
   onBackupAndExportZip,
   onDeleteBackup,
   onVerifyBackup,
@@ -638,15 +636,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       )}
 
       {/* 导出备份 */}
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <Archive className="h-4 w-4" />
-            {t('data:governance.export_backup')}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t('data:governance.export_backup_desc')}
-          </p>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.export_backup')}
+          description={t('data:governance.export_backup_desc')}
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-4">
           {encryptionPassword ? (
             <p className="text-xs text-success">
               {t('data:governance.e2ee_export_note', {
@@ -662,9 +657,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               })}
             </p>
           )}
-        </div>
 
-        <div className="space-y-3">
+          <div className="space-y-3">
           <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="add-to-backup-list"
@@ -852,24 +846,19 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
           </DsButton>
-          <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading} className="[@media(pointer:coarse)]:!h-11">
-            <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
-            {t('common:actions.refresh')}
-          </DsButton>
         </div>
-      </div>
-
-      <div className="border-t border-border/40" />
+        </div>
+      </section>
 
       {/* 备份设置 */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <Gear size={16} />
-          {t('data:governance.backup_settings')}
-        </div>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.backup_settings')}
+          description={t('data:governance.backup_settings_desc')}
+        />
 
         {configLoading ? (
-          <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 rounded-2xl bg-muted py-4 text-muted-foreground">
             <CircleNotch size={16} className="animate-spin" />
             {t('common:status.loading')}
           </div>
@@ -890,10 +879,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </div>
         ) : backupConfig ? (
           <div className="space-y-5 rounded-2xl bg-muted px-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              {t('data:governance.backup_settings_desc')}
-            </p>
-
             {/* 自动备份开关 */}
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
@@ -984,20 +969,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             )}
           </div>
         ) : null}
-      </div>
-
-      <div className="border-t border-border/40" />
+      </section>
 
       {/* 备份列表 */}
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <h3 className="text-base font-semibold text-foreground">
-            {t('data:governance.backup_list')}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {t('data:governance.backup_list_desc')}
-          </p>
-        </div>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.backup_list')}
+          description={t('data:governance.backup_list_desc')}
+        />
 
         {/* ≥md：原宽表；<md：下方卡片列表（同 DimensionManagement 的响应式模式，仅展示层） */}
         <div className="hidden md:block">
@@ -1116,7 +1095,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         </div>
 
         {/* <md：卡片列表（信息与动作同上表；动作按钮走 DsButton icon 契约，<lg 天然 44px） */}
-        <div className="space-y-2 md:hidden">
+        <div className="space-y-2 rounded-2xl bg-muted p-4 md:hidden">
           {backups.map((backup) => (
             <div
               key={backup.path}
@@ -1194,7 +1173,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* 确认对话框 */}
       <DsAlertDialog

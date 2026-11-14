@@ -1,0 +1,591 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "get_ocr_engines",
+    "get_ocr_engine_type",
+    "get_ocr_thinking_enabled",
+    "set_ocr_thinking_enabled",
+    "get_available_ocr_models",
+    "save_available_ocr_models",
+    "update_ocr_engine_priority",
+    "add_ocr_engine",
+    "remove_ocr_engine"
+  ],
+  "scenarios": [
+    {
+      "id": "ocr.config.defaults_and_thinking",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_ocr_engines",
+          "args": {}
+        },
+        {
+          "cmd": "get_ocr_engine_type",
+          "args": {}
+        },
+        {
+          "cmd": "get_ocr_thinking_enabled",
+          "args": {}
+        },
+        {
+          "cmd": "set_ocr_thinking_enabled",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "get_ocr_thinking_enabled",
+          "args": {}
+        },
+        {
+          "cmd": "set_ocr_thinking_enabled",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "get_ocr_thinking_enabled",
+          "args": {}
+        },
+        {
+          "cmd": "set_ocr_thinking_enabled",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_ocr_thinking_enabled",
+          "args": {
+            "enabled": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "ocr.config.engine_lifecycle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-ocr-glm",
+                "name": "w0-ocr-glm",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/w0-glm/v1",
+                "model": "glm-4.6v",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-qwen",
+                "name": "w0-ocr-qwen",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/w0-qwen/v1",
+                "model": "Qwen/Qwen3-VL-8B-Instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-paddle",
+                "name": "w0-ocr-paddle",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/w0-paddle/v1",
+                "model": "PaddlePaddle/PaddleOCR-VL-1.5",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-glm",
+            "model": "glm-4.6v",
+            "name": "W0 GLM",
+            "engineType": "glm4v_ocr"
+          }
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-qwen",
+            "model": "Qwen/Qwen3-VL-8B-Instruct",
+            "name": "W0 Qwen"
+          }
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-paddle",
+            "model": "PaddlePaddle/PaddleOCR-VL-1.5",
+            "name": "W0 Paddle",
+            "engineType": null
+          }
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-orphan",
+            "model": "deepseek-ai/DeepSeek-OCR",
+            "name": "W0 Orphan"
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-glm",
+            "model": "glm-4.6v",
+            "name": "W0 GLM again",
+            "engineType": "glm4v_ocr"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "__system_ocr__",
+            "model": "system",
+            "name": "System",
+            "engineType": "system_ocr"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_ocr_engine_priority",
+          "args": {
+            "engineList": [
+              {
+                "configId": "w0-ocr-paddle",
+                "enabled": true
+              },
+              {
+                "configId": "w0-ocr-ghost",
+                "enabled": true
+              },
+              {
+                "configId": "w0-ocr-glm",
+                "enabled": false
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "update_ocr_engine_priority",
+          "args": {
+            "engineList": []
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "remove_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-qwen"
+          }
+        },
+        {
+          "cmd": "remove_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-qwen"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "remove_ocr_engine",
+          "args": {
+            "configId": "__system_ocr__"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-x",
+            "model": "glm-4.6v"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_ocr_engine_priority",
+          "args": {
+            "engineList": [
+              {
+                "configId": "w0-ocr-glm"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "remove_ocr_engine",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "ocr.config.migrations_and_discontinued",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-ocr-sf-old",
+                "name": "w0-ocr-sf-old",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "https://api.siliconflow.cn/v1",
+                "model": "THUDM/GLM-4.1V-9B-Thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-zp-old",
+                "name": "w0-ocr-zp-old",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+                "model": "glm-4.1v-thinking-flash",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-other-old",
+                "name": "w0-ocr-other-old",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/w0-other/v1",
+                "model": "glm-4.1v-thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-paddle-old",
+                "name": "w0-ocr-paddle-old",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/w0-paddle/v1",
+                "model": "PaddlePaddle/PaddleOCR-VL",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "w0-ocr-sf-46v",
+                "name": "w0-ocr-sf-46v",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "https://api.siliconflow.cn/v1",
+                "model": "zai-org/GLM-4.6V",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": [
+              {
+                "configId": "w0-ocr-sf-old",
+                "model": "THUDM/GLM-4.1V-9B-Thinking",
+                "engineType": "glm4v_ocr",
+                "name": "SF GLM-4.1V",
+                "isFree": false,
+                "enabled": true,
+                "priority": 0
+              },
+              {
+                "configId": "w0-ocr-zp-old",
+                "model": "glm-4.1v-thinking-flash",
+                "engineType": "glm4v_ocr",
+                "name": "智谱 GLM-4.1V",
+                "enabled": null,
+                "priority": null
+              },
+              {
+                "configId": "w0-ocr-other-old",
+                "model": "glm-4.1v-thinking",
+                "engineType": "glm4v_ocr",
+                "name": "Other 4.1v"
+              },
+              {
+                "configId": "w0-ocr-paddle-old",
+                "model": "PaddlePaddle/PaddleOCR-VL",
+                "engineType": "paddle_ocr_vl",
+                "name": "PaddleOCR-VL",
+                "isFree": true,
+                "priority": 7
+              },
+              {
+                "configId": "w0-ocr-sf-46v",
+                "model": "zai-org/GLM-4.6V",
+                "engineType": "glm4v_ocr",
+                "name": "SF GLM-4.6V",
+                "enabled": false
+              },
+              {
+                "configId": "w0-ocr-gone",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "engineType": "deepseek_ocr",
+                "name": "Gone",
+                "enabled": true,
+                "priority": 1
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-sf-46v",
+            "model": "zai-org/GLM-4.6V",
+            "name": "SF GLM-4.6V",
+            "engineType": "glm4v_ocr"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": []
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": [
+              {
+                "configId": "w0-ocr-sf-old",
+                "model": "x"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "ocr.config.malformed_setting",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "ocr.available_models",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "add_ocr_engine",
+          "args": {
+            "configId": "w0-ocr-any",
+            "model": "glm-4.6v",
+            "name": "Any",
+            "engineType": "glm4v_ocr"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "remove_ocr_engine",
+          "args": {
+            "configId": "__system_ocr__"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_ocr_engine_priority",
+          "args": {
+            "engineList": []
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": []
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "ocr.available_models",
+            "value": "[{\"config_id\":\"w0-x\",\"model\":\"m\",\"engine_type\":\"glm4v_ocr\",\"name\":\"n\"}]"
+          }
+        },
+        {
+          "cmd": "get_available_ocr_models",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "ocr.engine_type",
+            "value": "glm4v_ocr"
+          }
+        },
+        {
+          "cmd": "get_ocr_engine_type",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

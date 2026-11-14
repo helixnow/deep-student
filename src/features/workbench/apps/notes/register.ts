@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
 import i18next from 'i18next';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { AppDefinition } from '../../core/types';
 import { handleNotesActivation } from './notesActivation';
 import { createNotesAgentManifest } from './agentManifest';
@@ -52,7 +52,7 @@ let registered = false;
 export function registerNotesApp(): void {
   if (registered) return;
   registered = true;
-  appRegistry.register(notesAppDefinition);
+  contributeWorkbenchApp(notesAppDefinition);
 }
 
 registerNotesApp();

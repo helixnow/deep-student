@@ -1,0 +1,451 @@
+{
+  "domain": "shell",
+  "commands": [
+    "get_app_version",
+    "updater_install_supported",
+    "install_apk",
+    "open_file_externally",
+    "open_system_permission_settings",
+    "set_android_immersive_mode",
+    "set_sidebar_vibrancy",
+    "set_window_appearance",
+    "sync_titlebar_sidebar_material",
+    "get_prevent_sleep",
+    "set_prevent_sleep",
+    "plugin:clipboard-manager|write_text",
+    "plugin:clipboard-manager|read_text"
+  ],
+  "scenarios": [
+    {
+      "id": "shell.platform.version_and_updater_probe",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_version",
+          "args": {}
+        },
+        {
+          "cmd": "updater_install_supported",
+          "args": {}
+        },
+        {
+          "cmd": "get_app_version",
+          "args": {
+            "unexpected": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.install_apk.desktop_rejects",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/updates/app.apk",
+            "content": "PK"
+          }
+        },
+        {
+          "cmd": "install_apk",
+          "args": {
+            "path": "${0}/w0-f2/updates/app.apk"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "install_apk",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "install_apk",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.open_file_externally.mode_and_platform",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "content": "share me"
+          }
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": "view"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": "share"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": "  share  "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": "edit"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "${0}/w0-f2/share/doc.txt",
+            "mode": "Share"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_file_externally",
+          "args": {
+            "path": "content://com.example/doc",
+            "mode": "view"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.open_system_permission_settings.linux",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_system_permission_settings",
+          "args": {
+            "permission": "notifications"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_system_permission_settings",
+          "args": {
+            "permission": "microphone"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_system_permission_settings",
+          "args": {
+            "permission": "camera"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_system_permission_settings",
+          "args": {
+            "permission": "Notifications"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_system_permission_settings",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.window_effects.non_macos",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_sidebar_vibrancy",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "set_sidebar_vibrancy",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "set_window_appearance",
+          "args": {
+            "dark": true
+          }
+        },
+        {
+          "cmd": "set_window_appearance",
+          "args": {
+            "dark": false
+          }
+        },
+        {
+          "cmd": "sync_titlebar_sidebar_material",
+          "args": {
+            "enabled": true,
+            "width": 240.5
+          }
+        },
+        {
+          "cmd": "sync_titlebar_sidebar_material",
+          "args": {
+            "enabled": false,
+            "width": 0
+          }
+        },
+        {
+          "cmd": "sync_titlebar_sidebar_material",
+          "args": {
+            "enabled": true,
+            "width": -1
+          }
+        },
+        {
+          "cmd": "set_sidebar_vibrancy",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_window_appearance",
+          "args": {
+            "dark": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "sync_titlebar_sidebar_material",
+          "args": {
+            "enabled": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.android_immersive.non_android",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_android_immersive_mode",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "set_android_immersive_mode",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "set_android_immersive_mode",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.prevent_sleep.toggle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_prevent_sleep",
+          "args": {}
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "get_prevent_sleep",
+          "args": {}
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "get_prevent_sleep",
+          "args": {}
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {
+            "enabled": false
+          }
+        },
+        {
+          "cmd": "set_prevent_sleep",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "shell.platform.clipboard.roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "plugin:clipboard-manager|write_text",
+          "args": {
+            "text": "W0 剪贴板 clipboard\nline2"
+          }
+        },
+        {
+          "cmd": "plugin:clipboard-manager|read_text",
+          "args": {}
+        },
+        {
+          "cmd": "plugin:clipboard-manager|write_text",
+          "args": {
+            "text": ""
+          }
+        },
+        {
+          "cmd": "plugin:clipboard-manager|read_text",
+          "args": {}
+        },
+        {
+          "cmd": "plugin:clipboard-manager|write_text",
+          "args": {
+            "text": "after-empty"
+          }
+        },
+        {
+          "cmd": "plugin:clipboard-manager|read_text",
+          "args": {}
+        },
+        {
+          "cmd": "plugin:clipboard-manager|write_text",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "plugin:clipboard-manager|write_text",
+          "args": {
+            "text": 7
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

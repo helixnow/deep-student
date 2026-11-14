@@ -1,24 +1,23 @@
 /**
  * DockContextMenu（P5 → O6）— Dock 应用项右键菜单
  *
- * 复用 app-menu context 模式，外壳用 wb-dockmenu- 覆盖玻璃材质 / 升起动画：
+ * 复用 app-menu context 模式，外壳用 wb-dockmenu- 覆盖玻璃材质 / 升起动画。
+ * 菜单行来自 `app.menu` 的 `workbench.dock`（无 UI 内核时用同一张官方表，见
+ * ui-plugins/official/menu/dockMenu.tsx）：
  * - 「打开 / 新建窗口」
  * - （运行中）逐窗列表：前台窗口勾选标记；点击聚焦
  * - 固定 / 取消固定
  * - （运行中）关闭全部窗口（destructive；逐窗走 requestCloseAnimated）
+ * 分隔线把行分组；带标题的分隔线给其后一组加组标题，组内行文案截断。
  *
  * 关闭链路：AppMenuContent 用 setTimeout(--dropdown-close-dur) 兜底卸载，
  * 不依赖 transitionend；reduced-motion 下 transition:none 也不会卡住。
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Plus,
-  PushPin,
-  PushPinSlash,
-  SquaresFour,
-  XCircle,
-} from '@phosphor-icons/react';
+import type { AppMenuDock } from '@/ui-sdk';
+import { officialDockMenuEntries } from '@/ui-plugins/official/menu/dockMenu';
+import { inlineAppMenuSubmenus, type ResolvedAppMenuItem } from '@/ui-plugins/official/menu/appMenu';
 import {
   AppMenu,
   AppMenuContent,
@@ -30,9 +29,8 @@ import {
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
-import { workbenchBus } from '../core/workbenchBus';
-import { requestCloseAnimated } from '../hooks/useWindowLifecycleAnim';
-import { toggleDockPinned, useDockPinned } from './DockPinnedStore';
+import { useDockPinned } from './DockPinnedStore';
+import { useAppMenuRows } from './appMenuHost';
 import './DockContextMenu.css';
 
 export interface DockContextMenuProps {
@@ -66,27 +64,13 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
 
   const def = appRegistry.get(typeId);
   const appLabel = def ? t(def.nameKey, def.typeId) : typeId;
-  const isMulti = def?.instanceMode === 'multi';
-  const canOpenNew = isMulti || wins.length === 0;
-  // single：始终「打开」（已运行则禁用）；multi 有实例时「新建窗口」
-  const openLabel =
-    isMulti && wins.length > 0
-      ? t('workbench:dock.newWindow')
-      : t('workbench:dock.open');
-
-  const handleOpen = () => {
-    workbenchBus.launch({ typeId, reason: 'dock' });
-  };
-
-  const handleCloseAll = () => {
-    const current = Object.values(useWindowStore.getState().windows).filter(
-      (w) => w.typeId === typeId,
-    );
-    void (async () => {
-      for (const win of current) {
-        await requestCloseAnimated(win.id);
-      }
-    })();
+  const dock: AppMenuDock = {
+    typeId,
+    appLabel,
+    instanceMode: def?.instanceMode,
+    windows: wins.map((win) => ({ id: win.id, label: win.title || appLabel, minimized: Boolean(win.minimized) })),
+    foregroundWindowId: foregroundId,
+    pinned: isPinned,
   };
 
   return (
@@ -97,66 +81,60 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
         className="wb-dockmenu"
         data-testid="wb-dock-context-menu"
       >
-        <AppMenuGroup>
-          <AppMenuItem
-            icon={<Plus size={16} weight="bold" />}
-            disabled={!canOpenNew}
-            onClick={handleOpen}
-          >
-            {openLabel}
-          </AppMenuItem>
-        </AppMenuGroup>
-
-        {wins.length > 0 && (
-          <>
-            <AppMenuSeparator />
-            <AppMenuGroup label={t('workbench:dock.windows')}>
-              {wins.map((win) => {
-                const isForeground = win.id === foregroundId && !win.minimized;
-                return (
-                  <AppMenuItem
-                    key={win.id}
-                    icon={<SquaresFour size={16} />}
-                    checked={isForeground}
-                    onClick={() => useWindowStore.getState().focusWindow(win.id)}
-                    suffix={
-                      win.minimized ? (
-                        <span className="wb-dockmenu-min-tag">
-                          {t('workbench:dock.minimized')}
-                        </span>
-                      ) : undefined
-                    }
-                  >
-                    <span className="truncate">{win.title || appLabel}</span>
-                  </AppMenuItem>
-                );
-              })}
-            </AppMenuGroup>
-          </>
-        )}
-
-        <AppMenuSeparator />
-        <AppMenuGroup>
-          <AppMenuItem
-            icon={isPinned ? <PushPinSlash size={16} /> : <PushPin size={16} />}
-            onClick={() => toggleDockPinned(typeId)}
-          >
-            {isPinned
-              ? t('workbench:dock.unpin')
-              : t('workbench:dock.pin')}
-          </AppMenuItem>
-          {wins.length > 0 && (
-            <AppMenuItem
-              destructive
-              className="wb-dockmenu-destructive"
-              icon={<XCircle size={16} />}
-              onClick={handleCloseAll}
-            >
-              {t('workbench:dock.closeAll')}
-            </AppMenuItem>
-          )}
-        </AppMenuGroup>
+        <DockMenuRows dock={dock} />
       </AppMenuContent>
     </AppMenu>
+  );
+}
+
+interface DockMenuGroup {
+  key: string;
+  /** 有 = 组前有分隔线；`label` 为组标题 */
+  separator?: { label?: string };
+  rows: ResolvedAppMenuItem[];
+}
+
+/** 菜单打开时才渲染（AppMenuContent 关闭即卸载子树），关闭态不解析行 */
+function DockMenuRows({ dock }: { dock: AppMenuDock }) {
+  const rows = inlineAppMenuSubmenus(useAppMenuRows('workbench.dock', dock, officialDockMenuEntries));
+  const groups: DockMenuGroup[] = [];
+  for (const row of rows) {
+    if (row.kind === 'separator') groups.push({ key: row.key, separator: { label: row.label }, rows: [] });
+    else if (groups.length === 0) groups.push({ key: row.key, rows: [row] });
+    else groups[groups.length - 1].rows.push(row);
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <React.Fragment key={group.key}>
+          {group.separator && <AppMenuSeparator />}
+          <AppMenuGroup label={group.separator?.label}>
+            {group.rows.map((row) => {
+              const run = row.run;
+              return (
+                <AppMenuItem
+                  key={row.key}
+                  icon={row.icon}
+                  shortcut={row.shortcut}
+                  disabled={row.disabled}
+                  checked={row.checked}
+                  destructive={row.danger}
+                  className={row.danger ? 'wb-dockmenu-destructive' : undefined}
+                  suffix={row.suffix ? <span className="wb-dockmenu-min-tag">{row.suffix}</span> : undefined}
+                  data-testid={row.testId}
+                  {...(row.radio ? { role: 'menuitemradio', 'aria-checked': Boolean(row.checked) } : {})}
+                  onClick={(event) => {
+                    if (!run || row.closeOnRun === false) event.preventDefault();
+                    run?.();
+                  }}
+                >
+                  {group.separator?.label ? <span className="truncate">{row.label}</span> : row.label}
+                </AppMenuItem>
+              );
+            })}
+          </AppMenuGroup>
+        </React.Fragment>
+      ))}
+    </>
   );
 }

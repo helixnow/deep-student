@@ -668,7 +668,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     return (
         <div className="notes-context-panel flex h-full flex-col bg-background text-xs text-foreground">
             {/* Metadata + Tags：B04 元数据后置，空白不再占据大纲之前的首屏 */}
-            <div className="order-last space-y-4 px-3 py-3">
+            <div className="order-last space-y-4 border-t border-border/35 px-3 py-3">
                 {/* Dates — compact, consistent formatting */}
                 <div className="space-y-1.5">
                     <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
@@ -695,7 +695,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             {t('notes:context.tags')}
                         </h3>
                         {hasTags && (
-                            <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
+                            <span className="ml-auto text-[10px] font-mono tabular-nums font-normal text-muted-foreground/60">
                                 {tags.length}
                             </span>
                         )}
@@ -854,7 +854,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         <TextAlignLeft className="w-3.5 h-3.5" />
                         {t('notes:context.outline')}
                         {headings.length > 0 && (
-                            <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
+                            <span className="ml-auto text-[10px] font-mono tabular-nums font-normal text-muted-foreground/60">
                                 {headings.length}
                             </span>
                         )}

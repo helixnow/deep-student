@@ -5,19 +5,20 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
 import {
   Brain,
-  CircleNotch,
-  WarningCircle,
   Chat,
   Clock,
   User,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
+import {
+  RetrievalBlockShell,
+  RetrievalErrorNotice,
+} from './components/RetrievalBlockShell';
 import { convertBackendSources, type BackendSourceInfo, type MemoryType, type RetrievalSource } from './components/types';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT } from '@/features/learning-hub/learningHubContracts';
@@ -121,8 +122,15 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
   // 状态判断
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
+  const isActive = isPending || isRunning;
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const durationMs =
+    block.startedAt && block.endedAt
+      ? block.endedAt - block.startedAt
+      : data?.durationMs;
 
   // 获取记忆类型图标和文本
   const MemoryIcon = memoryTypeIcons[memoryType] || Brain;
@@ -130,114 +138,52 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
     return t(`blocks.memory.types.${memoryType}`);
   }, [memoryType, t]);
 
+  const statusText = useMemo(() => {
+    if (isActive) return t('blocks.memory.searching');
+    if (isError) return t('blocks.memory.error');
+    if (isSuccess && sources.length > 0) {
+      return t('blocks.memory.statsSimple', { count: sources.length });
+    }
+    if (isSuccess) return t('blocks.memory.noResults');
+    return null;
+  }, [isActive, isError, isSuccess, sources.length, t]);
+
+  const memoryBadge = isSuccess ? (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
+      <MemoryIcon size={10} aria-hidden="true" />
+      <span>{memoryTypeText}</span>
+    </span>
+  ) : null;
+
+  const hasBody = isError || (isSuccess && sources.length > 0);
+
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
-      )}
+    <RetrievalBlockShell
+      icon={Brain}
+      title={t('blocks.memory.title')}
+      statusText={statusText}
+      badge={memoryBadge}
+      isActive={!!isActive}
+      isError={isError}
+      isSuccess={isSuccess}
+      durationMs={durationMs}
+      collapsible={hasBody}
+      isExpanded={isExpanded}
+      onToggleExpand={() => setIsExpanded((prev) => !prev)}
     >
-      {/* 头部 */}
-      <div
-        className={cn(
-          'flex items-center gap-2 px-3 py-2',
-          'border-b border-border/30'
-        )}
-      >
-        {/* 图标 */}
-        <div
-          className={cn(
-            'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-warning/10'
-          )}
-        >
-          <Brain size={16} className="text-warning" />
-        </div>
+      {isError && (
+        <RetrievalErrorNotice message={block.error || t('blocks.memory.errorMessage')} />
+      )}
 
-        {/* 标题 */}
-        <span className="font-medium text-sm text-foreground">
-          {t('blocks.memory.title')}
-        </span>
-
-        {/* 记忆类型标签 */}
-        {isSuccess && (
-          <span
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded-full',
-              'bg-warning/10 text-warning text-xs'
-            )}
-          >
-            <MemoryIcon size={12} />
-            <span>{memoryTypeText}</span>
-          </span>
-        )}
-
-        {/* 状态指示器 */}
-        {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <CircleNotch size={12} className="animate-spin" />
-            <span>{t('blocks.memory.searching')}</span>
-          </span>
-        )}
-
-        {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
-            <WarningCircle size={12} />
-            <span>{t('blocks.memory.error')}</span>
-          </span>
-        )}
-
-        {isSuccess && sources.length > 0 && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {t('blocks.memory.statsSimple', { count: sources.length })}
-          </span>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className="p-3">
-        {/* 加载状态 */}
-        {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" />
-              <span className="text-sm">{t('blocks.memory.loading')}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 错误状态 */}
-        {isError && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <WarningCircle size={20} />
-              <span className="text-sm">
-                {block.error || t('blocks.memory.errorMessage')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* 成功状态：来源列表 */}
-        {isSuccess && sources.length > 0 && (
-          <SourceList
-            sources={sources}
-            maxVisible={3}
-            defaultExpanded={false}
-            onSourceClick={handleSourceClick}
-          />
-        )}
-
-        {/* 成功但无结果 */}
-        {isSuccess && sources.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <span className="text-sm">{t('blocks.memory.noResults')}</span>
-          </div>
-        )}
-      </div>
-    </div>
+      {isSuccess && sources.length > 0 && (
+        <SourceList
+          sources={sources}
+          maxVisible={3}
+          defaultExpanded={false}
+          onSourceClick={handleSourceClick}
+        />
+      )}
+    </RetrievalBlockShell>
   );
 });
 

@@ -102,6 +102,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       const errorMessage =
         getErrorMessage(this.state.error);
       const shouldShowDetails = SHOW_DEV_ERROR_DETAILS && this.props.name === 'chat-v2';
+      // RUST-FIX(RF-W09-english-hardcoded-labels-localized): Rust 在错误消息为空时用英文 “Unknown error” 兜底，中文界面也是英文
 
       return this.props.fallback ?? (
         <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -117,7 +118,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           {shouldShowDetails && (
             <div className="mb-3 w-full max-w-xl rounded-xl border border-[color:var(--shell-inspector-border)] bg-[color:var(--shell-inspector-panel)] px-3 py-2 text-left">
               <p className="text-xs font-medium text-foreground">
-                {`${errorName}: ${errorMessage || 'Unknown error'}`}
+                {`${errorName}: ${errorMessage || i18n.t('common:error.unknown_error', 'Unknown error')}`}
               </p>
               <div className="mt-2 flex justify-end">
                 <DsButton

@@ -457,7 +457,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
                   </div>
                 </div>
                 <ul
-                  className="max-h-56 overflow-y-auto overscroll-contain rounded-md border border-border"
+                  className="max-h-56 overflow-y-auto overscroll-contain rounded-lg border border-border/35 bg-foreground/[0.015]"
                   aria-label={t('learningHub:mediaBilibili.pageLabel')}
                 >
                   {probe.pages.map((p) => {

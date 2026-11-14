@@ -502,6 +502,11 @@ export async function cancelAgent(
   });
 }
 
+/** 仅解除父会话中这个工具块的等待，不取消或重新派发子代理。 */
+export async function backgroundSubagent(sessionId: string, blockId: string): Promise<boolean> {
+  return invoke<boolean>('chat_v2_background_subagent', { sessionId, blockId });
+}
+
 // ============================================================
 // Agent 会话管理
 // ============================================================
@@ -674,6 +679,7 @@ export const workspaceApi = {
   refreshWorkspaceSnapshot,
   runAgent,
   cancelAgent,
+  backgroundSubagent,
   listAgentSessions,
   restoreExecutions,
   manualWake,

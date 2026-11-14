@@ -84,8 +84,9 @@
 }
 
 @media (hover: hover) {
-  .wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover {
-    background: var(--interactive-hover, hsl(var(--muted) / 0.5));
+  .wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover,
+  .wb-files-host [data-finder-item]:not([class]):not([aria-selected='true']) > .group:hover {
+    background: hsl(var(--foreground) / 0.035);
   }
 }
 
@@ -96,10 +97,10 @@
   background: hsl(var(--primary) / 0.14);
 }
 
-/* 空文件夹状态的快捷键提示：键帽立体感（1px 描边 + 底缘投影） */
+/* 空文件夹状态的快捷键提示：键帽立体感（1px 细描边 + 底缘轻投影） */
 .wb-files-host kbd {
-  border: 1px solid hsl(var(--border) / 0.6);
-  box-shadow: 0 1px 0 hsl(var(--border) / 0.55);
+  border: 1px solid hsl(var(--border) / 0.35);
+  box-shadow: 0 1px 0 hsl(var(--border) / 0.35);
 }
 
 /* ==== Hover 预览玻璃卡（useFilesHoverPreview） ======================= */
@@ -111,6 +112,7 @@
   max-width: 17.5rem;
   padding: 0.75rem 0.875rem;
   border-radius: 0.75rem;
+  border: 1px solid hsl(var(--border) / 0.35);
   pointer-events: none;
   opacity: 0;
   transform: translate3d(0, 4px, 0) scale(0.98);
@@ -149,6 +151,7 @@
   margin-top: 0.375rem;
   font-size: 0.75rem;
   line-height: 1.4;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground, 220 9% 46%) / 0.88);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,7 +255,7 @@
 /* 玻璃面搜索框（.finder-search 搜索壳在 OS 文件窗口的落地：
    workbench 根复位已把 input 本体刷无铬，这里由包裹容器承担视觉） */
 [data-wb-sys-app='files'] .finder-search {
-  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
   border-radius: var(--radius-shell-control, 8px);
-  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 3%, transparent 97%);
 }

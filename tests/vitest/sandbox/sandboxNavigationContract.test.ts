@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { readOfficialShellEntries } from '@/app/__tests__/officialShellEntries';
 
 const readSource = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf-8');
 
@@ -20,12 +21,15 @@ describe('sandbox workbench navigation contract', () => {
     expect(navigationTypesSource).toContain("| 'sandbox-workbench'");
   });
 
-  it('exposes a lazy workbench entry point and renders it from App', () => {
+  it('exposes a lazy workbench entry point and renders it from App', async () => {
     expect(lazyComponentsSource).toContain('LazySandboxWorkbenchPage');
     expect(lazyComponentsSource).toContain("./features/sandbox/pages/SandboxWorkbenchPage");
 
     expect(appSource).toContain('LazySandboxWorkbenchPage');
-    expect(appSource).toContain("renderViewLayer('sandbox-workbench'");
+    const { views } = await readOfficialShellEntries();
+    expect(views.get('sandbox-workbench')?.contentKey).toBe('sandboxWorkbenchContent');
+    expect(appSource).toMatch(/const viewContents: Record<string, React\.ReactNode> = \{[^}]*\bsandboxWorkbenchContent\b/);
+    expect(appSource).toContain('content={value.contentKey ? viewContents[value.contentKey] : undefined}');
   });
 
   it('ships a temporary sandbox workbench page shell', () => {

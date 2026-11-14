@@ -19,7 +19,7 @@ import {
   type QuestionMaterial,
 } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import { emitExamSheetDebug } from '@/shared/debug/channels/examSheetProcessing';
 import {
   useQuestionBankStore,
   type PracticeSessionOwner,

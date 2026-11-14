@@ -35,6 +35,8 @@ export const APP_EVENTS = {
   LEARNING_HUB_OPEN_TRANSLATION: 'learningHubOpenTranslation',
   LEARNING_HUB_OPEN_ESSAY: 'learningHubOpenEssay',
   LEARNING_HUB_OPEN_NOTE: 'learningHubOpenNote',
+  /** 切换学习中心 Finder「笔记」智能文件夹的视图（监听方：NotesLearningViewTabs 的 useNotesLearningView） */
+  LEARNING_HUB_NOTES_LEARNING_VIEW: 'learningHub:notes-learning-view',
   PREFILL_CHAT_INPUT: 'PREFILL_CHAT_INPUT',
   CHAT_V2_SET_INPUT: 'CHAT_V2_SET_INPUT',
   CHAT_GROUPS_UPDATED: 'chat-v2:groups-updated',
@@ -50,6 +52,8 @@ export const APP_EVENTS = {
   WB_PREVIEW_QUICK_LOOK: 'wb-preview:quick-look',
   /** OpenCode Go 套餐档位已切换（detail = 新档位 id） */
   OPENCODE_GO_PLAN_CHANGED: 'opencode-go-plan-changed',
+  /** 内联交互画板本机状态跨窗口/展开页同步 */
+  WIDGET_STATE_SYNC: 'ds:widget-state-sync',
 } as const;
 
 export type AppEventName = (typeof APP_EVENTS)[keyof typeof APP_EVENTS];
@@ -144,6 +148,11 @@ export interface LearningHubOpenNoteDetail {
   source?: string;
 }
 
+/** 监听方只接受这三个视图，其他值忽略 */
+export interface LearningHubNotesLearningViewDetail {
+  view: 'list' | 'status' | 'review';
+}
+
 export interface PrefillChatInputDetail {
   content: string;
   autoSend?: boolean;
@@ -200,6 +209,20 @@ export interface WbPreviewQuickLookDetail {
   toggle?: boolean;
 }
 
+export interface WidgetStateSyncDetail {
+  ownerId: string;
+  widgetId?: string;
+  messageId?: string;
+  sourceHash: string;
+  key: string;
+  snapshot: {
+    modelContent?: unknown;
+    privateContent?: unknown;
+    updatedAt: number;
+    sourceHash: string;
+  } | null;
+}
+
 export interface AppEventPayloads {
   [APP_EVENTS.SYSTEM_SETTINGS_CHANGED]: SystemSettingsChangedDetail;
   [APP_EVENTS.WORKBENCH_MODE_CHANGED]: WorkbenchModeChangedDetail;
@@ -220,6 +243,7 @@ export interface AppEventPayloads {
   [APP_EVENTS.LEARNING_HUB_OPEN_TRANSLATION]: LearningHubOpenTranslationDetail;
   [APP_EVENTS.LEARNING_HUB_OPEN_ESSAY]: LearningHubOpenEssayDetail;
   [APP_EVENTS.LEARNING_HUB_OPEN_NOTE]: LearningHubOpenNoteDetail;
+  [APP_EVENTS.LEARNING_HUB_NOTES_LEARNING_VIEW]: LearningHubNotesLearningViewDetail;
   [APP_EVENTS.PREFILL_CHAT_INPUT]: PrefillChatInputDetail;
   [APP_EVENTS.CHAT_V2_SET_INPUT]: ChatV2SetInputDetail;
   [APP_EVENTS.CHAT_GROUPS_UPDATED]: void;
@@ -235,6 +259,7 @@ export interface AppEventPayloads {
   [APP_EVENTS.NAVIGATE_TO_NOTE]: NavigateToNoteDetail;
   [APP_EVENTS.WB_PREVIEW_QUICK_LOOK]: WbPreviewQuickLookDetail;
   [APP_EVENTS.OPENCODE_GO_PLAN_CHANGED]: string;
+  [APP_EVENTS.WIDGET_STATE_SYNC]: WidgetStateSyncDetail;
 }
 
 type DetailArgs<K extends AppEventName> = [AppEventPayloads[K]] extends [void]

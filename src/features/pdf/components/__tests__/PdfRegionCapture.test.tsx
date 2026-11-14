@@ -3,13 +3,16 @@
  * 误触 / 页面没渲染完时留在框选模式；Esc 与「取消」退出。
  */
 import React, { useRef } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { captureMock, sendImageToChatMock, notifyMock } = vi.hoisted(() => ({
+const { captureMock, sendImageToChatMock, notifyMock, extractStructuredMock, copyClipboardMock, decodeMock } = vi.hoisted(() => ({
   captureMock: vi.fn(),
   sendImageToChatMock: vi.fn(),
   notifyMock: vi.fn(),
+  extractStructuredMock: vi.fn(),
+  copyClipboardMock: vi.fn(),
+  decodeMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -23,6 +26,14 @@ vi.mock('../../regionCapture', async (importOriginal) => ({
 }));
 vi.mock('@/features/chat/context/imageToChat', () => ({ sendImageToChat: sendImageToChatMock }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: notifyMock }));
+vi.mock('@/utils/clipboardUtils', () => ({ copyTextToClipboard: copyClipboardMock }));
+vi.mock('../../pdfRegionExtract', () => ({
+  extractStructuredFromRegion: extractStructuredMock,
+}));
+vi.mock('../../interop/pdfInteropBridge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../interop/pdfInteropBridge')>()),
+  decodeCapturedRegion: decodeMock,
+}));
 
 import { PdfRegionCapture } from '../PdfRegionCapture';
 
@@ -37,7 +48,17 @@ class TestPointerEvent extends MouseEvent {
 
 Object.defineProperty(window, 'PointerEvent', { configurable: true, value: TestPointerEvent });
 
-function Harness({ onExit }: { onExit: () => void }) {
+function Harness({
+  onExit,
+  onPinRegion,
+  interopResourceId,
+  viewStateKey,
+}: {
+  onExit: () => void;
+  onPinRegion?: (payload: { blob: Blob; page: number; title: string }) => void;
+  interopResourceId?: string;
+  viewStateKey?: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   return (
@@ -48,7 +69,10 @@ function Harness({ onExit }: { onExit: () => void }) {
         viewportRef={viewportRef}
         documentTitle="线性代数.pdf"
         isTouch={false}
+        onPinRegion={onPinRegion}
         onExit={onExit}
+        interopResourceId={interopResourceId}
+        viewStateKey={viewStateKey}
       />
     </div>
   );
@@ -66,6 +90,48 @@ describe('PdfRegionCapture', () => {
     captureMock.mockReset();
     sendImageToChatMock.mockReset();
     notifyMock.mockReset();
+    decodeMock.mockReset();
+  });
+
+  it('finishes pointer-up outside the overlay even when pointer capture is unavailable', async () => {
+    captureMock.mockResolvedValue({ kind: 'too-small' });
+    render(<Harness onExit={vi.fn()} />);
+    const layer = screen.getByTestId('pdf-region-capture');
+    expect(layer.style.userSelect).toBe('none');
+    fireEvent.pointerDown(layer, { pointerId: 7, button: 0, clientX: 10, clientY: 20 });
+    fireEvent.pointerUp(window, { pointerId: 7, clientX: 100, clientY: 120 });
+    await waitFor(() => expect(captureMock).toHaveBeenCalledTimes(1));
+    expect(captureMock.mock.calls[0][1]).toEqual({ left: 10, top: 20, width: 90, height: 100 });
+  });
+
+  it.each(['Escape', 'pointercancel', 'blur', 'lostpointercapture'])('releases a pending rectangle on %s without capturing', (exit) => {
+    render(<Harness onExit={vi.fn()} />);
+    const layer = screen.getByTestId('pdf-region-capture');
+    const release = vi.fn();
+    layer.releasePointerCapture = release;
+    fireEvent.pointerDown(layer, { pointerId: 4, button: 0, clientX: 10, clientY: 10 });
+    if (exit === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
+    else if (exit === 'blur') fireEvent.blur(window);
+    else if (exit === 'pointercancel') fireEvent.pointerCancel(window, { pointerId: 4 });
+    else fireEvent.lostPointerCapture(layer, { pointerId: 4 });
+    fireEvent.pointerUp(window, { pointerId: 4, clientX: 100, clientY: 100 });
+    expect(release).toHaveBeenCalledWith(4);
+    expect(captureMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels old page/zoom geometry and ignores captures resolved after Escape', async () => {
+    let resolve!: (value: unknown) => void;
+    captureMock.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const view = render(<Harness onExit={vi.fn()} viewStateKey="1:100:0" />);
+    const layer = screen.getByTestId('pdf-region-capture');
+    fireEvent.pointerDown(layer, { pointerId: 1, button: 0, clientX: 10, clientY: 10 });
+    view.rerender(<Harness onExit={vi.fn()} viewStateKey="1:200:90" />);
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(captureMock).not.toHaveBeenCalled();
+    drag({ x: 10, y: 10 }, { x: 100, y: 100 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await act(async () => { resolve({ kind: 'ok', blob: new Blob(['png']), page: 1 }); });
+    expect(sendImageToChatMock).not.toHaveBeenCalled();
   });
 
   it('captures the dragged box and hands the PNG to the chat input, then leaves capture mode', async () => {
@@ -132,5 +198,85 @@ describe('PdfRegionCapture', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'common:cancel' }));
     expect(onExit).toHaveBeenCalledTimes(2);
+  });
+
+  it('pins cropped region as floating reference when Pin mode is selected', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' });
+    captureMock.mockResolvedValue({ kind: 'ok', blob, page: 3 });
+    const onPinRegion = vi.fn();
+    const onExit = vi.fn();
+    render(<Harness onExit={onExit} onPinRegion={onPinRegion} />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'pdf:capture.mode_pin' }));
+    drag({ x: 20, y: 20 }, { x: 160, y: 120 });
+
+    await waitFor(() => expect(onPinRegion).toHaveBeenCalledTimes(1));
+    expect(onPinRegion).toHaveBeenCalledWith({
+      blob,
+      page: 3,
+      title: 'pdf:pinned.card_title|{"name":"线性代数","page":3}',
+    });
+    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(sendImageToChatMock).not.toHaveBeenCalled();
+  });
+
+  it('extracts LaTeX formula into an editable inline card and copies to clipboard', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' });
+    captureMock.mockResolvedValue({ kind: 'ok', blob, page: 4 });
+    extractStructuredMock.mockResolvedValue({
+      source: 'llm',
+      content: '$$A = U \\Sigma V^T$$',
+    });
+    copyClipboardMock.mockResolvedValue(true);
+    const onExit = vi.fn();
+    render(<Harness onExit={onExit} />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'pdf:capture.mode_latex' }));
+    drag({ x: 30, y: 30 }, { x: 200, y: 110 });
+
+    const dialog = await screen.findByRole('dialog', { name: 'pdf:capture.result_latex_title' });
+    expect(dialog).toBeInTheDocument();
+    const textarea = dialog.querySelector('textarea')!;
+    expect(textarea.value).toBe('$$A = U \\Sigma V^T$$');
+
+    fireEvent.click(screen.getByRole('button', { name: 'pdf:capture.copy_result' }));
+    await waitFor(() => expect(copyClipboardMock).toHaveBeenCalledWith('$$A = U \\Sigma V^T$$'));
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send a capture completed after the reader unmounts', async () => {
+    let resolve!: (value: unknown) => void;
+    captureMock.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const onExit = vi.fn();
+    const view = render(<Harness onExit={onExit} />);
+    drag({ x: 10, y: 10 }, { x: 100, y: 100 });
+    view.unmount();
+    await act(async () => { resolve({ kind: 'ok', blob: new Blob(['png']), page: 1 }); });
+    expect(sendImageToChatMock).not.toHaveBeenCalled();
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('opens occlusion with original image pixels and dimensions, not the downsized drag preview', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' });
+    captureMock.mockResolvedValue({ kind: 'ok', blob, page: 3 });
+    decodeMock.mockImplementation(async (_blob, maxEdge) => maxEdge === 1200
+      ? { dataUrl: 'data:image/png;base64,PREVIEW', width: 1200, height: 600 }
+      : { dataUrl: 'data:image/png;base64,ORIGINAL', width: 2400, height: 1200 });
+    const onExit = vi.fn();
+    const onOpen = vi.fn();
+    window.addEventListener('ds:open-image-occlusion-builder', onOpen);
+    try {
+      render(<Harness onExit={onExit} interopResourceId="pdf_a" />);
+      fireEvent.click(screen.getByRole('radio', { name: 'pdf:interop.drag_region' }));
+      drag({ x: 10, y: 10 }, { x: 100, y: 100 });
+      await screen.findByTestId('pdf-region-excerpt-card');
+      fireEvent.click(screen.getByTestId('pdf-region-occlusion-btn'));
+      await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+      expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+        imageBlob: blob, imageDataUrl: 'data:image/png;base64,ORIGINAL', naturalWidth: 2400, naturalHeight: 1200,
+      });
+    } finally {
+      window.removeEventListener('ds:open-image-occlusion-builder', onOpen);
+    }
   });
 });

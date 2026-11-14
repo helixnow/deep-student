@@ -12,12 +12,11 @@
  * R1-14：todo://changed 经 registerDomainListener；详情面板编辑中延迟 reload。
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowsClockwise, Plus } from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { motionSafe, tweenFast } from '@/styles/motion-springs';
+import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -106,18 +105,12 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   const reloadGuardRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   // 自动化视图的移动端顶栏动作（≤2 契约）：页内标题栏在移动壳下隐藏
-  // （TodoAutomationWorkspace hideHeader），刷新 / 新建上移统一顶栏。
+  // （TodoAutomationWorkspace hideHeader），新建上移统一顶栏。
   // 新建复用 requestAutomationCreate 共享入口（工作区消费，与命令面板同路径，
   // 内部另有满容量兜底）；容量门禁与工作区页内按钮同一判定。
   const automationCount = useAutomationStore((s) => s.count);
   const automationMax = useAutomationStore((s) => s.max);
   const automationCapacityFull = automationMax > 0 && automationCount >= automationMax;
-  const [automationRefreshing, setAutomationRefreshing] = useState(false);
-  const handleAutomationRefresh = useCallback(() => {
-    setAutomationRefreshing(true);
-    void Promise.resolve(useAutomationStore.getState().refresh())
-      .finally(() => setAutomationRefreshing(false));
-  }, []);
 
   // Workbench 窄窗双导航防御：窗口化承载（TodoAppWindow）已自带
   // WorkbenchSidebarLayout 的 compact 抽屉导航；此时若视口恰好 <768px，
@@ -225,25 +218,11 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       title: headerTitle,
       showMenu: true,
       onMenuClick: () => setSidebarOpen(true),
-      // 自动化视图：页内标题栏在移动壳下隐藏，刷新 / 新建收进统一顶栏右侧
+      // 自动化视图：页内标题栏在移动壳下隐藏，新建收进统一顶栏右侧
       ...(workspaceView === 'automations'
         ? {
           rightActions: (
             <>
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                aria-label={t('common:actions.refresh')}
-                disabled={automationRefreshing}
-                onClick={handleAutomationRefresh}
-              >
-                <ArrowsClockwise
-                  size={18}
-                  className={cn(automationRefreshing && 'animate-spin motion-reduce:animate-none')}
-                />
-              </DsButton>
               <DsButton
                 variant="ghost"
                 size="icon"
@@ -273,7 +252,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     [
       headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen,
       mobileDetailItem?.title, inWorkbenchWindow,
-      workspaceView, automationRefreshing, automationCapacityFull,
+      workspaceView, automationCapacityFull,
     ],
     inWorkbenchWindow === false,
   );
@@ -326,7 +305,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           <div className="flex h-full w-full flex-col bg-[color:var(--surface-root)]">
             <CustomScrollArea
               className="min-h-0 flex-1"
-              viewportClassName="px-5 py-4"
+              viewportClassName="px-4 py-3"
             >
               {pomodoroSubView === 'stats' ? (
                 <PomodoroStatsContent showTitle={false} />
@@ -342,9 +321,6 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
 
   // ===== 桌面端：仅主面板（侧边栏已移至 Shell 导航位置） =====
   // 回收站为内联视图优先级最高（侧栏点击切换，带返回）。
-  // 三态切换（trash > automations > todos）经 AnimatePresence 转场：
-  // 旧视图 100ms 淡出，新视图 150ms 淡入 + 8px 上移（tweenFast 与
-  // CSS --ease-standard 同曲线；motionSafe 在 reduced-motion 下瞬时完成）。
   const desktopMode = desktopTrashOpen
     ? 'trash'
     : workspaceView === 'automations'
@@ -358,14 +334,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         className,
       )}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={desktopMode}
-          className="flex h-full w-full min-w-0"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0, transition: motionSafe(tweenFast) }}
-          exit={{ opacity: 0, y: -4, transition: motionSafe({ ...tweenFast, duration: 0.1 }) }}
-        >
+      <ShellViewSwitch viewKey={desktopMode} className="flex w-full min-w-0">
           {desktopMode === 'trash' ? (
             <TodoTrashWorkspace titlebarPortalTarget={titlebarPortalTarget} />
           ) : desktopMode === 'automations' ? (
@@ -373,8 +342,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           ) : (
             <TodoMainPanel titlebarPortalTarget={titlebarPortalTarget} />
           )}
-        </motion.div>
-      </AnimatePresence>
+      </ShellViewSwitch>
     </div>
   );
 };

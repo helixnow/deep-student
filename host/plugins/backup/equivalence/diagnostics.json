@@ -1,0 +1,225 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_migration_status",
+    "data_governance_run_health_check",
+    "data_governance_get_database_status",
+    "data_governance_get_migration_diagnostic_report"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.diagnostics.empty.status_health_database_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_health_check",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "vfs"
+          }
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "chat_v2"
+          }
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "mistakes"
+          }
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "llm_usage"
+          }
+        },
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.diagnostics.database_status.unknown_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "VFS"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": " vfs"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "vfs "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "browser"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "chat-v2"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "llm-usage"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "mistakes\u0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "workspace"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "audit"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "vfs"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.diagnostics.database_status.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": [
+              "vfs"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_health_check",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.diagnostics.report.empty_repeatable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_migration_diagnostic_report",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_migration_diagnostic_report",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_run_health_check",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

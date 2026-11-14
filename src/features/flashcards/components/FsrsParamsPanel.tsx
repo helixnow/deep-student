@@ -11,8 +11,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Brain } from '@phosphor-icons/react';
+import { Brain, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { FSRS_STATS_REFRESH_EVENT, subscribeFlashcardsDueRefresh } from '../events';
+import { parseSchedulerConfig } from '../schedulerConfig';
+
+/** FSRS-6 标准 21 维默认权重向量（w[0]..w[20]） */
+export const DEFAULT_FSRS6_WEIGHTS: readonly number[] = [
+  0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194,
+  0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629,
+  1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542,
+];
 
 /** fsrs_get_due 后端硬上限（get_due_inner: limit.min(500)） */
 const DUE_SAMPLE_LIMIT = 500;
@@ -91,13 +99,28 @@ export const FsrsParamsPanel: React.FC = () => {
   const { t } = useTranslation('flashcards');
   const [status, setStatus] = useState<Status>('loading');
   const [rows, setRows] = useState<DueParamsRow[]>([]);
+  const [customWeights, setCustomWeights] = useState<number[]>([]);
+  const [v7, setV7] = useState(false);
+  const [weightsExpanded, setWeightsExpanded] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
+    void Promise.resolve(invoke<unknown>('fsrs_get_scheduler_config'))
+      .then((rawConfig) => {
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        const parsedConfig = parseSchedulerConfig(rawConfig);
+        setV7(parsedConfig?.model === 'fsrs-7');
+        if (parsedConfig && parsedConfig.fsrsParams.length > 0) {
+          setCustomWeights(parsedConfig.fsrsParams);
+        } else {
+          setCustomWeights([]);
+        }
+      })
+      .catch(() => {});
     try {
-      const result = await invoke<unknown>('fsrs_get_due', { limit: DUE_SAMPLE_LIMIT });
+      const result = await invoke<unknown>('fsrs_get_due', { limit: DUE_SAMPLE_LIMIT, readOnly: true });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
       const parsed = parseDueParamsRows(result);
       if (!parsed) {
@@ -302,6 +325,11 @@ export const FsrsParamsPanel: React.FC = () => {
     );
   }
 
+  const activeWeights = customWeights.length === 21 ? customWeights : DEFAULT_FSRS6_WEIGHTS;
+  // This panel describes the V6 single-stability and 21-weight model.
+  if (v7) return null;
+  const vectorPreview = `[${activeWeights.slice(0, 4).map((w) => w.toFixed(4)).join(', ')}, …, ${activeWeights[activeWeights.length - 1]!.toFixed(4)}]`;
+
   return (
     <section className="wb-fcx-panel wb-fcx-span-2" data-testid="fsrs-params-panel">
       <div className="wb-fcx-panel-head">
@@ -317,7 +345,49 @@ export const FsrsParamsPanel: React.FC = () => {
           {localNote}
         </p>
       </div>
-      <div className="wb-fcx-panel-body">{body}</div>
+      <div className="wb-fcx-panel-body">
+        {body}
+        <div className="mt-3 border-t border-border/40 pt-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-muted-foreground">
+                {customWeights.length === 21
+                  ? t('stats.fsrsParams.weightsCustom', { defaultValue: 'FSRS-6 个性化权重' })
+                  : t('stats.fsrsParams.weightsDefault', { defaultValue: 'FSRS-6 默认权重' })}
+              </span>
+              <code className="truncate font-mono text-[11px] tabular-nums text-foreground/80">
+                {vectorPreview}
+              </code>
+            </div>
+            <button
+              type="button"
+              aria-expanded={weightsExpanded}
+              onClick={() => setWeightsExpanded((prev) => !prev)}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <span>
+                {weightsExpanded
+                  ? t('stats.fsrsParams.collapseWeights', { defaultValue: '收起 21 维权重明细' })
+                  : t('stats.fsrsParams.expandWeights', { defaultValue: '展开 21 维权重明细' })}
+              </span>
+              {weightsExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
+            </button>
+          </div>
+          {weightsExpanded ? (
+            <div
+              className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 font-mono text-[11px] tabular-nums sm:grid-cols-7"
+              data-testid="fsrs-weights-detail"
+            >
+              {activeWeights.map((weight, index) => (
+                <div key={index} className="flex items-baseline justify-between gap-1">
+                  <span className="text-muted-foreground">w[{index}]</span>
+                  <span className="text-foreground/90">{weight.toFixed(4)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 };

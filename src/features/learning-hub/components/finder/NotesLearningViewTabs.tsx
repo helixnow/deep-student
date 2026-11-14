@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ListBullets, Kanban, CalendarCheck } from '@phosphor-icons/react';
 import type { NoteLearningView } from '@/features/notes/noteLearningProps';
+import { APP_EVENTS, addAppEventListener, type LearningHubNotesLearningViewDetail } from '@/events';
 import './NotesLearningViewTabs.css';
 
 export type NotesLearningFinderView = Exclude<NoteLearningView, 'tree'>;
 const STORAGE_KEY = 'learningHub.notesLearningView';
 /** 外部（如首页「今日学习」）请求切换视图 */
-export const NOTES_LEARNING_VIEW_EVENT = 'learningHub:notes-learning-view';
+export const NOTES_LEARNING_VIEW_EVENT = APP_EVENTS.LEARNING_HUB_NOTES_LEARNING_VIEW;
 const VIEWS: Array<{ key: NotesLearningFinderView; icon: React.ElementType }> = [
   { key: 'list', icon: ListBullets },
   { key: 'status', icon: Kanban },
@@ -26,14 +27,10 @@ export function useNotesLearningView(): [NotesLearningFinderView, (view: NotesLe
     setView(next);
     try { localStorage.setItem(STORAGE_KEY, next); } catch { /* 偏好写入失败不影响切换 */ }
   }, []);
-  useEffect(() => {
-    const onRequest = (event: Event) => {
-      const next = (event as CustomEvent<{ view?: string }>).detail?.view;
-      if (next === 'list' || next === 'status' || next === 'review') update(next);
-    };
-    window.addEventListener(NOTES_LEARNING_VIEW_EVENT, onRequest);
-    return () => window.removeEventListener(NOTES_LEARNING_VIEW_EVENT, onRequest);
-  }, [update]);
+  useEffect(() => addAppEventListener(APP_EVENTS.LEARNING_HUB_NOTES_LEARNING_VIEW, (detail) => {
+    const next: unknown = (detail as Partial<LearningHubNotesLearningViewDetail> | undefined)?.view;
+    if (next === 'list' || next === 'status' || next === 'review') update(next);
+  }), [update]);
   return [view, update];
 }
 

@@ -535,7 +535,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   /* 带模板的卡片：模板化正反面预览（含字段/标签），替代纯文本卡面 */
                   <AnkiCardPreviewPanel card={card} template={template} />
                 ) : (
-                  <>
+                  <div className="fc-lib-paper">
                     <div className="fc-lib-face">
                       <span className="fc-lib-face-label">{t('session.front')}</span>
                       {front ? <CardMathText text={front} /> : t('card.untitled')}
@@ -544,7 +544,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       <span className="fc-lib-face-label">{t('session.back')}</span>
                       {back ? <CardMathText text={back} /> : t('card.noBack')}
                     </div>
-                  </>
+                  </div>
                 )}
                 <dl className="fc-lib-meta">
                   <div>
